@@ -1,4 +1,4 @@
-/** 后端菜单节点(后端 app/api/v1/module_platform/menu/schema.py 的 MenuOutSchema) */
+/** 后端菜单节点(后端 backend/app/api/v1/module_system/menu/schema.py 的 MenuOutSchema) */
 export interface BackendMenu {
   id?: number | null;
   parent_id?: number | null;
@@ -12,7 +12,8 @@ export interface BackendMenu {
   route_path?: string | null;
   component_path?: string | null;
   hidden?: boolean | null;
-  status?: number | null;
+  /** 后端是字符串("0" 启用 / "1" 停用),不是数字 */
+  status?: number | string | null;
   title?: string | null;
   children?: BackendMenu[] | null;
 }
@@ -107,7 +108,8 @@ function toInternal(items: BackendMenu[], parentAbs = ''): InternalMenu[] {
       item,
       path,
       children: item.children?.length ? toInternal(item.children, path) : [],
-      order: item.order ?? 0,
+      // 后端 order 列 default=999:缺 order 的节点排在最后
+      order: item.order ?? 999,
     };
   });
 }
@@ -120,7 +122,8 @@ function toInternal(items: BackendMenu[], parentAbs = ''): InternalMenu[] {
  * - 停用(status=1)与隐藏(hidden)跳过
  * - 目录(type=1)允许路径不在前端路由表中(它只是分组);
  *   菜单(type=2)路径必须已在前端注册,否则跳过并告警
- * - 目录下所有子项都被跳过时,目录本身也不渲染
+ * - 目录下所有子项都被跳过时,目录本身也不渲染;
+ *   菜单(type=2)不受此规则影响 —— 自身路径已注册就保留,只是没有子项
  */
 export function buildMenuItems(
   backendMenus: BackendMenu[],
@@ -133,7 +136,8 @@ export function buildMenuItems(
       const { item, path } = node;
 
       if (item.type === MENU_TYPE_BUTTON) continue;
-      if (item.status === 1) continue;
+      // 后端 status 是字符串列,数字 1 与字符串 '1' 都要认
+      if (String(item.status) === '1') continue;
       if (item.hidden) continue;
 
       const children = build(node.children);
@@ -145,7 +149,8 @@ export function buildMenuItems(
         continue;
       }
 
-      if (hadChildren && children.length === 0) continue;
+      // 目录的所有子项都被跳过 → 目录也没有存在的意义(仅限目录)
+      if (isDirectory && hadChildren && children.length === 0) continue;
       if (!path && !isDirectory) continue;
 
       result.push({

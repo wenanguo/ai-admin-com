@@ -144,6 +144,20 @@ describe('buildMenuItems', () => {
     expect(items).toHaveLength(0);
   });
 
+  it('skips disabled menus whose status arrives as a string', () => {
+    // 后端 status 是字符串列("0"/"1"),线上负载就是 "1"
+    const items = buildMenuItems(
+      [
+        menu({ id: 1, type: 2, route_path: '/a', status: '1' }),
+        menu({ id: 2, type: 2, route_path: '/b', status: '0' }),
+      ],
+      new Set(['/a', '/b']),
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0].path).toBe('/b');
+  });
+
   it('skips menus whose route is not registered in the frontend and warns', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -175,6 +189,8 @@ describe('buildMenuItems', () => {
   });
 
   it('drops a directory whose children were all skipped', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
     const items = buildMenuItems(
       [
         menu({
@@ -188,6 +204,31 @@ describe('buildMenuItems', () => {
     );
 
     expect(items).toHaveLength(0);
+    expect(warn).toHaveBeenCalledWith('[menu] 前端缺少路由: /system/missing');
+    warn.mockRestore();
+  });
+
+  it('keeps a menu whose children were all skipped', () => {
+    // type=2 的父菜单自身路径已注册 → 父菜单保留,只是没有子项
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const items = buildMenuItems(
+      [
+        menu({
+          id: 1,
+          type: 2,
+          name: '系统管理',
+          route_path: '/system',
+          children: [menu({ id: 2, type: 2, route_path: '/system/missing' })],
+        }),
+      ],
+      new Set(['/system']),
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0].path).toBe('/system');
+    expect(items[0].children).toBeUndefined();
+    warn.mockRestore();
   });
 
   it('uses the backend title as the menu label', () => {
@@ -196,7 +237,7 @@ describe('buildMenuItems', () => {
         menu({
           id: 1,
           type: 2,
-          name: '用户管理',
+          name: 'user',
           title: '用户管理',
           route_path: '/system/user',
         }),
@@ -205,6 +246,42 @@ describe('buildMenuItems', () => {
     );
 
     expect(items[0].name).toBe('用户管理');
+  });
+
+  it('falls back to route_name when title and name are absent', () => {
+    const items = buildMenuItems(
+      [
+        menu({
+          id: 1,
+          type: 2,
+          name: null,
+          title: null,
+          route_name: 'system-user',
+          route_path: '/system/user',
+        }),
+      ],
+      new Set(['/system/user']),
+    );
+
+    expect(items[0].name).toBe('system-user');
+  });
+
+  it('falls back to the path when title, name and route_name are absent', () => {
+    const items = buildMenuItems(
+      [
+        menu({
+          id: 1,
+          type: 2,
+          name: null,
+          title: null,
+          route_name: null,
+          route_path: '/system/user',
+        }),
+      ],
+      new Set(['/system/user']),
+    );
+
+    expect(items[0].name).toBe('/system/user');
   });
 
   it('sorts siblings by order ascending', () => {
@@ -217,5 +294,18 @@ describe('buildMenuItems', () => {
     );
 
     expect(items.map((i) => i.name)).toEqual(['A', 'B']);
+  });
+
+  it('sorts a node without order last', () => {
+    // 后端 order 列默认 999:缺 order 的节点排在最后,而不是最前
+    const items = buildMenuItems(
+      [
+        menu({ id: 1, type: 2, name: 'A', route_path: '/a', order: 1 }),
+        menu({ id: 2, type: 2, name: 'Z', route_path: '/z', order: null }),
+      ],
+      new Set(['/a', '/z']),
+    );
+
+    expect(items.map((i) => i.name)).toEqual(['A', 'Z']);
   });
 });
