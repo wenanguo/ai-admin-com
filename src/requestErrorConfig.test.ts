@@ -1,11 +1,15 @@
-import { message, notification } from 'antd';
+import { message } from 'antd';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { errorConfig } from './requestErrorConfig';
+
+const mockRequest = vi.fn();
+const mockHistoryReplace = vi.fn();
 
 vi.mock('antd', () => ({
   message: {
     warning: vi.fn(),
     error: vi.fn(),
+    success: vi.fn(),
   },
   notification: {
     open: vi.fn(),
@@ -13,186 +17,179 @@ vi.mock('antd', () => ({
 }));
 
 vi.mock('@umijs/max', () => ({
+  request: (...args: unknown[]) => mockRequest(...args),
   getIntl: vi.fn(() => ({
-    formatMessage: vi.fn(({ defaultMessage }) => defaultMessage),
+    formatMessage: vi.fn(
+      ({ defaultMessage }: { defaultMessage: string }) => defaultMessage,
+    ),
+  })),
+  history: {
+    replace: (...args: unknown[]) => mockHistoryReplace(...args),
+  },
+  getRequestInstance: vi.fn(() => ({
+    request: vi.fn().mockResolvedValue({ data: { code: 0, success: true } }),
   })),
 }));
 
-describe('requestErrorConfig', () => {
-  // biome-ignore lint/style/noNonNullAssertion: config handlers are always defined
-  const errorThrower = errorConfig.errorConfig!.errorThrower!;
-  // biome-ignore lint/style/noNonNullAssertion: config handlers are always defined
-  const errorHandler = errorConfig.errorConfig!.errorHandler!;
+vi.mock('@/auth/token', () => ({
+  AUTH_KEYS: {
+    ACCESS_TOKEN: 'access_token',
+    REFRESH_TOKEN: 'refresh_token',
+    REMEMBER_ME: 'remember_me',
+  },
+  isRememberMe: vi.fn(() => true),
+  getAccessToken: vi.fn(() => 'access-1'),
+  getRefreshToken: vi.fn(() => 'refresh-1'),
+  setTokens: vi.fn(),
+  clearAuth: vi.fn(),
+}));
 
+describe('requestErrorConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe('errorThrower', () => {
-    it('should throw error when success is false', () => {
-      const response = {
-        success: false,
-        data: null,
-        errorCode: 400,
-        errorMessage: 'Bad Request',
-        showType: 2,
-      };
+  describe('requestInterceptors', () => {
+    const interceptor = errorConfig.requestInterceptors?.[0] as (config: {
+      url?: string;
+      headers?: Record<string, unknown>;
+    }) => { headers?: Record<string, unknown> };
 
-      expect(() => {
-        errorThrower(response);
-      }).toThrow('Bad Request');
+    it('attaches the bearer token', () => {
+      const result = interceptor({ url: '/system/user/list' });
+
+      expect(result.headers?.Authorization).toBe('Bearer access-1');
     });
 
-    it('should not throw error when success is true', () => {
-      const response = {
-        success: true,
-        data: { id: 1 },
-      };
+    it('does not attach a token to the login request', () => {
+      const result = interceptor({ url: '/system/auth/login' });
 
-      expect(() => {
-        errorThrower(response);
-      }).not.toThrow();
+      expect(result.headers?.Authorization).toBeUndefined();
     });
 
-    it('should throw BizError with correct info', () => {
+    it('does not attach a token to the refresh request', () => {
+      const result = interceptor({ url: '/system/auth/token/refresh' });
+
+      expect(result.headers?.Authorization).toBeUndefined();
+    });
+
+    it('does not attach a token to the captcha request', () => {
+      const result = interceptor({ url: '/system/auth/captcha/get' });
+
+      expect(result.headers?.Authorization).toBeUndefined();
+    });
+  });
+
+  describe('responseInterceptors', () => {
+    it('throws a BizError for a failed business code even on HTTP 200', async () => {
+      const onFulfilled = errorConfig.responseInterceptors?.[0] as (
+        response: unknown,
+      ) => Promise<unknown>;
+
+      await expect(
+        onFulfilled({
+          data: {
+            code: 400,
+            msg: '订单状态异常',
+            data: null,
+            status_code: 200,
+            success: true,
+          },
+          config: {},
+        }),
+      ).rejects.toMatchObject({ name: 'BizError', message: '订单状态异常' });
+    });
+
+    it('passes a successful envelope through untouched', async () => {
+      const onFulfilled = errorConfig.responseInterceptors?.[0] as (
+        response: unknown,
+      ) => Promise<unknown>;
+
       const response = {
-        success: false,
-        data: { detail: 'more info' },
-        errorCode: 403,
-        errorMessage: 'Forbidden',
-        showType: 3,
+        data: {
+          code: 0,
+          msg: 'ok',
+          data: { id: 1 },
+          status_code: 200,
+          success: true,
+        },
+        config: {},
       };
 
-      expect.assertions(5);
-      try {
-        errorThrower(response);
-      } catch (error: any) {
-        expect(error.name).toBe('BizError');
-        expect(error.info.errorCode).toBe(403);
-        expect(error.info.errorMessage).toBe('Forbidden');
-        expect(error.info.showType).toBe(3);
-        expect(error.info.data).toEqual({ detail: 'more info' });
-      }
+      await expect(onFulfilled(response)).resolves.toBe(response);
+    });
+
+    it('passes a non-envelope payload through untouched', async () => {
+      const onFulfilled = errorConfig.responseInterceptors?.[0] as (
+        response: unknown,
+      ) => Promise<unknown>;
+
+      const response = { data: 'plain text', config: {} };
+
+      await expect(onFulfilled(response)).resolves.toBe(response);
     });
   });
 
   describe('errorHandler', () => {
-    it('should rethrow error when skipErrorHandler is true', () => {
-      const error = new Error('Test error');
-      const opts = { skipErrorHandler: true };
+    const errorHandler = errorConfig.errorConfig?.errorHandler as (
+      error: unknown,
+      opts?: unknown,
+    ) => void;
 
-      expect(() => {
-        errorHandler(error, opts);
-      }).toThrow('Test error');
+    it('rethrows when skipErrorHandler is set', () => {
+      expect(() =>
+        errorHandler(new Error('boom'), { skipErrorHandler: true }),
+      ).toThrow('boom');
     });
 
-    it('should handle SILENT showType', () => {
-      const error: any = new Error('Silent error');
+    it('shows the backend message for a BizError', () => {
+      const error: any = new Error('验证码不能为空');
       error.name = 'BizError';
-      error.info = {
-        errorCode: 1001,
-        errorMessage: 'Silent error',
-        showType: 0,
-      };
+      error.info = { code: -1, msg: '验证码不能为空', data: null };
 
       errorHandler(error, {});
 
-      expect(message.warning).not.toHaveBeenCalled();
-      expect(message.error).not.toHaveBeenCalled();
-      expect(notification.open).not.toHaveBeenCalled();
+      expect(message.error).toHaveBeenCalledWith('验证码不能为空');
     });
 
-    it('should handle WARN_MESSAGE showType', () => {
-      const error: any = new Error('Warning');
+    it('shows a permission specific message for code 403', () => {
+      const error: any = new Error('访问受限');
       error.name = 'BizError';
-      error.info = {
-        errorCode: 1002,
-        errorMessage: 'This is a warning',
-        showType: 1,
-      };
+      error.info = { code: 403, msg: '访问受限', data: null };
 
       errorHandler(error, {});
 
-      expect(message.warning).toHaveBeenCalledWith('This is a warning');
+      expect(message.error).toHaveBeenCalledWith('无权限访问');
     });
 
-    it('should handle ERROR_MESSAGE showType', () => {
-      const error: any = new Error('Error message');
-      error.name = 'BizError';
-      error.info = {
-        errorCode: 1003,
-        errorMessage: 'This is an error',
-        showType: 2,
-      };
-
-      errorHandler(error, {});
-
-      expect(message.error).toHaveBeenCalledWith('This is an error');
-    });
-
-    it('should handle NOTIFICATION showType', () => {
-      const error: any = new Error('Notification');
-      error.name = 'BizError';
-      error.info = {
-        errorCode: 1004,
-        errorMessage: 'This is a notification',
-        showType: 3,
-      };
-
-      errorHandler(error, {});
-
-      expect(notification.open).toHaveBeenCalledWith({
-        title: 1004,
-        description: 'This is a notification',
-      });
-    });
-
-    it('should handle REDIRECT showType', () => {
-      const error: any = new Error('Redirect');
-      error.name = 'BizError';
-      error.info = {
-        errorCode: 401,
-        errorMessage: 'Unauthorized',
-        showType: 9,
-      };
-
-      errorHandler(error, {});
-      // cancel the real navigation triggered by REDIRECT before it tears down the test page
-      window.stop();
-
-      // REDIRECT 分支不应触发任何消息/通知提示
-      expect(message.warning).not.toHaveBeenCalled();
-      expect(message.error).not.toHaveBeenCalled();
-      expect(notification.open).not.toHaveBeenCalled();
-    });
-
-    it('should handle default case for unknown showType', () => {
-      const error: any = new Error('Unknown type');
-      error.name = 'BizError';
-      error.info = {
-        errorCode: 1005,
-        errorMessage: 'Unknown error type',
-        showType: 99,
-      };
-
-      errorHandler(error, {});
-
-      expect(message.error).toHaveBeenCalledWith('Unknown error type');
-    });
-
-    it('should handle axios response error', () => {
-      const error: any = new Error('Axios error');
+    it('reads the envelope of an HTTP 500 business error', () => {
+      const error: any = new Error('Request failed');
       error.response = {
         status: 500,
-        data: {},
+        data: {
+          code: -1,
+          msg: '验证码不能为空',
+          data: null,
+          status_code: 500,
+          success: false,
+        },
       };
 
       errorHandler(error, {});
 
-      expect(message.error).toHaveBeenCalledWith('Response status:500');
+      expect(message.error).toHaveBeenCalledWith('验证码不能为空');
     });
 
-    it('should handle offline error', () => {
+    it('falls back to a status message when the error body has no envelope', () => {
+      const error: any = new Error('Request failed');
+      error.response = { status: 502, data: {} };
+
+      errorHandler(error, {});
+
+      expect(message.error).toHaveBeenCalledWith('服务异常 (502)');
+    });
+
+    it('reports offline errors', () => {
       const error: any = new Error('Network error');
       error.request = {};
 
@@ -204,9 +201,8 @@ describe('requestErrorConfig', () => {
 
       try {
         errorHandler(error, {});
-
         expect(message.error).toHaveBeenCalledWith(
-          'Network unavailable. Please check your connection and try again.',
+          '网络不可用，请检查连接后重试。',
         );
       } finally {
         Object.defineProperty(navigator, 'onLine', {
@@ -216,55 +212,74 @@ describe('requestErrorConfig', () => {
       }
     });
 
-    it('should handle request error with no response', () => {
-      const error: any = new Error('Request error');
+    it('reports generic network errors', () => {
+      const error: any = new Error('Network error');
       error.request = {};
 
       errorHandler(error, {});
 
-      expect(message.error).toHaveBeenCalledWith(
-        'None response! Please retry.',
-      );
-    });
-
-    it('should handle generic error', () => {
-      const error: any = new Error('Generic error');
-
-      errorHandler(error, {});
-
-      expect(message.error).toHaveBeenCalledWith(
-        'Request error, please retry.',
-      );
+      expect(message.error).toHaveBeenCalledWith('网络连接异常，请稍后重试');
     });
   });
+});
 
-  describe('requestInterceptors', () => {
-    // The interceptor is registered as a plain function (not a tuple),
-    // so narrow the union type to a callable for the test.
-    const interceptor = errorConfig.requestInterceptors?.[0] as (config: {
-      url?: string;
-      method?: string;
-    }) => { url?: string };
+describe('401 silent refresh and replay', () => {
+  it('refreshes the token and replays the original request on HTTP 401', async () => {
+    const { getRequestInstance } = await import('@umijs/max');
+    const instanceRequest = vi
+      .fn()
+      .mockResolvedValue({ data: { code: 0, success: true } });
+    vi.mocked(getRequestInstance).mockReturnValue({
+      request: instanceRequest,
+    } as any);
 
-    it('should pass through config without modification', () => {
-      const config = {
-        url: 'https://api.example.com/users',
-        method: 'GET',
-      };
-
-      const result = interceptor(config);
-
-      // Token attachment is intentionally commented out in the source;
-      // interceptor currently returns config as-is
-      expect(result.url).toBe('https://api.example.com/users');
+    mockRequest.mockResolvedValue({
+      code: 0,
+      msg: 'ok',
+      data: {
+        access_token: 'new-access',
+        refresh_token: 'new-refresh',
+        token_type: 'Bearer',
+        expires_in: 43200,
+      },
+      status_code: 200,
+      success: true,
     });
 
-    it('should handle URL without config', () => {
-      const config = {};
+    const onRejected = errorConfig.responseInterceptors?.[1] as (
+      error: unknown,
+    ) => Promise<unknown>;
 
-      const result = interceptor(config);
-
-      expect(result.url).toBeUndefined();
+    await onRejected({
+      response: { status: 401 },
+      config: { url: '/system/user/list', headers: {} },
     });
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      '/system/auth/token/refresh',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    // 重放时的新 token 必须落在 headers 里 —— axios 只读 config.headers.Authorization
+    expect(instanceRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: '/system/user/list',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer new-access',
+        }),
+      }),
+    );
+  });
+
+  it('does not replay twice when the retried request is still unauthorized', async () => {
+    const onRejected = errorConfig.responseInterceptors?.[1] as (
+      error: unknown,
+    ) => Promise<unknown>;
+
+    await expect(
+      onRejected({
+        response: { status: 401 },
+        config: { url: '/system/user/list', __aiadminRetried: true },
+      }),
+    ).rejects.toMatchObject({ name: 'UnauthorizedError' });
   });
 });
