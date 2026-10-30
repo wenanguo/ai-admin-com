@@ -871,7 +871,7 @@ Expected: FAIL —— `Cannot find module './adapter'`
 创建 `src/menu/adapter.ts`:
 
 ```ts
-/** 后端菜单节点(后端 app/api/v1/module_system/menu/schema.py 的 MenuOutSchema) */
+/** 后端菜单节点(后端 backend/app/api/v1/module_system/menu/schema.py 的 MenuOutSchema) */
 export interface BackendMenu {
   id?: number | null;
   parent_id?: number | null;
