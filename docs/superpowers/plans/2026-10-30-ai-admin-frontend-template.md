@@ -2319,7 +2319,10 @@ describe('401 silent refresh and replay', () => {
     expect(instanceRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         url: '/system/user/list',
-        Authorization: 'Bearer new-access',
+        // token 在 headers 里 —— axios 只从 config.headers.Authorization 读取
+        headers: expect.objectContaining({
+          Authorization: 'Bearer new-access',
+        }),
       }),
     );
   });
