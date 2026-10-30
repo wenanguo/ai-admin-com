@@ -4449,14 +4449,20 @@ Expected: dev server 启动,输出本地地址(默认 http://localhost:8000 或 
 **检查点**:
 - Network 中 `POST /api/v1/system/auth/login` 的 **Request Payload 是 form-urlencoded**(不是 JSON)
 - 响应 200,`data.access_token` 非空
-- 浏览器跳转到首页(第一个可用菜单的 path)
+- 浏览器跳转到 `redirect` 查询参数指定的路径(没有 `redirect` 时是 `/`,即 antd-pro 的欢迎页)
+- **注意**:验证码 **60 秒过期**,而且后端是「先校验验证码 → 再校验密码」,
+  所以**密码输错也会把验证码消耗掉** —— 报错后页面会自动换一张新验证码,重新填一次即可
 
 - [ ] **Step 4: 检查侧边栏**
 
 **检查点**:
-- 侧边栏显示后端下发的菜单(至少包含「系统管理 → 用户管理」)
-- 控制台出现 `[menu] 前端缺少路由: ...` 的告警(后端有 220 条菜单,前端只实现了 1 个页面,其余会被跳过)——这是**预期行为**
-- 没有任何菜单项点了 404
+- 侧边栏**只有一项**「系统管理 → 用户管理」。这不是 bug:后端 `platform_menu` 有 220 条菜单,
+  但前端目前只注册了 `/system/user` 一条路由,其余菜单项会因为「前端没有对应路由」被跳过;
+  目录(一级菜单)如果所有子项都被跳过,它自己也会被跳过 —— 所以 8 个一级目录里只有「系统管理」留下来。
+- 控制台出现大量 `[menu] 前端缺少路由: ...` 的告警 —— 这是**预期行为**
+- 侧边栏图标是 **antd 图标**(设置/用户),**不是** `ri:xxx` 文字
+  (后端下发的 `ri:xxx` 是 Remix Icon 名,ProLayout 渲染不出来,前端改用 `config/routes.ts` 里的图标)
+- 点「用户管理」能正常打开,没有 404
 
 - [ ] **Step 5: 检查用户管理页**
 
@@ -4466,7 +4472,12 @@ Expected: dev server 启动,输出本地地址(默认 http://localhost:8000 或 
 - Network 中 `GET /api/v1/system/user/list?page_no=1&page_size=10` 返回 200
 - 表格展示真实数据(不是 mock 的「Rule」假数据)
 - 翻页 / 搜索生效,请求参数是 `page_no` / `page_size`
-- 无 `module_system:user:create` 权限时「新增」按钮为禁用态
+- 「新增 / 编辑 / 删除」按钮是**可用**的 —— 测试账号是超级管理员,
+  后端给超管下发 `type in (1,2,3,4)` 的**全部**菜单(含 type=3 的按钮权限),
+  所以 `module_system:user:create` / `:update` / `:delete` 三个码都在,
+  按钮不会被禁用。(要验「无权限时禁用」需要另建一个非超管账号。)
+- 保存/删除后**只弹一次**成功提示(提示文案来自后端信封里的 `msg`),
+  页面自己不要再弹一条
 
 - [ ] **Step 6: 检查退出登录**
 
@@ -4480,6 +4491,9 @@ Expected: dev server 启动,输出本地地址(默认 http://localhost:8000 或 
 - [ ] **Step 7: 检查 401 静默刷新**
 
 把 `localStorage.access_token` 改成一个无效值(DevTools → Application → Local Storage),刷新页面。
+
+> 前提:登录时**勾选了「自动登录」**(登录表单默认是勾上的),token 才落在 `localStorage`;
+> 没勾的话在 `sessionStorage` 里,去 Session Storage 改。
 
 **检查点**:
 - Network 中先出现一个 401 的 `/system/user/current/info`
