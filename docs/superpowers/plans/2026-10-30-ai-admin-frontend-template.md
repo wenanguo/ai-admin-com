@@ -1217,7 +1217,10 @@ describe('system auth service', () => {
   it('posts the login form as urlencoded body', async () => {
     await login({ username: 'admin', password: 'pw', captcha_key: 'k', captcha: '1234' });
 
-    const [url, options] = vi.mocked(request).mock.calls[0];
+    // umi 的 IRequest 是重载签名,Parameters<IRequest> 会塌缩成 [url: string],
+    // 所以拆解 mock.calls[0] 需要显式标注元组类型
+    type RequestCall = [string, Record<string, unknown> | undefined];
+    const [url, options] = vi.mocked(request).mock.calls[0] as unknown as RequestCall;
     expect(url).toBe('/system/auth/login');
     expect(options?.method).toBe('POST');
     expect(options?.headers).toEqual({
@@ -1227,7 +1230,8 @@ describe('system auth service', () => {
     expect(String(options?.data)).toContain('password=pw');
     expect(String(options?.data)).toContain('captcha_key=k');
     expect(String(options?.data)).toContain('captcha=1234');
-    expect(String(options?.data)).toContain('login_type=PC端');
+    // URLSearchParams 会把中文百分号编码,PC端 → PC%E7%AB%AF
+    expect(String(options?.data)).toContain('login_type=PC%E7%AB%AF');
   });
 
   it('refreshes the token with the refresh token in the body', async () => {
@@ -1335,6 +1339,17 @@ Expected: FAIL —— `Cannot find module './auth'` / `'./user'`
 创建 `src/services/api/system/types.ts`:
 
 ```ts
+import type { BackendMenu } from '@/menu/adapter';
+
+/** 后端 UserOutSchema.roles(角色下挂菜单树) */
+export interface UserRole {
+  id?: number | null;
+  name?: string | null;
+  code?: string | null;
+  /** 角色下挂的菜单树(collectPermissions 会连同顶层 menus 一起遍历) */
+  menus?: BackendMenu[] | null;
+}
+
 /** 后端 UserOutSchema(用户列表/详情返回) */
 export interface UserOut {
   id?: number | null;
@@ -1353,7 +1368,9 @@ export interface UserOut {
   position_ids?: number[] | null;
   positions?: { id: number; name: string }[] | null;
   role_ids?: number[] | null;
-  roles?: { id?: number | null; name?: string | null; code?: string | null }[] | null;
+  roles?: UserRole[] | null;
+  /** 当前用户可见的菜单树(后端 UserOutSchema.menus) */
+  menus?: BackendMenu[] | null;
   is_superuser?: boolean | null;
   tenant_id?: number | null;
   created_time?: string | null;
