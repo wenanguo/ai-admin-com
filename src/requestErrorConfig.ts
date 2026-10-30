@@ -31,13 +31,12 @@ const RETRIED_FLAG = '__aiadminRetried';
 /** 刷新中的 promise,让并发 401 共享同一次刷新 */
 let refreshPromise: Promise<string> | null = null;
 
-let redirecting = false;
-
 function redirectToLogin() {
-  if (redirecting) return;
-  redirecting = true;
-
   const { pathname, search, hash } = window.location;
+
+  // 已经在登录页就不再跳,避免叠加 redirect 参数
+  if (pathname === '/user/login') return;
+
   history.replace(
     `/user/login?redirect=${encodeURIComponent(pathname + search + hash)}`,
   );
@@ -84,7 +83,15 @@ async function handleUnauthorized(config: any): Promise<any> {
   if (url.includes('/system/auth/token/refresh'))
     throw createUnauthorizedError();
 
-  const token = await refreshAccessToken();
+  let token: string;
+  try {
+    token = await refreshAccessToken();
+  } catch (error: any) {
+    // 刷新接口有响应 = 服务端明确拒绝 = 登录态确实失效 → 清 token 跳登录
+    // 刷新接口无响应 = 纯网络故障 → 不登出,把错误抛给调用方
+    if (error?.response) throw createUnauthorizedError();
+    throw error;
+  }
 
   return getRequestInstance().request({
     ...config,
@@ -182,10 +189,28 @@ export const errorConfig: RequestConfig = {
         throw createBizError(body as ApiResponse);
       }
 
+      // 成功提示:非 GET 且不是登录/登出/刷新这类机制性接口
+      const method = String(response?.config?.method ?? 'GET').toUpperCase();
+      const url = String(response?.config?.url ?? '');
+      if (
+        isApiResponse(body) &&
+        body.msg &&
+        method !== 'GET' &&
+        !url.includes('login') &&
+        !url.includes('logout') &&
+        !url.includes('token/refresh')
+      ) {
+        message.success(body.msg);
+      }
+
       return response;
     },
     async (error: any) => {
-      if (error?.response?.status === 401) {
+      // 未授权判定与 HTTP 状态码无关:后端可能用 500 携带 401/10401 业务码
+      if (
+        error?.response?.status === 401 ||
+        isUnauthorized(error?.response?.data)
+      ) {
         return handleUnauthorized(error.config);
       }
       throw error;
