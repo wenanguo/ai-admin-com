@@ -2,14 +2,8 @@
 import type { RequestConfig } from '@umijs/max';
 import { getIntl, getRequestInstance, history } from '@umijs/max';
 import { message } from 'antd';
-import {
-  clearAuth,
-  getAccessToken,
-  getRefreshToken,
-  isRememberMe,
-  setTokens,
-} from '@/auth/token';
-import { refreshToken } from '@/services/api/system/auth';
+import { refreshSession } from '@/auth/session';
+import { clearAuth, getAccessToken } from '@/auth/token';
 import {
   createBizError,
   isApiResponse,
@@ -27,9 +21,6 @@ const AUTH_FREE_PATHS = [
 
 /** 重放标记:防止刷新后仍然 401 时无限递归 */
 const RETRIED_FLAG = '__aiadminRetried';
-
-/** 刷新中的 promise,让并发 401 共享同一次刷新 */
-let refreshPromise: Promise<string> | null = null;
 
 function redirectToLogin() {
   const { pathname, search, hash } = window.location;
@@ -50,28 +41,6 @@ function createUnauthorizedError() {
   return error;
 }
 
-/** 用 refresh_token 换新的 access_token */
-async function doRefresh(): Promise<string> {
-  const res = await refreshToken(getRefreshToken());
-  const pair = res?.data;
-
-  if (!pair?.access_token) {
-    throw new Error('刷新令牌失败');
-  }
-
-  setTokens(pair.access_token, pair.refresh_token, isRememberMe());
-  return pair.access_token;
-}
-
-function refreshAccessToken(): Promise<string> {
-  if (!refreshPromise) {
-    refreshPromise = doRefresh().finally(() => {
-      refreshPromise = null;
-    });
-  }
-  return refreshPromise;
-}
-
 /**
  * 未授权的统一处理:刷新 token → 重放原请求。
  * 刷新失败则清理登录态并跳转登录页。
@@ -85,7 +54,7 @@ async function handleUnauthorized(config: any): Promise<any> {
 
   let token: string;
   try {
-    token = await refreshAccessToken();
+    token = await refreshSession();
   } catch (error: any) {
     // 刷新接口有响应 = 服务端明确拒绝 = 登录态确实失效 → 清 token 跳登录
     // 刷新接口无响应 = 纯网络故障 → 不登出,把错误抛给调用方
