@@ -4298,6 +4298,10 @@ const loginOut = async () => {
 ```
 
 - 删除 `outLogin` 的 try/catch(现在 `logoutAndClear` 内部已处理后端失败)
+- `onMenuClick` 里退出登录时清 initialState 的那行,
+  从 `setInitialState((s) => ({ ...s, currentUser: undefined }))` 改成
+  `setInitialState((s) => ({ ...s, currentUser: undefined, menus: [], permissions: [] }))`
+  —— 只清 `currentUser` 的话,后端下发的菜单树还留在内存里
 
 - [ ] **Step 6: 精简 i18n**
 
