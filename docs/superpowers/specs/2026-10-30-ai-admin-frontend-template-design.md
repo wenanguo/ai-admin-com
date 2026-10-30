@@ -188,7 +188,7 @@ ai-admin-com/                          ← 仓库根 = 前端项目根（antd/ �
 | 文件 | 动作 | 说明 |
 |---|---|---|
 | `antd/**` → 根目录 | 移动 | 删除 `antd/.git`，保留其余全部内容 |
-| `package.json` | 改 | `name: "ai-admin-com"`；删 `openapi` 脚本；`start` 改为 `cross-env UMI_ENV=dev MOCK=none max dev`（默认走真实后端）；新增 `start:mock` = `cross-env UMI_ENV=dev max dev`（保留演示页 mock 调试能力） |
+| `package.json` | 改 | `name: "ai-admin-com"`；删 `openapi` 脚本；**保持 `start` = `cross-env UMI_ENV=dev max dev`（mock 开启，演示页可用）、`dev` = `cross-env UMI_ENV=dev MOCK=none max dev`（全站纯真实后端，用于验收）** |
 | `config/config.ts` | 改 | `title: 'AiAdmin'`；移除 `openAPI` 配置与 `@umijs/max-plugin-openapi` 插件；`locale.baseNavigator: false`；`analytics` 移除 GA |
 | `config/proxy.ts` | 改 | `dev: { '/api/': { target: 'https://www.pmdict.cn', changeOrigin: true } }` |
 | `config/defaultSettings.ts` | 改 | `title: 'AiAdmin'`，logo 换本地 `public/logo.svg` |
@@ -519,7 +519,14 @@ export default {
 
 - **不 rewrite**（后端 `root_path` 已处理前缀）
 - `src/app.tsx`：`request.baseURL = '/api/v1'`（dev 与 prod 一致，同源部署）
-- dev 启动：`npm start`（已改为 `MOCK=none`，走真实后端）；需要演示页 mock 数据时用 `npm run start:mock`
+- **两种启动模式并存**（这是本模板的关键设计点）：
+
+| 命令 | mock | 用途 |
+|---|---|---|
+| `npm start` | **开**（antd-pro 默认） | 日常开发：antd-pro 演示页有数据可看，新业务页照常走真实后端 |
+| `npm run dev` | **关**（`MOCK=none`） | 验收 / 纯真实后端联调：全站请求都打到真实后端，演示页会报错（预期） |
+
+- **两者不冲突**：antd-pro mock 注册的路径是 `/api/rule`、`/api/currentUser`、`/api/login/account` 等；真实后端请求一律带 `/api/v1/` 前缀。umi mock 是 express 中间件，未匹配的路径会 `next()` 放行给代理，因此同一套 dev server 下两套数据源可共存。
 - 演示页仍需 mock 数据时：保留 `mock/` 与 `src/pages/**/_mock.ts`；其路径为 `/api/rule`、`/api/currentUser` 等，**与真实后端 `/api/v1/*` 不冲突**
   - ⚠ umi mock 会拦截匹配的路径，真实请求统一带 `/api/v1/` 前缀即可天然隔离
 
@@ -539,7 +546,7 @@ export default {
 
 | # | 步骤 | 期望 |
 |---|---|---|
-| 1 | `npm install && npm start` | dev server 启动，无 TS / lint 报错 |
+| 1 | `npm install && npm run dev` | dev server 启动，无 TS / lint 报错；Network 中所有请求打到 `https://www.pmdict.cn/api/v1`（mock 关闭，证明真实链路） |
 | 2 | 访问 `/user/login` | 显示验证码图片（base64）、用户名、密码、记住我、注册链接、三方登录按钮 |
 | 3 | 用测试账号 + 正确验证码登录 | 成功跳转；Network 中 `POST /api/v1/system/auth/login` 200 |
 | 4 | 侧边栏 | 来自后端菜单树；只渲染前端有路由的项；缺失路由的项在 console 有 warn |
@@ -557,7 +564,7 @@ export default {
 
 ## 12. 本轮明确不做
 
-- 不改 antd-pro 演示页（dashboard / form / list / profile / chatbot）的 service —— 继续走自带 mock
+- 不改 antd-pro 演示页（dashboard / form / list / profile / chatbot）的 service —— 继续走自带 mock（`npm start` 下可用；`npm run dev` 下这些页会报错，属预期）
 - 不实现 `role` / `dept` / `dict` / `menu` 等其余 20+ 个后端菜单对应的页面（仅保留路由契约位置，后续按范式补）
 - 不做租户切换 UI（`/system/auth/select-tenant` 接口已确认存在，留作后续）
 - 不做 `auto-login`（免登录）功能
