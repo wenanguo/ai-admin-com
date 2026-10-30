@@ -3681,14 +3681,15 @@ const useStyles = createStyles(({ token }) => {
   `{ username?: string; password?: string; captcha?: string; autoLogin?: boolean }`,
   ProForm 的 `onFinish` 给的是 `Record<string, any>`,直接传即可。
 
-- [ ] **Step 9: 类型检查**
+- [ ] **Step 9: 类型检查 + lint + 全量测试**
 
 ```bash
 cd /d/project/ai-admin-com
-npm run tsc
+npm run tsc && npm run lint && npx antd lint ./src && npx vitest run
 ```
 
-Expected: exit 0
+Expected: 全部 exit 0。`npx antd lint ./src` 的 33 条 deprecated 全在 `pages/list` 等**演示页**里,
+登录页不能新增;`npx vitest run` 是全量套件,本任务不新增用例,但**不能弄坏已有的 135 条**。
 
 - [ ] **Step 10: 提交**
 
