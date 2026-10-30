@@ -472,19 +472,22 @@ export function toProTableRequest<T>(
   api: (params: PageQuery) => Promise<ApiResponse<PageResult<T>>>,
 ) {
   return async (params: { current?: number; pageSize?: number; [k: string]: unknown }) => {
+    const { current, pageSize, ...rest } = params;
     const res = await api({
-      ...params,
-      page_no: params.current ?? 1,
-      page_size: params.pageSize ?? 10,
+      ...(rest as object),
+      page_no: current ?? 1,
+      page_size: pageSize ?? 10,
     });
     return {
-      list: res.data?.items ?? [],
+      data: res.data?.items ?? [],
       total: res.data?.total ?? 0,
       success: res.success,
     };
   };
 }
 ```
+
+> ⚠ ProTable 的 `request` 回调期望的返回结构是 `{ data, total, success }`（`@ant-design/pro-components` 的 `RequestData<T>`），**不是 `{ list, total }`**。返回 `list` 会导致表格渲染为空且不报错。
 
 ---
 

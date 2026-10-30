@@ -176,8 +176,11 @@ mv README.zh-CN.md README.ant-design-pro.zh-CN.md
 
 - [ ] **Step 8: 安装依赖**
 
+先删掉旧的 `src/.umi`(里面是按旧路径 `D:/project/antd` 生成的绝对路径 import,移动后必然失效),再安装依赖——`npm install` 的 `prepare` 脚本会跑 `max setup` 重新生成。
+
 ```bash
 cd /d/project/ai-admin-com
+rm -rf src/.umi
 npm install
 npx playwright install chromium
 ```
@@ -1629,7 +1632,7 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `ApiResponse` / `PageQuery` / `PageResult`(`@/services/types`)
-- Produces: `toProTableRequest<T>(api: (params: PageQuery) => Promise<ApiResponse<PageResult<T>>>) => (params: ProTableParams) => Promise<{ list: T[]; total: number; success: boolean }>`
+- Produces: `toProTableRequest<T>(api: (params: PageQuery) => Promise<ApiResponse<PageResult<T>>>) => (params: ProTableParams) => Promise<{ data: T[]; total: number; success: boolean }>`
 
 - [ ] **Step 1: 写失败测试**
 
@@ -1669,7 +1672,7 @@ describe('toProTableRequest', () => {
     expect(api).toHaveBeenCalledWith({ page_no: 1, page_size: 10 });
   });
 
-  it('maps backend items/total to ProTable list/total', async () => {
+  it('maps backend items/total to ProTable data/total', async () => {
     const api = vi.fn().mockResolvedValue({
       code: 0,
       msg: 'ok',
@@ -1680,7 +1683,7 @@ describe('toProTableRequest', () => {
 
     const result = await toProTableRequest(api)({});
 
-    expect(result.list).toEqual([{ id: 7 }]);
+    expect(result.data).toEqual([{ id: 7 }]);
     expect(result.total).toBe(42);
     expect(result.success).toBe(true);
   });
@@ -1696,7 +1699,7 @@ describe('toProTableRequest', () => {
 
     const result = await toProTableRequest(api)({});
 
-    expect(result.list).toEqual([]);
+    expect(result.data).toEqual([]);
     expect(result.total).toBe(0);
   });
 
@@ -1743,7 +1746,8 @@ export interface ProTableParams {
  * 把 ProTable 的 request 回调适配到后端分页协议。
  *
  * 后端分页参数是 page_no / page_size,响应是 { items, total };
- * ProTable 期望 current / pageSize 与 { list, total }。
+ * ProTable 期望 current / pageSize 与 { data, total, success }
+ * (见 @ant-design/pro-components 的 RequestData<T> = { data, success?, total? })。
  */
 export function toProTableRequest<T>(
   api: (params: PageQuery) => Promise<ApiResponse<PageResult<T>>>,
@@ -1758,7 +1762,7 @@ export function toProTableRequest<T>(
     });
 
     return {
-      list: res?.data?.items ?? [],
+      data: res?.data?.items ?? [],
       total: res?.data?.total ?? 0,
       success: res?.success ?? false,
     };
@@ -2019,7 +2023,7 @@ Expected: FAIL —— 旧实现没有 `responseInterceptors`,token 也没注入
 ```ts
 import type { RequestOptions } from '@@/plugin-request/request';
 import type { RequestConfig } from '@umijs/max';
-import { getIntl, getRequestInstance, history, request } from '@umijs/max';
+import { getIntl, getRequestInstance, history } from '@umijs/max';
 import { message } from 'antd';
 import { clearAuth, getAccessToken, isRememberMe, setTokens } from '@/auth/token';
 import { refreshToken } from '@/services/api/system/auth';
@@ -2185,9 +2189,9 @@ export const errorConfig: RequestConfig = {
         const token = getAccessToken();
         if (token) {
           config.headers = {
-            ...config.headers,
+            ...(config.headers as Record<string, unknown> | undefined),
             Authorization: `Bearer ${token}`,
-          };
+          } as RequestOptions['headers'];
         }
       }
 
@@ -2903,7 +2907,7 @@ import {
   ProFormText,
 } from '@ant-design/pro-components';
 import { FormattedMessage, Helmet, SelectLang, useIntl, useModel } from '@umijs/max';
-import { Alert, App, Button, Tabs } from 'antd';
+import { Alert, App, Button } from 'antd';
 import { createStyles } from 'antd-style';
 import React, { startTransition, useCallback, useEffect, useState } from 'react';
 import { Footer } from '@/components';
@@ -3647,8 +3651,12 @@ export async function registerUser(params: UserRegisterParams) {
 编辑 `src/pages/user/register/index.tsx`:
 - 把 `import { fakeRegister } from './service';` 改为 `import { registerUser } from './service';`
 - 把 `useMutation` 里调用的 `fakeRegister(...)` 改为 `registerUser(...)`
-- 表单字段 `mail` 改为 `email` 或 `username`(后端 `UserRegisterSchema` 必填的是 `username` / `password`,可选 `name` / `mobile`)
-- 提交成功后跳转 `/user/register-result?account=<username>`
+- **表单字段对齐后端 `UserRegisterSchema`**(必填 `username` / `password`,可选 `name` / `mobile`):
+  - 把原来的 `mail` 字段(`name="mail"`,规则 `type: 'email'`)改名为 `username`,规则改为 `{ required: true, min: 3 }`
+  - 保留 `password` 字段
+  - 删除 `confirm`(后端无此字段)、删除 `captcha`(后端注册接口不校验验证码)、删除 `prefix`(手机号区号)
+  - 保留 `mobile` 字段
+- 提交成功后跳转 `/user/register-result?account=<username>`(原来用的是 `params.mail`,一并改成 `params.username`)
 
 - [ ] **Step 5: 退出登录改真实接口**
 
