@@ -1803,7 +1803,7 @@ Expected: PASS —— 5 个用例通过
 git add src/services/paginate.ts src/services/paginate.test.ts
 git commit -m "feat(services): 新增 ProTable 分页适配器
 
-current/pageSize → page_no/page_size;items/total → list/total。
+current/pageSize → page_no/page_size;items/total → data/total。
 
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
