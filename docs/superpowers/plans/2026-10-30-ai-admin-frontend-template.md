@@ -4256,12 +4256,18 @@ export default {
      改为 `import { registerUser } from '@/services/api/system/user';`
    - **表单字段对齐后端 `UserRegisterSchema`**
      (必填 `username` 3–32、`password` 6–128;可选 `name`、`mobile`):
-     - 把原来的 `mail` 字段(`name="mail"`,规则 `type: 'email'`)改名为 `username`,
-       规则改为 `{ required: true, min: 3 }`
-     - 保留 `password` 字段(后端要求 ≥ 6 位)
-     - 删除 `confirm`(后端无此字段)、删除 `captcha`(后端注册接口不校验验证码)、
-       删除 `prefix`(手机号区号)
-     - 保留 `mobile` 字段(后端 `mobile_validator` 要求 11 位数字,前端也加同样的规则更友好)
+     - 把原来那个 **`name="email"`** 的字段(`rules` 是 `required` + `type: 'email'`)
+       改成 `name="username"`,规则改成 `{ required: true, min: 3 }`,placeholder 改成「用户名」。
+       (注意:原字段叫 `email` 不是 `mail`,而 `mutationFn` 里取的是 `formValues.email`。)
+     - 保留 `password` 字段(`checkPassword` 校验器要求 ≥ 6 位,后端也要求 ≥ 6)
+     - 删除 `confirm` 字段(后端无此字段)、以及它的 `checkConfirm` 校验器
+     - 删除 `captcha` 字段(后端注册接口不校验验证码),以及围着它的 `<Row>` / `<Col>` 和
+       「获取验证码」按钮
+     - `mobile` 字段:把 `<Space.Compact>` 里包着的「区号 `Select` + `Input`」改成**单纯的
+       `<Input>`** —— `Space.Compact` 不是 antd `Form.Item` 的合法受控子元素,
+       `value` / `onChange` 注入不进去,这个字段本来就没绑定上。区号下拉一并删掉。
+     - `mobile` 的规则保留 `required` + 11 位数字的 `pattern`
+       (后端 `mobile_validator` 要求 11 位数字且是合法手机号段)
    - 把 `mutationFn` / `onSuccess` 改成下面这样(原代码里有三处对不上后端):
 
 ```ts
@@ -4292,6 +4298,15 @@ export default {
      >    `{ code, msg, data }` 信封,`data.status` 永远是 undefined,会走到「注册成功」分支之外。
      >    真接口失败时请求层会直接抛 `BizError`,`onSuccess` 根本不会执行。
      >    同时 `message.success('注册成功！')` 要删掉 —— 请求层已经弹过后端信封里的 `msg`。
+
+   - **删完字段后,把因此没人用的 import 与 state 一并清掉**(Biome 的 `noUnusedImports` /
+     `noUnusedVariables` 会报错):
+     - `import { ... } from 'antd'` 里只留还在用的:`Button` / `Input` / `Form` / `Popover` / `Progress` 还在用;
+       `Row` / `Col` / `Select` / `Space` / `message` 都没人用了,删掉
+     - `const { Option } = Select;` 删掉
+     - `count` / `setCount`、`interval` 及其 `useEffect` 清理、`onGetCaptcha`、`prefix` / `setPrefix` /
+       `changePrefix` 全部删掉
+     - `queryClient` **要留着** —— `onSuccess` 里的 `invalidateQueries` 还在用
 
 - [ ] **Step 5: 退出登录改真实接口**
 
