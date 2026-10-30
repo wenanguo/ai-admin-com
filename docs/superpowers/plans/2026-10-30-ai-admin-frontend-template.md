@@ -2693,7 +2693,7 @@ import type { BackendMenu } from '@/menu/adapter';
  */
 export default function access(initialState:
   | {
-      currentUser?: { is_superuser?: boolean | null } | null;
+      currentUser?: { is_superuser?: boolean | null; [key: string]: unknown } | null;
       permissions?: string[];
       menus?: BackendMenu[];
     }
@@ -2744,8 +2744,8 @@ Expected: PASS —— 6 个用例通过
 编辑 `src/locales/zh-CN/menu.ts` 与 `src/locales/en-US/menu.ts`,追加:
 
 ```ts
-  'system.system': '系统管理',
-  'system.user': '用户管理',
+  'menu.system': '系统管理',
+  'menu.system.user': '用户管理',
 ```
 
 (en-US 里对应写 `'System Management'` / `'Users'`)
