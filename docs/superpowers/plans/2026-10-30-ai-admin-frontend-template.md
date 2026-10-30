@@ -3691,36 +3691,159 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 
 **Files:**
 - Create: `src/pages/module_system/user/index.tsx`
+- Create: `src/pages/module_system/user/ModalForm.tsx`
+- Modify: `src/services/api/system/user.ts` + `src/services/api/system/user.test.ts`(删除接口的请求体格式与后端对不上)
+- Modify: `src/services/paginate.ts` + `src/services/paginate.test.ts`(分页参数越界 / 空查询参数会打后端 422)
 
 **Interfaces:**
 - Consumes: `listUsers` / `createUser` / `updateUser` / `deleteUsers`(`@/services/api/system/user`)、`toProTableRequest`(`@/services/paginate`)、`useAccess`(`@umijs/max`)
 - Produces: 路由 `/system/user` 对应的页面组件
 
-- [ ] **Step 1: 创建页面**
+- [ ] **Step 1: 修正 deleteUsers 的请求体(后端要的是裸数组)**
+
+后端 `DELETE /system/user/delete` 的入参是 `ids: Annotated[list[int], Body(...)]`,
+**整个请求体就是一个整数数组**(公网 OpenAPI 已核实:
+`requestBody.content['application/json'].schema = {type: 'array', items: {type: 'integer'}}`),
+不是 `{ ids: [...] }`。现在 `src/services/api/system/user.ts` 发的是 `{ ids }` → 后端 422。
+
+把 `deleteUsers` 改成:
+
+```ts
+/** 删除用户(后端请求体是裸数组,不是 { ids }) */
+export async function deleteUsers(ids: number[]) {
+  return request<ApiResponse<null>>('/system/user/delete', {
+    method: 'DELETE',
+    data: ids,
+  });
+}
+```
+
+同时改 `src/services/api/system/user.test.ts` 里那条锁错了契约的用例:
+
+```ts
+  it('deletes users by id list', async () => {
+    await deleteUsers([1, 2]);
+
+    expect(request).toHaveBeenCalledWith('/system/user/delete', {
+      method: 'DELETE',
+      data: [1, 2],
+    });
+  });
+```
+
+- [ ] **Step 2: 加固 toProTableRequest(分页越界与空查询参数都会打后端 422)**
+
+后端 `page_no` 约束是 `minimum: 1`,`page_size` 是 `minimum: 1 / maximum: 100`
+(公网 OpenAPI 已核实);而 `UserQueryParam.mobile` / `.email` 带**严格正则**约束
+(`^1[3-9]\d{9}$` 与邮箱正则),后端对查询参数也做校验,传不合法值直接 422。
+
+所以 `src/services/paginate.ts` 要做三件事:夹紧分页参数、丢掉空查询值。
+
+把 `toProTableRequest` 改成:
+
+```ts
+/** 后端 page_size 上限(公网 OpenAPI: maximum = 100) */
+const MAX_PAGE_SIZE = 100;
+
+/** 丢掉空查询值:后端对部分查询参数有严格正则,空串也会 422 */
+function pruneEmpty(params: Record<string, unknown>) {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (value === '' || value === undefined || value === null) continue;
+    result[key] = value;
+  }
+  return result;
+}
+
+export function toProTableRequest<T>(
+  api: (params: PageQuery) => Promise<ApiResponse<PageResult<T>>>,
+) {
+  return async (params: ProTableParams) => {
+    const { current, pageSize, ...rest } = params;
+
+    const res = await api({
+      ...pruneEmpty(rest),
+      page_no: Math.max(1, current ?? 1),
+      page_size: Math.min(MAX_PAGE_SIZE, Math.max(1, pageSize ?? 10)),
+    });
+
+    return {
+      data: res?.data?.items ?? [],
+      total: res?.data?.total ?? 0,
+      success: res?.success ?? false,
+    };
+  };
+}
+```
+
+在 `src/services/paginate.test.ts` 里补三条用例:
+
+```ts
+  it('clamps page_no and page_size into the range the backend accepts', async () => {
+    const api = vi.fn().mockResolvedValue({
+      code: 0,
+      msg: 'ok',
+      data: { items: [], total: 0, page_no: 1, page_size: 10, has_next: false },
+      status_code: 200,
+      success: true,
+    });
+
+    await toProTableRequest(api)({ current: 0, pageSize: 500 });
+
+    expect(api).toHaveBeenCalledWith({ page_no: 1, page_size: 100 });
+  });
+
+  it('drops empty search values so the backend does not reject them', async () => {
+    const api = vi.fn().mockResolvedValue({
+      code: 0,
+      msg: 'ok',
+      data: { items: [], total: 0, page_no: 1, page_size: 10, has_next: false },
+      status_code: 200,
+      success: true,
+    });
+
+    await toProTableRequest(api)({
+      current: 1,
+      pageSize: 10,
+      username: '',
+      mobile: undefined,
+      name: 'ad',
+    });
+
+    expect(api).toHaveBeenCalledWith({ name: 'ad', page_no: 1, page_size: 10 });
+  });
+```
+
+跑测试:
+
+```bash
+cd /d/project/ai-admin-com
+npx vitest run src/services/paginate.test.ts src/services/api/system/user.test.ts
+```
+
+Expected: 全部通过。
+
+- [ ] **Step 3: 创建页面**
 
 创建 `src/pages/module_system/user/index.tsx`:
 
 ```tsx
 import { PlusOutlined } from '@ant-design/icons';
-import {
-  ProFormDigit,
-  ProFormSelect,
-  ProFormText,
-  ProFormTextArea,
-  ProTable,
-  type ProColumns,
-} from '@ant-design/pro-components';
-import { App, Button, Popconfirm } from 'antd';
+import type { ActionType } from '@ant-design/pro-components';
+import { ProTable, type ProColumns } from '@ant-design/pro-components';
 import { useAccess } from '@umijs/max';
-import { useRef } from 'react';
+import { Button, Popconfirm } from 'antd';
+import { useRef, useState } from 'react';
+import type React from 'react';
 import {
   createUser,
   deleteUsers,
   listUsers,
   updateUser,
 } from '@/services/api/system/user';
-import type { UserOut } from '@/services/api/system/types';
+import type { UserCreateParams, UserOut } from '@/services/api/system/types';
 import { toProTableRequest } from '@/services/paginate';
+import UserModalForm from './ModalForm';
 
 const requestUsers = toProTableRequest<UserOut>(listUsers);
 
@@ -3729,9 +3852,27 @@ const requestUsers = toProTableRequest<UserOut>(listUsers);
  * 后续新增业务页面按同一范式复制本文件。
  */
 const UserManagement: React.FC = () => {
-  const { message } = App.useApp();
   const access = useAccess();
   const actionRef = useRef<ActionType>();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<UserOut | undefined>(undefined);
+
+  const handleDelete = async (record: UserOut) => {
+    if (!record.id) return;
+    await deleteUsers([record.id]);
+    // 成功提示由请求层统一弹(后端信封里的 msg),这里不要再弹一次
+    actionRef.current?.reload();
+  };
+
+  const handleEdit = (record: UserOut) => {
+    setEditing(record);
+    setModalOpen(true);
+  };
+
+  const handleCreate = () => {
+    setEditing(undefined);
+    setModalOpen(true);
+  };
 
   const columns: ProColumns<UserOut>[] = [
     { title: 'ID', dataIndex: 'id', width: 80, hideInSearch: true },
@@ -3742,8 +3883,29 @@ const UserManagement: React.FC = () => {
       fieldProps: { placeholder: '支持模糊查询' },
     },
     { title: '姓名', dataIndex: 'name', width: 120 },
-    { title: '手机号', dataIndex: 'mobile', width: 140 },
-    { title: '邮箱', dataIndex: 'email', width: 200 },
+    {
+      title: '手机号',
+      dataIndex: 'mobile',
+      width: 140,
+      // 后端 UserQueryParam.mobile 有严格正则,这里先在前端挡掉非法值,避免请求直接 422
+      rules: [
+        {
+          pattern: /^1[3-9]\d{9}$/,
+          message: '手机号格式不正确',
+        },
+      ],
+    },
+    {
+      title: '邮箱',
+      dataIndex: 'email',
+      width: 200,
+      rules: [
+        {
+          pattern: /^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/,
+          message: '邮箱格式不正确',
+        },
+      ],
+    },
     { title: '部门', dataIndex: 'dept_name', width: 140, hideInSearch: true },
     {
       title: '状态',
@@ -3793,211 +3955,32 @@ const UserManagement: React.FC = () => {
     },
   ];
 
-  const handleDelete = async (record: UserOut) => {
-    if (!record.id) return;
-    await deleteUsers([record.id]);
-    message.success('删除成功');
-    actionRef.current?.reload();
-  };
-
-  const handleEdit = (record: UserOut) => {
-    // 编辑弹窗见 Task 12 的可选项说明;本轮先提供列表 + 删除 + 新增
-    message.info(`编辑用户 ${record.username ?? record.id}`);
-  };
-
   return (
-    <ProTable<UserOut>
-      headerTitle="用户管理"
-      rowKey="id"
-      actionRef={actionRef}
-      columns={columns}
-      request={requestUsers}
-      search={{ labelWidth: 80 }}
-      pagination={{
-        defaultPageSize: 10,
-        pageSizeOptions: [10, 20, 50, 100],
-        showSizeChanger: true,
-      }}
-      toolBarRender={() => [
-        <Button
-          key="create"
-          type="primary"
-          icon={<PlusOutlined />}
-          disabled={!access.hasPermission('module_system:user:create')}
-          onClick={() => message.info('新增表单见后续迭代')}
-        >
-          新增
-        </Button>,
-      ]}
-    />
-  );
-};
-
-export default UserManagement;
-```
-
-- [ ] **Step 2: 补上缺失的 import**
-
-上面代码用到了 `ActionType` 与 `React.FC`,请在文件顶部补齐:
-
-```ts
-import type { ActionType } from '@ant-design/pro-components';
-import type React from 'react';
-```
-
-并把 `import { useRef } from 'react';` 保留。
-
-- [ ] **Step 3: 实现新增/编辑弹窗(替换上面的占位提示)**
-
-把 `handleEdit` 与工具栏的「新增」按钮替换为真实的 Modal 表单。**新增文件** `src/pages/module_system/user/ModalForm.tsx`:
-
-```tsx
-import {
-  ModalForm,
-  ProFormDigit,
-  ProFormSelect,
-  ProFormText,
-  ProFormTextArea,
-} from '@ant-design/pro-components';
-import { App } from 'antd';
-import type { UserCreateParams, UserOut } from '@/services/api/system/types';
-
-export type UserModalProps = {
-  open: boolean;
-  record?: UserOut;
-  onOpenChange: (open: boolean) => void;
-  onSubmit: (values: UserCreateParams) => Promise<boolean>;
-};
-
-const UserModalForm: React.FC<UserModalProps> = ({
-  open,
-  record,
-  onOpenChange,
-  onSubmit,
-}) => {
-  const { message } = App.useApp();
-
-  return (
-    <ModalForm<UserCreateParams>
-      title={record?.id ? '编辑用户' : '新增用户'}
-      open={open}
-      initialValues={record as UserCreateParams}
-      modalProps={{
-        destroyOnClose: true,
-        onOk: async () => {
-          const ok = await onSubmit({ ...(record as UserCreateParams), ...valuesRef });
-          if (ok) {
-            message.success(record?.id ? '更新成功' : '创建成功');
-          }
-          return ok;
-        },
-      }}
-      onOpenChange={onOpenChange}
-    >
-      <ProFormText name="username" label="用户名" rules={[{ required: true }]} />
-      {!record?.id && (
-        <ProFormText.Password name="password" label="密码" rules={[{ required: true, min: 6 }]} />
-      )}
-      <ProFormText name="name" label="姓名" />
-      <ProFormText name="mobile" label="手机号" />
-      <ProFormText name="email" label="邮箱" />
-      <ProFormDigit name="dept_id" label="部门 ID" />
-      <ProFormSelect name="status" label="状态" options={[{ label: '正常', value: 0 }, { label: '禁用', value: 1 }]} />
-      <ProFormTextArea name="description" label="备注" fieldProps={{ rows: 3 }} />
-    </ModalForm>
-  );
-};
-
-export default UserModalForm;
-```
-
-> ⚠ 上面 `ModalForm` 的 `onOk` 写法有问题(`valuesRef` 未定义)。**请改为**使用 `ModalForm` 的 `onFinish` 回调:
-
-```tsx
-const UserModalForm: React.FC<UserModalProps> = ({
-  open,
-  record,
-  onOpenChange,
-  onSubmit,
-}) => {
-  const { message } = App.useApp();
-
-  return (
-    <ModalForm<UserCreateParams>
-      title={record?.id ? '编辑用户' : '新增用户'}
-      open={open}
-      initialValues={record as UserCreateParams}
-      modalProps={{ destroyOnClose: true }}
-      onOpenChange={onOpenChange}
-      onFinish={async (values) => {
-        const ok = await onSubmit(values);
-        if (ok) {
-          message.success(record?.id ? '更新成功' : '创建成功');
-        }
-        return ok;
-      }}
-    >
-      <ProFormText name="username" label="用户名" rules={[{ required: true }]} />
-      {!record?.id && (
-        <ProFormText.Password name="password" label="密码" rules={[{ required: true, min: 6 }]} />
-      )}
-      <ProFormText name="name" label="姓名" />
-      <ProFormText name="mobile" label="手机号" />
-      <ProFormText name="email" label="邮箱" />
-      <ProFormDigit name="dept_id" label="部门 ID" />
-      <ProFormSelect
-        name="status"
-        label="状态"
-        options={[
-          { label: '正常', value: 0 },
-          { label: '禁用', value: 1 },
+    <>
+      <ProTable<UserOut>
+        headerTitle="用户管理"
+        rowKey="id"
+        actionRef={actionRef}
+        columns={columns}
+        request={requestUsers}
+        search={{ labelWidth: 80 }}
+        pagination={{
+          defaultPageSize: 10,
+          pageSizeOptions: [10, 20, 50, 100],
+          showSizeChanger: true,
+        }}
+        toolBarRender={() => [
+          <Button
+            key="create"
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={!access.hasPermission('module_system:user:create')}
+            onClick={handleCreate}
+          >
+            新增
+          </Button>,
         ]}
       />
-      <ProFormTextArea name="description" label="备注" fieldProps={{ rows: 3 }} />
-    </ModalForm>
-  );
-};
-```
-
-- [ ] **Step 4: 在 index.tsx 中接上弹窗**
-
-在 `src/pages/module_system/user/index.tsx` 中:
-
-import 补充:
-
-```ts
-import UserModalForm from './ModalForm';
-import type { UserCreateParams } from '@/services/api/system/types';
-```
-
-组件内新增 state 与提交处理:
-
-```ts
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<UserOut | undefined>(undefined);
-```
-
-把 `handleEdit` 替换为:
-
-```ts
-  const handleEdit = (record: UserOut) => {
-    setEditing(record);
-    setModalOpen(true);
-  };
-```
-
-把工具栏「新增」按钮的 onClick 替换为:
-
-```tsx
-          onClick={() => {
-            setEditing(undefined);
-            setModalOpen(true);
-          }}
-```
-
-在 `<ProTable>` 之后追加弹窗:
-
-```tsx
       <UserModalForm
         open={modalOpen}
         record={editing}
@@ -4016,27 +3999,116 @@ import type { UserCreateParams } from '@/services/api/system/types';
           }
         }}
       />
+    </>
+  );
+};
+
+export default UserManagement;
 ```
 
-并把 `import { useRef } from 'react';` 改为 `import { useRef, useState } from 'react';`
+> 说明:
+> - `ProFormDigit` / `ProFormSelect` / `ProFormText` / `ProFormTextArea` 只在 `ModalForm.tsx` 里用,
+>   **不要**在 `index.tsx` 里 import(Biome 的 `noUnusedImports` 会报错)。
+> - `handleDelete` / `handleEdit` 必须写在 `columns` **之前** —— `columns` 的 `render` 里引用了它们,
+>   Biome 的 `noInvalidUseBeforeDeclaration` 会把「先声明后使用」当错误。
+> - **不要**在页面里再弹一次 `message.success` —— 请求层(`src/requestErrorConfig.ts`)对非 GET 请求
+>   已经会用后端信封里的 `msg` 弹一次成功提示,页面再弹就是两条提示。
 
-- [ ] **Step 5: 类型检查**
+- [ ] **Step 4: 实现新增/编辑弹窗**
+
+**新增文件** `src/pages/module_system/user/ModalForm.tsx`:
+
+```tsx
+import {
+  ModalForm,
+  ProFormDigit,
+  ProFormSelect,
+  ProFormText,
+  ProFormTextArea,
+} from '@ant-design/pro-components';
+import type React from 'react';
+import type { UserCreateParams, UserOut } from '@/services/api/system/types';
+
+export type UserModalProps = {
+  open: boolean;
+  record?: UserOut;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (values: UserCreateParams) => Promise<boolean>;
+};
+
+const UserModalForm: React.FC<UserModalProps> = ({
+  open,
+  record,
+  onOpenChange,
+  onSubmit,
+}) => {
+  return (
+    <ModalForm<UserCreateParams>
+      title={record?.id ? '编辑用户' : '新增用户'}
+      open={open}
+      initialValues={record as UserCreateParams}
+      // antd v6 里 destroyOnClose 已废弃,用 destroyOnHidden
+      modalProps={{ destroyOnHidden: true }}
+      onOpenChange={onOpenChange}
+      onFinish={async (values) => {
+        // 成功提示由请求层统一弹(后端信封里的 msg),这里返回 true/false 决定是否关闭弹窗
+        return onSubmit(values);
+      }}
+    >
+      <ProFormText name="username" label="用户名" rules={[{ required: true }]} />
+      {!record?.id && (
+        <ProFormText.Password
+          name="password"
+          label="密码"
+          rules={[{ required: true, min: 6 }]}
+        />
+      )}
+      <ProFormText name="name" label="姓名" />
+      <ProFormText name="mobile" label="手机号" />
+      <ProFormText name="email" label="邮箱" />
+      <ProFormDigit name="dept_id" label="部门 ID" />
+      <ProFormSelect
+        name="status"
+        label="状态"
+        options={[
+          { label: '正常', value: 0 },
+          { label: '禁用', value: 1 },
+        ]}
+      />
+      <ProFormTextArea name="description" label="备注" fieldProps={{ rows: 3 }} />
+    </ModalForm>
+  );
+};
+
+export default UserModalForm;
+```
+
+> 说明:
+> - `onFinish` 返回 `true` 关闭弹窗、返回 `false` 保持打开(ProComponents 的语义)。
+>   不要再在弹窗里弹 `message.success` —— 请求层已经弹过后端信封里的 `msg`。
+> - antd v6(本仓库 6.6.7)的 `Modal` 把 `destroyOnClose` 标成了 `@deprecated`,
+>   新名字是 `destroyOnHidden`(`node_modules/antd/es/modal/interface.d.ts:79-84`)。
+>   `npx antd lint ./src` 会挑出废弃用法。
+
+- [ ] **Step 5: 类型检查 + lint**
 
 ```bash
 cd /d/project/ai-admin-com
-npm run tsc
+npm run tsc && npm run lint && npx antd lint ./src
 ```
 
-Expected: exit 0
+Expected: 全部 exit 0。`npx antd lint ./src` 会挑出 antd 的废弃用法
+(例如 `destroyOnClose`),提交前必须过。
 
 - [ ] **Step 6: 提交**
 
 ```bash
-git add src/pages/module_system/user
+git add src/pages/module_system/user src/services/api/system/user.ts src/services/api/system/user.test.ts src/services/paginate.ts src/services/paginate.test.ts
 git commit -m "feat(page): 新增用户管理页(打通范例)
 
-ProTable + ProTable 分页适配器 + 按钮级权限控制;
+ProTable + 分页适配器 + 按钮级权限控制;
 新增/编辑走 ModalForm,删除走 /system/user/delete。
+同时修正删除接口的请求体(后端要裸数组)与分页参数越界。
 
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
