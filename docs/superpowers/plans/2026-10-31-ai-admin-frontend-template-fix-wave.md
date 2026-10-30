@@ -223,14 +223,16 @@ export async function getInitialState(): Promise<
         initialState?.currentUser?.name ??
         initialState?.currentUser?.username ??
         getIntl().formatMessage({
-          id: 'app.user.defaultName',
+          id: 'app.settings.defaultUserName',
           defaultMessage: '用户',
         }),
 ```
 
-并在 `src/locales/zh-CN/app.ts` 与 `src/locales/en-US/app.ts` 里加
-`'app.user.defaultName': '用户'` / `'User'`。
-(`src/app.tsx` 已经 import 了 `getIntl` —— `import { getIntl, getRequestInstance, history } from '@umijs/max';`)
+并在 `src/locales/zh-CN/settings.ts` 与 `src/locales/en-US/settings.ts` 里加
+`'app.settings.defaultUserName': '用户'` / `'User'`。
+(`src/app.tsx` 已经 import 了 `getIntl` —— `import { getIntl, getRequestInstance, history } from '@umijs/max';`。
+注意本仓库的 locale 目录**没有** `app.ts`,`app.*` 系列的 key 分散在
+`network.ts` / `settings.ts` 等文件里,跟着 `app.settings.*` 放 `settings.ts` 最贴切。)
 
 ## W11 —— `getMenuTree` 的注释与类型
 
