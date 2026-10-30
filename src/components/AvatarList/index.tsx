@@ -66,7 +66,7 @@ const AvatarList: React.FC<AvatarListProps> & {
 } = ({ children, size, maxLength = 5, excessItemsStyle, ...other }) => {
   const { styles } = useStyles();
   const numOfChildren = React.Children.count(children);
-  const numToShow = maxLength >= numOfChildren ? numOfChildren : maxLength;
+  const numToShow = Math.min(maxLength, numOfChildren);
   const childrenArray = React.Children.toArray(
     children,
   ) as React.ReactElement<AvatarItemProps>[];

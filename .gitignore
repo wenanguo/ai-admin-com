@@ -11,8 +11,16 @@ _roadhog-api-doc
 
 # misc
 .DS_Store
+*.pem
 npm-debug.log*
 yarn-error.log
+
+# local env files
+.env
+.env*.local
+
+# vercel
+.vercel
 
 /coverage
 .idea
@@ -45,9 +53,6 @@ build
 
 # worktrees
 .worktrees
-
-# superpowers docs
-docs/superpowers
 
 # cloudflare wrangler
 .wrangler

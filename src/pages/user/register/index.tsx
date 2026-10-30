@@ -51,7 +51,7 @@ const PasswordProgress: React.FC<{
       <Progress
         status={passwordProgressMap[passwordStatus]}
         size={6}
-        percent={value.length * 10 > 100 ? 100 : value.length * 10}
+        percent={Math.min(100, value.length * 10)}
         showInfo={false}
       />
     </div>
