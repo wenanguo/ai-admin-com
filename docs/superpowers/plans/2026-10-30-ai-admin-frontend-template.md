@@ -75,7 +75,7 @@
 |---|---|
 | `config/oneapi.json` | openapi 插件移除后无用 |
 | `src/locales/{bn-BD,fa-IR,id-ID,ja-JP,pt-BR,zh-TW}/**` | i18n 精简到中英双语 |
-| `src/services/ant-design-pro/**` | 改名为 `src/services/demo/**`(见 Task 1) |
+| `src/services/ant-design-pro/**` | 改名为 `src/services/demo/**`(见 Task 13 Step 8) |
 
 ### 重命名
 
@@ -3711,7 +3711,21 @@ Expected: 只剩 `en-US` 与 `zh-CN`
         'src/services/demo/**',
 ```
 
-- [ ] **Step 8: 重命名 service 目录并修正 import**
+- [ ] **Step 8: 清理上游残留的元信息**
+
+- `package.json` 的 `description` 与 `repository` 仍指向 antd-pro,改为:
+
+```json
+  "description": "AiAdmin 前端基础模板 —— 基于 Ant Design Pro v6,对接 AiAdmin FastAPI 后端",
+  "repository": "",
+```
+
+(或删掉 `repository` 字段)
+
+- `README.ant-design-pro.zh-CN.md` 第一行的 `Language : [English](./README.md)` 指向的是项目自己的 README,改为 `[English](./README.ant-design-pro.md)`
+- `skills-lock.json` 只登记了 `antd` 技能,合并进来的 `pro-upgrade` 未登记。补一条同结构的记录(`name`/`source`/`sourceType`/`skillPath`/`computedHash`);若无法确定正确的 `computedHash`,至少补上前四项并说明 `computedHash` 需用 skills 工具重新生成
+
+- [ ] **Step 9: 重命名 service 目录并修正 import**
 
 ```bash
 cd /d/project/ai-admin-com
@@ -3726,7 +3740,7 @@ grep -rl "services/ant-design-pro" src/ | head -20
 
 对 grep 出来的每个文件,把 `from '@/services/ant-design-pro/api'` 改成 `from '@/services/demo/api'`,`from '@/services/ant-design-pro/login'` 改成 `from '@/services/demo/login'`。
 
-- [ ] **Step 9: 全量校验**
+- [ ] **Step 10: 全量校验**
 
 ```bash
 cd /d/project/ai-admin-com
@@ -3735,7 +3749,13 @@ npm run tsc && npm run biome:lint && npx vitest run && npm run build
 
 Expected: 全部通过
 
-- [ ] **Step 10: 提交**
+- [ ] **Step 11: 提交**
+
+> ⚠ **Windows 上 pre-commit hook 会失败**:上游 `.husky/pre-commit` 跑 `lint-staged`,当暂存文件多时拼出的命令行超过 cmd.exe 的 8191 字符上限。本任务 `git add -A` 会一次性暂存大量文件,**必然复现**。处理方式二选一:
+> (a) 临时把 `.lintstagedrc` 的 `--max-arg-length` 调小(例如 6000),让 hook **完整跑通**后再还原文件(提交内容保持原样);
+> (b) 用 `--no-verify` 跳过 hook,并在报告中说明。
+>
+> 无论哪种,提交后都要确认 `git show HEAD:.lintstagedrc` 是预期内容。
 
 ```bash
 git add -A
