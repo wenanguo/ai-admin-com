@@ -1,8 +1,8 @@
 {
   "**/*.{js,jsx,tsx,ts,css,less}": [
-    "npx @biomejs/biome check --write"
+    "npx @biomejs/biome check --write --no-errors-on-unmatched"
   ],
   "src/**/*.md": [
-    "npx @biomejs/biome check --write"
+    "npx @biomejs/biome check --write --no-errors-on-unmatched"
   ]
 }
