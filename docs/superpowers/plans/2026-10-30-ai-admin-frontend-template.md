@@ -871,7 +871,7 @@ Expected: FAIL —— `Cannot find module './adapter'`
 创建 `src/menu/adapter.ts`:
 
 ```ts
-/** 后端菜单节点(后端 app/api/v1/module_platform/menu/schema.py 的 MenuOutSchema) */
+/** 后端菜单节点(后端 app/api/v1/module_system/menu/schema.py 的 MenuOutSchema) */
 export interface BackendMenu {
   id?: number | null;
   parent_id?: number | null;
@@ -885,7 +885,8 @@ export interface BackendMenu {
   route_path?: string | null;
   component_path?: string | null;
   hidden?: boolean | null;
-  status?: number | null;
+  /** 后端是字符串("0" 启用 / "1" 停用),不是数字 */
+  status?: number | string | null;
   title?: string | null;
   children?: BackendMenu[] | null;
 }
@@ -1000,7 +1001,7 @@ export function buildMenuItems(
 
     for (const item of items) {
       if (item.type === MENU_TYPE_BUTTON) continue;
-      if (item.status === 1) continue;
+      if (String(item.status) === '1') continue;
       if (item.hidden) continue;
 
       const path = (item.route_path ?? '').trim();
@@ -1015,7 +1016,7 @@ export function buildMenuItems(
       }
 
       // 目录的所有子项都被跳过 → 目录也没有存在的意义
-      if (hadChildren && children.length === 0) continue;
+      if (isDirectory && hadChildren && children.length === 0) continue;
 
       if (!path && !isDirectory) continue;
 
@@ -1085,7 +1086,7 @@ function toInternal(items: BackendMenu[], parentAbs = ''): InternalMenu[] {
       item,
       path,
       children: item.children?.length ? toInternal(item.children, path) : [],
-      order: item.order ?? 0,
+      order: item.order ?? 999,
     };
   });
 }
@@ -1101,7 +1102,7 @@ export function buildMenuItems(
       const { item, path } = node;
 
       if (item.type === MENU_TYPE_BUTTON) continue;
-      if (item.status === 1) continue;
+      if (String(item.status) === '1') continue;
       if (item.hidden) continue;
 
       const children = build(node.children);
@@ -1113,7 +1114,7 @@ export function buildMenuItems(
         continue;
       }
 
-      if (hadChildren && children.length === 0) continue;
+      if (isDirectory && hadChildren && children.length === 0) continue;
       if (!path && !isDirectory) continue;
 
       result.push({
