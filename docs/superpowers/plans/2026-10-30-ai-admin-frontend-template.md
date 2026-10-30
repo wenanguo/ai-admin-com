@@ -4176,14 +4176,21 @@ const Settings: ProLayoutProps & {
 };
 ```
 
-再把另外两处硬编码的「Ant Design Pro」改掉:
+再把另外几处硬编码的「Ant Design Pro」改掉:
 
 - `src/components/Footer/index.tsx` 的 `<div className={styles.copyright}>Ant Design Pro &copy; {year}</div>`
   → `AiAdmin &copy; {year}`
 - `src/pages/user/login/index.tsx` 的 `<LoginForm ... title="Ant Design" ...>`
   → `title="AiAdmin"`
+- **欢迎页**(登录后落地页 `/`)的标题来自 locale,locale 的值会盖过组件里的 `defaultMessage`,
+  所以要改的是 locale:
+  - `src/locales/zh-CN/pages.ts`:`'pages.welcome.celebrationTitle': '欢迎使用 AiAdmin {v6}'`
+  - `src/locales/en-US/pages.ts`:`'pages.welcome.celebrationTitle': 'Welcome to AiAdmin {v6}'`
+  - `src/pages/Welcome.tsx` 里的 `defaultMessage: '欢迎使用 Ant Design Pro {v6}'` 同步改成 `'欢迎使用 AiAdmin {v6}'`
 
-(`config/defaultSettings.ts` 的 `title` 已经被登录页的 `Settings.title` 引用,改一处即可。)
+(`config/defaultSettings.ts` 的 `title` 已经被登录页的 `Settings.title` 引用,改一处即可。
+其余演示页(`src/pages/Admin.tsx`、`src/pages/chatbot/index.tsx`)里的「Ant Design Pro」字样**本轮不动** ——
+那些是保留的上游演示页,不是品牌位。)
 
 - [ ] **Step 2: 更新 config/config.ts**
 
