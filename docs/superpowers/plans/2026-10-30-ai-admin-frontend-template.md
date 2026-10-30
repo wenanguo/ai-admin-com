@@ -2769,9 +2769,10 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 - Modify: `src/app.tsx`
 - Modify: `src/pages/user/login/index.tsx`(登录成功后要把 menus/permissions 一起写回 initialState)
 - Modify: `src/app.test.tsx`(原用例 mock 的是 `@/services/ant-design-pro/api`,必须整体重写)
+- Modify: `src/menu/adapter.ts` + `src/menu/adapter.test.ts`(菜单图标改用前端路由表的图标,见 Step 2)
 
 **Interfaces:**
-- Consumes: `fetchCurrentUser`(`@/auth/session`)、`collectPermissions` / `collectPaths` / `buildMenuItems`(`@/menu/adapter`)、`API_BASE_URL`(`@/services/http`)、`UserOut`(`@/services/api/system/types`)
+- Consumes: `fetchCurrentUser`(`@/auth/session`)、`collectPermissions` / `collectPaths` / `collectRouteIcons` / `buildMenuItems`(`@/menu/adapter`)、`API_BASE_URL`(`@/services/http`)、`UserOut`(`@/services/api/system/types`)
 - Produces: `getInitialState()` 返回 `{ currentUser?, menus?, permissions?, settings?, fetchUserInfo? }`;`layout` 暴露 `menuDataRender`
 
 - [ ] **Step 1: 改写 src/app.tsx 的 import 与 getInitialState**
@@ -2797,7 +2798,12 @@ import {
   OfflineBanner,
   VersionDropdown,
 } from '@/components';
-import { buildMenuItems, collectPaths, collectPermissions } from '@/menu/adapter';
+import {
+  buildMenuItems,
+  collectPaths,
+  collectPermissions,
+  collectRouteIcons,
+} from '@/menu/adapter';
 import type { BackendMenu } from '@/menu/adapter';
 import { API_BASE_URL } from '@/services/http';
 import type { UserOut } from '@/services/api/system/types';
@@ -2864,25 +2870,158 @@ export async function getInitialState(): Promise<{
 > `API.CurrentUser`(那个命名空间来自 `src/services/ant-design-pro/typings.d.ts`,Task 13 会把它改名,
 > 而且里面没有 `is_superuser` / `menus`)。
 
-- [ ] **Step 2: 在 layout 中接入 menuDataRender**
+- [ ] **Step 2: 菜单图标改用前端路由表的图标(改 src/menu/adapter.ts)**
+
+**为什么**:后端下发的 `icon` 是 **Remix Icon 类名**(如 `ri:user-line`、`ri:settings-2-line`),
+antd/ProLayout 不认识。ProLayout 的 `getIcon()`
+(`node_modules/@ant-design/pro-components/es/layout/components/SiderMenu/BaseMenu.js:44-61`)
+只对「URL / 图片 / `icon-` 前缀的 iconfont」做特殊处理,其余字符串**原样返回**,
+于是 `ri:user-line` 会作为**文本**渲染在侧边栏里。
+
+而前端路由表的图标是可用的:umi 的 `patchRoutes`(`src/.umi/plugin-layout/runtime.tsx`)
+会把路由上的 antd 图标名(`user` → `UserOutlined`)换成真正的图标 ReactElement,
+所以 ProLayout 派生出来的 `menuData` 里 `icon` 已经是 **ReactNode**。
+
+⇒ **图标归前端路由表管**,后端只管「显示哪些 / 标题 / 排序」。
+
+改 `src/menu/adapter.ts`:
+
+```ts
+import type { ReactNode } from 'react';
+```
+
+把 `MenuItem` 与 `RouteLike` 改成:
+
+```ts
+/** ProLayout 菜单项 */
+export interface MenuItem {
+  path: string;
+  name: string;
+  icon?: ReactNode;
+  locale: false;
+  children?: MenuItem[];
+}
+
+/** 前端路由派生的菜单节点(ProLayout 的 menuData) */
+export interface RouteLike {
+  path?: string;
+  icon?: ReactNode;
+  children?: RouteLike[];
+}
+```
+
+新增一个收集函数(放在 `collectPaths` 后面):
+
+```ts
+/**
+ * 收集前端路由派生的菜单图标:path → ReactNode。
+ *
+ * 图标由前端路由表决定:后端下发的 icon 是 Remix Icon 类名(ri:xxx),
+ * ProLayout 认不出来,会当作文本直接显示。
+ */
+export function collectRouteIcons(items: RouteLike[]): Map<string, ReactNode> {
+  const icons = new Map<string, ReactNode>();
+
+  const walk = (list: RouteLike[]) => {
+    for (const item of list ?? []) {
+      if (item.path && item.icon) icons.set(item.path, item.icon);
+      if (item.children?.length) walk(item.children);
+    }
+  };
+
+  walk(items);
+  return icons;
+}
+```
+
+把 `buildMenuItems` 的签名与 `icon` 赋值改成:
+
+```ts
+export function buildMenuItems(
+  backendMenus: BackendMenu[],
+  knownPaths: Set<string>,
+  routeIcons?: Map<string, ReactNode>,
+): MenuItem[] {
+  // ... 其余逻辑不变 ...
+        result.push({
+          path,
+          name: item.title || item.name || item.route_name || path,
+          icon: routeIcons?.get(path),
+          locale: false,
+          ...(children.length > 0 ? { children } : {}),
+        });
+```
+
+> `routeIcons` 是可选参数,不传时菜单项没有图标 —— 老调用方(`adapter.test.ts` 里已有的 22 个用例)
+> 不受影响。`icon` 不再取后端的 `item.icon`。
+
+在 `src/menu/adapter.test.ts` 里补两条用例(同时把 `collectRouteIcons` 加进文件顶部的 import):
+
+```ts
+import {
+  type BackendMenu,
+  buildMenuItems,
+  collectPaths,
+  collectPermissions,
+  collectRouteIcons,
+  joinAbsolutePath,
+} from './adapter';
+```
+
+```ts
+  it('collects the route icons by path', () => {
+    const icons = collectRouteIcons([
+      { path: '/system', icon: 'SettingOutlined' },
+      { path: '/system/user', icon: 'UserOutlined' },
+    ]);
+
+    expect(icons.get('/system')).toBe('SettingOutlined');
+    expect(icons.get('/system/user')).toBe('UserOutlined');
+  });
+
+  it('uses the frontend route icon instead of the backend icon', () => {
+    const items = buildMenuItems(
+      [menu({ route_path: '/system/user', icon: 'ri:user-line' })],
+      new Set(['/system/user']),
+      new Map([['/system/user', 'UserOutlined']]),
+    );
+
+    expect(items[0].icon).toBe('UserOutlined');
+  });
+```
+
+(`menu()` 是该测试文件里已有的造数辅助函数,`icon` 字段名与 `BackendMenu` 一致。)
+
+跑测试:
+
+```bash
+cd /d/project/ai-admin-com
+npx vitest run src/menu/adapter.test.ts
+```
+
+Expected: 全部通过(22 + 2 = 24 条)。
+
+- [ ] **Step 3: 在 layout 中接入 menuDataRender**
 
 在 `export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) => {` 的返回对象里,**加入** `menuDataRender`:
 
 ```ts
     /**
      * 菜单由后端下发:后端决定「显示哪些」,前端路由表决定「能点开什么」。
-     * menuData 是 ProLayout 从 config/routes.ts 派生的菜单,用它做前端路由存在性校验。
+     * menuData 是 ProLayout 从 config/routes.ts 派生的菜单,用它做前端路由存在性校验,
+     * 顺便取前端路由表的图标(后端的 icon 是 Remix Icon 名,ProLayout 渲染不出来)。
      */
     menuDataRender: (menuData) => {
       const knownPaths = collectPaths(menuData);
-      return buildMenuItems(initialState?.menus ?? [], knownPaths);
+      const routeIcons = collectRouteIcons(menuData);
+      return buildMenuItems(initialState?.menus ?? [], knownPaths, routeIcons);
     },
 ```
 
 > 若 `collectPaths(menuData)` 报类型不兼容(`MenuDataItem[]` → `RouteLike[]` 的递归 children),
 > 改成 `collectPaths(menuData as unknown as RouteLike[])` 并 `import type { RouteLike } from '@/menu/adapter'`。
 
-- [ ] **Step 3: 设置 request.baseURL**
+- [ ] **Step 4: 设置 request.baseURL**
 
 把 `src/app.tsx` 底部的 request 配置改为:
 
@@ -2895,7 +3034,7 @@ export const request: RequestConfig = {
 
 (删除原来 `baseURL: isDev ? '' : 'https://pro-api.ant-design-demo.workers.dev'` 的写法)
 
-- [ ] **Step 4: avatarProps 改成真实用户信息**
+- [ ] **Step 5: avatarProps 改成真实用户信息**
 
 `layout` 里现在写死了 `'ProUser'`,改成后端返回的用户:
 
@@ -2913,7 +3052,7 @@ export const request: RequestConfig = {
     },
 ```
 
-- [ ] **Step 5: 移除指向 antd-pro 官网的链接**
+- [ ] **Step 6: 移除指向 antd-pro 官网的链接**
 
 在 `layout` 的 `actionsRender` 中删掉 `<DocLink key="doc" />`,并从 `@/components` 的 import 列表里移除 `DocLink`。
 
@@ -2940,11 +3079,11 @@ export const request: RequestConfig = {
 > `/https://www.pmdict.cn/api/v1/docs` 这种坏路径。`rel="noreferrer"` 是 Biome 的
 > `suspicious/noBlankTarget` 规则要求的。
 
-- [ ] **Step 6: 移除 app.tsx 中对生成 service 的引用**
+- [ ] **Step 7: 移除 app.tsx 中对生成 service 的引用**
 
 确认 `src/app.tsx` 里**没有**任何 `import ... from '@/services/ant-design-pro/...'`(原来的 `currentUser as queryCurrentUser` 已经不用了,直接删掉那行 import)。
 
-- [ ] **Step 7: 登录页把 menus/permissions 一起写回 initialState**
+- [ ] **Step 8: 登录页把 menus/permissions 一起写回 initialState**
 
 `fetchUserInfo` 现在返回的是 `{ currentUser, menus, permissions }` 这一整块,登录页原来只写
 `currentUser`,会导致登录后侧边栏菜单是空的。改 `src/pages/user/login/index.tsx`:
@@ -2963,7 +3102,7 @@ export const request: RequestConfig = {
   };
 ```
 
-- [ ] **Step 8: 重写 src/app.test.tsx**
+- [ ] **Step 9: 重写 src/app.test.tsx**
 
 旧用例 mock 的是 `@/services/ant-design-pro/api` 的 `currentUser`,`src/app.tsx` 换成
 `@/auth/session` 的 `fetchCurrentUser` 之后这些用例会全部失败,必须整体重写。
@@ -3161,6 +3300,7 @@ describe('app layout menuDataRender', () => {
             route_path: '/system',
             route_name: 'system',
             title: '系统管理',
+            icon: 'ri:settings-2-line',
             status: '0',
             order: 1,
             children: [
@@ -3171,6 +3311,7 @@ describe('app layout menuDataRender', () => {
                 route_path: 'user',
                 route_name: 'user',
                 title: '用户管理',
+                icon: 'ri:user-line',
                 status: '0',
                 order: 1,
               },
@@ -3192,18 +3333,19 @@ describe('app layout menuDataRender', () => {
     } as any);
 
     const items = config.menuDataRender?.([
-      { path: '/system' },
-      { path: '/system/user' },
+      { path: '/system', icon: 'SettingOutlined' },
+      { path: '/system/user', icon: 'UserOutlined' },
     ] as any);
 
     expect(items).toEqual([
       {
         path: '/system',
         name: '系统管理',
-        icon: undefined,
+        // 图标取前端路由表的,不是后端的 ri:xxx
+        icon: 'SettingOutlined',
         locale: false,
         children: [
-          { path: '/system/user', name: '用户管理', icon: undefined, locale: false },
+          { path: '/system/user', name: '用户管理', icon: 'UserOutlined', locale: false },
         ],
       },
     ]);
@@ -3223,7 +3365,7 @@ npx vitest run src/app.test.tsx
 Expected: 全部通过,且输出里**没有**未捕获的 `console.warn`(上面用例里的 `console.warn` 已被
 `vi.spyOn` 接管并断言)。
 
-- [ ] **Step 9: 类型检查**
+- [ ] **Step 10: 类型检查**
 
 ```bash
 cd /d/project/ai-admin-com
@@ -3232,14 +3374,15 @@ npm run tsc
 
 Expected: exit 0。若 `initialState?.menus` 类型不匹配,检查 `getInitialState` 的返回类型声明里 `menus?: BackendMenu[]` 是否存在。
 
-- [ ] **Step 10: 提交**
+- [ ] **Step 11: 提交**
 
 ```bash
-git add src/app.tsx src/app.test.tsx src/pages/user/login/index.tsx
+git add src/app.tsx src/app.test.tsx src/pages/user/login/index.tsx src/menu/adapter.ts src/menu/adapter.test.ts
 git commit -m "feat(app): 接入后端用户信息与菜单渲染
 
 - getInitialState 拉取 /system/user/current/info,收集 menus 与 permissions
 - layout.menuDataRender 用后端菜单树渲染侧边栏,并校验前端路由是否存在
+- 菜单图标改用前端路由表的图标,后端下发的 ri:xxx ProLayout 渲染不出来
 - request.baseURL 统一为 /api/v1
 
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
