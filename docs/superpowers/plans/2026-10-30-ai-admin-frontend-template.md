@@ -3423,6 +3423,20 @@ import { API_BASE_URL } from '@/services/http';
 import Settings from '../../../../config/defaultSettings';
 ```
 
+**同时删掉 `ActionIcons` 组件**(它在原文件里渲染支付宝/淘宝/微博三个图标,现在没有调用方了,
+Biome 的 `noUnusedVariables` 会报错)。删掉之后 `useStyles` 里的 `action` 这一条样式也没人用了,
+一并删掉:
+
+```ts
+const useStyles = createStyles(({ token }) => {
+  return {
+    // 删掉 action 这一条
+    lang: { ... },
+    container: { ... },
+  };
+});
+```
+
 - [ ] **Step 2: 在组件内加入验证码状态与加载逻辑**
 
 在 `const Login: React.FC = () => {` 内,把 `userLoginState` / `type` 的声明替换为:
@@ -3507,15 +3521,8 @@ import Settings from '../../../../config/defaultSettings';
         intl.formatMessage({ id: 'pages.login.success', defaultMessage: '登录成功！' }),
       );
 
-      const userInfo = await initialState?.fetchUserInfo?.();
-      if (userInfo) {
-        startTransition(() => {
-          setInitialState((s) => ({
-            ...s,
-            ...userInfo,
-          }));
-        });
-      }
+      // 用本文件里的局部 fetchUserInfo(Task 10 已经改成整块回写 currentUser/menus/permissions)
+      await fetchUserInfo();
 
       const urlParams = new URL(window.location.href).searchParams;
       const redirectUrl = getSafeRedirectUrl(urlParams.get('redirect'));
@@ -3655,12 +3662,24 @@ import Settings from '../../../../config/defaultSettings';
 
 并把 `const { status, type: loginType } = userLoginState;` 这一行删除。
 
-- [ ] **Step 8: fetchUserInfo 局部函数的返回值**
+- [ ] **Step 8: fetchUserInfo 局部函数与 onFinish 的类型**
 
-Task 10 已经把登录页里的局部 `fetchUserInfo` 改成整块回写(`...userInfo`,其中 `userInfo` 是
-`{ currentUser, menus, permissions }`),本任务**不要再改它**,Step 4 直接调用它即可。
-注意:改完 `handleSubmit` 后,`initialState` / `setInitialState` 这两个从 `useModel` 解构出来的变量
-如果在本文件里已经没有任何引用,要把对应的解构删掉,否则 Biome 的 `noUnusedVariables` 会报错。
+- 本文件里的局部 `fetchUserInfo` **保留**,Task 10 已经把它改成整块回写
+  (`setInitialState((s) => ({ ...s, ...userInfo }))`,`userInfo` 是
+  `{ currentUser, menus, permissions }`)。Step 4 的 `handleSubmit` 直接 `await fetchUserInfo();`。
+  **不要**在 `handleSubmit` 里再内联一份 —— 那会让局部 `fetchUserInfo` 变成未使用变量。
+- `LoginForm` 的 `onFinish` 不要再 cast 成 `API.LoginParams`(那是 antd-pro 遗留的类型命名空间,
+  Task 13 会把 `src/services/ant-design-pro` 改名)。改成直接传:
+
+```tsx
+          onFinish={async (values) => {
+            await handleSubmit(values);
+          }}
+```
+
+  `handleSubmit` 的入参类型是
+  `{ username?: string; password?: string; captcha?: string; autoLogin?: boolean }`,
+  ProForm 的 `onFinish` 给的是 `Record<string, any>`,直接传即可。
 
 - [ ] **Step 9: 类型检查**
 
