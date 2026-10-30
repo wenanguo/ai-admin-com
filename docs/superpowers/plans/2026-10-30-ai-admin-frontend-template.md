@@ -4381,6 +4381,10 @@ Expected: 只剩 `en-US/` `en-US.ts` `zh-CN/` `zh-CN.ts`
 
 (或删掉 `repository` 字段)
 
+- `package.json` 的 `devDependencies` 里还留着 `@umijs/max-plugin-openapi` —— Step 2 已经把
+  openapi 插件从 `plugins` 里移除了,这个依赖也一并删掉(`npm uninstall @umijs/max-plugin-openapi`,
+  注意它会同时改 `package-lock.json`)
+
 - `README.ant-design-pro.zh-CN.md` 第一行的 `Language : [English](./README.md)` 指向的是项目自己的 README,改为 `[English](./README.ant-design-pro.md)`
 - `skills-lock.json` 只登记了 `antd` 技能,合并进来的 `pro-upgrade` 未登记。补一条同结构的记录(`name`/`source`/`sourceType`/`skillPath`/`computedHash`);若无法确定正确的 `computedHash`,至少补上前四项并说明 `computedHash` 需用 skills 工具重新生成
 
@@ -4407,6 +4411,19 @@ npm run tsc && npm run biome:lint && npx vitest run && npm run build
 ```
 
 Expected: 全部通过
+
+> `npm run build` 是本任务**第一次**真正跑通构建(前面 Task 9 之后 `config/routes.ts` 引用的
+> `./module_system/user` 页面直到 Task 12 才创建)。如果构建失败,先看是不是 Task 12 的页面没建好。
+
+- [ ] **Step 10b: 清掉已经没人用的 DocLink**
+
+Task 10 把 `src/app.tsx` 里的 `<DocLink />` 删了,`DocLink` 现在是死代码:
+
+- `src/components/RightContent/index.tsx` —— 删掉 `DocLink` 组件定义,
+  以及只为它存在的 `BookOutlined` / `Button` / `Tooltip` / `useHeaderActionStyles` import
+  (`useHeaderActionStyles` 如果 `LangDropdown` / `VersionDropdown` 还在用就留着)
+- `src/components/index.ts` —— 从 `import { DocLink, LangDropdown, VersionDropdown }` 里去掉 `DocLink`,
+  从 `export { AvatarDropdown, DocLink, Footer, LangDropdown, VersionDropdown }` 里也去掉
 
 - [ ] **Step 11: 提交**
 
