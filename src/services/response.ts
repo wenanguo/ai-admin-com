@@ -31,8 +31,9 @@ export type BizError = Error & {
 };
 
 export function createBizError(res: ApiResponse): BizError {
-  const error = new Error(res.msg || '请求失败') as BizError;
+  const msg = res.msg || '请求失败';
+  const error = new Error(msg) as BizError;
   error.name = 'BizError';
-  error.info = { code: res.code, msg: res.msg || '请求失败', data: res.data };
+  error.info = { code: res.code, msg, data: res.data };
   return error;
 }
