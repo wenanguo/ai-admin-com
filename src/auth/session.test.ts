@@ -92,6 +92,18 @@ describe('session', () => {
 
       expect(user).toEqual({ id: 1, username: 'admin', menus: [] });
     });
+
+    it('throws when the backend returns no user payload', async () => {
+      mockGetCurrentUser.mockResolvedValue({
+        code: 0,
+        msg: 'ok',
+        data: null,
+        status_code: 200,
+        success: true,
+      });
+
+      await expect(fetchCurrentUser()).rejects.toThrow('获取当前用户信息失败');
+    });
   });
 
   describe('logoutAndClear', () => {
@@ -115,6 +127,16 @@ describe('session', () => {
 
       await logoutAndClear();
 
+      expect(mockClearAuth).toHaveBeenCalled();
+    });
+
+    it('does not call the backend when there is no access token', async () => {
+      const { getAccessToken } = await import('@/auth/token');
+      vi.mocked(getAccessToken).mockReturnValueOnce('');
+
+      await logoutAndClear();
+
+      expect(mockLogout).not.toHaveBeenCalled();
       expect(mockClearAuth).toHaveBeenCalled();
     });
   });
@@ -150,17 +172,38 @@ describe('session', () => {
     it('sends a single refresh request for concurrent calls', async () => {
       mockRefreshToken.mockResolvedValue(tokenEnvelope);
 
-      const [first, second] = await Promise.all([
-        refreshSession(),
-        refreshSession(),
-      ]);
+      const first = refreshSession();
+      const second = refreshSession();
+
+      // 并发调用共享同一个 in-flight promise,而不是各自发一次请求
+      expect(second).toBe(first);
+
+      const [a, b] = await Promise.all([first, second]);
 
       expect(mockRefreshToken).toHaveBeenCalledTimes(1);
-      expect(first).toBe('new-access');
-      expect(second).toBe('new-access');
+      expect(a).toBe('new-access');
+      expect(b).toBe('new-access');
     });
 
-    it('throws when the backend returns no access token', async () => {
+    it('stores an empty refresh token when the backend omits it', async () => {
+      mockRefreshToken.mockResolvedValue({
+        code: 0,
+        msg: 'ok',
+        data: {
+          access_token: 'new-access',
+          token_type: 'Bearer',
+          expires_in: 43200,
+        },
+        status_code: 200,
+        success: true,
+      });
+
+      await refreshSession();
+
+      expect(mockSetTokens).toHaveBeenCalledWith('new-access', '', true);
+    });
+
+    it('reports an unauthorized error when the backend returns no access token', async () => {
       mockRefreshToken.mockResolvedValue({
         code: 0,
         msg: 'ok',
@@ -169,7 +212,11 @@ describe('session', () => {
         success: true,
       });
 
-      await expect(refreshSession()).rejects.toThrow('刷新令牌失败');
+      // 刷新接口有响应但没给新 token = 服务端明确拒绝 = 登录态失效,应走登出
+      await expect(refreshSession()).rejects.toMatchObject({
+        name: 'UnauthorizedError',
+        message: '登录状态已失效，请重新登录',
+      });
     });
   });
 });

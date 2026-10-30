@@ -2,7 +2,7 @@
 import type { RequestConfig } from '@umijs/max';
 import { getIntl, getRequestInstance, history } from '@umijs/max';
 import { message } from 'antd';
-import { refreshSession } from '@/auth/session';
+import { createUnauthorizedError, refreshSession } from '@/auth/session';
 import { clearAuth, getAccessToken } from '@/auth/token';
 import {
   createBizError,
@@ -31,14 +31,6 @@ function redirectToLogin() {
   history.replace(
     `/user/login?redirect=${encodeURIComponent(pathname + search + hash)}`,
   );
-}
-
-function createUnauthorizedError() {
-  const error = new Error('登录状态已失效，请重新登录') as Error & {
-    name: string;
-  };
-  error.name = 'UnauthorizedError';
-  return error;
 }
 
 /**
