@@ -2767,9 +2767,11 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 
 **Files:**
 - Modify: `src/app.tsx`
+- Modify: `src/pages/user/login/index.tsx`(登录成功后要把 menus/permissions 一起写回 initialState)
+- Modify: `src/app.test.tsx`(原用例 mock 的是 `@/services/ant-design-pro/api`,必须整体重写)
 
 **Interfaces:**
-- Consumes: `fetchCurrentUser` / `logoutAndClear`(`@/auth/session`)、`collectPermissions` / `buildMenuItems`(`@/menu/adapter`)、`API_BASE_URL`(`@/services/http`)
+- Consumes: `fetchCurrentUser`(`@/auth/session`)、`collectPermissions` / `collectPaths` / `buildMenuItems`(`@/menu/adapter`)、`API_BASE_URL`(`@/services/http`)、`UserOut`(`@/services/api/system/types`)
 - Produces: `getInitialState()` 返回 `{ currentUser?, menus?, permissions?, settings?, fetchUserInfo? }`;`layout` 暴露 `menuDataRender`
 
 - [ ] **Step 1: 改写 src/app.tsx 的 import 与 getInitialState**
@@ -2786,6 +2788,7 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import React from 'react';
 
+import { fetchCurrentUser } from '@/auth/session';
 import {
   AvatarDropdown,
   ErrorBoundary,
@@ -2794,10 +2797,10 @@ import {
   OfflineBanner,
   VersionDropdown,
 } from '@/components';
-import { fetchCurrentUser } from '@/auth/session';
 import { buildMenuItems, collectPaths, collectPermissions } from '@/menu/adapter';
 import type { BackendMenu } from '@/menu/adapter';
 import { API_BASE_URL } from '@/services/http';
+import type { UserOut } from '@/services/api/system/types';
 import defaultSettings from '../config/defaultSettings';
 import { errorConfig } from './requestErrorConfig';
 
@@ -2805,19 +2808,25 @@ const isDev = process.env.NODE_ENV === 'development';
 const loginPath = '/user/login';
 const authFreePaths = [loginPath, '/user/register', '/user/register-result'];
 
+/** 与后端用户信息绑定的初始状态片段 */
+export interface UserState {
+  currentUser?: UserOut;
+  menus?: BackendMenu[];
+  permissions?: string[];
+}
+
 /**
  * @see https://umijs.org/docs/api/runtime-config#getinitialstate
  */
 export async function getInitialState(): Promise<{
   settings?: Partial<LayoutSettings>;
-  currentUser?: API.CurrentUser & { is_superuser?: boolean | null };
+  currentUser?: UserOut;
   menus?: BackendMenu[];
   permissions?: string[];
-  loading?: boolean;
-  fetchUserInfo?: () => Promise<any>;
+  fetchUserInfo?: () => Promise<UserState | undefined>;
   settingDrawerOpen?: boolean;
 }> {
-  const loadUserInfo = async () => {
+  const loadUserInfo = async (): Promise<UserState | undefined> => {
     try {
       const info = await fetchCurrentUser();
       return {
@@ -2836,23 +2845,24 @@ export async function getInitialState(): Promise<{
 
   const { location } = history;
 
-  if (!authFreePaths.includes(location.pathname)) {
-    const userState = await loadUserInfo();
-    return {
-      fetchUserInfo: loadUserInfo,
-      ...userState,
-      settings: defaultSettings as Partial<LayoutSettings>,
-      settingDrawerOpen: false,
-    };
-  }
-
-  return {
+  const base = {
     fetchUserInfo: loadUserInfo,
     settings: defaultSettings as Partial<LayoutSettings>,
     settingDrawerOpen: false,
   };
+
+  if (authFreePaths.includes(location.pathname)) {
+    return base;
+  }
+
+  const userState = await loadUserInfo();
+  return { ...base, ...userState };
 }
 ```
+
+> 说明:`currentUser` 用后端的 `UserOut`(`@/services/api/system/types`),不要用 antd-pro 遗留的
+> `API.CurrentUser`(那个命名空间来自 `src/services/ant-design-pro/typings.d.ts`,Task 13 会把它改名,
+> 而且里面没有 `is_superuser` / `menus`)。
 
 - [ ] **Step 2: 在 layout 中接入 menuDataRender**
 
@@ -2864,10 +2874,13 @@ export async function getInitialState(): Promise<{
      * menuData 是 ProLayout 从 config/routes.ts 派生的菜单,用它做前端路由存在性校验。
      */
     menuDataRender: (menuData) => {
-      const knownPaths = collectPaths(menuData as any);
+      const knownPaths = collectPaths(menuData);
       return buildMenuItems(initialState?.menus ?? [], knownPaths);
     },
 ```
+
+> 若 `collectPaths(menuData)` 报类型不兼容(`MenuDataItem[]` → `RouteLike[]` 的递归 children),
+> 改成 `collectPaths(menuData as unknown as RouteLike[])` 并 `import type { RouteLike } from '@/menu/adapter'`。
 
 - [ ] **Step 3: 设置 request.baseURL**
 
@@ -2882,7 +2895,25 @@ export const request: RequestConfig = {
 
 (删除原来 `baseURL: isDev ? '' : 'https://pro-api.ant-design-demo.workers.dev'` 的写法)
 
-- [ ] **Step 4: 移除指向 antd-pro 官网的链接**
+- [ ] **Step 4: avatarProps 改成真实用户信息**
+
+`layout` 里现在写死了 `'ProUser'`,改成后端返回的用户:
+
+```ts
+    avatarProps: {
+      // UserOut.avatar 是 string | null,ProLayout 的 src 只接受 string | undefined
+      src: initialState?.currentUser?.avatar ?? undefined,
+      title:
+        initialState?.currentUser?.name ??
+        initialState?.currentUser?.username ??
+        '用户',
+      render: (_, avatarChildren) => (
+        <AvatarDropdown>{avatarChildren}</AvatarDropdown>
+      ),
+    },
+```
+
+- [ ] **Step 5: 移除指向 antd-pro 官网的链接**
 
 在 `layout` 的 `actionsRender` 中删掉 `<DocLink key="doc" />`,并从 `@/components` 的 import 列表里移除 `DocLink`。
 
@@ -2891,23 +2922,308 @@ export const request: RequestConfig = {
 ```ts
     links: isDev
       ? [
-          <Link
+          <a
             key="swagger"
-            to="https://www.pmdict.cn/api/v1/docs"
+            href="https://www.pmdict.cn/api/v1/docs"
             target="_blank"
+            rel="noreferrer"
           >
             <LinkOutlined />
             <span>接口文档</span>
-          </Link>,
+          </a>,
         ]
       : [],
 ```
 
-- [ ] **Step 5: 移除 app.tsx 中对生成 service 的引用**
+> **必须用原生 `<a href>` 而不是 umi 的 `<Link to>`**:项目里的 react-router 是 6.3,
+> 它的 `Link` 没有「绝对 URL 直通」的处理,`to="https://..."` 会被解析成
+> `/https://www.pmdict.cn/api/v1/docs` 这种坏路径。`rel="noreferrer"` 是 Biome 的
+> `suspicious/noBlankTarget` 规则要求的。
+
+- [ ] **Step 6: 移除 app.tsx 中对生成 service 的引用**
 
 确认 `src/app.tsx` 里**没有**任何 `import ... from '@/services/ant-design-pro/...'`(原来的 `currentUser as queryCurrentUser` 已经不用了,直接删掉那行 import)。
 
-- [ ] **Step 6: 类型检查**
+- [ ] **Step 7: 登录页把 menus/permissions 一起写回 initialState**
+
+`fetchUserInfo` 现在返回的是 `{ currentUser, menus, permissions }` 这一整块,登录页原来只写
+`currentUser`,会导致登录后侧边栏菜单是空的。改 `src/pages/user/login/index.tsx`:
+
+```ts
+  const fetchUserInfo = async () => {
+    const userInfo = await initialState?.fetchUserInfo?.();
+    if (userInfo) {
+      startTransition(() => {
+        setInitialState((s) => ({
+          ...s,
+          ...userInfo,
+        }));
+      });
+    }
+  };
+```
+
+- [ ] **Step 8: 重写 src/app.test.tsx**
+
+旧用例 mock 的是 `@/services/ant-design-pro/api` 的 `currentUser`,`src/app.tsx` 换成
+`@/auth/session` 的 `fetchCurrentUser` 之后这些用例会全部失败,必须整体重写。
+
+新的 `src/app.test.tsx`:
+
+```tsx
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mockReplace = vi.fn();
+const mockHistory = {
+  location: {
+    pathname: '/welcome',
+    search: '',
+    hash: '',
+  },
+  replace: mockReplace,
+};
+
+const mockFetchCurrentUser = vi.fn();
+
+vi.mock('@umijs/max', () => ({
+  history: mockHistory,
+  Link: ({ children }: any) => children,
+}));
+
+vi.mock('@/auth/session', () => ({
+  fetchCurrentUser: (...args: unknown[]) => mockFetchCurrentUser(...args),
+}));
+
+vi.mock('@/components', () => ({
+  AvatarDropdown: () => null,
+  ErrorBoundary: ({ children }: any) => children,
+  Footer: () => null,
+  LangDropdown: () => null,
+  OfflineBanner: () => null,
+  VersionDropdown: () => null,
+}));
+
+vi.mock('@ant-design/pro-components', () => ({
+  SettingDrawer: () => null,
+}));
+
+vi.mock('@ant-design/icons', () => ({
+  LinkOutlined: () => null,
+}));
+
+vi.mock('./requestErrorConfig', () => ({
+  errorConfig: {},
+}));
+
+vi.mock('../config/defaultSettings', () => ({
+  default: { navTheme: 'light' },
+}));
+
+const backendUser = {
+  id: 1,
+  username: 'admin',
+  name: '管理员',
+  is_superuser: true,
+  menus: [
+    {
+      id: 10,
+      name: 'system',
+      type: 1,
+      route_path: '/system',
+      route_name: 'system',
+      title: '系统管理',
+      status: '0',
+      order: 1,
+      children: [
+        {
+          id: 11,
+          name: 'user',
+          type: 2,
+          route_path: 'user',
+          route_name: 'user',
+          title: '用户管理',
+          status: '0',
+          order: 1,
+          permission: 'module_system:user:query',
+        },
+      ],
+    },
+  ],
+};
+
+describe('app getInitialState', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockHistory.location = {
+      pathname: '/welcome',
+      search: '',
+      hash: '',
+    };
+  });
+
+  it('fetches the current user when not on the login page', async () => {
+    const { getInitialState } = await import('./app');
+    mockFetchCurrentUser.mockResolvedValue(backendUser);
+
+    const state = await getInitialState();
+
+    expect(mockFetchCurrentUser).toHaveBeenCalled();
+    expect(state.currentUser).toEqual(backendUser);
+    expect(state.menus).toEqual(backendUser.menus);
+    expect(state.permissions).toEqual(['module_system:user:query']);
+    expect(state.settingDrawerOpen).toBe(false);
+    expect(state.fetchUserInfo).toBeDefined();
+  });
+
+  it('redirects to login when fetching the current user fails', async () => {
+    const { getInitialState } = await import('./app');
+    mockFetchCurrentUser.mockRejectedValue(new Error('401 Unauthorized'));
+
+    const state = await getInitialState();
+
+    expect(mockReplace).toHaveBeenCalledWith(
+      expect.stringContaining('/user/login?redirect='),
+    );
+    expect(state.currentUser).toBeUndefined();
+  });
+
+  it('does not fetch the current user on the login page', async () => {
+    const { getInitialState } = await import('./app');
+    mockHistory.location = {
+      pathname: '/user/login',
+      search: '',
+      hash: '',
+    };
+
+    const state = await getInitialState();
+
+    expect(mockFetchCurrentUser).not.toHaveBeenCalled();
+    expect(state.currentUser).toBeUndefined();
+    expect(state.fetchUserInfo).toBeDefined();
+  });
+
+  it('encodes the redirect path correctly', async () => {
+    const { getInitialState } = await import('./app');
+    mockHistory.location = {
+      pathname: '/admin/users',
+      search: '?page=2',
+      hash: '#section',
+    };
+    mockFetchCurrentUser.mockRejectedValue(new Error('401'));
+
+    await getInitialState();
+
+    expect(mockReplace).toHaveBeenCalledWith(
+      `/user/login?redirect=${encodeURIComponent('/admin/users?page=2#section')}`,
+    );
+  });
+
+  it('includes the default settings in the initial state', async () => {
+    const { getInitialState } = await import('./app');
+    mockFetchCurrentUser.mockResolvedValue(backendUser);
+
+    const state = await getInitialState();
+
+    expect(state.settings).toEqual({ navTheme: 'light' });
+  });
+
+  it('fetchUserInfo returns the user state patch', async () => {
+    const { getInitialState } = await import('./app');
+    mockFetchCurrentUser.mockResolvedValue(backendUser);
+
+    const state = await getInitialState();
+    const userState = await state.fetchUserInfo?.();
+
+    expect(userState).toEqual({
+      currentUser: backendUser,
+      menus: backendUser.menus,
+      permissions: ['module_system:user:query'],
+    });
+  });
+});
+
+describe('app layout menuDataRender', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders backend menus and drops the ones without a frontend route', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { layout } = await import('./app');
+
+    const config = layout({
+      initialState: {
+        menus: [
+          {
+            id: 10,
+            name: 'system',
+            type: 1,
+            route_path: '/system',
+            route_name: 'system',
+            title: '系统管理',
+            status: '0',
+            order: 1,
+            children: [
+              {
+                id: 11,
+                name: 'user',
+                type: 2,
+                route_path: 'user',
+                route_name: 'user',
+                title: '用户管理',
+                status: '0',
+                order: 1,
+              },
+              {
+                id: 12,
+                name: 'unknown',
+                type: 2,
+                route_path: 'unknown',
+                route_name: 'unknown',
+                title: '未注册页面',
+                status: '0',
+                order: 2,
+              },
+            ],
+          },
+        ],
+      },
+      setInitialState: vi.fn(),
+    } as any);
+
+    const items = config.menuDataRender?.([
+      { path: '/system' },
+      { path: '/system/user' },
+    ] as any);
+
+    expect(items).toEqual([
+      {
+        path: '/system',
+        name: '系统管理',
+        icon: undefined,
+        locale: false,
+        children: [
+          { path: '/system/user', name: '用户管理', icon: undefined, locale: false },
+        ],
+      },
+    ]);
+    expect(warn).toHaveBeenCalledWith('[menu] 前端缺少路由: /system/unknown');
+    warn.mockRestore();
+  });
+});
+```
+
+跑测试:
+
+```bash
+cd /d/project/ai-admin-com
+npx vitest run src/app.test.tsx
+```
+
+Expected: 全部通过,且输出里**没有**未捕获的 `console.warn`(上面用例里的 `console.warn` 已被
+`vi.spyOn` 接管并断言)。
+
+- [ ] **Step 9: 类型检查**
 
 ```bash
 cd /d/project/ai-admin-com
@@ -2916,10 +3232,10 @@ npm run tsc
 
 Expected: exit 0。若 `initialState?.menus` 类型不匹配,检查 `getInitialState` 的返回类型声明里 `menus?: BackendMenu[]` 是否存在。
 
-- [ ] **Step 7: 提交**
+- [ ] **Step 10: 提交**
 
 ```bash
-git add src/app.tsx
+git add src/app.tsx src/app.test.tsx src/pages/user/login/index.tsx
 git commit -m "feat(app): 接入后端用户信息与菜单渲染
 
 - getInitialState 拉取 /system/user/current/info,收集 menus 与 permissions
