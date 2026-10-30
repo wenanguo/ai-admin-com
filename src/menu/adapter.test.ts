@@ -1,0 +1,221 @@
+import { describe, expect, it, vi } from 'vitest';
+import {
+  type BackendMenu,
+  buildMenuItems,
+  collectPaths,
+  collectPermissions,
+  joinAbsolutePath,
+} from './adapter';
+
+const menu = (over: Partial<BackendMenu>): BackendMenu => ({
+  id: 1,
+  parent_id: null,
+  name: '节点',
+  type: 2,
+  order: 1,
+  permission: null,
+  icon: null,
+  route_name: null,
+  route_path: '/x',
+  component_path: null,
+  hidden: false,
+  status: 0,
+  children: null,
+  ...over,
+});
+
+describe('joinAbsolutePath', () => {
+  it('joins a relative segment onto the parent', () => {
+    expect(joinAbsolutePath('/system', 'user')).toBe('/system/user');
+  });
+
+  it('strips leading slashes from the segment', () => {
+    expect(joinAbsolutePath('/system', '/user')).toBe('/system/user');
+  });
+
+  it('returns the parent when the segment is empty', () => {
+    expect(joinAbsolutePath('/system', '')).toBe('/system');
+  });
+
+  it('does not double the separator', () => {
+    expect(joinAbsolutePath('/system/', 'user')).toBe('/system/user');
+  });
+});
+
+describe('collectPermissions', () => {
+  it('collects permission codes from the whole tree', () => {
+    const perms = collectPermissions([
+      menu({
+        id: 1,
+        type: 1,
+        permission: 'module_system:user:query',
+        children: [
+          menu({ id: 2, type: 2, permission: 'module_system:user:create' }),
+        ],
+      }),
+    ]);
+
+    expect(perms.sort()).toEqual([
+      'module_system:user:create',
+      'module_system:user:query',
+    ]);
+  });
+
+  it('includes permissions carried by roles', () => {
+    const perms = collectPermissions(
+      [menu({ id: 1, permission: 'a:query' })],
+      [{ menus: [menu({ id: 9, permission: 'b:create' })] }],
+    );
+
+    expect(perms.sort()).toEqual(['a:query', 'b:create']);
+  });
+
+  it('deduplicates repeated permission codes', () => {
+    const perms = collectPermissions([
+      menu({ id: 1, permission: 'same' }),
+      menu({ id: 2, permission: 'same' }),
+    ]);
+
+    expect(perms).toEqual(['same']);
+  });
+
+  it('ignores null permissions', () => {
+    expect(collectPermissions([menu({ id: 1, permission: null })])).toEqual([]);
+  });
+});
+
+describe('collectPaths', () => {
+  it('collects paths including nested children', () => {
+    const paths = collectPaths([
+      { path: '/system', children: [{ path: '/system/user' }] },
+    ]);
+
+    expect([...paths].sort()).toEqual(['/system', '/system/user']);
+  });
+});
+
+describe('buildMenuItems', () => {
+  it('builds nested items and resolves relative child paths', () => {
+    const items = buildMenuItems(
+      [
+        menu({
+          id: 1,
+          type: 1,
+          name: '系统管理',
+          route_path: '/system',
+          children: [
+            menu({
+              id: 2,
+              type: 2,
+              name: '用户管理',
+              route_path: 'user',
+              permission: 'module_system:user:query',
+            }),
+          ],
+        }),
+      ],
+      new Set(['/system', '/system/user']),
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0].path).toBe('/system');
+    expect(items[0].children?.[0].path).toBe('/system/user');
+    expect(items[0].children?.[0].name).toBe('用户管理');
+  });
+
+  it('skips button type menus', () => {
+    const items = buildMenuItems(
+      [menu({ id: 1, type: 3, name: '新增', route_path: '' })],
+      new Set(['/system/user']),
+    );
+
+    expect(items).toHaveLength(0);
+  });
+
+  it('skips disabled and hidden menus', () => {
+    const items = buildMenuItems(
+      [
+        menu({ id: 1, type: 2, route_path: '/a', status: 1 }),
+        menu({ id: 2, type: 2, route_path: '/b', hidden: true }),
+      ],
+      new Set(['/a', '/b']),
+    );
+
+    expect(items).toHaveLength(0);
+  });
+
+  it('skips menus whose route is not registered in the frontend and warns', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const items = buildMenuItems(
+      [menu({ id: 1, type: 2, route_path: '/system/nope' })],
+      new Set(['/system/user']),
+    );
+
+    expect(items).toHaveLength(0);
+    expect(warn).toHaveBeenCalledWith('[menu] 前端缺少路由: /system/nope');
+    warn.mockRestore();
+  });
+
+  it('keeps a directory even when its path is not a frontend route', () => {
+    const items = buildMenuItems(
+      [
+        menu({
+          id: 1,
+          type: 1,
+          route_path: '/system',
+          children: [menu({ id: 2, type: 2, route_path: '/system/user' })],
+        }),
+      ],
+      new Set(['/system/user']),
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0].children?.[0].path).toBe('/system/user');
+  });
+
+  it('drops a directory whose children were all skipped', () => {
+    const items = buildMenuItems(
+      [
+        menu({
+          id: 1,
+          type: 1,
+          route_path: '/system',
+          children: [menu({ id: 2, type: 2, route_path: '/system/missing' })],
+        }),
+      ],
+      new Set(['/system/user']),
+    );
+
+    expect(items).toHaveLength(0);
+  });
+
+  it('uses the backend title as the menu label', () => {
+    const items = buildMenuItems(
+      [
+        menu({
+          id: 1,
+          type: 2,
+          name: '用户管理',
+          title: '用户管理',
+          route_path: '/system/user',
+        }),
+      ],
+      new Set(['/system/user']),
+    );
+
+    expect(items[0].name).toBe('用户管理');
+  });
+
+  it('sorts siblings by order ascending', () => {
+    const items = buildMenuItems(
+      [
+        menu({ id: 1, type: 2, name: 'B', route_path: '/b', order: 2 }),
+        menu({ id: 2, type: 2, name: 'A', route_path: '/a', order: 1 }),
+      ],
+      new Set(['/a', '/b']),
+    );
+
+    expect(items.map((i) => i.name)).toEqual(['A', 'B']);
+  });
+});
