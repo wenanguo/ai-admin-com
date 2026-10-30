@@ -50,6 +50,19 @@ export default [
     component: './Welcome',
   },
   {
+    path: '/system',
+    name: 'system',
+    icon: 'setting',
+    routes: [
+      {
+        path: '/system/user',
+        name: 'user',
+        icon: 'user',
+        component: './module_system/user',
+      },
+    ],
+  },
+  {
     path: '/admin',
     name: 'admin',
     icon: 'crown',
