@@ -425,7 +425,7 @@ cd /d/project/ai-admin-com
 npx vitest run src/services/response.test.ts
 ```
 
-Expected: PASS —— 12 个用例全部通过
+Expected: PASS —— 14 个用例全部通过
 
 - [ ] **Step 7: 类型检查**
 
