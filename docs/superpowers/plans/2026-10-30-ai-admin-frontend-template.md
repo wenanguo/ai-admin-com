@@ -3369,7 +3369,7 @@ import Settings from '../../../../config/defaultSettings';
         startTransition(() => {
           setInitialState((s) => ({
             ...s,
-            currentUser: userInfo.currentUser ?? userInfo,
+            ...userInfo,
           }));
         });
       }
@@ -3512,9 +3512,12 @@ import Settings from '../../../../config/defaultSettings';
 
 并把 `const { status, type: loginType } = userLoginState;` 这一行删除。
 
-- [ ] **Step 8: 修正 fetchUserInfo 回调的返回值**
+- [ ] **Step 8: fetchUserInfo 局部函数的返回值**
 
-原代码里 `fetchUserInfo` 来自 `initialState?.fetchUserInfo?.()`,Task 10 里它返回的是 `{ currentUser, menus, permissions }`。把登录页中的 `fetchUserInfo` 局部函数替换为直接使用 `initialState?.fetchUserInfo?.()`,并删除本文件里原本定义的那个局部 `fetchUserInfo`(避免与 model 同名混淆)。Step 4 的代码已经按这个写法给出。
+Task 10 已经把登录页里的局部 `fetchUserInfo` 改成整块回写(`...userInfo`,其中 `userInfo` 是
+`{ currentUser, menus, permissions }`),本任务**不要再改它**,Step 4 直接调用它即可。
+注意:改完 `handleSubmit` 后,`initialState` / `setInitialState` 这两个从 `useModel` 解构出来的变量
+如果在本文件里已经没有任何引用,要把对应的解构删掉,否则 Biome 的 `noUnusedVariables` 会报错。
 
 - [ ] **Step 9: 类型检查**
 
