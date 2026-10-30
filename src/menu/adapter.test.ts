@@ -4,6 +4,7 @@ import {
   buildMenuItems,
   collectPaths,
   collectPermissions,
+  collectRouteIcons,
   joinAbsolutePath,
 } from './adapter';
 
@@ -91,6 +92,18 @@ describe('collectPaths', () => {
     ]);
 
     expect([...paths].sort()).toEqual(['/system', '/system/user']);
+  });
+});
+
+describe('collectRouteIcons', () => {
+  it('collects the route icons by path', () => {
+    const icons = collectRouteIcons([
+      { path: '/system', icon: 'SettingOutlined' },
+      { path: '/system/user', icon: 'UserOutlined' },
+    ]);
+
+    expect(icons.get('/system')).toBe('SettingOutlined');
+    expect(icons.get('/system/user')).toBe('UserOutlined');
   });
 });
 
@@ -282,6 +295,16 @@ describe('buildMenuItems', () => {
     );
 
     expect(items[0].name).toBe('/system/user');
+  });
+
+  it('uses the frontend route icon instead of the backend icon', () => {
+    const items = buildMenuItems(
+      [menu({ route_path: '/system/user', icon: 'ri:user-line' })],
+      new Set(['/system/user']),
+      new Map([['/system/user', 'UserOutlined']]),
+    );
+
+    expect(items[0].icon).toBe('UserOutlined');
   });
 
   it('sorts siblings by order ascending', () => {

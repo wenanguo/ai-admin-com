@@ -141,7 +141,7 @@ const Login: React.FC = () => {
       startTransition(() => {
         setInitialState((s) => ({
           ...s,
-          currentUser: userInfo,
+          ...userInfo,
         }));
       });
     }

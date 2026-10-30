@@ -4153,6 +4153,15 @@ const Settings: ProLayoutProps & {
 };
 ```
 
+再把另外两处硬编码的「Ant Design Pro」改掉:
+
+- `src/components/Footer/index.tsx` 的 `<div className={styles.copyright}>Ant Design Pro &copy; {year}</div>`
+  → `AiAdmin &copy; {year}`
+- `src/pages/user/login/index.tsx` 的 `<LoginForm ... title="Ant Design" ...>`
+  → `title="AiAdmin"`
+
+(`config/defaultSettings.ts` 的 `title` 已经被登录页的 `Settings.title` 引用,改一处即可。)
+
 - [ ] **Step 2: 更新 config/config.ts**
 
 - `title: 'Ant Design Pro'` → `title: 'AiAdmin'`
@@ -4171,7 +4180,9 @@ const Settings: ProLayoutProps & {
 
 - 删除 `openAPI: [...]` 整块
 - `plugins` 改为 `plugins: ['@umijs/request-record'],`(移除 `@umijs/max-plugin-openapi`)
-- 删除 `define` 中的 `__UTOO_VERSION__` 保持不变即可
+- **删除 `config/oneapi.json`** —— 它只是 openapi 插件的 schema 来源,插件移除后就是死文件
+- `define` 里的 `__UTOO_VERSION__` **保持不变**(`src/components/Footer/index.tsx` 在用它,
+  `src/typings.d.ts` 里的 `declare const __UTOO_VERSION__` 也一并保留)
 
 - [ ] **Step 3: 更新代理配置**
 
@@ -4211,31 +4222,53 @@ export default {
 
 - [ ] **Step 4: 注册页改真实接口**
 
-**完全替换** `src/pages/user/register/service.ts`:
+**不要**在页面里再写一份 `registerUser` —— `src/services/api/system/user.ts` 里已经有了
+(Task 5 建的),直接复用。
+
+1. **删除** `src/pages/user/register/service.ts`(页面本地的假 service)
+2. **删除** `src/pages/user/register/_mock.ts`(它 mock 的是 `/api/register`,真实接口是
+   `/api/v1/system/user/register`,根本不会被命中,留着只会误导)
+3. 编辑 `src/pages/user/register/index.tsx`:
+   - 把 `import { fakeRegister } from './service';`
+     改为 `import { registerUser } from '@/services/api/system/user';`
+   - **表单字段对齐后端 `UserRegisterSchema`**
+     (必填 `username` 3–32、`password` 6–128;可选 `name`、`mobile`):
+     - 把原来的 `mail` 字段(`name="mail"`,规则 `type: 'email'`)改名为 `username`,
+       规则改为 `{ required: true, min: 3 }`
+     - 保留 `password` 字段(后端要求 ≥ 6 位)
+     - 删除 `confirm`(后端无此字段)、删除 `captcha`(后端注册接口不校验验证码)、
+       删除 `prefix`(手机号区号)
+     - 保留 `mobile` 字段(后端 `mobile_validator` 要求 11 位数字,前端也加同样的规则更友好)
+   - 把 `mutationFn` / `onSuccess` 改成下面这样(原代码里有三处对不上后端):
 
 ```ts
-import { request } from '@umijs/max';
-import type { ApiResponse } from '@/services/types';
-import type { UserOut, UserRegisterParams } from '@/services/api/system/types';
-
-/** 注册用户 */
-export async function registerUser(params: UserRegisterParams) {
-  return request<ApiResponse<UserOut>>('/system/user/register', {
-    method: 'POST',
-    data: params,
+  const { isPending: submitting, mutate: register } = useMutation({
+    mutationFn: (formValues: Store) => {
+      const payload: UserRegisterParams = {
+        username: formValues.username,
+        password: formValues.password,
+        name: formValues.name,
+        mobile: formValues.mobile,
+      };
+      return registerUser(payload);
+    },
+    onSuccess: (_data, params) => {
+      // 后端返回的是 { code, msg, data } 信封,请求层已经弹过成功提示了,这里不要再弹
+      queryClient.invalidateQueries({ queryKey: ['current-user'] });
+      history.push({
+        pathname: `/user/register-result?account=${params.username}`,
+      });
+    },
   });
-}
 ```
 
-编辑 `src/pages/user/register/index.tsx`:
-- 把 `import { fakeRegister } from './service';` 改为 `import { registerUser } from './service';`
-- 把 `useMutation` 里调用的 `fakeRegister(...)` 改为 `registerUser(...)`
-- **表单字段对齐后端 `UserRegisterSchema`**(必填 `username` / `password`,可选 `name` / `mobile`):
-  - 把原来的 `mail` 字段(`name="mail"`,规则 `type: 'email'`)改名为 `username`,规则改为 `{ required: true, min: 3 }`
-  - 保留 `password` 字段
-  - 删除 `confirm`(后端无此字段)、删除 `captcha`(后端注册接口不校验验证码)、删除 `prefix`(手机号区号)
-  - 保留 `mobile` 字段
-- 提交成功后跳转 `/user/register-result?account=<username>`(原来用的是 `params.mail`,一并改成 `params.username`)
+     > 原代码的三个坑:
+     > 1. `mail: formValues.email` —— 取的根本不是表单里的 `mail` 字段;
+     > 2. `payload` 里带着 `confirm` / `captcha` / `prefix` —— 后端 `UserRegisterSchema` 没有这三个字段;
+     > 3. `onSuccess` 里判 `data.status === 'ok'` —— 那是假 service 的返回格式,真接口返回的是
+     >    `{ code, msg, data }` 信封,`data.status` 永远是 undefined,会走到「注册成功」分支之外。
+     >    真接口失败时请求层会直接抛 `BizError`,`onSuccess` 根本不会执行。
+     >    同时 `message.success('注册成功！')` 要删掉 —— 请求层已经弹过后端信封里的 `msg`。
 
 - [ ] **Step 5: 退出登录改真实接口**
 
@@ -4268,13 +4301,18 @@ const loginOut = async () => {
 
 - [ ] **Step 6: 精简 i18n**
 
+`src/locales/` 下每个语言有**两份东西**:`<lang>/` 目录(分模块的文案)和 `<lang>.ts`
+(把这些模块汇总起来的入口文件)。**两样都要删**,只删目录的话 `<lang>.ts` 会 import
+到不存在的文件,`npm run tsc` 直接报错。
+
 ```bash
 cd /d/project/ai-admin-com
 rm -rf src/locales/bn-BD src/locales/fa-IR src/locales/id-ID src/locales/ja-JP src/locales/pt-BR src/locales/zh-TW
+rm -f src/locales/bn-BD.ts src/locales/fa-IR.ts src/locales/id-ID.ts src/locales/ja-JP.ts src/locales/pt-BR.ts src/locales/zh-TW.ts
 ls src/locales/
 ```
 
-Expected: 只剩 `en-US` 与 `zh-CN`
+Expected: 只剩 `en-US/` `en-US.ts` `zh-CN/` `zh-CN.ts`
 
 - [ ] **Step 7: 修正 coverage 排除路径**
 

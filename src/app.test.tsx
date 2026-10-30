@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Mock all heavy dependencies before importing app
 const mockReplace = vi.fn();
 const mockHistory = {
   location: {
@@ -11,20 +10,19 @@ const mockHistory = {
   replace: mockReplace,
 };
 
-const mockQueryCurrentUser = vi.fn();
+const mockFetchCurrentUser = vi.fn();
 
 vi.mock('@umijs/max', () => ({
   history: mockHistory,
   Link: ({ children }: any) => children,
 }));
 
-vi.mock('@/services/ant-design-pro/api', () => ({
-  currentUser: mockQueryCurrentUser,
+vi.mock('@/auth/session', () => ({
+  fetchCurrentUser: (...args: unknown[]) => mockFetchCurrentUser(...args),
 }));
 
 vi.mock('@/components', () => ({
   AvatarDropdown: () => null,
-  DocLink: () => null,
   ErrorBoundary: ({ children }: any) => children,
   Footer: () => null,
   LangDropdown: () => null,
@@ -48,6 +46,38 @@ vi.mock('../config/defaultSettings', () => ({
   default: { navTheme: 'light' },
 }));
 
+const backendUser = {
+  id: 1,
+  username: 'admin',
+  name: '管理员',
+  is_superuser: true,
+  menus: [
+    {
+      id: 10,
+      name: 'system',
+      type: 1,
+      route_path: '/system',
+      route_name: 'system',
+      title: '系统管理',
+      status: '0',
+      order: 1,
+      children: [
+        {
+          id: 11,
+          name: 'user',
+          type: 2,
+          route_path: 'user',
+          route_name: 'user',
+          title: '用户管理',
+          status: '0',
+          order: 1,
+          permission: 'module_system:user:query',
+        },
+      ],
+    },
+  ],
+};
+
 describe('app getInitialState', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -58,29 +88,23 @@ describe('app getInitialState', () => {
     };
   });
 
-  it('should fetch currentUser when not on login page', async () => {
+  it('fetches the current user when not on the login page', async () => {
     const { getInitialState } = await import('./app');
-    mockQueryCurrentUser.mockResolvedValue({
-      data: {
-        name: 'Test User',
-        access: 'admin',
-      },
-    });
+    mockFetchCurrentUser.mockResolvedValue(backendUser);
 
     const state = await getInitialState();
 
-    expect(mockQueryCurrentUser).toHaveBeenCalled();
-    expect(state.currentUser).toEqual({
-      name: 'Test User',
-      access: 'admin',
-    });
+    expect(mockFetchCurrentUser).toHaveBeenCalled();
+    expect(state.currentUser).toEqual(backendUser);
+    expect(state.menus).toEqual(backendUser.menus);
+    expect(state.permissions).toEqual(['module_system:user:query']);
     expect(state.settingDrawerOpen).toBe(false);
     expect(state.fetchUserInfo).toBeDefined();
   });
 
-  it('should redirect to login when currentUser fetch fails (401)', async () => {
+  it('redirects to login when fetching the current user fails', async () => {
     const { getInitialState } = await import('./app');
-    mockQueryCurrentUser.mockRejectedValue(new Error('401 Unauthorized'));
+    mockFetchCurrentUser.mockRejectedValue(new Error('401 Unauthorized'));
 
     const state = await getInitialState();
 
@@ -90,7 +114,7 @@ describe('app getInitialState', () => {
     expect(state.currentUser).toBeUndefined();
   });
 
-  it('should not fetch currentUser on login page', async () => {
+  it('does not fetch the current user on the login page', async () => {
     const { getInitialState } = await import('./app');
     mockHistory.location = {
       pathname: '/user/login',
@@ -100,19 +124,19 @@ describe('app getInitialState', () => {
 
     const state = await getInitialState();
 
-    expect(mockQueryCurrentUser).not.toHaveBeenCalled();
+    expect(mockFetchCurrentUser).not.toHaveBeenCalled();
     expect(state.currentUser).toBeUndefined();
     expect(state.fetchUserInfo).toBeDefined();
   });
 
-  it('should encode redirect path correctly on 401', async () => {
+  it('encodes the redirect path correctly', async () => {
     const { getInitialState } = await import('./app');
     mockHistory.location = {
       pathname: '/admin/users',
       search: '?page=2',
       hash: '#section',
     };
-    mockQueryCurrentUser.mockRejectedValue(new Error('401'));
+    mockFetchCurrentUser.mockRejectedValue(new Error('401'));
 
     await getInitialState();
 
@@ -121,26 +145,104 @@ describe('app getInitialState', () => {
     );
   });
 
-  it('should include default settings in initial state', async () => {
+  it('includes the default settings in the initial state', async () => {
     const { getInitialState } = await import('./app');
-    mockQueryCurrentUser.mockResolvedValue({
-      data: { name: 'User' },
-    });
+    mockFetchCurrentUser.mockResolvedValue(backendUser);
 
     const state = await getInitialState();
 
     expect(state.settings).toEqual({ navTheme: 'light' });
   });
 
-  it('fetchUserInfo should return user data on success', async () => {
+  it('fetchUserInfo returns the user state patch', async () => {
     const { getInitialState } = await import('./app');
-    mockQueryCurrentUser.mockResolvedValue({
-      data: { name: 'Fetched User', access: 'user' },
-    });
+    mockFetchCurrentUser.mockResolvedValue(backendUser);
 
     const state = await getInitialState();
+    const userState = await state.fetchUserInfo?.();
 
-    const user = await state.fetchUserInfo?.();
-    expect(user).toEqual({ name: 'Fetched User', access: 'user' });
+    expect(userState).toEqual({
+      currentUser: backendUser,
+      menus: backendUser.menus,
+      permissions: ['module_system:user:query'],
+    });
+  });
+});
+
+describe('app layout menuDataRender', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders backend menus and drops the ones without a frontend route', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { layout } = await import('./app');
+
+    const config = layout({
+      initialState: {
+        menus: [
+          {
+            id: 10,
+            name: 'system',
+            type: 1,
+            route_path: '/system',
+            route_name: 'system',
+            title: '系统管理',
+            icon: 'ri:settings-2-line',
+            status: '0',
+            order: 1,
+            children: [
+              {
+                id: 11,
+                name: 'user',
+                type: 2,
+                route_path: 'user',
+                route_name: 'user',
+                title: '用户管理',
+                icon: 'ri:user-line',
+                status: '0',
+                order: 1,
+              },
+              {
+                id: 12,
+                name: 'unknown',
+                type: 2,
+                route_path: 'unknown',
+                route_name: 'unknown',
+                title: '未注册页面',
+                status: '0',
+                order: 2,
+              },
+            ],
+          },
+        ],
+      },
+      setInitialState: vi.fn(),
+    } as any);
+
+    const items = config.menuDataRender?.([
+      { path: '/system', icon: 'SettingOutlined' },
+      { path: '/system/user', icon: 'UserOutlined' },
+    ] as any);
+
+    expect(items).toEqual([
+      {
+        path: '/system',
+        name: '系统管理',
+        // 图标取前端路由表的,不是后端的 ri:xxx
+        icon: 'SettingOutlined',
+        locale: false,
+        children: [
+          {
+            path: '/system/user',
+            name: '用户管理',
+            icon: 'UserOutlined',
+            locale: false,
+          },
+        ],
+      },
+    ]);
+    expect(warn).toHaveBeenCalledWith('[menu] 前端缺少路由: /system/unknown');
+    warn.mockRestore();
   });
 });

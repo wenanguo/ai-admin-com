@@ -7,41 +7,60 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import React from 'react';
 
-// Initialize dayjs plugins globally
-dayjs.extend(relativeTime);
-
+import { fetchCurrentUser } from '@/auth/session';
 import {
   AvatarDropdown,
-  DocLink,
   ErrorBoundary,
   Footer,
   LangDropdown,
   OfflineBanner,
   VersionDropdown,
 } from '@/components';
-import { currentUser as queryCurrentUser } from '@/services/ant-design-pro/api';
+import type { BackendMenu } from '@/menu/adapter';
+import {
+  buildMenuItems,
+  collectPaths,
+  collectPermissions,
+  collectRouteIcons,
+} from '@/menu/adapter';
+import type { UserOut } from '@/services/api/system/types';
+import { API_BASE_URL } from '@/services/http';
 import defaultSettings from '../config/defaultSettings';
 import { errorConfig } from './requestErrorConfig';
 
+// Initialize dayjs plugins globally
+dayjs.extend(relativeTime);
+
 const isDev = process.env.NODE_ENV === 'development';
 const loginPath = '/user/login';
+const authFreePaths = [loginPath, '/user/register', '/user/register-result'];
+
+/** 与后端用户信息绑定的初始状态片段 */
+export interface UserState {
+  currentUser?: UserOut;
+  menus?: BackendMenu[];
+  permissions?: string[];
+}
 
 /**
  * @see https://umijs.org/docs/api/runtime-config#getinitialstate
- * */
+ */
 export async function getInitialState(): Promise<{
   settings?: Partial<LayoutSettings>;
-  currentUser?: API.CurrentUser;
-  loading?: boolean;
-  fetchUserInfo?: () => Promise<API.CurrentUser | undefined>;
+  currentUser?: UserOut;
+  menus?: BackendMenu[];
+  permissions?: string[];
+  fetchUserInfo?: () => Promise<UserState | undefined>;
   settingDrawerOpen?: boolean;
 }> {
-  const fetchUserInfo = async () => {
+  const loadUserInfo = async (): Promise<UserState | undefined> => {
     try {
-      const msg = await queryCurrentUser({
-        skipErrorHandler: true,
-      });
-      return msg.data;
+      const info = await fetchCurrentUser();
+      return {
+        currentUser: info,
+        menus: info?.menus ?? [],
+        permissions: collectPermissions(info?.menus ?? [], info?.roles ?? []),
+      };
     } catch (_error) {
       const { pathname, search, hash } = history.location;
       history.replace(
@@ -50,26 +69,21 @@ export async function getInitialState(): Promise<{
     }
     return undefined;
   };
-  // 如果不是登录页面，执行
+
   const { location } = history;
-  if (
-    ![loginPath, '/user/register', '/user/register-result'].includes(
-      location.pathname,
-    )
-  ) {
-    const currentUser = await fetchUserInfo();
-    return {
-      fetchUserInfo,
-      currentUser,
-      settings: defaultSettings as Partial<LayoutSettings>,
-      settingDrawerOpen: false,
-    };
-  }
-  return {
-    fetchUserInfo,
+
+  const base = {
+    fetchUserInfo: loadUserInfo,
     settings: defaultSettings as Partial<LayoutSettings>,
     settingDrawerOpen: false,
   };
+
+  if (authFreePaths.includes(location.pathname)) {
+    return base;
+  }
+
+  const userState = await loadUserInfo();
+  return { ...base, ...userState };
 }
 
 // ProLayout 支持的api https://procomponents.ant.design/components/layout
@@ -88,20 +102,33 @@ export const layout: RunTimeLayoutConfig = ({
       }
       return dom;
     },
+    /**
+     * 菜单由后端下发:后端决定「显示哪些」,前端路由表决定「能点开什么」。
+     * menuData 是 ProLayout 从 config/routes.ts 派生的菜单,用它做前端路由存在性校验,
+     * 顺便取前端路由表的图标(后端的 icon 是 Remix Icon 名,ProLayout 渲染不出来)。
+     */
+    menuDataRender: (menuData) => {
+      const knownPaths = collectPaths(menuData);
+      const routeIcons = collectRouteIcons(menuData);
+      return buildMenuItems(initialState?.menus ?? [], knownPaths, routeIcons);
+    },
     actionsRender: () => {
       // `locale: false` opts out of the language switcher. ProLayout's own
       // `locale` prop is a locale string, so narrow to the boolean toggle here.
       const localeEnabled =
         (initialState?.settings as { locale?: boolean })?.locale !== false;
       return [
-        <DocLink key="doc" />,
         <VersionDropdown key="version" />,
         localeEnabled && <LangDropdown key="lang" />,
       ].filter(Boolean);
     },
     avatarProps: {
-      src: initialState?.currentUser?.avatar,
-      title: 'ProUser',
+      // UserOut.avatar 是 string | null,ProLayout 的 src 只接受 string | undefined
+      src: initialState?.currentUser?.avatar ?? undefined,
+      title:
+        initialState?.currentUser?.name ??
+        initialState?.currentUser?.username ??
+        '用户',
       render: (_, avatarChildren) => (
         <AvatarDropdown>{avatarChildren}</AvatarDropdown>
       ),
@@ -141,10 +168,15 @@ export const layout: RunTimeLayoutConfig = ({
     ],
     links: isDev
       ? [
-          <Link key="openapi" to="/umi/plugin/openapi" target="_blank">
+          <a
+            key="swagger"
+            href="https://www.pmdict.cn/api/v1/docs"
+            target="_blank"
+            rel="noreferrer"
+          >
             <LinkOutlined />
-            <span>OpenAPI 文档</span>
-          </Link>,
+            <span>接口文档</span>
+          </a>,
         ]
       : [],
     // Replace ProLayout's default ErrorBoundary with our offline-aware version,
@@ -190,7 +222,7 @@ export const layout: RunTimeLayoutConfig = ({
  * @doc https://umijs.org/docs/max/request#配置
  */
 export const request: RequestConfig = {
-  baseURL: isDev ? '' : 'https://pro-api.ant-design-demo.workers.dev',
+  baseURL: API_BASE_URL,
   ...errorConfig,
 };
 

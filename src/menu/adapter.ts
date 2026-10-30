@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 /** 后端菜单节点(后端 backend/app/api/v1/module_system/menu/schema.py 的 MenuOutSchema) */
 export interface BackendMenu {
   id?: number | null;
@@ -27,7 +29,7 @@ export interface RoleLike {
 export interface MenuItem {
   path: string;
   name: string;
-  icon?: string;
+  icon?: ReactNode;
   locale: false;
   children?: MenuItem[];
 }
@@ -35,6 +37,7 @@ export interface MenuItem {
 /** 前端路由派生的菜单节点(ProLayout 的 menuData) */
 export interface RouteLike {
   path?: string;
+  icon?: ReactNode;
   children?: RouteLike[];
 }
 
@@ -84,6 +87,26 @@ export function collectPaths(items: RouteLike[]): Set<string> {
   return paths;
 }
 
+/**
+ * 收集前端路由派生的菜单图标:path → ReactNode。
+ *
+ * 图标由前端路由表决定:后端下发的 icon 是 Remix Icon 类名(ri:xxx),
+ * ProLayout 认不出来,会当作文本直接显示。
+ */
+export function collectRouteIcons(items: RouteLike[]): Map<string, ReactNode> {
+  const icons = new Map<string, ReactNode>();
+
+  const walk = (list: RouteLike[]) => {
+    for (const item of list ?? []) {
+      if (item.path && item.icon) icons.set(item.path, item.icon);
+      if (item.children?.length) walk(item.children);
+    }
+  };
+
+  walk(items);
+  return icons;
+}
+
 /** 归一化后的菜单节点:绝对路径 + 排序用的 order */
 interface InternalMenu {
   item: BackendMenu;
@@ -128,6 +151,7 @@ function toInternal(items: BackendMenu[], parentAbs = ''): InternalMenu[] {
 export function buildMenuItems(
   backendMenus: BackendMenu[],
   knownPaths: Set<string>,
+  routeIcons?: Map<string, ReactNode>,
 ): MenuItem[] {
   const build = (nodes: InternalMenu[]): MenuItem[] => {
     const result: MenuItem[] = [];
@@ -156,7 +180,7 @@ export function buildMenuItems(
       result.push({
         path,
         name: item.title || item.name || item.route_name || path,
-        icon: item.icon || undefined,
+        icon: routeIcons?.get(path),
         locale: false,
         ...(children.length > 0 ? { children } : {}),
       });
