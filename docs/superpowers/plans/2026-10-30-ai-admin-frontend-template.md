@@ -3782,7 +3782,10 @@ export function toProTableRequest<T>(
     const { current, pageSize, ...rest } = params;
 
     const res = await api({
-      ...pruneEmpty(rest),
+      // `as object` 是必须的:`PageQuery` 里没有索引签名,而 `rest` 的索引签名
+      // 会让展开结果的类型带上 `[key: string]: unknown`,那样 `order_by?: string`
+      // 就对不上了(原代码也是这么绕过去的)
+      ...(pruneEmpty(rest) as object),
       page_no: Math.max(1, current ?? 1),
       page_size: Math.min(MAX_PAGE_SIZE, Math.max(1, pageSize ?? 10)),
     });
