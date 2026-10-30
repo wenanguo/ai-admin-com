@@ -393,7 +393,7 @@ export async function getInitialState() {
 4. **路径归一**：`route_path` 相对路径拼父级绝对路径（`joinAbsolutePath`，照搬 Vue 端 `normalizeMenuNestedPaths`）
 5. **路由存在性校验**：用前端路由表（`routes.ts` 导出的 path 集合）检查；**找不到对应路由的菜单项跳过并 `console.warn('[menu] 前端缺少路由: <path>')`**
 6. **空目录剔除**：目录下所有子项都被跳过时，该目录也不渲染
-7. **映射**：`{ path, name: route_name || title, icon, locale: false }`
+7. **映射**：`{ path, name: title || name || route_name || path, icon, locale: false }` —— `title` 是后端下发的显示名(如「用户管理」),优先取它;`locale: false` 关闭 ProLayout 的 i18n 查找,未命中 locale key 时 ProLayout 回落到 `defaultMessage`,标题仍正确显示
 
 > **落地边界**：umi 不支持运行时注入新的页面组件。因此「后端管显示」= 后端决定**显示哪些**；「前端管路由」= 前端 `config/routes.ts` 决定**能点开什么**。两者通过 `route_path` 对齐，对不上的菜单项不渲染。
 
