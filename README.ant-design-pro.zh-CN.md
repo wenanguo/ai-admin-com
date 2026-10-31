@@ -1,4 +1,4 @@
-Language : [English](./README.md) | 简体中文
+Language : [English](./README.ant-design-pro.md) | 简体中文
 
 <h1 align="center">Ant Design Pro</h1>
 

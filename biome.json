@@ -13,7 +13,6 @@
       "!**/.umi-production",
       "!**/.umi-test",
       "!**/.umi-test-production",
-      "!**/src/services/ant-design-pro",
       "!**/src/services/demo",
       "!**/mock",
       "!**/dist",

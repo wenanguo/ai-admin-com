@@ -43,7 +43,7 @@ export default defineConfig({
         'src/.umi/**',
         'src/.umi-test/**',
         'src/.umi-production/**',
-        'src/services/ant-design-pro/**',
+        'src/services/demo/**',
         'src/**/*.d.ts',
         'src/**/index.style.ts',
       ],

@@ -216,7 +216,7 @@ const Login: React.FC = () => {
             maxWidth: '75vw',
           }}
           logo={<img alt="logo" src="/logo.svg" />}
-          title="Ant Design"
+          title="AiAdmin"
           subTitle={intl.formatMessage({
             id: 'pages.layouts.userLayout.title',
           })}

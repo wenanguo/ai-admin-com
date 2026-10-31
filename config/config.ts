@@ -114,7 +114,7 @@ export default defineConfig({
    * @name layout 插件
    * @doc https://umijs.org/docs/max/layout-menu
    */
-  title: 'Ant Design Pro',
+  title: 'AiAdmin',
   layout: {
     locale: true,
     ...defaultSettings,
@@ -133,11 +133,11 @@ export default defineConfig({
    * @doc https://umijs.org/docs/max/i18n
    */
   locale: {
-    // default zh-CN
+    // 默认中文
     default: 'zh-CN',
     antd: true,
-    // default true, when it is true, will use `navigator.language` overwrite default
-    baseNavigator: true,
+    // 不跟随浏览器语言,避免非中文环境被切到英文
+    baseNavigator: false,
   },
   /**
    * @name antd 插件
@@ -174,14 +174,6 @@ export default defineConfig({
    */
   access: {},
   /**
-   * @name Google Analytics
-   * @description 使用 GA4 (gtag.js) 进行站点分析
-   * @doc https://umijs.org/docs/max/analytics
-   */
-  analytics: {
-    ga_v2: 'G-59NF1VHHPF',
-  },
-  /**
    * @name <head> 中额外的 script
    * @description 配置 <head> 中额外的 script
    */
@@ -191,22 +183,7 @@ export default defineConfig({
   ],
 
   //================ pro 插件配置 =================
-  plugins: ['@umijs/max-plugin-openapi', '@umijs/request-record'],
-
-  /**
-   * @name openAPI 插件的配置
-   * @description 基于 openapi 的规范生成serve 和mock，能减少很多样板代码
-   * @doc https://pro.ant.design/zh-cn/docs/openapi/
-   */
-  openAPI: [
-    {
-      requestLibPath: "import { request } from '@umijs/max'",
-      // 或者使用在线的版本
-      // schemaPath: "https://gw.alipayobjects.com/os/antfincdn/M%24jrzTTYJN/oneapi.json"
-      schemaPath: join(__dirname, 'oneapi.json'),
-      mock: false,
-    },
-  ],
+  plugins: ['@umijs/request-record'],
 
   tailwindcss: {},
 

@@ -2,8 +2,8 @@
   "name": "ai-admin-com",
   "version": "6.0.3",
   "private": true,
-  "description": "An out-of-box UI solution for enterprise applications",
-  "repository": "git@github.com:ant-design/ant-design-pro.git",
+  "description": "AiAdmin 前端基础模板 —— 基于 Ant Design Pro v6,对接 AiAdmin FastAPI 后端",
+  "repository": "",
   "scripts": {
     "analyze": "cross-env ANALYZE=1 max build",
     "build": "max build",
@@ -71,7 +71,6 @@
     "@types/topojson-specification": "^1.0.5",
     "@umijs/lint": "^4.7.27",
     "@umijs/max": "^4.7.27",
-    "@umijs/max-plugin-openapi": "^2.0.3",
     "@umijs/request-record": "^1.1.4",
     "@vitest/browser-playwright": "^5.0.5",
     "@vitest/coverage-v8": "5.0.5",

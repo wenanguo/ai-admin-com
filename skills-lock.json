@@ -6,6 +6,12 @@
       "sourceType": "github",
       "skillPath": "skills/antd/SKILL.md",
       "computedHash": "768fdf6d639de736784bb97c24f37cde2607824916583337f2c10f05ba0e5d35"
+    },
+    "pro-upgrade": {
+      "name": "pro-upgrade",
+      "source": "ant-design/ant-design-pro",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/pro-upgrade/SKILL.md"
     }
   }
 }

@@ -1,25 +1,14 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { history, Link } from '@umijs/max';
-import {
-  Button,
-  Col,
-  Form,
-  Input,
-  message,
-  Popover,
-  Progress,
-  Row,
-  Select,
-  Space,
-} from 'antd';
+import { Button, Form, Input, Popover, Progress } from 'antd';
 import type { Store } from 'antd/es/form/interface';
 import type { FC } from 'react';
-import { useEffect, useState } from 'react';
-import { fakeRegister } from './service';
+import { useState } from 'react';
+import type { UserRegisterParams } from '@/services/api/system/types';
+import { registerUser } from '@/services/api/system/user';
 import useStyles from './styles';
 
 const FormItem = Form.Item;
-const { Option } = Select;
 
 const passwordProgressMap: {
   ok: 'success';
@@ -60,12 +49,8 @@ const PasswordProgress: React.FC<{
 
 const Register: FC = () => {
   const { styles } = useStyles();
-  const [count, setCount]: [number, any] = useState(0);
   const [open, setVisible]: [boolean, any] = useState(false);
-  const [prefix, setPrefix]: [string, any] = useState('86');
   const [popover, setPopover]: [boolean, any] = useState(false);
-  const confirmDirty = false;
-  let interval: number | undefined;
   const queryClient = useQueryClient();
 
   const passwordStatusMap = {
@@ -87,54 +72,26 @@ const Register: FC = () => {
   };
 
   const [form] = Form.useForm();
-  useEffect(
-    () => () => {
-      clearInterval(interval);
-    },
-    [interval],
-  );
-  const onGetCaptcha = () => {
-    let counts = 59;
-    setCount(counts);
-    interval = window.setInterval(() => {
-      counts -= 1;
-      setCount(counts);
-      if (counts === 0) {
-        clearInterval(interval);
-      }
-    }, 1000);
-  };
   const { isPending: submitting, mutate: register } = useMutation({
     mutationFn: (formValues: Store) => {
-      const payload = {
-        mail: formValues.email,
+      const payload: UserRegisterParams = {
+        username: formValues.username,
         password: formValues.password,
-        confirm: formValues.confirm,
+        name: formValues.name,
         mobile: formValues.mobile,
-        captcha: formValues.captcha,
-        prefix: formValues.prefix,
       };
-      return fakeRegister(payload);
+      return registerUser(payload);
     },
-    onSuccess: (data, params) => {
-      if (data.status === 'ok') {
-        queryClient.invalidateQueries({ queryKey: ['current-user'] });
-        message.success('注册成功！');
-        history.push({
-          pathname: `/user/register-result?account=${params.mail}`,
-        });
-      }
+    onSuccess: (_data, params) => {
+      // 后端返回的是 { code, msg, data } 信封,请求层已经弹过成功提示了,这里不要再弹
+      queryClient.invalidateQueries({ queryKey: ['current-user'] });
+      history.push({
+        pathname: `/user/register-result?account=${params.username}`,
+      });
     },
   });
   const onFinish = (values: Store) => {
     register(values);
-  };
-  const checkConfirm = (_: any, value: string) => {
-    const promise = Promise;
-    if (value && value !== form.getFieldValue('password')) {
-      return promise.reject('两次输入的密码不匹配!');
-    }
-    return promise.resolve();
   };
   const checkPassword = (_: any, value: string) => {
     const promise = Promise;
@@ -151,13 +108,7 @@ const Register: FC = () => {
     if (value.length < 6) {
       return promise.reject('');
     }
-    if (value && confirmDirty) {
-      form.validateFields(['confirm']);
-    }
     return promise.resolve();
-  };
-  const changePrefix = (value: string) => {
-    setPrefix(value);
   };
   const password = Form.useWatch('password', form);
   const passwordStatus = getPasswordStatus(password);
@@ -166,19 +117,16 @@ const Register: FC = () => {
       <h3>注册</h3>
       <Form form={form} name="UserRegister" onFinish={onFinish}>
         <FormItem
-          name="email"
+          name="username"
           rules={[
             {
               required: true,
-              message: '请输入邮箱地址!',
-            },
-            {
-              type: 'email',
-              message: '邮箱地址格式错误!',
+              min: 3,
+              message: '请输入用户名!',
             },
           ]}
         >
-          <Input size="large" placeholder="邮箱" />
+          <Input size="large" placeholder="用户名" />
         </FormItem>
         <Popover
           getPopupContainer={(node) => {
@@ -233,20 +181,6 @@ const Register: FC = () => {
           </FormItem>
         </Popover>
         <FormItem
-          name="confirm"
-          rules={[
-            {
-              required: true,
-              message: '确认密码',
-            },
-            {
-              validator: checkConfirm,
-            },
-          ]}
-        >
-          <Input size="large" type="password" placeholder="确认密码" />
-        </FormItem>
-        <FormItem
           name="mobile"
           rules={[
             {
@@ -259,47 +193,8 @@ const Register: FC = () => {
             },
           ]}
         >
-          <Space.Compact style={{ width: '100%' }}>
-            <Select
-              size="large"
-              value={prefix}
-              onChange={changePrefix}
-              style={{
-                width: '30%',
-              }}
-            >
-              <Option value="86">+86</Option>
-              <Option value="87">+87</Option>
-            </Select>
-
-            <Input size="large" placeholder="手机号" />
-          </Space.Compact>
+          <Input size="large" placeholder="手机号" />
         </FormItem>
-        <Row gutter={8}>
-          <Col span={16}>
-            <FormItem
-              name="captcha"
-              rules={[
-                {
-                  required: true,
-                  message: '请输入验证码!',
-                },
-              ]}
-            >
-              <Input size="large" placeholder="验证码" />
-            </FormItem>
-          </Col>
-          <Col span={8}>
-            <Button
-              size="large"
-              disabled={!!count}
-              className={styles.getCaptcha}
-              onClick={onGetCaptcha}
-            >
-              {count ? `${count} s` : '获取验证码'}
-            </Button>
-          </Col>
-        </Row>
         <FormItem>
           <div className={styles.footer}>
             <Button
