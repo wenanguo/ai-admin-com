@@ -3876,7 +3876,7 @@ const requestUsers = toProTableRequest<UserOut>(listUsers);
  */
 const UserManagement: React.FC = () => {
   const access = useAccess();
-  const actionRef = useRef<ActionType>();
+  const actionRef = useRef<ActionType | undefined>(undefined);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<UserOut | undefined>(undefined);
 
@@ -3898,7 +3898,7 @@ const UserManagement: React.FC = () => {
   };
 
   const columns: ProColumns<UserOut>[] = [
-    { title: 'ID', dataIndex: 'id', width: 80, hideInSearch: true },
+    { title: 'ID', dataIndex: 'id', width: 80, search: false },
     {
       title: '用户名',
       dataIndex: 'username',
@@ -3911,25 +3911,29 @@ const UserManagement: React.FC = () => {
       dataIndex: 'mobile',
       width: 140,
       // 后端 UserQueryParam.mobile 有严格正则,这里先在前端挡掉非法值,避免请求直接 422
-      rules: [
-        {
-          pattern: /^1[3-9]\d{9}$/,
-          message: '手机号格式不正确',
-        },
-      ],
+      formItemProps: {
+        rules: [
+          {
+            pattern: /^1[3-9]\d{9}$/,
+            message: '手机号格式不正确',
+          },
+        ],
+      },
     },
     {
       title: '邮箱',
       dataIndex: 'email',
       width: 200,
-      rules: [
-        {
-          pattern: /^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/,
-          message: '邮箱格式不正确',
-        },
-      ],
+      formItemProps: {
+        rules: [
+          {
+            pattern: /^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/,
+            message: '邮箱格式不正确',
+          },
+        ],
+      },
     },
-    { title: '部门', dataIndex: 'dept_name', width: 140, hideInSearch: true },
+    { title: '部门', dataIndex: 'dept_name', width: 140, search: false },
     {
       title: '状态',
       dataIndex: 'status',
@@ -3943,7 +3947,7 @@ const UserManagement: React.FC = () => {
       title: '创建时间',
       dataIndex: 'created_time',
       width: 180,
-      hideInSearch: true,
+      search: false,
     },
     {
       title: '操作',

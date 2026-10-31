@@ -54,11 +54,11 @@ export async function updateUser(id: number, params: UserUpdateParams) {
   });
 }
 
-/** 删除用户(批量) */
+/** 删除用户(后端请求体是裸数组,不是 { ids }) */
 export async function deleteUsers(ids: number[]) {
   return request<ApiResponse<null>>('/system/user/delete', {
     method: 'DELETE',
-    data: { ids },
+    data: ids,
   });
 }
 

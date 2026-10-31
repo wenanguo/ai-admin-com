@@ -64,7 +64,7 @@ describe('system user service', () => {
 
     expect(request).toHaveBeenCalledWith('/system/user/delete', {
       method: 'DELETE',
-      data: { ids: [1, 2] },
+      data: [1, 2],
     });
   });
 });

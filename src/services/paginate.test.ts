@@ -91,4 +91,38 @@ describe('toProTableRequest', () => {
       page_size: 10,
     });
   });
+
+  it('clamps page_no and page_size into the range the backend accepts', async () => {
+    const api = vi.fn().mockResolvedValue({
+      code: 0,
+      msg: 'ok',
+      data: { items: [], total: 0, page_no: 1, page_size: 10, has_next: false },
+      status_code: 200,
+      success: true,
+    });
+
+    await toProTableRequest(api)({ current: 0, pageSize: 500 });
+
+    expect(api).toHaveBeenCalledWith({ page_no: 1, page_size: 100 });
+  });
+
+  it('drops empty search values so the backend does not reject them', async () => {
+    const api = vi.fn().mockResolvedValue({
+      code: 0,
+      msg: 'ok',
+      data: { items: [], total: 0, page_no: 1, page_size: 10, has_next: false },
+      status_code: 200,
+      success: true,
+    });
+
+    await toProTableRequest(api)({
+      current: 1,
+      pageSize: 10,
+      username: '',
+      mobile: undefined,
+      name: 'ad',
+    });
+
+    expect(api).toHaveBeenCalledWith({ name: 'ad', page_no: 1, page_size: 10 });
+  });
 });
