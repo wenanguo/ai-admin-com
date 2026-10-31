@@ -4414,6 +4414,15 @@ grep -rl "services/ant-design-pro" src/ | head -20
 
 对 grep 出来的每个文件,把 `from '@/services/ant-design-pro/api'` 改成 `from '@/services/demo/api'`,`from '@/services/ant-design-pro/login'` 改成 `from '@/services/demo/login'`。
 
+最后把 `biome.json` 里那行已经失效的排除项也删掉(目录改名后 `!**/src/services/ant-design-pro` 不再对应任何东西):
+
+```json
+      "!**/src/services/ant-design-pro",
+```
+
+> `!**/src/services/demo` 这条**要留着** —— `src/services/demo` 里是上游 openapi 生成的代码,
+> 不打算 lint/格式化它们。
+
 - [ ] **Step 10: 全量校验**
 
 ```bash
