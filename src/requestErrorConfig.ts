@@ -10,7 +10,6 @@ import {
   isSuccess,
   isUnauthorized,
 } from '@/services/response';
-import type { ApiResponse } from '@/services/types';
 
 /** 不需要注入 token 的接口 */
 const AUTH_FREE_PATHS = [
@@ -139,42 +138,57 @@ export const errorConfig: RequestConfig = {
   ],
 
   // 响应拦截器:业务码校验 + 401 静默刷新重放
+  //
+  // 注意:必须写成 tuple 形式 [onFulfilled, onRejected]。
+  // umi 的注册逻辑是 `interceptor instanceof Array ? use(interceptor[0], interceptor[1]) : use(interceptor)`,
+  // 写成两个平级函数的话,第二个函数会被注册成 **fulfilled** 钩子 ——
+  // 成功响应也会被它抛掉,而真正的 HTTP 错误反而永远走不到它。
   responseInterceptors: [
-    async (response: any) => {
-      const body = response?.data;
+    [
+      async (response: any) => {
+        const body = response?.data;
 
-      if (isApiResponse(body) && !isSuccess(body)) {
-        if (isUnauthorized(body)) {
-          return handleUnauthorized(response.config);
+        if (isApiResponse(body) && !isSuccess(body)) {
+          if (isUnauthorized(body)) {
+            return handleUnauthorized(response.config);
+          }
+          throw createBizError(body);
         }
-        throw createBizError(body as ApiResponse);
-      }
 
-      // 成功提示:非 GET 且不是登录/登出/刷新这类机制性接口
-      const method = String(response?.config?.method ?? 'GET').toUpperCase();
-      const url = String(response?.config?.url ?? '');
-      if (
-        isApiResponse(body) &&
-        body.msg &&
-        method !== 'GET' &&
-        !url.includes('login') &&
-        !url.includes('logout') &&
-        !url.includes('token/refresh')
-      ) {
-        message.success(body.msg);
-      }
+        // 成功提示:非 GET 且不是登录/登出/刷新这类机制性接口
+        const method = String(response?.config?.method ?? 'GET').toUpperCase();
+        const url = String(response?.config?.url ?? '');
+        if (
+          isApiResponse(body) &&
+          body.msg &&
+          method !== 'GET' &&
+          !url.includes('login') &&
+          !url.includes('logout') &&
+          !url.includes('token/refresh')
+        ) {
+          message.success(body.msg);
+        }
 
-      return response;
-    },
-    async (error: any) => {
-      // 未授权判定与 HTTP 状态码无关:后端可能用 500 携带 401/10401 业务码
-      if (
-        error?.response?.status === 401 ||
-        isUnauthorized(error?.response?.data)
-      ) {
-        return handleUnauthorized(error.config);
-      }
-      throw error;
-    },
+        return response;
+      },
+      async (error: any) => {
+        // 未授权判定与 HTTP 状态码无关:后端可能用 500 携带 401/10401 业务码
+        if (
+          error?.response?.status === 401 ||
+          isUnauthorized(error?.response?.data)
+        ) {
+          return handleUnauthorized(error.config);
+        }
+
+        // 后端的业务异常走 HTTP 500 + 信封,axios 会 reject 成原始错误。
+        // 这里统一转成 BizError,调用方只需要认一种错误形态(error.info.msg)。
+        const body = error?.response?.data;
+        if (isApiResponse(body) && !isSuccess(body)) {
+          throw createBizError(body);
+        }
+
+        throw error;
+      },
+    ],
   ],
 };

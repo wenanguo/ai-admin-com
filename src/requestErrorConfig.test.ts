@@ -1,4 +1,5 @@
 import { message } from 'antd';
+import axios from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearAuth } from '@/auth/token';
 import { errorConfig } from './requestErrorConfig';
@@ -45,6 +46,32 @@ vi.mock('@/auth/token', () => ({
   clearAuth: vi.fn(),
 }));
 
+type Interceptor = (arg: any) => Promise<any>;
+
+/**
+ * umi 注册响应拦截器的方式(见 src/.umi/plugin-request/request.ts):
+ *
+ *   interceptor instanceof Array
+ *     ? requestInstance.interceptors.response.use(interceptor[0], interceptor[1])
+ *     : requestInstance.interceptors.response.use(interceptor)
+ *
+ * 也就是说:只有 tuple 形式 `[onFulfilled, onRejected]` 的第二个元素
+ * 才会被注册成 axios 的 **rejected** 钩子。写成两个平级函数的话,
+ * 第二个函数会被当成 fulfilled 钩子 —— 成功响应也会走进它,
+ * 而真正的 HTTP 错误反而永远走不到它。
+ */
+const getResponseInterceptors = (): [Interceptor, Interceptor] => {
+  const first = errorConfig.responseInterceptors?.[0] as unknown;
+
+  if (!Array.isArray(first)) {
+    throw new Error(
+      'responseInterceptors[0] 必须是 [onFulfilled, onRejected] tuple,否则 umi 会把 onRejected 注册成 fulfilled',
+    );
+  }
+
+  return first as [Interceptor, Interceptor];
+};
+
 describe('requestErrorConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -83,9 +110,7 @@ describe('requestErrorConfig', () => {
 
   describe('responseInterceptors', () => {
     it('throws a BizError for a failed business code even on HTTP 200', async () => {
-      const onFulfilled = errorConfig.responseInterceptors?.[0] as (
-        response: unknown,
-      ) => Promise<unknown>;
+      const onFulfilled = getResponseInterceptors()[0];
 
       await expect(
         onFulfilled({
@@ -102,9 +127,7 @@ describe('requestErrorConfig', () => {
     });
 
     it('passes a successful envelope through untouched', async () => {
-      const onFulfilled = errorConfig.responseInterceptors?.[0] as (
-        response: unknown,
-      ) => Promise<unknown>;
+      const onFulfilled = getResponseInterceptors()[0];
 
       const response = {
         data: {
@@ -121,13 +144,156 @@ describe('requestErrorConfig', () => {
     });
 
     it('passes a non-envelope payload through untouched', async () => {
-      const onFulfilled = errorConfig.responseInterceptors?.[0] as (
-        response: unknown,
-      ) => Promise<unknown>;
+      const onFulfilled = getResponseInterceptors()[0];
 
       const response = { data: 'plain text', config: {} };
 
       await expect(onFulfilled(response)).resolves.toBe(response);
+    });
+
+    it('turns an HTTP 500 envelope into a BizError', async () => {
+      // 后端的业务异常一律是 CustomException ⇒ HTTP 500 + 信封,
+      // axios 会 reject 成原始错误,调用方拿不到后端的中文 msg
+      const onRejected = getResponseInterceptors()[1];
+
+      await expect(
+        onRejected({
+          response: {
+            status: 500,
+            data: {
+              code: -1,
+              msg: '验证码不能为空',
+              data: null,
+              status_code: 500,
+              success: false,
+            },
+          },
+          config: {},
+        }),
+      ).rejects.toMatchObject({
+        name: 'BizError',
+        message: '验证码不能为空',
+        info: { code: -1, msg: '验证码不能为空' },
+      });
+    });
+
+    it('rethrows an HTTP error whose body is not an envelope', async () => {
+      const onRejected = getResponseInterceptors()[1];
+      const error: any = new Error('Request failed with status code 502');
+      error.response = { status: 502, data: '<html>bad gateway</html>' };
+
+      await expect(onRejected(error)).rejects.toBe(error);
+    });
+  });
+
+  /**
+   * 用真实的 axios 实例跑一遍 umi 的注册方式,
+   * 保证「注册方式」本身不会把成功响应变成失败。
+   */
+  describe('umi runtime registration', () => {
+    const createInstance = () => {
+      const instance = axios.create();
+
+      // 与 src/.umi/plugin-request/request.ts 里的注册逻辑完全一致
+      errorConfig.responseInterceptors?.forEach((interceptor) => {
+        Array.isArray(interceptor)
+          ? instance.interceptors.response.use(interceptor[0], interceptor[1])
+          : instance.interceptors.response.use(interceptor);
+      });
+
+      return instance;
+    };
+
+    it('resolves a successful envelope', async () => {
+      const instance = createInstance();
+
+      instance.defaults.adapter = async (config) => ({
+        data: {
+          code: 0,
+          msg: 'ok',
+          data: { id: 1 },
+          status_code: 200,
+          success: true,
+        },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config,
+      });
+
+      const response = await instance.get('/system/user/list');
+
+      expect(response.status).toBe(200);
+      expect(response.data.data).toEqual({ id: 1 });
+    });
+
+    it('rejects an HTTP 500 envelope with a BizError', async () => {
+      const instance = createInstance();
+
+      instance.defaults.adapter = async (config) => {
+        const error: any = new Error('Request failed with status code 500');
+        error.config = config;
+        error.response = {
+          status: 500,
+          data: {
+            code: -1,
+            msg: '账号或密码错误',
+            data: null,
+            status_code: 500,
+            success: false,
+          },
+        };
+        throw error;
+      };
+
+      await expect(instance.post('/system/auth/login')).rejects.toMatchObject({
+        name: 'BizError',
+        message: '账号或密码错误',
+        info: { code: -1, msg: '账号或密码错误' },
+      });
+    });
+
+    it('still rejects the caller when skipErrorHandler is set', async () => {
+      const instance = createInstance();
+
+      instance.defaults.adapter = async (config) => {
+        const error: any = new Error('Request failed with status code 500');
+        error.config = config;
+        error.response = {
+          status: 500,
+          data: {
+            code: -1,
+            msg: '账号或密码错误',
+            data: null,
+            status_code: 500,
+            success: false,
+          },
+        };
+        throw error;
+      };
+
+      const errorHandler = errorConfig.errorConfig?.errorHandler as (
+        error: unknown,
+        opts?: unknown,
+      ) => void;
+
+      // umi 的 request 包装:catch 里先调 errorHandler,
+      // handler 抛错(errorHandler 见到 skipErrorHandler 会重抛)就把它 reject 给调用方
+      const call = async () => {
+        try {
+          await instance.post('/system/auth/login');
+        } catch (error) {
+          errorHandler(error, { skipErrorHandler: true });
+          throw error;
+        }
+      };
+
+      await expect(call()).rejects.toMatchObject({
+        name: 'BizError',
+        info: { code: -1, msg: '账号或密码错误' },
+      });
+      // 页面内联提示是唯一出口,不能再弹一次全局 toast
+      expect(message.error).not.toHaveBeenCalled();
     });
   });
 
@@ -242,10 +408,6 @@ describe('requestErrorConfig', () => {
   });
 
   describe('success toast', () => {
-    const onFulfilled = errorConfig.responseInterceptors?.[0] as (
-      response: unknown,
-    ) => Promise<unknown>;
-
     const envelope = {
       code: 0,
       msg: '创建成功',
@@ -255,6 +417,8 @@ describe('requestErrorConfig', () => {
     };
 
     it('shows a success message for a non GET request', async () => {
+      const onFulfilled = getResponseInterceptors()[0];
+
       await onFulfilled({
         data: envelope,
         config: { method: 'POST', url: '/system/user/create' },
@@ -264,6 +428,8 @@ describe('requestErrorConfig', () => {
     });
 
     it('does not show a success message for a GET request', async () => {
+      const onFulfilled = getResponseInterceptors()[0];
+
       await onFulfilled({
         data: envelope,
         config: { method: 'GET', url: '/system/user/list' },
@@ -273,6 +439,8 @@ describe('requestErrorConfig', () => {
     });
 
     it('does not show a success message for login or logout', async () => {
+      const onFulfilled = getResponseInterceptors()[0];
+
       await onFulfilled({
         data: envelope,
         config: { method: 'POST', url: '/system/auth/login' },
@@ -325,9 +493,7 @@ describe('401 silent refresh and replay', () => {
 
     mockRequest.mockResolvedValue(tokenEnvelope);
 
-    const onRejected = errorConfig.responseInterceptors?.[1] as (
-      error: unknown,
-    ) => Promise<unknown>;
+    const onRejected = getResponseInterceptors()[1];
 
     await onRejected({
       response: { status: 401 },
@@ -360,9 +526,7 @@ describe('401 silent refresh and replay', () => {
 
     mockRequest.mockResolvedValue(tokenEnvelope);
 
-    const onFulfilled = errorConfig.responseInterceptors?.[0] as (
-      response: unknown,
-    ) => Promise<unknown>;
+    const onFulfilled = getResponseInterceptors()[0];
 
     await onFulfilled({
       data: {
@@ -397,9 +561,7 @@ describe('401 silent refresh and replay', () => {
 
     mockRequest.mockResolvedValue(tokenEnvelope);
 
-    const onRejected = errorConfig.responseInterceptors?.[1] as (
-      error: unknown,
-    ) => Promise<unknown>;
+    const onRejected = getResponseInterceptors()[1];
 
     // 后端可能用 HTTP 500 携带 10401 业务码,不能只看状态码
     await onRejected({
@@ -438,9 +600,7 @@ describe('401 silent refresh and replay', () => {
 
     mockRequest.mockResolvedValue(tokenEnvelope);
 
-    const onRejected = errorConfig.responseInterceptors?.[1] as (
-      error: unknown,
-    ) => Promise<unknown>;
+    const onRejected = getResponseInterceptors()[1];
 
     const unauthorized = {
       response: { status: 401 },
@@ -453,9 +613,7 @@ describe('401 silent refresh and replay', () => {
   });
 
   it('does not replay twice when the retried request is still unauthorized', async () => {
-    const onRejected = errorConfig.responseInterceptors?.[1] as (
-      error: unknown,
-    ) => Promise<unknown>;
+    const onRejected = getResponseInterceptors()[1];
 
     await expect(
       onRejected({
@@ -482,9 +640,7 @@ describe('401 silent refresh and replay', () => {
     };
     mockRequest.mockRejectedValue(refreshError);
 
-    const onRejected = errorConfig.responseInterceptors?.[1] as (
-      error: unknown,
-    ) => Promise<unknown>;
+    const onRejected = getResponseInterceptors()[1];
     const errorHandler = errorConfig.errorConfig?.errorHandler as (
       error: unknown,
       opts?: unknown,

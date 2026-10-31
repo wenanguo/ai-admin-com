@@ -26,6 +26,8 @@ export async function login(form: LoginForm) {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     data: body.toString(),
+    // 登录失败由登录页内联展示(error.info.msg),不要再弹一次全局 toast
+    skipErrorHandler: true,
   });
 }
 

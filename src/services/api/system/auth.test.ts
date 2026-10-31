@@ -16,6 +16,7 @@ type RequestCall = [
     method?: string;
     headers?: Record<string, string>;
     data?: unknown;
+    skipErrorHandler?: boolean;
   },
 ];
 
@@ -60,6 +61,15 @@ describe('system auth service', () => {
     expect(String(options?.data)).toContain('captcha=1234');
     // form-urlencoded 按规范对非 ASCII 做百分号编码:PC端 → PC%E7%AB%AF
     expect(String(options?.data)).toContain('login_type=PC%E7%AB%AF');
+  });
+
+  it('skips the global error handler so the login page can show the error inline', async () => {
+    // 请求层会弹一次 toast,登录页还会内联渲染一次 LoginMessage —— 两边重复
+    await login({ username: 'admin', password: 'pw' });
+
+    const [, options] = vi.mocked(request).mock
+      .calls[0] as unknown as RequestCall;
+    expect(options?.skipErrorHandler).toBe(true);
   });
 
   it('refreshes the token with the refresh token in the body', async () => {
