@@ -2,7 +2,7 @@ import { LinkOutlined } from '@ant-design/icons';
 import type { Settings as LayoutSettings } from '@ant-design/pro-components';
 import { SettingDrawer } from '@ant-design/pro-components';
 import type { RequestConfig, RunTimeLayoutConfig } from '@umijs/max';
-import { history, Link } from '@umijs/max';
+import { getIntl, history, Link } from '@umijs/max';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import React from 'react';
@@ -45,21 +45,21 @@ export interface UserState {
 /**
  * @see https://umijs.org/docs/api/runtime-config#getinitialstate
  */
-export async function getInitialState(): Promise<{
-  settings?: Partial<LayoutSettings>;
-  currentUser?: UserOut;
-  menus?: BackendMenu[];
-  permissions?: string[];
-  fetchUserInfo?: () => Promise<UserState | undefined>;
-  settingDrawerOpen?: boolean;
-}> {
+export async function getInitialState(): Promise<
+  UserState & {
+    settings?: Partial<LayoutSettings>;
+    fetchUserInfo?: () => Promise<UserState | undefined>;
+    settingDrawerOpen?: boolean;
+  }
+> {
   const loadUserInfo = async (): Promise<UserState | undefined> => {
     try {
+      // fetchCurrentUser() 在没有 data 时就抛异常,info 一定非空
       const info = await fetchCurrentUser();
       return {
         currentUser: info,
-        menus: info?.menus ?? [],
-        permissions: collectPermissions(info?.menus ?? [], info?.roles ?? []),
+        menus: info.menus ?? [],
+        permissions: collectPermissions(info.menus ?? [], info.roles ?? []),
       };
     } catch (_error) {
       const { pathname, search, hash } = history.location;
@@ -128,7 +128,10 @@ export const layout: RunTimeLayoutConfig = ({
       title:
         initialState?.currentUser?.name ??
         initialState?.currentUser?.username ??
-        '用户',
+        getIntl().formatMessage({
+          id: 'app.settings.defaultUserName',
+          defaultMessage: '用户',
+        }),
       render: (_, avatarChildren) => (
         <AvatarDropdown>{avatarChildren}</AvatarDropdown>
       ),

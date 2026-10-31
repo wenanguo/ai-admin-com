@@ -4,7 +4,9 @@ import {
   createUser,
   deleteUsers,
   getCurrentUser,
+  getUserDetail,
   listUsers,
+  registerUser,
   updateUser,
 } from './user';
 
@@ -65,6 +67,23 @@ describe('system user service', () => {
     expect(request).toHaveBeenCalledWith('/system/user/delete', {
       method: 'DELETE',
       data: [1, 2],
+    });
+  });
+
+  it('gets a user detail by id', async () => {
+    await getUserDetail(7);
+
+    expect(request).toHaveBeenCalledWith('/system/user/detail/7', {
+      method: 'GET',
+    });
+  });
+
+  it('registers a user', async () => {
+    await registerUser({ username: 'u1', password: 'pw123456' });
+
+    expect(request).toHaveBeenCalledWith('/system/user/register', {
+      method: 'POST',
+      data: { username: 'u1', password: 'pw123456' },
     });
   });
 });

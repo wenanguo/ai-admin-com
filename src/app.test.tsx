@@ -15,6 +15,11 @@ const mockFetchCurrentUser = vi.fn();
 vi.mock('@umijs/max', () => ({
   history: mockHistory,
   Link: ({ children }: any) => children,
+  getIntl: vi.fn(() => ({
+    formatMessage: vi.fn(
+      ({ defaultMessage }: { defaultMessage: string }) => defaultMessage,
+    ),
+  })),
 }));
 
 vi.mock('@/auth/session', () => ({
@@ -127,6 +132,26 @@ describe('app getInitialState', () => {
     expect(mockFetchCurrentUser).not.toHaveBeenCalled();
     expect(state.currentUser).toBeUndefined();
     expect(state.fetchUserInfo).toBeDefined();
+  });
+
+  it('does not fetch the current user on the register pages', async () => {
+    const { getInitialState } = await import('./app');
+
+    mockHistory.location = {
+      pathname: '/user/register',
+      search: '',
+      hash: '',
+    };
+    await getInitialState();
+
+    mockHistory.location = {
+      pathname: '/user/register-result',
+      search: '',
+      hash: '',
+    };
+    await getInitialState();
+
+    expect(mockFetchCurrentUser).not.toHaveBeenCalled();
   });
 
   it('encodes the redirect path correctly', async () => {
@@ -244,5 +269,45 @@ describe('app layout menuDataRender', () => {
     ]);
     expect(warn).toHaveBeenCalledWith('[menu] 前端缺少路由: /system/unknown');
     warn.mockRestore();
+  });
+
+  it('renders no menu items when the backend menus are missing', async () => {
+    const { layout } = await import('./app');
+
+    const config = layout({
+      initialState: {},
+      setInitialState: vi.fn(),
+    } as any);
+
+    expect(config.menuDataRender?.([])).toEqual([]);
+  });
+
+  it('keeps a ReactElement icon coming from the frontend routes', async () => {
+    const { layout } = await import('./app');
+    const icon = <span className="menu-icon" />;
+
+    const config = layout({
+      initialState: {
+        menus: [
+          {
+            id: 11,
+            name: 'user',
+            type: 2,
+            route_path: '/system/user',
+            route_name: 'user',
+            title: '用户管理',
+            status: '0',
+            order: 1,
+          },
+        ],
+      },
+      setInitialState: vi.fn(),
+    } as any);
+
+    const items = config.menuDataRender?.([
+      { path: '/system/user', icon },
+    ] as any);
+
+    expect(items?.[0].icon).toBe(icon);
   });
 });
