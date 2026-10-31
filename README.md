@@ -83,6 +83,7 @@ npm start        # 带 antd-pro 演示页 mock
 | `npm run build` | 构建 |
 | `npm run lint` | Biome + tsc |
 | `npm test` | 单元测试 |
+| `npm run e2e` | Playwright 端到端(接口全部拦截,**不需要真实账号**) |
 | `npm run biome` | 自动修复格式 |
 | `npx antd lint ./src` | antd 专有检查(废弃用法等) |
 
