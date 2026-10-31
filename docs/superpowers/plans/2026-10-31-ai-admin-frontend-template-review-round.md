@@ -21,6 +21,7 @@
 | R11 | `src/locales/*/pages.ts` | 登录页副标题还是「Ant Design 是西湖区最具影响力的 Web 设计规范」 | Minor | 换成 AiAdmin |
 | R12 | `biome.json` | `e2e-out`(playwright 报告)没被 biome 忽略 ⇒ `npm run lint` 被生成物刷出 3698 个错 | Minor | 加进 `files.includes` 的忽略列表 |
 | R13 | `src/pages/module_system/user/index.tsx` | 删除失败时 Popconfirm 的 onConfirm 抛出未处理的 Promise | Minor | try/catch 兜住(提示仍由请求层统一弹) |
+| R14 | `config/routes.ts` | 父路由同时带 `redirect` 和子路由 ⇒ redirect 作用到所有子路径 ⇒ 无限重定向(React error #185),登录后第一屏整页报错 | **Critical** | redirect 改挂到子路由上(和 /dashboard、/form、/profile 一致),并加测试钉住这个约定 |
 
 R1 之外的都不影响主链路,但都是「模板被别人照抄时会一起带过去」的问题,一并收掉。
 
@@ -50,6 +51,45 @@ R1 之外的都不影响主链路,但都是「模板被别人照抄时会一起�
 原来的那个测试用的是一个带 `.response` 的原始 axios error,
 真实链路上根本不会出现这种形状,所以它一直是绿的。
 
+## R14 —— 父路由的 redirect 会作用到所有子路径
+
+**这是修复波 W15 自己引入的**:W15 给 `/system` 父路由补了
+`redirect: '/system/user'`,想让「系统管理」这个目录点得开。
+
+但 umi 生成的路由里,父路由的 redirect 会作用到**所有子路径**上:
+
+```
+访问 /system/user → 父路由的 redirect 生效 → 重定向到 /system/user 自己
+                   → React Router 无限重定向 → React error #185
+                   → 整页被 ErrorBoundary 接管(连侧边栏都没有)
+```
+
+模板里 `/dashboard`、`/form`、`/profile` 全都是把 redirect 挂在**子路由**上的
+写法 —— `/system` 挂错了位置。按同样写法改:父路由不带 redirect,
+另起一条 `path: '/system'` 的子路由做重定向。
+另加一个测试:任何父路由都不许同时带 `redirect` 和子路由。
+
+### 为什么静态复审没看出来
+
+登录后第一屏就炸,但**代码审查看不出任何异常** —— 请求层、菜单适配器、
+权限、页面组件全都没有问题。逐层排除才定位到路由这一层:
+
+| 排除项 | 手段 | 结果 |
+|---|---|---|
+| 菜单适配器 | 把后端 seed 的 220 条菜单喂给 `buildMenuItems` | 不抛异常,菜单正确 |
+| 布局配置 | 换成最小 `layout`(只留 `menuDataRender`) | 仍死循环 ⇒ 不是布局配置 |
+| 页面内容 | ProTable、ModalForm 全删掉 | 仍死循环 ⇒ 不是页面 |
+| 顶级菜单页 | `/welcome`、`/chatbot` | 正常 |
+| 子菜单页(无 ProTable) | `/dashboard/analysis` | 正常 |
+| 子菜单页(有 ProTable) | `/system/user` | **死循环** |
+| 去掉 `/system` 父路由的 redirect | 同上 | **恢复正常** |
+
+复现手段:Playwright 拦截 `/api/v1/**` 返回本地构造的响应、
+注入假 token,不需要真实账号就能在浏览器里重现。
+React error #185 是 "Maximum update depth exceeded",
+堆栈指向菜单子树(重定向每触发一次就重渲染一次菜单),
+但根因在路由层。
+
 ## 验收门禁
 
 - `npm run lint`(Biome + tsc)通过
@@ -62,3 +102,4 @@ R1 之外的都不影响主链路,但都是「模板被别人照抄时会一起�
 - `fix(auth): 刷新 token 失败时清登录态并跳回登录页`
 - `feat(user): 用户表单支持选择角色`
 - `fix(login): 落地页指向后端页面,修掉验证码与品牌文案`
+- `fix(routes): 父路由的 redirect 会作用到所有子路径,导致无限重定向`
