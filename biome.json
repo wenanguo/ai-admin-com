@@ -19,6 +19,7 @@
       "!**/server",
       "!**/public",
       "!**/coverage",
+      "!**/e2e-out",
       "!**/node_modules",
       "!biome.json",
       "!tailwind.css",

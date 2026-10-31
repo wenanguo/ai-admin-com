@@ -11,12 +11,14 @@ import {
   useIntl,
   useModel,
 } from '@umijs/max';
+import type { FormInstance } from 'antd';
 import { Alert, App, Button } from 'antd';
 import { createStyles } from 'antd-style';
 import React, {
   startTransition,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from 'react';
 import { loginWithSession } from '@/auth/session';
@@ -97,8 +99,10 @@ const LoginMessage: React.FC<{
 
 const Login: React.FC = () => {
   const [captcha, setCaptcha] = useState<CaptchaOut | null>(null);
+  const [captchaError, setCaptchaError] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [oauthLoading, setOauthLoading] = useState<string | null>(null);
+  const formRef = useRef<FormInstance | undefined>(undefined);
   const { initialState, setInitialState } = useModel('@@initialState');
   const { styles } = useStyles();
   const { message } = App.useApp();
@@ -108,9 +112,14 @@ const Login: React.FC = () => {
     try {
       const res = await getCaptcha();
       setCaptcha(res?.data ?? null);
+      setCaptchaError(false);
     } catch {
       setCaptcha(null);
+      setCaptchaError(true);
     }
+    // 验证码是一次性的:换了图就必须把已经填的答案清掉,
+    // 否则新 key 配旧答案,下次必定「验证码错误」
+    formRef.current?.setFieldValue('captcha', '');
   }, []);
 
   useEffect(() => {
@@ -215,6 +224,7 @@ const Login: React.FC = () => {
             minWidth: 280,
             maxWidth: '75vw',
           }}
+          formRef={formRef}
           logo={<img alt="logo" src="/logo.svg" />}
           title="AiAdmin"
           subTitle={intl.formatMessage({
@@ -256,6 +266,19 @@ const Login: React.FC = () => {
           }}
         >
           {submitError && <LoginMessage content={submitError} />}
+          {captchaError && (
+            <Alert
+              style={{ marginBottom: 16 }}
+              type="error"
+              showIcon
+              title="验证码加载失败"
+              action={
+                <Button size="small" onClick={loadCaptcha}>
+                  重试
+                </Button>
+              }
+            />
+          )}
 
           <ProFormText
             name="username"
@@ -344,18 +367,6 @@ const Login: React.FC = () => {
                 defaultMessage="自动登录"
               />
             </ProFormCheckbox>
-            <Button
-              type="link"
-              style={{
-                float: 'right',
-                padding: 0,
-              }}
-            >
-              <FormattedMessage
-                id="pages.login.forgotPassword"
-                defaultMessage="忘记密码"
-              />
-            </Button>
           </div>
         </LoginForm>
       </div>

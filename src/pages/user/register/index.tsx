@@ -77,7 +77,6 @@ const Register: FC = () => {
       const payload: UserRegisterParams = {
         username: formValues.username,
         password: formValues.password,
-        name: formValues.name,
         mobile: formValues.mobile,
       };
       return registerUser(payload);
@@ -121,8 +120,13 @@ const Register: FC = () => {
           rules={[
             {
               required: true,
-              min: 3,
               message: '请输入用户名!',
+            },
+            {
+              // 后端 UserRegisterSchema 的账号规则:字母开头,3-32 位,
+              // 仅允许字母、数字、下划线、点和短横线
+              pattern: /^[A-Za-z][A-Za-z0-9_.-]{2,31}$/,
+              message: '账号需以字母开头,3-32 位,仅允许字母、数字、_ . -',
             },
           ]}
         >

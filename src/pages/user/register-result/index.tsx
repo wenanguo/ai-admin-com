@@ -9,26 +9,29 @@ const RegisterResult: React.FC<Record<string, unknown>> = () => {
 
   const actions = (
     <div className={styles.actions}>
-      <Button size="large" type="primary">
-        <span>查看邮箱</span>
-      </Button>
+      <Link to="/user/login" prefetch>
+        <Button size="large" type="primary">
+          <span>去登录</span>
+        </Button>
+      </Link>
       <Link to="/" prefetch>
         <Button size="large">返回首页</Button>
       </Link>
     </div>
   );
 
-  const email = params?.get('account') || 'AntDesign@example.com';
+  // 后端的注册接口不发送激活邮件,账号建好就能登录
+  const account = params?.get('account') || '新账号';
   return (
     <Result
       className={styles.registerResult}
       status="success"
       title={
         <div className={styles.title}>
-          <span>你的账户：{email} 注册成功</span>
+          <span>你的账号：{account} 注册成功</span>
         </div>
       }
-      subTitle="激活邮件已发送到你的邮箱中，邮件有效期为24小时。请及时登录邮箱，点击邮件中的链接激活帐户。"
+      subTitle="账号已创建成功，请使用该账号登录。新账号默认没有角色，需要管理员分配角色后才能看到菜单。"
       extra={actions}
     />
   );

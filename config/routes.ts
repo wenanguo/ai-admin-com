@@ -301,9 +301,11 @@ export default [
     component: './chatbot',
   },
   {
+    // 登录后的落地页。后端菜单里目前只有「系统管理 > 用户管理」,
+    // 指向 antd-pro 的演示看板会让登录后第一屏就报 404
     path: '/',
     layout: false,
-    redirect: '/dashboard/analysis',
+    redirect: '/system/user',
   },
   {
     component: './exception/404',
