@@ -29,9 +29,13 @@ const UserManagement: React.FC = () => {
 
   const handleDelete = async (record: UserOut) => {
     if (!record.id) return;
-    await deleteUsers([record.id]);
-    // 成功提示由请求层统一弹(后端信封里的 msg),这里不要再弹一次
-    actionRef.current?.reload();
+    try {
+      await deleteUsers([record.id]);
+      // 成功提示由请求层统一弹(后端信封里的 msg),这里不要再弹一次
+      actionRef.current?.reload();
+    } catch {
+      // 失败提示也由请求层统一弹,这里只需要把异常消化掉
+    }
   };
 
   const handleEdit = (record: UserOut) => {

@@ -6,6 +6,7 @@ import {
   ProFormTextArea,
 } from '@ant-design/pro-components';
 import type React from 'react';
+import { listRoles } from '@/services/api/system/role';
 import type { UserCreateParams, UserOut } from '@/services/api/system/types';
 
 export type UserModalProps = {
@@ -50,6 +51,24 @@ const UserModalForm: React.FC<UserModalProps> = ({
       <ProFormText name="mobile" label="手机号" />
       <ProFormText name="email" label="邮箱" />
       <ProFormDigit name="dept_id" label="部门 ID" />
+      {/*
+        角色:新建用户时不选角色的话,这个账号登录后是空的(没有菜单也没有权限码)。
+        后端 UserCreateSchema.role_ids 默认是 [],所以这里必须能选。
+      */}
+      <ProFormSelect
+        name="role_ids"
+        label="角色"
+        mode="multiple"
+        request={async () => {
+          const res = await listRoles({ page_no: 1, page_size: 100 });
+          return (res?.data?.items ?? [])
+            .filter((role) => role.id != null)
+            .map((role) => ({
+              label: role.name ?? role.code ?? String(role.id),
+              value: role.id as number,
+            }));
+        }}
+      />
       <ProFormSelect
         name="status"
         label="状态"

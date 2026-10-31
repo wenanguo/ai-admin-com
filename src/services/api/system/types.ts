@@ -76,6 +76,19 @@ export interface UserRegisterParams {
   description?: string;
 }
 
+/** 后端 RoleOutSchema(角色列表返回) */
+export interface RoleOut {
+  id?: number | null;
+  name?: string | null;
+  code?: string | null;
+  status?: number | null;
+  description?: string | null;
+  order?: number | null;
+  data_scope?: number | null;
+  created_time?: string | null;
+  updated_time?: string | null;
+}
+
 /** 后端 CaptchaOutSchema */
 export interface CaptchaOut {
   /** 是否启用验证码 */
