@@ -53,8 +53,15 @@ export default [
     path: '/system',
     name: 'system',
     icon: 'setting',
-    redirect: '/system/user',
     routes: [
+      {
+        // redirect 必须挂在**子路由**上:挂在父路由上时,父路由的 redirect
+        // 会作用到所有子路径上,/system/user 被重定向到 /system/user 自己
+        // ⇒ React Router 无限重定向(React error #185,页面直接白屏报错)
+        // 模板里 /dashboard /form /profile 都是这个写法
+        path: '/system',
+        redirect: '/system/user',
+      },
       {
         path: '/system/user',
         name: 'user',
