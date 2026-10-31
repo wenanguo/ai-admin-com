@@ -4399,6 +4399,30 @@ Expected: 只剩 `en-US/` `en-US.ts` `zh-CN/` `zh-CN.ts`
 - `README.ant-design-pro.zh-CN.md` 第一行的 `Language : [English](./README.md)` 指向的是项目自己的 README,改为 `[English](./README.ant-design-pro.md)`
 - `skills-lock.json` 只登记了 `antd` 技能,合并进来的 `pro-upgrade` 未登记。补一条同结构的记录(`name`/`source`/`sourceType`/`skillPath`/`computedHash`);若无法确定正确的 `computedHash`,至少补上前四项并说明 `computedHash` 需用 skills 工具重新生成
 
+- **`e2e/login.spec.ts` 是 antd-pro 的演示登录用例**,会挂:它断言页面标题是 `Ant Design`,
+  并用 `admin` / `ant.design` 这套演示凭据登录(mock 登录已不存在)。**改写成不依赖任何凭据的冒烟用例**:
+
+```ts
+import { expect, test } from '@playwright/test';
+
+test.describe('Login Page', () => {
+  test('should show the login form and the captcha image', async ({ page }) => {
+    // 需要等待 umi 编译完成
+    test.setTimeout(60_000);
+    await page.goto('/user/login');
+
+    await expect(page.getByText('AiAdmin').first()).toBeVisible({
+      timeout: 30_000,
+    });
+    // 验证码图片是后端下发的 base64 data URL
+    await expect(page.locator('img[alt="点击刷新验证码"]')).toBeVisible();
+  });
+});
+```
+
+  (`playwright.config.ts` 的 `webServer` 跑的是 `npm start`,也就是 `UMI_ENV=dev` ⇒ 走 `proxy.dev`,
+  请求会真的打到后端。**不要**在这个用例里填任何账号密码。)
+
 - [ ] **Step 9: 重命名 service 目录并修正 import**
 
 ```bash
