@@ -13,6 +13,7 @@ import {
 import type {
   LoginForm,
   LoginResult,
+  TokenPair,
   UserOut,
 } from '@/services/api/system/types';
 import { getCurrentUser } from '@/services/api/system/user';
@@ -76,7 +77,25 @@ let refreshPromise: Promise<string> | null = null;
 
 /** 用 refresh_token 换新的 access_token */
 async function doRefresh(): Promise<string> {
-  const res = await refreshTokenApi(getRefreshToken());
+  let res: ApiResponse<TokenPair>;
+
+  try {
+    res = await refreshTokenApi(getRefreshToken());
+  } catch (error: any) {
+    // 刷新接口自己回了 401 —— 已经是未授权错误,原样往上抛
+    if (error?.name === 'UnauthorizedError') throw error;
+
+    // 服务端给了响应(哪怕是 HTTP 500 + 业务信封)= 明确拒绝 = 登录态失效。
+    // 注意:后端的业务异常是 HTTP 500,会被响应拦截器转成 BizError,
+    // 而 BizError 上没有 response,所以判断依据是「有没有 response 或 info」。
+    if (error?.response !== undefined || error?.info !== undefined) {
+      throw createUnauthorizedError();
+    }
+
+    // 纯网络故障(压根没拿到响应):不登出,把错误抛给调用方
+    throw error;
+  }
+
   const pair = res?.data;
 
   if (!pair?.access_token) {

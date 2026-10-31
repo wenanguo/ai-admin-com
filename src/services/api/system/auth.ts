@@ -36,6 +36,9 @@ export async function refreshToken(token: string) {
   return request<ApiResponse<TokenPair>>('/system/auth/token/refresh', {
     method: 'POST',
     data: { refresh_token: token },
+    // 刷新失败的后果由调用方(session.doRefresh)判断:该登出还是该重试。
+    // 这里不再弹全局 toast,免得同一个错误弹两遍。
+    skipErrorHandler: true,
   });
 }
 

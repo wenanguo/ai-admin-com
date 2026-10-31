@@ -43,15 +43,10 @@ async function handleUnauthorized(config: any): Promise<any> {
   if (url.includes('/system/auth/token/refresh'))
     throw createUnauthorizedError();
 
-  let token: string;
-  try {
-    token = await refreshSession();
-  } catch (error: any) {
-    // 刷新接口有响应 = 服务端明确拒绝 = 登录态确实失效 → 清 token 跳登录
-    // 刷新接口无响应 = 纯网络故障 → 不登出,把错误抛给调用方
-    if (error?.response) throw createUnauthorizedError();
-    throw error;
-  }
+  // 刷新失败的两类结局在 doRefresh 里就分好了:
+  //   服务端明确拒绝 → UnauthorizedError(errorHandler 会清登录态 + 跳登录页)
+  //   纯网络故障     → 原样抛出,不登出
+  const token = await refreshSession();
 
   return getRequestInstance().request({
     ...config,

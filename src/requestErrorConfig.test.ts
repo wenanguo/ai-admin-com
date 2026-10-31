@@ -662,4 +662,59 @@ describe('401 silent refresh and replay', () => {
       `/user/login?redirect=${encodeURIComponent(pathname + search + hash)}`,
     );
   });
+
+  it('treats a refresh failure that arrives as a BizError as an expired session', async () => {
+    // 真实链路:刷新接口返回 HTTP 500 + 业务信封 → 响应拦截器转成 BizError。
+    // BizError 上只有 info、没有 response —— 靠 error.response 判断的写法
+    // 在这条真实路径上永远是 undefined,于是永远登不了出。
+    const bizError: any = new Error('会话已过期，请重新登录');
+    bizError.name = 'BizError';
+    bizError.info = { code: -1, msg: '会话已过期，请重新登录', data: null };
+    mockRequest.mockRejectedValue(bizError);
+
+    const onRejected = getResponseInterceptors()[1];
+    const errorHandler = errorConfig.errorConfig?.errorHandler as (
+      error: unknown,
+      opts?: unknown,
+    ) => void;
+
+    const error = await onRejected({
+      response: { status: 401 },
+      config: { url: '/system/user/list', headers: {} },
+    }).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ name: 'UnauthorizedError' });
+
+    errorHandler(error, {});
+
+    expect(clearAuth).toHaveBeenCalled();
+    const { pathname, search, hash } = window.location;
+    expect(mockHistoryReplace).toHaveBeenCalledWith(
+      `/user/login?redirect=${encodeURIComponent(pathname + search + hash)}`,
+    );
+  });
+
+  it('does not clear the session when the refresh fails without a response', async () => {
+    // 纯网络故障(既没有 response 也没有 info):不能当成登录态失效
+    const netError: any = new Error('Network Error');
+    mockRequest.mockRejectedValue(netError);
+
+    const onRejected = getResponseInterceptors()[1];
+    const errorHandler = errorConfig.errorConfig?.errorHandler as (
+      error: unknown,
+      opts?: unknown,
+    ) => void;
+
+    const error = await onRejected({
+      response: { status: 401 },
+      config: { url: '/system/user/list', headers: {} },
+    }).catch((e: unknown) => e);
+
+    expect(error).not.toMatchObject({ name: 'UnauthorizedError' });
+
+    errorHandler(error, {});
+
+    expect(clearAuth).not.toHaveBeenCalled();
+    expect(mockHistoryReplace).not.toHaveBeenCalled();
+  });
 });

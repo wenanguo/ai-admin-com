@@ -78,6 +78,9 @@ describe('system auth service', () => {
     expect(request).toHaveBeenCalledWith('/system/auth/token/refresh', {
       method: 'POST',
       data: { refresh_token: 'refresh-1' },
+      // 刷新失败的后果由 session.doRefresh 判断(登出还是重试),
+      // 请求层不再弹一次全局 toast,免得同一个错误弹两遍
+      skipErrorHandler: true,
     });
   });
 
