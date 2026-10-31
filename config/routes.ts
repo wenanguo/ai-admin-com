@@ -53,6 +53,7 @@ export default [
     path: '/system',
     name: 'system',
     icon: 'setting',
+    redirect: '/system/user',
     routes: [
       {
         path: '/system/user',

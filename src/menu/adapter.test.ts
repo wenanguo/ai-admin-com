@@ -184,6 +184,69 @@ describe('buildMenuItems', () => {
     warn.mockRestore();
   });
 
+  it('warns about the same missing route only once', () => {
+    // menuDataRender 每次渲染都会重跑,不去重的话一次渲染能刷几百条
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    buildMenuItems(
+      [menu({ id: 1, type: 2, route_path: '/system/warn-once' })],
+      new Set(['/system/user']),
+    );
+    buildMenuItems(
+      [menu({ id: 1, type: 2, route_path: '/system/warn-once' })],
+      new Set(['/system/user']),
+    );
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('[menu] 前端缺少路由: /system/warn-once');
+    warn.mockRestore();
+  });
+
+  it('skips external links without warning', () => {
+    // type=4 是外链,本轮不渲染 —— 这是已知且有意的行为,不是「前端缺路由」
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const items = buildMenuItems(
+      [menu({ id: 1, type: 4, name: 'swagger', route_path: '/swagger' })],
+      new Set(['/system/user']),
+    );
+
+    expect(items).toHaveLength(0);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('drops a directory without children whose path is not a frontend route', () => {
+    // 空目录没有子项,自身路径也没注册 ⇒ 留着就是一条点进去 404 的死链
+    const items = buildMenuItems(
+      [menu({ id: 1, type: 1, name: '空目录', route_path: '/empty-dir' })],
+      new Set(['/system/user']),
+    );
+
+    expect(items).toHaveLength(0);
+  });
+
+  it('keeps a directory without children whose path is a frontend route', () => {
+    const items = buildMenuItems(
+      [menu({ id: 1, type: 1, name: '系统管理', route_path: '/system' })],
+      new Set(['/system']),
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0].path).toBe('/system');
+  });
+
+  it('does not reorder the backend menu array', () => {
+    const input = [
+      menu({ id: 1, type: 2, name: 'B', route_path: '/b', order: 2 }),
+      menu({ id: 2, type: 2, name: 'A', route_path: '/a', order: 1 }),
+    ];
+
+    buildMenuItems(input, new Set(['/a', '/b']));
+
+    expect(input.map((item) => item.name)).toEqual(['B', 'A']);
+  });
+
   it('keeps a directory even when its path is not a frontend route', () => {
     const items = buildMenuItems(
       [

@@ -43,6 +43,10 @@ export interface RouteLike {
 
 const MENU_TYPE_DIRECTORY = 1;
 const MENU_TYPE_BUTTON = 3;
+const MENU_TYPE_EXTERNAL = 4;
+
+/** 已经警告过的路径,避免每次渲染都刷屏 */
+const warnedPaths = new Set<string>();
 
 /** 拼接绝对路径:parentAbs + 相对段 */
 export function joinAbsolutePath(parentAbs: string, segment: string): string {
@@ -142,10 +146,11 @@ function toInternal(items: BackendMenu[], parentAbs = ''): InternalMenu[] {
  *
  * 规则:
  * - 按钮(type=3)不生成菜单项
+ * - 外链(type=4)本轮不渲染(跳过且不告警)
  * - 停用(status=1)与隐藏(hidden)跳过
  * - 目录(type=1)允许路径不在前端路由表中(它只是分组);
  *   菜单(type=2)路径必须已在前端注册,否则跳过并告警
- * - 目录下所有子项都被跳过时,目录本身也不渲染;
+ * - 目录只有在「还有可见子项」或「自身路径已在前端注册」时才保留;
  *   菜单(type=2)不受此规则影响 —— 自身路径已注册就保留,只是没有子项
  */
 export function buildMenuItems(
@@ -156,25 +161,33 @@ export function buildMenuItems(
   const build = (nodes: InternalMenu[]): MenuItem[] => {
     const result: MenuItem[] = [];
 
-    for (const node of nodes.sort((a, b) => a.order - b.order)) {
+    for (const node of [...nodes].sort((a, b) => a.order - b.order)) {
       const { item, path } = node;
 
       if (item.type === MENU_TYPE_BUTTON) continue;
+      // 外链本轮不渲染:跳过是已知且有意的行为,不是「前端缺路由」,所以不告警
+      if (item.type === MENU_TYPE_EXTERNAL) continue;
       // 后端 status 是字符串列,数字 1 与字符串 '1' 都要认
       if (String(item.status) === '1') continue;
       if (item.hidden) continue;
 
       const children = build(node.children);
       const isDirectory = item.type === MENU_TYPE_DIRECTORY;
-      const hadChildren = node.children.length > 0;
 
       if (!isDirectory && !knownPaths.has(path)) {
-        console.warn(`[menu] 前端缺少路由: ${path}`);
+        // 同一条路径只提醒一次:menuDataRender 每次渲染都会重跑
+        if (!warnedPaths.has(path)) {
+          warnedPaths.add(path);
+          console.warn(`[menu] 前端缺少路由: ${path}`);
+        }
         continue;
       }
 
-      // 目录的所有子项都被跳过 → 目录也没有存在的意义(仅限目录)
-      if (isDirectory && hadChildren && children.length === 0) continue;
+      // 目录只有在「还有可见子项」或「自身路径已在前端注册」时才保留,
+      // 否则它就是一个点进去 404 的死链
+      if (isDirectory && children.length === 0 && !knownPaths.has(path)) {
+        continue;
+      }
       if (!path && !isDirectory) continue;
 
       result.push({
