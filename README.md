@@ -90,4 +90,6 @@ npm start        # 带 antd-pro 演示页 mock
 
 - 设计规格:`docs/superpowers/specs/2026-10-30-ai-admin-frontend-template-design.md`
 - 实现计划:`docs/superpowers/plans/2026-10-30-ai-admin-frontend-template.md`
+- 修复记录:`docs/superpowers/plans/2026-10-31-ai-admin-frontend-template-fix-wave.md`、
+  `docs/superpowers/plans/2026-10-31-ai-admin-frontend-template-review-round.md`
 - 上游说明:`README.ant-design-pro.md`
