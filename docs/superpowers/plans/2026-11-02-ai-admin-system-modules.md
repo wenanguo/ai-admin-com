@@ -1525,6 +1525,8 @@ notice_content 本轮用普通多行文本框,没有引入富文本编辑器依�
     title?: string | null;
     ticket_type?: TicketType | string | null;
     ticket_content?: string | null;
+    /** 指派人(后端 TicketOutSchema.assigned_by,类型 CommonSchema = { id, name }) */
+    assigned_by?: { id: number; name: string } | null;
     summary?: string | null;
     images?: string | null;
     description?: string | null;
