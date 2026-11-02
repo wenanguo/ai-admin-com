@@ -10,7 +10,7 @@ import { useCallback, useRef, useState } from 'react';
  * 8 个系统管理模块的页面从这里取三样东西:
  *
  * - `useCrudTable`: 弹窗开关 / 编辑对象 / 删除 / 提交 的状态机
- * - `getCrudColumns`: 带权限门控的「操作」列
+ * - `useCrudColumns`: 带权限门控的「操作」列
  * - `CRUD_PAGINATION`: 分页配置(page_size 上限 100 是后端约束,只能定义一次)
  *
  * 声明式的部分(ProTable props、工具栏「新增」按钮、弹窗元素)刻意留在每个页面 ——
@@ -133,7 +133,7 @@ export function useCrudTable<T extends CrudRecord, V>(
   };
 }
 
-/** getCrudColumns 的入参 */
+/** useCrudColumns 的入参 */
 export interface CrudColumnOptions<T> {
   /** 点「编辑」 */
   onEdit: (record: T) => void;
@@ -153,10 +153,11 @@ export interface CrudColumnOptions<T> {
  * 两个按钮都按权限码门控 —— 权限码写错会**静默禁用**按钮,是最难发现的一类 bug,
  * 所以这段必须只有一份实现。
  */
-export function getCrudColumns<T>(
+export function useCrudColumns<T>(
   options: CrudColumnOptions<T>,
 ): ProColumns<T>[] {
-  // biome-ignore lint/correctness/useHookAtTopLevel: getCrudColumns 是渲染期调用的列工厂,内部要读 access 做权限门控;API 名由规格 §5.3 指定,不能改成 useXxx
+  // 内部要读 access 做权限门控,所以这是一个 hook —— 名字必须以 use 开头
+  // (Rules of Hooks 的命名约定,biome 的 useHookAtTopLevel 规则也是这么判的)
   const access = useAccess();
   const { onEdit, onDelete, editPerm, deletePerm, entityName } = options;
 

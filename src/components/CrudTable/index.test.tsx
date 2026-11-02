@@ -2,7 +2,7 @@ import type { ProColumns } from '@ant-design/pro-components';
 import type React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, renderHook } from 'vitest-browser-react';
-import { CRUD_PAGINATION, getCrudColumns, useCrudTable } from './index';
+import { CRUD_PAGINATION, useCrudColumns, useCrudTable } from './index';
 
 /**
  * 共享 CRUD 脚手架的单测。
@@ -43,7 +43,7 @@ function renderColumn(
 }
 
 const OptionColumn: React.FC<{ record: DemoRecord }> = ({ record }) => {
-  const columns = getCrudColumns<DemoRecord>({
+  const columns = useCrudColumns<DemoRecord>({
     onEdit: () => {},
     onDelete: () => {},
     editPerm: EDIT_PERM,

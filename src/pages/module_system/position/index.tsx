@@ -5,7 +5,7 @@ import { Button } from 'antd';
 import type React from 'react';
 import {
   CRUD_PAGINATION,
-  getCrudColumns,
+  useCrudColumns,
   useCrudTable,
 } from '@/components/CrudTable';
 import type {
@@ -61,22 +61,21 @@ const PositionManagement: React.FC = () => {
     { title: '创建时间', dataIndex: 'created_time', width: 180, search: false },
   ];
 
+  const operationColumns = useCrudColumns<PositionOut>({
+    onEdit: crud.openEdit,
+    onDelete: crud.handleDelete,
+    editPerm: 'module_system:position:update',
+    deletePerm: 'module_system:position:delete',
+    entityName: '岗位',
+  });
+
   return (
     <>
       <ProTable<PositionOut>
         headerTitle="岗位管理"
         rowKey="id"
         actionRef={crud.actionRef}
-        columns={[
-          ...columns,
-          ...getCrudColumns<PositionOut>({
-            onEdit: crud.openEdit,
-            onDelete: crud.handleDelete,
-            editPerm: 'module_system:position:update',
-            deletePerm: 'module_system:position:delete',
-            entityName: '岗位',
-          }),
-        ]}
+        columns={[...columns, ...operationColumns]}
         request={requestPositions}
         search={{ labelWidth: 80 }}
         pagination={CRUD_PAGINATION}

@@ -1,10 +1,13 @@
 import { PlusOutlined } from '@ant-design/icons';
-import type { ActionType } from '@ant-design/pro-components';
 import { type ProColumns, ProTable } from '@ant-design/pro-components';
 import { useAccess } from '@umijs/max';
-import { Button, Popconfirm } from 'antd';
+import { Button } from 'antd';
 import type React from 'react';
-import { useRef, useState } from 'react';
+import {
+  CRUD_PAGINATION,
+  useCrudColumns,
+  useCrudTable,
+} from '@/components/CrudTable';
 import type { UserCreateParams, UserOut } from '@/services/api/system/types';
 import {
   createUser,
@@ -20,33 +23,23 @@ const requestUsers = toProTableRequest<UserOut>(listUsers);
 /**
  * 用户管理 —— 后端菜单 route_path=/system/user,component_path=module_system/user/index。
  * 后续新增业务页面按同一范式复制本文件。
+ *
+ * 骨架逻辑(状态机 / 操作列 / 分页)在共享脚手架 @/components/CrudTable 里,
+ * 本页只留「列定义 + service 调用 + 声明式 JSX」。
  */
 const UserManagement: React.FC = () => {
   const access = useAccess();
-  const actionRef = useRef<ActionType | undefined>(undefined);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<UserOut | undefined>(undefined);
 
-  const handleDelete = async (record: UserOut) => {
-    if (!record.id) return;
-    try {
-      await deleteUsers([record.id]);
-      // 成功提示由请求层统一弹(后端信封里的 msg),这里不要再弹一次
-      actionRef.current?.reload();
-    } catch {
-      // 失败提示也由请求层统一弹,这里只需要把异常消化掉
-    }
-  };
-
-  const handleEdit = (record: UserOut) => {
-    setEditing(record);
-    setModalOpen(true);
-  };
-
-  const handleCreate = () => {
-    setEditing(undefined);
-    setModalOpen(true);
-  };
+  const crud = useCrudTable<UserOut, UserCreateParams>({
+    create: createUser,
+    // 更新时后端 UserUpdateSchema 里没有 password(只有创建才要密码),
+    // 所以这里把 password 剥掉,别把明文密码发到更新接口
+    update: async (id, values) => {
+      const { password, ...rest } = values;
+      return updateUser(id, rest);
+    },
+    remove: deleteUsers,
+  });
 
   const columns: ProColumns<UserOut>[] = [
     { title: 'ID', dataIndex: 'id', width: 80, search: false },
@@ -100,82 +93,46 @@ const UserManagement: React.FC = () => {
       width: 180,
       search: false,
     },
-    {
-      title: '操作',
-      valueType: 'option',
-      width: 160,
-      render: (_, record) => [
-        <Button
-          key="edit"
-          type="link"
-          size="small"
-          disabled={!access.hasPermission('module_system:user:update')}
-          onClick={() => handleEdit(record)}
-        >
-          编辑
-        </Button>,
-        <Popconfirm
-          key="delete"
-          title="确认删除该用户?"
-          onConfirm={() => handleDelete(record)}
-          disabled={!access.hasPermission('module_system:user:delete')}
-        >
-          <Button
-            type="link"
-            size="small"
-            danger
-            disabled={!access.hasPermission('module_system:user:delete')}
-          >
-            删除
-          </Button>
-        </Popconfirm>,
-      ],
-    },
   ];
+
+  const operationColumns = useCrudColumns<UserOut>({
+    onEdit: crud.openEdit,
+    onDelete: crud.handleDelete,
+    editPerm: 'module_system:user:update',
+    deletePerm: 'module_system:user:delete',
+    entityName: '用户',
+  });
 
   return (
     <>
       <ProTable<UserOut>
         headerTitle="用户管理"
         rowKey="id"
-        actionRef={actionRef}
-        columns={columns}
+        actionRef={crud.actionRef}
+        columns={[...columns, ...operationColumns]}
         request={requestUsers}
         search={{ labelWidth: 80 }}
-        pagination={{
-          defaultPageSize: 10,
-          pageSizeOptions: [10, 20, 50, 100],
-          showSizeChanger: true,
-        }}
+        pagination={CRUD_PAGINATION}
+        // 错误提示由请求层统一弹,这里只需阻止 ProTable 把 rejection 重新抛出
+        // (ProComponents v3 在 onRequestError 未定义时会 rethrow,产生未捕获的 promise rejection)
+        onRequestError={() => {}}
         toolBarRender={() => [
           <Button
             key="create"
             type="primary"
             icon={<PlusOutlined />}
             disabled={!access.hasPermission('module_system:user:create')}
-            onClick={handleCreate}
+            onClick={crud.openCreate}
           >
             新增
           </Button>,
         ]}
       />
       <UserModalForm
-        open={modalOpen}
-        record={editing}
-        onOpenChange={setModalOpen}
-        onSubmit={async (values: UserCreateParams) => {
-          try {
-            if (editing?.id) {
-              await updateUser(editing.id, values);
-            } else {
-              await createUser(values);
-            }
-            actionRef.current?.reload();
-            return true;
-          } catch {
-            return false;
-          }
-        }}
+        open={crud.modalOpen}
+        record={crud.editing}
+        onOpenChange={crud.closeModal}
+        onSubmit={crud.handleSubmit}
       />
     </>
   );
