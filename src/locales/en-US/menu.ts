@@ -56,4 +56,5 @@ export default {
   'menu.system.param': 'Parameters',
   'menu.system.log': 'Logs',
   'menu.system.dept': 'Departments',
+  'menu.system.role': 'Roles',
 };

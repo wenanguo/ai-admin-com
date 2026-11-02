@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render } from 'vitest-browser-react';
 import DeptTreeSelect from './index';
@@ -42,6 +43,25 @@ const twoLevelTree = [
     children: [{ id: 2, name: '研发部', code: 'rd', children: [] }],
   },
 ];
+
+/**
+ * 多选的受控用法:选中的值要回传给组件,否则选完会被重置。
+ *
+ * (定义在模块层 —— 组件定义在函数体内会让 React 每次渲染都当成新组件)
+ */
+function MultipleSelect({ onChange }: { onChange: (value: number[]) => void }) {
+  const [value, setValue] = useState<number[]>([]);
+  return (
+    <DeptTreeSelect
+      multiple
+      value={value}
+      onChange={(next) => {
+        setValue(next);
+        onChange(next);
+      }}
+    />
+  );
+}
 
 /** 等部门树请求发出(组件在挂载时拉一次) */
 async function waitForTreeLoaded() {
@@ -130,6 +150,25 @@ describe('DeptTreeSelect 部门树选择器', () => {
 
     await vi.waitFor(() => {
       expect(onChange).toHaveBeenCalledWith(2);
+    });
+  });
+
+  it('多选模式:可以选多个部门,onChange 回传 id 数组', async () => {
+    mocks.getDeptTree.mockResolvedValue(envelope(twoLevelTree));
+    const onChange = vi.fn();
+
+    const { getByRole, getByText } = await render(
+      <MultipleSelect onChange={onChange} />,
+    );
+    await waitForTreeLoaded();
+
+    await getByRole('combobox').click();
+    await getByText('总公司').click();
+    // 多选模式下拉不会关闭,可以直接再选一个
+    await getByText('研发部').click();
+
+    await vi.waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith([1, 2]);
     });
   });
 

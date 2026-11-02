@@ -9,7 +9,7 @@ import { isApiResponse } from '@/services/response';
  *
  * 消费者:部门页(选上级部门)、角色页(自定义数据权限)、用户表单(选所属部门)。
  * 组件本身**零业务耦合**:数据源只有一个(GET /system/dept/tree),
- * 交互只有「选一个部门 id」。
+ * 交互只有「选部门 id」(单选或多选)。
  */
 
 /** TreeSelect 的节点类型(从 antd 的 props 里取,不深导入 antd 内部路径) */
@@ -24,11 +24,8 @@ const DEFAULT_HINTS: Record<LoadError, string> = {
   failed: '部门列表加载失败,请稍后重试',
 };
 
-export interface DeptTreeSelectProps {
-  /** 选中的部门 id */
-  value?: number | null;
-  /** 选中变化(清空时回传 undefined) */
-  onChange?: (value: number | undefined) => void;
+/** 单选与多选共有的部分 */
+export interface DeptTreeSelectCommonProps {
   placeholder?: string;
   disabled?: boolean;
   allowClear?: boolean;
@@ -37,6 +34,33 @@ export interface DeptTreeSelectProps {
   /** 加载失败时的行内提示(不传则按失败原因给默认文案) */
   errorHint?: string;
 }
+
+/** 单选:选一个部门 id(部门页选上级部门、用户表单选所属部门) */
+export interface DeptTreeSelectSingleProps extends DeptTreeSelectCommonProps {
+  multiple?: false;
+  /** 选中的部门 id */
+  value?: number | null;
+  /** 选中变化(清空时回传 undefined) */
+  onChange?: (value: number | undefined) => void;
+}
+
+/**
+ * 多选:角色授权的「自定义数据权限」要选多个部门(dept_ids)。
+ *
+ * 与单选形态分开(而不是把 value/onChange 放宽成联合类型),
+ * 是为了让「忘了传 onChange」这类错误停在编译期。
+ */
+export interface DeptTreeSelectMultipleProps extends DeptTreeSelectCommonProps {
+  multiple: true;
+  /** 选中的部门 id 列表 */
+  value?: number[];
+  /** 选中变化(清空时回传空数组) */
+  onChange?: (value: number[]) => void;
+}
+
+export type DeptTreeSelectProps =
+  | DeptTreeSelectSingleProps
+  | DeptTreeSelectMultipleProps;
 
 /**
  * 部门树 → TreeSelect 的 treeData。
@@ -103,15 +127,15 @@ function isForbidden(error: unknown): boolean {
  *   打开用户弹窗时会被后端拒掉 —— 这种「本来就没给的权限」不该弹全局 toast,
  *   组件降级成空下拉 + 一行行内提示就够了(真正的网络错误会走到「加载失败」那句提示)
  */
-export default function DeptTreeSelect({
-  value,
-  onChange,
-  placeholder = '请选择部门',
-  disabled,
-  allowClear = true,
-  excludeId,
-  errorHint,
-}: DeptTreeSelectProps) {
+export default function DeptTreeSelect(props: DeptTreeSelectProps) {
+  const {
+    placeholder = '请选择部门',
+    disabled,
+    allowClear = true,
+    excludeId,
+    errorHint,
+  } = props;
+
   const [depts, setDepts] = useState<DeptOut[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<LoadError | null>(null);
@@ -147,21 +171,36 @@ export default function DeptTreeSelect({
 
   const hint = loadError ? (errorHint ?? DEFAULT_HINTS[loadError]) : null;
 
+  // 单选与多选共有的属性
+  const shared = {
+    placeholder,
+    disabled,
+    allowClear,
+    loading,
+    treeData,
+    treeDefaultExpandAll: true,
+    showSearch: { treeNodeFilterProp: 'title' },
+    style: { width: '100%' },
+  };
+
   return (
     <>
-      <TreeSelect<number | undefined>
-        value={value ?? undefined}
-        // 包一层:对外的契约是「回传部门 id」,不透传 antd 的 labelList / extra
-        onChange={(next) => onChange?.(next)}
-        placeholder={placeholder}
-        disabled={disabled}
-        allowClear={allowClear}
-        loading={loading}
-        treeData={treeData}
-        treeDefaultExpandAll
-        showSearch={{ treeNodeFilterProp: 'title' }}
-        style={{ width: '100%' }}
-      />
+      {props.multiple ? (
+        <TreeSelect<number[]>
+          {...shared}
+          multiple
+          value={props.value ?? []}
+          // 包一层:对外的契约是「回传部门 id 列表」,不透传 antd 的 labelList / extra
+          onChange={(next) => props.onChange?.(next ?? [])}
+        />
+      ) : (
+        <TreeSelect<number | undefined>
+          {...shared}
+          value={props.value ?? undefined}
+          // 包一层:对外的契约是「回传部门 id」,不透传 antd 的 labelList / extra
+          onChange={(next) => props.onChange?.(next)}
+        />
+      )}
       {hint && (
         <Typography.Text
           type="secondary"

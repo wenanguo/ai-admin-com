@@ -89,6 +89,27 @@ export interface RoleOut {
   updated_time?: string | null;
 }
 
+/** 后端 RoleCreateSchema */
+export interface RoleCreateParams {
+  name: string;
+  code: string;
+  order?: number | null;
+  data_scope?: number | null;
+  status?: number;
+  description?: string | null;
+}
+
+/** 后端 RoleUpdateSchema(与创建同形) */
+export type RoleUpdateParams = RoleCreateParams;
+
+/** 后端 RolePermissionSettingSchema(授权入参是四个平级字段) */
+export interface RolePermissionParams {
+  data_scope: number;
+  role_ids: number[];
+  menu_ids: number[];
+  dept_ids: number[];
+}
+
 /** 后端 CaptchaOutSchema */
 export interface CaptchaOut {
   /** 是否启用验证码 */

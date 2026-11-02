@@ -94,6 +94,12 @@ export default [
         icon: 'apartment',
         component: './module_system/dept',
       },
+      {
+        path: '/system/role',
+        name: 'role',
+        icon: 'safetyCertificate',
+        component: './module_system/role',
+      },
     ],
   },
   {

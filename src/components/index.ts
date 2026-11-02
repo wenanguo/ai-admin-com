@@ -23,6 +23,7 @@ export {
 } from './CrudTable';
 export { default as DeptTreeSelect } from './DeptTreeSelect';
 export { default as ErrorBoundary } from './ErrorBoundary';
+export { default as MenuPermissionTree } from './MenuPermissionTree';
 export { default as OfflineBanner } from './OfflineBanner';
 export { default as StandardFormRow } from './StandardFormRow';
 export { default as TagSelect } from './TagSelect';

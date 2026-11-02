@@ -56,4 +56,5 @@ export default {
   'menu.system.param': '参数管理',
   'menu.system.log': '日志管理',
   'menu.system.dept': '部门管理',
+  'menu.system.role': '角色管理',
 };
