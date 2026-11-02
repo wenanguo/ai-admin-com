@@ -207,7 +207,7 @@ export async function listPositions(params: PositionListParams) {
 | 导出 | 用途 | 签名要点 |
 |---|---|---|
 | `useCrudTable<T, V>` | CRUD 状态机：弹窗开关、编辑对象、删除处理、提交处理 | 入参 `{ create(values: V), update(id: number, values: V), remove(ids: number[]) }`；返回 `{ actionRef, modalOpen, editing, openCreate, openEdit, closeModal, handleDelete, handleSubmit }` |
-| `getCrudColumns<T>` | 标准「操作」列（编辑 + 删除，按权限码门控） | 入参 `{ onEdit, onDelete, editPerm, deletePerm, entityName }`；内部自己调 `useAccess()` |
+| `useCrudColumns<T>` | 标准「操作」列（编辑 + 删除，按权限码门控） | 入参 `{ onEdit, onDelete, editPerm, deletePerm, entityName }`；内部自己调 `useAccess()`。<br>**必须以 `use` 开头** —— 它调了 hook，Rules of Hooks 的命名约定要求如此；这样 Biome 的 `useHookAtTopLevel` 规则自然通过，不需要 `biome-ignore` 压制 |
 | `CRUD_PAGINATION` | 分页配置常量 | `{ defaultPageSize: 10, pageSizeOptions: [10,20,50,100], showSizeChanger: true }` |
 
 页面文件长这样：
@@ -228,7 +228,7 @@ const PositionManagement: React.FC = () => {
         headerTitle="岗位管理"
         rowKey="id"
         actionRef={crud.actionRef}
-        columns={[...columns, ...getCrudColumns<PositionOut>({
+        columns={[...columns, ...useCrudColumns<PositionOut>({
           onEdit: crud.openEdit,
           onDelete: crud.handleDelete,
           editPerm: 'module_system:position:update',
@@ -268,7 +268,7 @@ const PositionManagement: React.FC = () => {
 | 用 `toProTableRequest` 适配，不要手写 `request` | 它已经处理了 `page_no`/`page_size` 夹紧（1..100）、空值剔除和信封解包 |
 | `pagination={CRUD_PAGINATION}`，不要自己写分页配置 | `page_size` 上限 100 是后端约束（C2），集中定义避免 8 个页面各写各的 |
 | ProTable 必须传 `onRequestError={() => {}}` | ProComponents v3 在 `onRequestError` 未定义时会把 rejection **重新抛出成 unhandled promise rejection**（控制台噪音 + e2e flake）。错误提示由请求层统一弹（C7），这里只是阻止重抛 |
-| 操作列用 `getCrudColumns` 统一实现 | 权限码写错会**静默禁用**按钮，是最难发现的一类 bug |
+| 操作列用 `useCrudColumns` 统一实现 | 权限码写错会**静默禁用**按钮，是最难发现的一类 bug |
 | 新增/编辑用 `ModalForm`，**编辑时不渲染创建专属字段** | 例：用户表单的密码框 |
 | 页面里**不弹** `message.success/error` | 请求层已统一弹（C7） |
 | 删除用 `Popconfirm` 二次确认 | 不可逆操作 |
@@ -612,7 +612,7 @@ const actionRef = useRef<ActionType>();                        // ❌ TS 报错
 ```ts
 export { default as DeptTreeSelect } from './DeptTreeSelect';
 export { default as MenuPermissionTree } from './MenuPermissionTree';
-export { getCrudColumns, useCrudTable, CRUD_PAGINATION } from './CrudTable';
+export { useCrudColumns, useCrudTable, CRUD_PAGINATION } from './CrudTable';
 ```
 
 > 这不是强制风格问题：`src/components/index.ts` 里已有一条「死代码 `DocLink`」
@@ -621,8 +621,8 @@ export { getCrudColumns, useCrudTable, CRUD_PAGINATION } from './CrudTable';
 ### 8.4 `CrudTable`（共享 CRUD 脚手架）
 
 - 路径：`src/components/CrudTable/index.tsx`
-- 导出：`useCrudTable` / `getCrudColumns` / `CRUD_PAGINATION`（见 §5.3 的签名表）
-- 消费者：**全部 8 个模块页**（只读页 `log` 只用 `getCrudColumns` 或不用）
+- 导出：`useCrudTable` / `useCrudColumns` / `CRUD_PAGINATION`（见 §5.3 的签名表）
+- 消费者：**全部 8 个模块页**（只读页 `log` 只用 `useCrudColumns` 或不用）
 - 自测：`src/components/CrudTable/index.test.tsx` —— 至少覆盖
   「权限码不足时按钮 disabled」「删除时调用 remove(ids)」「提交时按 editing 有无走 create/update」
 

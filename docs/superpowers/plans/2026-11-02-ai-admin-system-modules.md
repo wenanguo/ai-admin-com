@@ -56,7 +56,7 @@ npm run e2e       # Playwright，全绿
 
 - 页面骨架：`src/pages/module_system/position/index.tsx`（Task 1 的产出，已改用共享脚手架）
 - **共享 CRUD 脚手架（必须消费，不要再逐行复制岗位页）**：
-  `src/components/CrudTable/` 的 `useCrudTable` / `getCrudColumns` / `CRUD_PAGINATION`
+  `src/components/CrudTable/` 的 `useCrudTable` / `useCrudColumns` / `CRUD_PAGINATION`
   —— 签名与用法见规格 §5.3（`docs/superpowers/specs/2026-11-02-ai-admin-system-modules-design.md`）
 - 表单弹窗：`src/pages/module_system/user/ModalForm.tsx`
 - service 单测：`src/services/api/system/user.test.ts`
@@ -114,7 +114,7 @@ skills-lock.json                                  修 hash（Task 9）
 README.md                                         更新命令与模块清单（Task 10）
 ```
 
-> **共享 CRUD 脚手架** `src/components/CrudTable/`（`useCrudTable` / `getCrudColumns` /
+> **共享 CRUD 脚手架** `src/components/CrudTable/`（`useCrudTable` / `useCrudColumns` /
 > `CRUD_PAGINATION`）由 **Task 1 的修复轮**产出 —— Task 1 的复审判定「整页复制用户页」
 > 是 plan-mandated 的 Important，裁决是抽逻辑层。**Task 2-8 必须消费它，不要再逐行复制岗位页。**
 > 规格见 `docs/superpowers/specs/2026-11-02-ai-admin-system-modules-design.md` §5.3 与 §8.4。
@@ -125,7 +125,7 @@ README.md                                         更新命令与模块清单（
 
 > **⚠️ 本任务有一轮修复（fix round 1）**：复审判定「整页逐行复制用户页」是
 > plan-mandated 的 Important。裁决（见规格 §5.3、§8.4）：抽出共享 CRUD 脚手架
-> `src/components/CrudTable/`（`useCrudTable` / `getCrudColumns` / `CRUD_PAGINATION`），
+> `src/components/CrudTable/`（`useCrudTable` / `useCrudColumns` / `CRUD_PAGINATION`），
 > 并把岗位页改成消费它。**Task 2-8 直接消费该脚手架，不要再逐行复制岗位页。**
 
 这一批的目的是把「一个模块 = 六件东西」跑通并固化成模板。后端契约最简单，代价最低。
@@ -417,7 +417,7 @@ feat(position): 新增岗位管理页
 
 **Interfaces:**
 - Consumes: Task 1 产出的共享脚手架 `src/components/CrudTable/`
-  （`useCrudTable` / `getCrudColumns` / `CRUD_PAGINATION`，用法见规格 §5.3）
+  （`useCrudTable` / `useCrudColumns` / `CRUD_PAGINATION`，用法见规格 §5.3）
 - Produces:
   ```ts
   // src/services/api/system/param.ts
@@ -500,7 +500,7 @@ const crud = useCrudTable<ParamOut, ParamCreateParams>({
   create: createParam, update: updateParam, remove: deleteParams,
 });
 const columns: ProColumns<ParamOut>[] = [ /* ...只放数据列... */ ];
-// ProTable 上：columns={[...columns, ...getCrudColumns<ParamOut>({...})]}、
+// ProTable 上：columns={[...columns, ...useCrudColumns<ParamOut>({...})]}、
 // pagination={CRUD_PAGINATION}、onRequestError={() => {}}、
 // actionRef={crud.actionRef}；弹窗用 crud.modalOpen / crud.editing / crud.closeModal / crud.handleSubmit
 ```
