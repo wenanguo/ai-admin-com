@@ -43,20 +43,20 @@ describe('system notice service', () => {
   });
 
   it('creates a notice', async () => {
-    await createNotice({ notice_title: '系统维护', notice_type: '公告' });
+    await createNotice({ notice_title: '系统维护', notice_type: '1' });
 
     expect(request).toHaveBeenCalledWith('/system/notice/create', {
       method: 'POST',
-      data: { notice_title: '系统维护', notice_type: '公告' },
+      data: { notice_title: '系统维护', notice_type: '1' },
     });
   });
 
   it('updates a notice by id', async () => {
-    await updateNotice(7, { notice_title: '系统维护', notice_type: '公告' });
+    await updateNotice(7, { notice_title: '系统维护', notice_type: '2' });
 
     expect(request).toHaveBeenCalledWith('/system/notice/update/7', {
       method: 'PUT',
-      data: { notice_title: '系统维护', notice_type: '公告' },
+      data: { notice_title: '系统维护', notice_type: '2' },
     });
   });
 

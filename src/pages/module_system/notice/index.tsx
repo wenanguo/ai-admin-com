@@ -50,8 +50,13 @@ const NoticeManagement: React.FC = () => {
       title: '公告类型',
       dataIndex: 'notice_type',
       width: 120,
-      // 后端 notice_type 是普通字符串(没有枚举)⇒ 搜索框用自由文本,
-      // 不做成受限下拉,否则搜不到不在候选列表里的类型
+      // 后端 notice_type 只有两个值:'1'(通知)/ '2'(公告) ⇒ 做成受限枚举。
+      // valueEnum 一举两得:表格里把线上的值渲染成中文,
+      // 搜索框里变成同值的下拉(提交给后端的也是 '1' / '2')。
+      valueEnum: {
+        '1': { text: '通知' },
+        '2': { text: '公告' },
+      },
     },
     {
       title: '状态',

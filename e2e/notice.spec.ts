@@ -16,7 +16,8 @@ import {
  * - RF1:后端业务错误(HTTP 500 + 信封)由请求层转成 BizError,弹的是后端的 msg
  * - RF3:后端返回空列表时表格显示空状态,不白屏、不报错
  * - 按钮级权限来自后端菜单树里的 type=3 节点(权限码是 module_system:notice:*)
- * - 公告类型是「可配置下拉」:默认给几个常见值,管理员也能输入自定义值
+ * - 公告类型是**受限枚举**:只有「通知」「公告」两个候选,
+ *   且提交给后端的是线上的值 '1' / '2'(后端只认这两个),不是中文标签
  *
  * 菜单树 / 登录态 / 业务错误信封都由 ./helpers 提供 —— helpers 不认识任何具体模块,
  * 下一个模块的 spec 直接复用,不用再抄一遍夹具。
@@ -68,7 +69,8 @@ const noticeListResponse = {
       {
         id: 1,
         notice_title: '系统维护通知',
-        notice_type: '公告',
+        // 后端返回的是**线上的值** '1'(通知)⇒ 表格里要渲染成中文标签
+        notice_type: '1',
         notice_content: '<p>今晚 23:00 进行系统维护</p>',
         status: 0,
         description: '运维公告',
@@ -123,7 +125,8 @@ test.describe('公告管理页', () => {
     // 列顺序:ID / 公告标题 / 公告类型 / 状态 / 创建时间
     const cells = page.locator('.ant-table-tbody tr.ant-table-row td');
     await expect(cells.nth(1)).toHaveText('系统维护通知');
-    await expect(cells.nth(2)).toHaveText('公告');
+    // 后端给的是 '1' ⇒ 表格渲染的是中文标签「通知」,不是原始的 '1'
+    await expect(cells.nth(2)).toHaveText('通知');
     await expect(cells.nth(3)).toHaveText('正常');
 
     // 分页参数用后端约定的 page_no / page_size
@@ -199,7 +202,26 @@ test.describe('公告管理页', () => {
     });
   });
 
-  test('公告类型是可配置下拉,管理员能输入自定义值', async ({ page }) => {
+  test('公告类型只有通知/公告两个候选,提交的是线上的值 "1"', async ({
+    page,
+  }) => {
+    const createRequests: { body: unknown }[] = [];
+
+    await page.route('**/api/v1/system/notice/create**', async (route) => {
+      createRequests.push({ body: route.request().postDataJSON() });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: '创建公告成功',
+          data: null,
+          status_code: 200,
+          success: true,
+        }),
+      });
+    });
+
     await setupModulePage(page, {
       menus: [noticeMenu()],
       listUrl: NOTICE_LIST_URL,
@@ -213,26 +235,68 @@ test.describe('公告管理页', () => {
     const typeFormItem = page.locator('.ant-modal .ant-form-item', {
       hasText: '公告类型',
     });
-
-    // 默认候选值:通知 / 公告 / 提醒
     const typeInput = typeFormItem.locator('input[role="combobox"]');
+
+    // 候选恰好是通知 / 公告 两个(后端只认 '1' / '2')
     await typeInput.click();
     const dropdown = page.locator('.ant-select-dropdown:visible');
     await expect(dropdown.locator('.ant-select-item-option')).toHaveText([
       '通知',
       '公告',
-      '提醒',
     ]);
 
-    // 输入一个不在候选列表里的值 → 变成候选项,选中后原样进入表单
-    await typeInput.fill('自定义类型');
-    await expect(dropdown.locator('.ant-select-item-option')).toHaveText([
-      '自定义类型',
-    ]);
-    await dropdown.locator('.ant-select-item-option').click();
+    // 不是自由文本框:输入框只读,管理员填不了自定义值(填了后端必然 422)
+    await expect(typeInput).toHaveJSProperty('readOnly', true);
+
+    // 选中「通知」⇒ 表单里显示中文标签
+    await dropdown
+      .locator('.ant-select-item-option', { hasText: '通知' })
+      .click();
     await expect(typeFormItem.locator('.ant-select-content')).toHaveText(
-      '自定义类型',
+      '通知',
     );
+
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '公告标题' })
+      .locator('input')
+      .fill('系统升级通知');
+
+    await page.locator('.ant-modal-footer button.ant-btn-primary').click();
+
+    // 提交出去的是**线上的值 '1'**,不是中文标签「通知」
+    await expect.poll(() => createRequests.length).toBe(1);
+    expect(createRequests[0].body).toMatchObject({
+      notice_title: '系统升级通知',
+      notice_type: '1',
+    });
+  });
+
+  test('按公告类型筛选时提交的是线上的值 "1"', async ({ page }) => {
+    const listRequests = await setupModulePage(page, {
+      menus: [noticeMenu()],
+      listUrl: NOTICE_LIST_URL,
+      listBody: noticeListResponse,
+    });
+
+    await gotoModulePage(page, NOTICE_PAGE_PATH, menuItem(page));
+
+    // 搜索栏的「公告类型」是同值的下拉(不是自由文本)
+    const typeSearch = page
+      .locator('.ant-form-item', { hasText: '公告类型' })
+      .locator('input[role="combobox"]');
+    await typeSearch.click();
+    await page
+      .locator('.ant-select-dropdown:visible .ant-select-item-option')
+      .filter({ hasText: '通知' })
+      .click();
+
+    // ProTable 的搜索表单要点了「查询」才发请求
+    await page.locator('.ant-pro-table-search button.ant-btn-primary').click();
+
+    // 筛选条件提交的是线上的值 '1'
+    await expect
+      .poll(() => listRequests[listRequests.length - 1] ?? '')
+      .toContain('notice_type=1');
   });
 
   test('新增公告时表单值原样提交到 create 接口', async ({ page }) => {
@@ -279,7 +343,7 @@ test.describe('公告管理页', () => {
     await typeInput.click();
     await page
       .locator('.ant-select-dropdown:visible .ant-select-item-option')
-      .filter({ hasText: '通知' })
+      .filter({ hasText: '公告' })
       .click();
 
     await page.locator('.ant-modal-footer button.ant-btn-primary').click();
@@ -289,7 +353,7 @@ test.describe('公告管理页', () => {
     expect(createRequests[0].url).toContain('/system/notice/create');
     expect(createRequests[0].body).toMatchObject({
       notice_title: '系统升级通知',
-      notice_type: '通知',
+      notice_type: '2',
     });
   });
 });
