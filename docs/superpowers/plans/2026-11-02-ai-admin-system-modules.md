@@ -1386,14 +1386,15 @@ feat(dict): 新增字典管理页
     description?: string | null;
     created_time?: string | null;
   }
+  export type NoticeType = '1' | '2';   // 后端只接受这两个值(通知/公告)
   export type NoticeListParams = Partial<PageQuery> & {
     notice_title?: string;
-    notice_type?: string;
+    notice_type?: NoticeType;
     status?: number;
   };
   export type NoticeCreateParams = {
     notice_title: string;
-    notice_type: string;
+    notice_type: NoticeType;
     notice_content?: string | null;
     status?: number;
     description?: string | null;
