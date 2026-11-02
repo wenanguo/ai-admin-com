@@ -19,6 +19,12 @@
 - **C1** 业务错误走 HTTP 500 + 信封 `{ code, msg, data, status_code, success }`；请求层统一转 `BizError`，调用方读 `error.info.msg`。成功判定 `code === 0`。
 - **C2** 分页参数是 `page_no`（≥1）/ `page_size`（1..100）；列表返回体是 `PageResult<T> = { items, total, page_no, page_size, has_next }` —— 字段名是 **`items`**，不是 `list`。
 - **C3** 删除类接口的请求体是**裸数组** `[1, 2]`，不是 `{ ids: [...] }`。
+  > **例外（2026-11-02 核实并更正）**：`DELETE /system/log/operation/delete` 用的是
+  > 后端的 `BatchDelete` 模型（`backend/app/core/base_schema.py:85`），请求体是
+  > **`{ ids: [1, 2] }`**。同模块的 `DELETE /system/log/login/delete` 才是裸数组。
+  > 已逐个核实 `module_system` 下其余全部删除接口（dept / position / param / role /
+  > dict type / dict data / notice / ticket / user）——**都是裸数组**，
+  > 操作日志是**唯一**的例外。
 - **C4** 批量启停接口一律是 **PATCH**（不是 PUT），请求体 `{ ids: number[], status: number }`。
 - **C5** 前端路由 `path` 必须等于菜单 `route_path` 拼上父路径；否则菜单项被 `src/menu/adapter.ts` 跳过。
 - **C6** 菜单图标取**前端路由表**的 antd 图标名；后端下发的 `ri:xxx` ProLayout 认不出来。

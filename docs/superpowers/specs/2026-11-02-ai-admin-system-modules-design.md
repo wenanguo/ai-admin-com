@@ -422,16 +422,28 @@ const actionRef = useRef<ActionType>();                        // ❌ TS 报错
 |---|---|---|
 | GET | `/system/log/login/list` | 登录日志列表 |
 | GET | `/system/log/login/detail/{id}` | 登录日志详情 |
-| DELETE | `/system/log/login/delete` | 删除（裸数组） |
+| DELETE | `/system/log/login/delete` | 删除（**裸数组**） |
 | GET | `/system/log/operation/list` | 操作日志列表 |
 | GET | `/system/log/operation/detail/{id}` | 操作日志详情 |
-| DELETE | `/system/log/operation/delete` | 删除（裸数组） |
+| DELETE | `/system/log/operation/delete` | 删除（**`{ ids: [...] }`**，不是裸数组） |
+
+> ⚠️ **日志模块是「删除用裸数组」的唯一例外**（2026-11-02 核实）：
+> `DELETE /system/log/operation/delete` 的入参是后端的 `BatchDelete` 模型
+> （`backend/app/core/base_schema.py:85`）⇒ 请求体是 `{ ids: [1,2] }`；
+> 而同模块的 `DELETE /system/log/login/delete` 入参是
+> `ids: Annotated[list[int], Body(...)]` ⇒ 才是裸数组。
+> 已逐个核实 `module_system` 下其余全部删除接口（dept / position / param / role /
+> dict type / dict data / notice / ticket / user）——**都是裸数组**。
 
 - 页面形态：**两个 Tab**（登录日志 / 操作日志），共用一个页面组件，按 Tab 切 service 函数。
 - 登录日志搜索项：`username`、`status`
 - 操作日志搜索项：`username`、`status`、`request_path`、`request_method`
 - 权限码：`module_system:login_log:{query,delete}`、`module_system:log:{query,delete}`
   > **命名不一致是真的**：登录日志是 `login_log`，操作日志是 `log`。实现时不要想当然统一。
+- **操作日志的「用户名」不能作为搜索项**：后端操作日志模型**没有 `username` 列**
+  （查询参数里有，但模型里没有），传过去会 500。只保留后端模型上真实存在的搜索字段。
+- **列表与详情的字段集不同**：操作日志的 JSON 字段是 `request_payload` 与 `response_json`，
+  **列表接口不返回它们** ⇒ 详情抽屉要另调 `/log/operation/detail/{id}`。
 - 详情用 `Drawer`（只读展示 + JSON 化），不用 ModalForm。
 
 ### 7.4 部门 dept（第 4 批）
