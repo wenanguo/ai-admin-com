@@ -445,6 +445,10 @@ const actionRef = useRef<ActionType>();                        // ❌ TS 报错
 - **列表与详情的字段集不同**：操作日志的 JSON 字段是 `request_payload` 与 `response_json`，
   **列表接口不返回它们** ⇒ 详情抽屉要另调 `/log/operation/detail/{id}`。
 - 详情用 `Drawer`（只读展示 + JSON 化），不用 ModalForm。
+- **两个 tab 都要有详情抽屉**：登录日志调 `/log/login/detail/{id}`，
+  操作日志调 `/log/operation/detail/{id}`（列表接口不返回 `request_payload` / `response_json`）。
+- **没有**「新增」按钮，**没有**编辑按钮；只有「删除」按钮（用 `Popconfirm`）。
+- 两个 tab 的删除请求体形状**不同**：登录日志是裸数组，操作日志是 `{ ids: [...] }`。
 
 ### 7.4 部门 dept（第 4 批）
 
@@ -635,10 +639,12 @@ export { useCrudColumns, useCrudTable, CRUD_PAGINATION } from './CrudTable';
 ### 8.4 `CrudTable`（共享 CRUD 脚手架）
 
 - 路径：`src/components/CrudTable/index.tsx`
-- 导出：`useCrudTable` / `useCrudColumns` / `CRUD_PAGINATION`（见 §5.3 的签名表）
-- 消费者：**全部 8 个模块页**（只读页 `log` 只用 `useCrudColumns` 或不用）
+- 导出：`useCrudTable` / `useCrudColumns` / `useDeleteHandler` / `CRUD_PAGINATION`（见 §5.3 的签名表）
+- 消费者：**全部 8 个模块页**（只读页 `log` 用 `useCrudColumns` 的「只有删除」形态 +
+  `useDeleteHandler`，不用 `useCrudTable`）
 - 自测：`src/components/CrudTable/index.test.tsx` —— 至少覆盖
-  「权限码不足时按钮 disabled」「删除时调用 remove(ids)」「提交时按 editing 有无走 create/update」
+  「权限码不足时按钮 disabled」「省略 `onEdit` 时不渲染编辑按钮」「删除时调用 remove(ids)」
+  「提交时按 editing 有无走 create/update」
 
 ### 8.5 用户表单的连带改动
 
