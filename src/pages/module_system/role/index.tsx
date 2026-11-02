@@ -125,13 +125,14 @@ const RoleManagement: React.FC = () => {
   ];
 
   /**
-   * 操作列:编辑 / 授权 / 删除。
+   * 操作列:编辑 / 删除 / 授权。
    *
    * 「编辑 + 删除」来自共享脚手架的 `useCrudColumns` ——
    * 权限码写错会**静默禁用**按钮,是最难发现的一类 bug,所以这段只有一份实现。
    *
    * 角色页多一个「授权」(PUT /system/role/permission),
-   * 这里**包住脚手架列的 render**把它追加进去:
+   * 这里**包住脚手架列的 render**把它**追加在最后**:
+   * 实际渲染顺序是 编辑 → 删除 → 授权,
    * 按钮与权限门控仍然来自脚手架,页面只多出自己的那一个入口。
    */
   const operationColumns = useCrudColumns<RoleOut>({
@@ -146,7 +147,7 @@ const RoleManagement: React.FC = () => {
     ProColumns<RoleOut>
   >((column) => ({
     ...column,
-    // 编辑 / 授权 / 删除 三个入口
+    // 编辑 / 删除 / 授权 三个入口(授权追加在脚手架那组之后)
     width: 180,
     render: (dom, record, index, action, schema) => {
       const rendered = column.render?.(dom, record, index, action, schema);
