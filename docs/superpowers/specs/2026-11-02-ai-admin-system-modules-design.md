@@ -564,9 +564,13 @@ const actionRef = useRef<ActionType>();                        // ❌ TS 报错
 - 搜索项：`notice_title`、`notice_type`、`status`
 - 表单字段：`notice_title`(必填)、`notice_type`(必填)、`notice_content`(富文本)、`status`、`description`
 - 权限码：`module_system:notice:{query,detail,create,update,delete,patch,export}`
-- `notice_type` 后端是**普通字符串**，没有枚举。
-  本轮用**可配置的下拉**（先给「通知/公告/提醒」三个常见值，允许管理员输入），
-  不写死成受限枚举。
+- `notice_type` 后端**不是自由字符串**,而是**受限枚举**(2026-11-02 核实):
+  `backend/app/api/v1/module_system/notice/schema.py:22` 是
+  `notice_type: str = Field(..., max_length=1, description="公告类型(1:通知 2:公告)")`,
+  `:27-31` 的 `_validate_notice_type` **只接受 `{"1", "2"}`**,数据库列也是 `String(1)`
+  (`model.py:19`)。⇒ 前端**必须提交 `"1"` / `"2"`**,界面显示「通知 / 公告」。
+  查询参数 `NoticeQueryParam.notice_type` 过滤的也是同一组值。
+  ⚠️ 早期版本的本规格写成「普通字符串、无枚举」,那是**错的** —— 以本条为准。
 - `notice_content` 用富文本编辑器。**本轮用 antd `Input.TextArea`**
   （不引入新依赖）。若后续要富文本，单独一轮换。
 - **铃铛面板相关接口（`/panel`、`/read`、`/read-all`、`/unread-count`、`/available`）本轮不做** ——

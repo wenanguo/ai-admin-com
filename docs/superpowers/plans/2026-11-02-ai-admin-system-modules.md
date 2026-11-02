@@ -1446,8 +1446,11 @@ npx vitest run src/services/api/system/notice.test.ts
 
 表单字段：
 - `notice_title`（`ProFormText`，必填）
-- `notice_type`（`ProFormSelect`，**可配置下拉**：默认给「通知 / 公告 / 提醒」三项，
-  且 `showSearch` + `allowClear`，让管理员能输入自定义值）
+- `notice_type`（`ProFormSelect`，**固定两项**：通知 → `"1"`、公告 → `"2"`）。
+  后端 `_validate_notice_type` 只接受 `{"1","2"}`（`notice/schema.py:27-31`），
+  **提交的是线上的值 `"1"`/`"2"`，不是界面的中文标签**；
+  列表列也要把 `"1"`/`"2"` 映射回「通知 / 公告」显示。**不提供自定义值**——
+  自由输入会造出一个必然 422 的请求。
 - `notice_content`（`ProFormTextArea`，**本轮用普通多行文本框，不引富文本依赖**）
 - `status`（`ProFormSelect`，正常/禁用）
 - `description`（`ProFormTextArea`）
