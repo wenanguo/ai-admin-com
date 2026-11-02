@@ -59,4 +59,5 @@ export default {
   'menu.system.role': '角色管理',
   'menu.system.dict': '字典管理',
   'menu.system.notice': '公告管理',
+  'menu.system.ticket': '工单管理',
 };

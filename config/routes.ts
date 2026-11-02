@@ -112,6 +112,12 @@ export default [
         icon: 'notification',
         component: './module_system/notice',
       },
+      {
+        path: '/system/ticket',
+        name: 'ticket',
+        icon: 'customerService',
+        component: './module_system/ticket',
+      },
     ],
   },
   {

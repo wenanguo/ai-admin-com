@@ -59,4 +59,5 @@ export default {
   'menu.system.role': 'Roles',
   'menu.system.dict': 'Dictionaries',
   'menu.system.notice': 'Notices',
+  'menu.system.ticket': 'Tickets',
 };
