@@ -11,8 +11,20 @@ import { getCurrentUser } from '@/services/api/system/user';
  * `/platform/menu/tree` 的 response_model 是 `list[MenuOutSchema]`,
  * 没有 children 字段,拿到的是扁平列表,不能当树源。
  *
- * 半选的父节点也要提交给后端(后端要的是「勾选 + 半选」的并集),
- * 所以 `onChange` 回传的是两者合并去重后的菜单 id。
+ * ## 「全选」与「半选」必须是两个集合
+ *
+ * - **全选**:整棵子树都被选中的节点。**只有它**能进 antd Tree 的 `checkedKeys`。
+ * - **半选**:父节点只被选中了一部分(孩子没选全)。
+ *
+ * 为什么不能混:rc-tree 拿到受控的 `checkedKeys` 会跑 `conductCheck`
+ * (见 `@rc-component/tree/lib/utils/conductUtil.js` 的 `fillConductCheck`),
+ * 它的第一步是「勾中的父节点 ⇒ 它的**所有**后代都算勾中」。
+ * 把半选的父节点混进 `checkedKeys`,用户**没勾**的兄弟节点会一起变成勾选态,
+ * 下一次交互就会把没授权的菜单一起提交给后端。
+ *
+ * 所以这里的约定是:
+ * - 提交给后端的是「全选 ∪ 半选」的并集(`onChange` 回传的就是它);
+ * - 喂回 Tree 的只有「全选」。
  */
 export interface MenuPermissionTreeProps {
   /** 选中的菜单 id(勾选与半选的并集) */
@@ -22,10 +34,18 @@ export interface MenuPermissionTreeProps {
   disabled?: boolean;
 }
 
-/** 菜单树:antd 的 treeData + 树里所有的菜单 id */
+/** 树结构节点:推导「全选 / 半选」用 */
+interface MenuNode {
+  id: number;
+  children: MenuNode[];
+}
+
+/** 菜单树:antd 的 treeData + 树里所有的菜单 id + 树结构 */
 interface MenuTree {
   treeData: TreeDataNode[];
   ids: number[];
+  /** 树结构(推导勾选态用) */
+  nodes: MenuNode[];
 }
 
 /**
@@ -37,6 +57,7 @@ interface MenuTree {
 function buildMenuTree(nodes: BackendMenu[]): MenuTree {
   const treeData: TreeDataNode[] = [];
   const ids: number[] = [];
+  const structure: MenuNode[] = [];
 
   for (const node of nodes) {
     // 没有 id 的节点没法当选项(选中值是菜单 id),它的子树也一起不出现
@@ -44,6 +65,7 @@ function buildMenuTree(nodes: BackendMenu[]): MenuTree {
 
     const children = buildMenuTree(node.children ?? []);
     ids.push(node.id, ...children.ids);
+    structure.push({ id: node.id, children: children.nodes });
     treeData.push({
       key: node.id,
       title: node.title || node.name || String(node.id),
@@ -51,7 +73,38 @@ function buildMenuTree(nodes: BackendMenu[]): MenuTree {
     });
   }
 
-  return { treeData, ids };
+  return { treeData, ids, nodes: structure };
+}
+
+/**
+ * 从「全选 ∪ 半选」的并集里,推导出哪些节点是**全选**的。
+ *
+ * 规则与 rc-tree 的联动语义一致:
+ * - 叶子节点:在集合里就是全选
+ * - 有孩子的节点:自己在集合里**且**孩子全是全选 ⇒ 整棵子树都被选中;
+ *   否则只是半选(有孩子被选中,但没选全)
+ *
+ * 「孩子全选」是递归判断,所以只看直接孩子就够了。
+ *
+ * 注意这里是**自底向上**算的:不会把父节点的勾选状态**向下**传播 ——
+ * 向下传播正是 rc-tree 的 `conductCheck` 会做的事,也是本组件要绕开的坑。
+ */
+function deriveCheckedKeys(merged: number[], nodes: MenuNode[]): number[] {
+  const selected = new Set(merged);
+  const checked: number[] = [];
+
+  // 返回这一层每个节点是否「全选」
+  const walk = (list: MenuNode[]): boolean[] =>
+    list.map((node) => {
+      const childrenChecked = walk(node.children);
+      const isChecked =
+        selected.has(node.id) && childrenChecked.every((child) => child);
+      if (isChecked) checked.push(node.id);
+      return isChecked;
+    });
+
+  walk(nodes);
+  return checked;
 }
 
 export default function MenuPermissionTree({
@@ -61,7 +114,8 @@ export default function MenuPermissionTree({
 }: MenuPermissionTreeProps) {
   const [menus, setMenus] = useState<BackendMenu[]>([]);
   // 受控时用外部的 value;没传 value 时用自己的状态(否则勾选不会有任何反馈)
-  const [internalChecked, setInternalChecked] = useState<number[]>([]);
+  // 存的是「全选 ∪ 半选」的并集 —— 树里真正勾选的只有「全选」那部分
+  const [internalValue, setInternalValue] = useState<number[]>([]);
   const [expandedKeys, setExpandedKeys] = useState<number[]>([]);
 
   useEffect(() => {
@@ -83,7 +137,7 @@ export default function MenuPermissionTree({
     };
   }, []);
 
-  const { treeData, ids } = useMemo(() => buildMenuTree(menus), [menus]);
+  const { treeData, ids, nodes } = useMemo(() => buildMenuTree(menus), [menus]);
 
   // 菜单是异步来的,defaultExpandAll 只在挂载那一刻生效(那时还没有数据),
   // 所以默认展开要用受控的 expandedKeys
@@ -91,11 +145,14 @@ export default function MenuPermissionTree({
     setExpandedKeys(ids);
   }, [ids]);
 
-  const knownIds = useMemo(() => new Set(ids), [ids]);
-  // 过滤掉树里没有的 id:数据还没加载完时传进去会让 rc-tree 报
-  // "Tree missing follow keys" 的警告
-  const checkedKeys = (value ?? internalChecked).filter((id) =>
-    knownIds.has(id),
+  // 「全选 ∪ 半选」的并集 —— 提交给后端的就是它
+  const merged = value ?? internalValue;
+
+  // 喂回 Tree 的只有「全选」:半选的父节点混进去,
+  // rc-tree 的 conductCheck 会把用户没勾的兄弟节点也变成勾选态
+  const checkedKeys = useMemo(
+    () => deriveCheckedKeys(merged, nodes),
+    [merged, nodes],
   );
 
   const handleCheck: NonNullable<TreeProps['onCheck']> = (checked, info) => {
@@ -106,12 +163,12 @@ export default function MenuPermissionTree({
       ? (info.halfCheckedKeys ?? [])
       : checked.halfChecked;
 
-    const merged = Array.from(
+    const nextMerged = Array.from(
       new Set<Key>([...checkedIds, ...halfCheckedIds]),
     ).filter((key): key is number => typeof key === 'number');
 
-    setInternalChecked(merged);
-    onChange?.(merged);
+    setInternalValue(nextMerged);
+    onChange?.(nextMerged);
   };
 
   return (

@@ -5,12 +5,15 @@ import MenuPermissionTree from './index';
 /**
  * 菜单权限树的单测。
  *
- * 钉住四件事:
+ * 钉住五件事:
  * - 数据源是 `getCurrentUser()` 返回的 **menus 树**(带 children),
  *   不是 /platform/menu/tree 的扁平列表 —— 父子两级都要渲染出来
  * - 空菜单树不抛异常(RF5:后端可能一个菜单都没下发)
  * - 受控值:传入 value=[3] 时对应节点是勾选态
  * - 勾选子节点时,半选的父节点也要一起回传(后端要的是「勾选 + 半选」的并集)
+ * - **半选的父节点不能进 Tree 的 checkedKeys**:rc-tree 的 conductCheck
+ *   会把「勾中的父节点」的所有后代都算勾中,没勾的兄弟节点会被一起勾上,
+ *   下一次交互就把没授权的菜单提交出去了
  */
 
 const mocks = vi.hoisted(() => ({
@@ -37,6 +40,9 @@ function envelope(data: unknown) {
  *
  * 「角色管理」故意做成叶子:antd 的树是联动的(父节点要全选才算勾选),
  * 父节点只回传自己时显示的是**半选**态。
+ *
+ * 系统监控(目录) → 操作日志 / 登录日志 —— 这个父节点有**两个孩子**,
+ * 专门用来钉住 conductCheck 的坑(见下面的回归用例)。
  */
 const menuTree = [
   {
@@ -90,6 +96,46 @@ const menuTree = [
             children: null,
           },
         ],
+      },
+    ],
+  },
+  {
+    id: 5,
+    parent_id: null,
+    name: '系统监控',
+    type: 1,
+    order: 2,
+    route_path: '/monitor',
+    title: '系统监控',
+    permission: null,
+    status: 0,
+    hidden: false,
+    children: [
+      {
+        id: 6,
+        parent_id: 5,
+        name: '操作日志',
+        type: 2,
+        order: 1,
+        route_path: 'operation-log',
+        title: '操作日志',
+        permission: 'module_system:log:query',
+        status: 0,
+        hidden: false,
+        children: null,
+      },
+      {
+        id: 7,
+        parent_id: 5,
+        name: '登录日志',
+        type: 2,
+        order: 2,
+        route_path: 'login-log',
+        title: '登录日志',
+        permission: 'module_system:login_log:query',
+        status: 0,
+        hidden: false,
+        children: null,
       },
     ],
   },
@@ -164,5 +210,39 @@ describe('MenuPermissionTree 菜单权限树', () => {
     expect(selected).toContain(4);
     // 去重
     expect(new Set(selected).size).toBe(selected.length);
+  });
+
+  it('父节点有两个孩子时,勾一个不会把兄弟也勾上', async () => {
+    const onChange = vi.fn();
+
+    const { getByRole } = await render(
+      <MenuPermissionTree onChange={onChange} />,
+    );
+    await waitForMenusLoaded();
+
+    // 「系统监控」的两个孩子:操作日志 / 登录日志
+    await getByRole('checkbox', { name: '操作日志' }).click();
+
+    await vi.waitFor(() => {
+      expect(onChange).toHaveBeenCalled();
+    });
+
+    // 兄弟节点没有被勾上
+    // (半选的父节点混进 checkedKeys 时,rc-tree 的 conductCheck
+    //  会把它**所有**的后代都算勾中 —— 兄弟节点会被一起勾上)
+    await expect
+      .element(getByRole('treeitem', { name: '登录日志' }))
+      .toHaveAttribute('aria-checked', 'false');
+
+    // 再点一个别的节点:提交出去的 id 集合里也不该有那个兄弟
+    await getByRole('checkbox', { name: '角色管理' }).click();
+
+    await vi.waitFor(() => {
+      expect(onChange).toHaveBeenCalledTimes(2);
+    });
+
+    const submitted = onChange.mock.calls[1]?.[0] as number[];
+    expect(submitted).toContain(6);
+    expect(submitted).not.toContain(7);
   });
 });

@@ -1,10 +1,14 @@
 import { PlusOutlined } from '@ant-design/icons';
 import { type ProColumns, ProTable } from '@ant-design/pro-components';
 import { useAccess } from '@umijs/max';
-import { Button, Popconfirm } from 'antd';
+import { Button } from 'antd';
 import type React from 'react';
 import { useCallback, useState } from 'react';
-import { CRUD_PAGINATION, useCrudTable } from '@/components/CrudTable';
+import {
+  CRUD_PAGINATION,
+  useCrudColumns,
+  useCrudTable,
+} from '@/components/CrudTable';
 import {
   createRole,
   deleteRoles,
@@ -17,6 +21,37 @@ import RoleModalForm, { DATA_SCOPE_OPTIONS } from './ModalForm';
 import RolePermissionModal from './PermissionModal';
 
 const requestRoles = toProTableRequest<RoleOut>(listRoles);
+
+/**
+ * ProColumns 的 render 允许返回 `{ children, props }`(ProTable 合并单元格用的形态)。
+ */
+interface MergedCell {
+  children: React.ReactNode;
+  props: unknown;
+}
+
+/** 是不是合并单元格形态 */
+function isMergedCell(value: unknown): value is MergedCell {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'children' in value &&
+    'props' in value
+  );
+}
+
+/**
+ * ReactNode 摊平成数组。
+ *
+ * 脚手架操作列的 render 返回的是**一组按钮**(数组),
+ * 本模块要在这一组后面追加自己的入口,先摊平再拼。
+ */
+function toNodeArray(value: React.ReactNode | MergedCell): React.ReactNode[] {
+  if (Array.isArray(value)) return value;
+  if (value === null || value === undefined) return [];
+  if (isMergedCell(value)) return [value.children];
+  return [value];
+}
 
 /**
  * 角色管理 —— 后端菜单 route_path=/system/role,component_path=module_system/role。
@@ -92,26 +127,31 @@ const RoleManagement: React.FC = () => {
   /**
    * 操作列:编辑 / 授权 / 删除。
    *
-   * 共享脚手架的 useCrudColumns 表达的是「编辑 + 删除」两个入口,
-   * 角色页多一个「授权」(PUT /system/role/permission)——
-   * 扩展脚手架不在本任务范围内,所以这里自己写这一列,
-   * 但权限门控与删除二次确认仍然照脚手架的写法来。
+   * 「编辑 + 删除」来自共享脚手架的 `useCrudColumns` ——
+   * 权限码写错会**静默禁用**按钮,是最难发现的一类 bug,所以这段只有一份实现。
+   *
+   * 角色页多一个「授权」(PUT /system/role/permission),
+   * 这里**包住脚手架列的 render**把它追加进去:
+   * 按钮与权限门控仍然来自脚手架,页面只多出自己的那一个入口。
    */
-  const operationColumns: ProColumns<RoleOut>[] = [
-    {
-      title: '操作',
-      valueType: 'option',
-      width: 180,
-      render: (_, record) => [
-        <Button
-          key="edit"
-          type="link"
-          size="small"
-          disabled={!access.hasPermission('module_system:role:update')}
-          onClick={() => crud.openEdit(record)}
-        >
-          编辑
-        </Button>,
+  const operationColumns = useCrudColumns<RoleOut>({
+    onEdit: crud.openEdit,
+    onDelete: crud.handleDelete,
+    editPerm: 'module_system:role:update',
+    deletePerm: 'module_system:role:delete',
+    entityName: '角色',
+  });
+
+  const columnsWithPermission: ProColumns<RoleOut>[] = operationColumns.map<
+    ProColumns<RoleOut>
+  >((column) => ({
+    ...column,
+    // 编辑 / 授权 / 删除 三个入口
+    width: 180,
+    render: (dom, record, index, action, schema) => {
+      const rendered = column.render?.(dom, record, index, action, schema);
+      return [
+        ...toNodeArray(rendered),
         <Button
           key="permission"
           type="link"
@@ -121,24 +161,9 @@ const RoleManagement: React.FC = () => {
         >
           授权
         </Button>,
-        <Popconfirm
-          key="delete"
-          title="确认删除该角色?"
-          onConfirm={() => crud.handleDelete(record)}
-          disabled={!access.hasPermission('module_system:role:delete')}
-        >
-          <Button
-            type="link"
-            size="small"
-            danger
-            disabled={!access.hasPermission('module_system:role:delete')}
-          >
-            删除
-          </Button>
-        </Popconfirm>,
-      ],
+      ];
     },
-  ];
+  }));
 
   return (
     <>
@@ -146,7 +171,7 @@ const RoleManagement: React.FC = () => {
         headerTitle="角色管理"
         rowKey="id"
         actionRef={crud.actionRef}
-        columns={[...columns, ...operationColumns]}
+        columns={[...columns, ...columnsWithPermission]}
         request={requestRoles}
         search={{ labelWidth: 80 }}
         pagination={CRUD_PAGINATION}

@@ -1,4 +1,5 @@
 import type { BackendMenu } from '@/menu/adapter';
+import type { DeptOut } from './dept';
 
 /** 后端 UserOutSchema.roles(角色下挂菜单树) */
 export interface UserRole {
@@ -85,6 +86,14 @@ export interface RoleOut {
   description?: string | null;
   order?: number | null;
   data_scope?: number | null;
+  /**
+   * 角色已有的菜单(后端 RoleOutSchema.menus)。
+   *
+   * 用的是 MenuOutSchema —— **没有 children 字段**,拿到的是扁平列表。
+   */
+  menus?: BackendMenu[] | null;
+  /** 角色已有的部门(后端 RoleOutSchema.depts) */
+  depts?: DeptOut[] | null;
   created_time?: string | null;
   updated_time?: string | null;
 }

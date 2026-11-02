@@ -85,7 +85,61 @@ const emptyRoleListResponse = {
   success: true,
 };
 
+/**
+ * 角色详情(授权弹窗预填角色的现有权限)。
+ *
+ * 后端 RoleOutSchema 里带着 menus / depts,授权弹窗靠它预填;
+ * 不拦这个接口的话,弹窗会拿不到角色的现有权限。
+ */
+const roleDetailResponse = {
+  code: 0,
+  msg: '获取角色详情成功',
+  data: {
+    id: 1,
+    name: '系统管理员',
+    code: 'admin',
+    order: 1,
+    data_scope: 4,
+    status: 0,
+    description: '拥有全部权限',
+    menus: [],
+    depts: [],
+    created_time: '2026-06-21 17:56:33',
+  },
+  status_code: 200,
+  success: true,
+};
+
+/**
+ * 拦角色详情。
+ *
+ * @param page playwright 的 page
+ * @param detail 详情里的角色数据(默认没有菜单、没有部门)
+ */
+async function mockRoleDetail(
+  page: Page,
+  detail: Record<string, unknown> = {},
+) {
+  // 同一条 URL 可能被拦过多次(用例里要换数据)⇒ 先把之前的摘掉
+  await page.unroute('**/api/v1/system/role/detail/**');
+  await page.route('**/api/v1/system/role/detail/**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ...roleDetailResponse,
+        data: { ...roleDetailResponse.data, ...detail },
+      }),
+    }),
+  );
+}
+
 test.describe('角色管理页', () => {
+  test.beforeEach(async ({ page }) => {
+    // 授权弹窗靠角色详情预填现有权限
+    await mockRoleDetail(page);
+  });
+
   test('渲染后端菜单与角色列表,分页参数用 page_no / page_size', async ({
     page,
   }) => {
@@ -257,6 +311,11 @@ test.describe('角色管理页', () => {
 
     await page.getByRole('button', { name: '授权' }).first().click();
 
+    // 详情到位之前表单是禁用的 ⇒ 等它可用(预填已落地)
+    await expect(
+      page.locator('.ant-modal-footer button.ant-btn-primary'),
+    ).toBeEnabled();
+
     // 默认是「全部」⇒ 不需要选部门
     await expect(page.getByText('部门范围')).toHaveCount(0);
 
@@ -330,7 +389,13 @@ test.describe('角色管理页', () => {
       page.getByRole('checkbox', { name: '角色管理' }),
     ).toBeVisible();
 
+    // 详情到位之前树是禁用的 ⇒ 这里等的就是预填落地的时刻
+    await expect(
+      page.locator('.ant-modal-footer button.ant-btn-primary'),
+    ).toBeEnabled();
+
     // 勾一个菜单(角色管理是目录的子节点,勾上它会连带勾上它的按钮节点)
+    // 详情到位之前树是禁用的 ⇒ 这里等的就是预填落地的时刻
     await page.getByRole('checkbox', { name: '角色管理' }).click();
 
     await page.locator('.ant-modal-footer button.ant-btn-primary').click();
@@ -348,5 +413,62 @@ test.describe('角色管理页', () => {
     ).toBeGreaterThan(0);
     // 自定义之外的数据权限不带部门
     expect(permissionRequests[0].body).toMatchObject({ dept_ids: [] });
+  });
+
+  test('授权弹窗预填角色已有的菜单,原样提交', async ({ page }) => {
+    // 这个角色已经有「角色管理」(id=3)与它的按钮「角色授权」(id=30,
+    // helpers.ts 里的按钮 id 从 30 开始排)—— 两个都授权时
+    // 「角色管理」才是**全选**态(只授权父节点的话它是半选)
+    await mockRoleDetail(page, {
+      menus: [
+        { id: 3, name: '角色管理', type: 2, title: '角色管理' },
+        { id: 30, name: '角色授权', type: 3, title: '角色授权' },
+      ],
+    });
+
+    const permissionRequests: { body: unknown }[] = [];
+    await page.route('**/api/v1/system/role/permission', (route) => {
+      permissionRequests.push({ body: route.request().postDataJSON() });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: '授权角色成功',
+          data: null,
+          status_code: 200,
+          success: true,
+        }),
+      });
+    });
+
+    await setupModulePage(page, {
+      menus: [
+        roleMenu([
+          { title: '角色授权', permission: 'module_system:role:permission' },
+        ]),
+      ],
+      listUrl: ROLE_LIST_URL,
+      listBody: roleListResponse,
+    });
+
+    await gotoModulePage(page, ROLE_PAGE_PATH, menuItem(page));
+
+    await page.getByRole('button', { name: '授权' }).first().click();
+
+    // 角色已有的菜单是勾选态(预填生效了)
+    await expect(
+      page.getByRole('checkbox', { name: '角色管理' }),
+    ).toBeChecked();
+
+    // 什么都不动直接提交
+    await page.locator('.ant-modal-footer button.ant-btn-primary').click();
+
+    await expect.poll(() => permissionRequests.length).toBe(1);
+    // 提交的就是角色**现有**的菜单,没有被清空
+    expect(permissionRequests[0].body).toMatchObject({
+      role_ids: [1],
+      menu_ids: [3, 30],
+    });
   });
 });
