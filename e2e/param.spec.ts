@@ -1,125 +1,59 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { waitForApp } from './helpers';
+import {
+  businessErrorBody,
+  gotoModulePage,
+  type ModuleMenu,
+  setupModulePage,
+} from './helpers';
 
 /**
  * 参数管理页的前端闭环(接口全部拦截,不需要真实账号)。
  *
- * 覆盖四件事:
+ * 覆盖五件事:
  * - 列表渲染 + 分页参数用后端约定的 page_no / page_size
+ * - RF1:后端业务错误(HTTP 500 + 信封)由请求层转成 BizError,弹的是后端的 msg
  * - RF3:后端返回空列表时表格显示空状态,不白屏、不报错
  * - 按钮级权限来自后端菜单树里的 type=3 节点(权限码是 module_system:param:*)
- * - config_key 是唯一键,编辑弹窗里不可改
+ * - config_key 是唯一键,编辑弹窗里不可改;新增时按后端正则做前端校验
+ *
+ * 菜单树 / 登录态 / 业务错误信封都由 ./helpers 提供 —— helpers 不认识任何具体模块,
+ * 下一个模块的 spec 直接复用,不用再抄一遍夹具。
  */
 
-type ParamFixture = {
-  /** 菜单树里是否带「新增参数」按钮节点(type=3) */
-  withCreateButton?: boolean;
-  /** 菜单树里是否带「编辑参数」按钮节点(type=3) */
-  withEditButton?: boolean;
-  /** 列表接口的响应体 */
-  listBody?: unknown;
-};
-
-/** 捕获到的更新请求 */
-type UpdateRequest = {
-  url: string;
-  method: string;
-  body: unknown;
-};
+const PARAM_PAGE_PATH = '/system/param';
+const PARAM_LIST_URL = '**/api/v1/system/param/list**';
 
 /**
- * 后端 current/info 下发的菜单树。
+ * 参数管理的菜单树。
  *
  * 参数管理挂在「系统管理」目录下,route_path 是相对的 'param',
  * 后端适配器会把它拼成 /system/param —— 必须与前端路由表一致
  * (前端路由是单数 /system/param,目录才是复数 module_system/params)。
+ * 按钮节点(type=3)由用例决定带不带。
  */
-function buildCurrentUserResponse(
-  options: { withCreateButton?: boolean; withEditButton?: boolean } = {},
-) {
-  const { withCreateButton = true, withEditButton = true } = options;
-
-  const buttonNodes = [
-    ...(withCreateButton
-      ? [
-          {
-            id: 30,
-            parent_id: 3,
-            name: '新增参数',
-            type: 3,
-            order: 1,
-            route_path: '',
-            title: '新增参数',
-            permission: 'module_system:param:create',
-            status: 0,
-            hidden: false,
-            children: null,
-          },
-        ]
-      : []),
-    ...(withEditButton
-      ? [
-          {
-            id: 31,
-            parent_id: 3,
-            name: '编辑参数',
-            type: 3,
-            order: 2,
-            route_path: '',
-            title: '编辑参数',
-            permission: 'module_system:param:update',
-            status: 0,
-            hidden: false,
-            children: null,
-          },
-        ]
-      : []),
-  ];
-
+function paramMenu(
+  withCreateButton: boolean,
+  withEditButton: boolean,
+): ModuleMenu {
   return {
-    code: 0,
-    msg: '获取当前用户信息成功',
-    data: {
-      id: 1,
-      username: 'admin',
-      name: '管理员',
-      status: 0,
-      is_superuser: true,
-      role_ids: [1],
-      roles: [],
-      menus: [
-        {
-          id: 2,
-          parent_id: null,
-          name: '系统管理',
-          type: 1,
-          order: 2,
-          route_path: '/system',
-          title: '系统管理',
-          status: 0,
-          hidden: false,
-          children: [
-            {
-              id: 3,
-              parent_id: 2,
-              name: '参数管理',
-              type: 2,
-              order: 1,
-              route_path: 'param',
-              title: '参数管理',
-              permission: 'module_system:param:query',
-              status: 0,
-              hidden: false,
-              children: buttonNodes.length ? buttonNodes : null,
-            },
-          ],
-        },
-      ],
-    },
-    status_code: 200,
-    success: true,
+    title: '参数管理',
+    routePath: 'param',
+    permission: 'module_system:param:query',
+    buttons: [
+      ...(withCreateButton
+        ? [{ title: '新增参数', permission: 'module_system:param:create' }]
+        : []),
+      ...(withEditButton
+        ? [{ title: '编辑参数', permission: 'module_system:param:update' }]
+        : []),
+    ],
   };
+}
+
+/** 侧边栏里的「参数管理」—— 应用就绪的内容信号(不用 networkidle) */
+function menuItem(page: Page) {
+  return page.locator('.ant-menu').getByText('参数管理');
 }
 
 const paramListResponse = {
@@ -162,62 +96,20 @@ const emptyParamListResponse = {
   success: true,
 };
 
-/** 装好拦截器,返回收集到的列表请求 URL */
-async function setupParamPage(page: Page, fixture: ParamFixture = {}) {
-  const {
-    withCreateButton = true,
-    withEditButton = true,
-    listBody = paramListResponse,
-  } = fixture;
-
-  const listRequests: string[] = [];
-
-  await page.route('**/api/v1/system/user/current/info', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(
-        buildCurrentUserResponse({ withCreateButton, withEditButton }),
-      ),
-    }),
-  );
-
-  await page.route('**/api/v1/system/param/list**', (route) => {
-    listRequests.push(route.request().url());
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(listBody),
-    });
-  });
-
-  // 前端认为已登录(请求拦截器会带上这个 Bearer)
-  await page.addInitScript(() => {
-    localStorage.setItem('remember_me', 'true');
-    localStorage.setItem('access_token', 'e2e-mock-access-token');
-    localStorage.setItem('refresh_token', 'e2e-mock-refresh-token');
-  });
-
-  return listRequests;
-}
-
-/** 打开参数管理页并等应用挂载 */
-async function gotoParamPage(page: Page) {
-  await page.goto('/system/param');
-  await waitForApp(page);
-  await page.waitForLoadState('networkidle');
-}
-
 test.describe('参数管理页', () => {
   test('渲染后端菜单与参数列表,分页参数用 page_no / page_size', async ({
     page,
   }) => {
-    const listRequests = await setupParamPage(page);
+    const listRequests = await setupModulePage(page, {
+      menus: [paramMenu(true, true)],
+      listUrl: PARAM_LIST_URL,
+      listBody: paramListResponse,
+    });
 
-    await gotoParamPage(page);
+    await gotoModulePage(page, PARAM_PAGE_PATH, menuItem(page));
 
     // 侧边栏来自后端菜单
-    await expect(page.locator('.ant-menu').getByText('参数管理')).toBeVisible();
+    await expect(menuItem(page)).toBeVisible();
 
     // 表格渲染出后端返回的数据
     await expect(page.locator('.ant-table-tbody tr.ant-table-row')).toHaveCount(
@@ -232,18 +124,40 @@ test.describe('参数管理页', () => {
     ).toHaveText('是');
 
     // 分页参数用后端约定的 page_no / page_size
-    expect(listRequests.length).toBeGreaterThan(0);
+    await expect.poll(() => listRequests.length).toBeGreaterThan(0);
     expect(listRequests[0]).toContain('page_no=1');
     expect(listRequests[0]).toContain('page_size=10');
   });
 
+  test('业务错误(HTTP 500 + 信封)弹的是后端 msg(RF1)', async ({ page }) => {
+    await setupModulePage(page, {
+      menus: [paramMenu(true, true)],
+      listUrl: PARAM_LIST_URL,
+      listBody: businessErrorBody('参数键已存在'),
+      listStatus: 500,
+    });
+
+    await gotoModulePage(page, PARAM_PAGE_PATH, menuItem(page));
+
+    // 请求层把信封转成 BizError,errorHandler 弹后端的 msg
+    await expect(page.getByText('参数键已存在')).toBeVisible();
+    // 不是 axios 的原始报错文案
+    await expect(
+      page.getByText('Request failed with status code 500'),
+    ).toHaveCount(0);
+  });
+
   test('后端返回空列表时表格显示空状态,不报错(RF3)', async ({ page }) => {
-    await setupParamPage(page, { listBody: emptyParamListResponse });
+    await setupModulePage(page, {
+      menus: [paramMenu(true, true)],
+      listUrl: PARAM_LIST_URL,
+      listBody: emptyParamListResponse,
+    });
 
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
-    await gotoParamPage(page);
+    await gotoModulePage(page, PARAM_PAGE_PATH, menuItem(page));
 
     // 空状态,而不是白屏
     await expect(page.locator('.ant-empty')).toBeVisible();
@@ -257,25 +171,37 @@ test.describe('参数管理页', () => {
   });
 
   test('菜单树里没有按钮节点时「新增」按钮禁用', async ({ page }) => {
-    await setupParamPage(page, { withCreateButton: false });
+    await setupModulePage(page, {
+      menus: [paramMenu(false, true)],
+      listUrl: PARAM_LIST_URL,
+      listBody: paramListResponse,
+    });
 
-    await gotoParamPage(page);
+    await gotoModulePage(page, PARAM_PAGE_PATH, menuItem(page));
 
     await expect(page.getByRole('button', { name: '新增' })).toBeDisabled();
   });
 
   test('菜单树里有按钮节点时「新增」按钮可用', async ({ page }) => {
-    await setupParamPage(page, { withCreateButton: true });
+    await setupModulePage(page, {
+      menus: [paramMenu(true, true)],
+      listUrl: PARAM_LIST_URL,
+      listBody: paramListResponse,
+    });
 
-    await gotoParamPage(page);
+    await gotoModulePage(page, PARAM_PAGE_PATH, menuItem(page));
 
     await expect(page.getByRole('button', { name: '新增' })).toBeEnabled();
   });
 
   test('编辑弹窗里参数键 disabled(config_key 是唯一键)', async ({ page }) => {
-    await setupParamPage(page, { withEditButton: true });
+    await setupModulePage(page, {
+      menus: [paramMenu(true, true)],
+      listUrl: PARAM_LIST_URL,
+      listBody: paramListResponse,
+    });
 
-    await gotoParamPage(page);
+    await gotoModulePage(page, PARAM_PAGE_PATH, menuItem(page));
 
     await page.getByRole('button', { name: '编辑' }).click();
 
@@ -287,10 +213,57 @@ test.describe('参数管理页', () => {
     await expect(configKeyInput).toHaveValue('site.name');
   });
 
+  test('新增时参数键不符合后端正则就被前端拦下,不发请求', async ({ page }) => {
+    const createRequests: string[] = [];
+
+    await page.route('**/api/v1/system/param/create**', (route) => {
+      createRequests.push(route.request().url());
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: '创建参数成功',
+          data: null,
+          status_code: 200,
+          success: true,
+        }),
+      });
+    });
+
+    await setupModulePage(page, {
+      menus: [paramMenu(true, true)],
+      listUrl: PARAM_LIST_URL,
+      listBody: paramListResponse,
+    });
+
+    await gotoModulePage(page, PARAM_PAGE_PATH, menuItem(page));
+
+    await page.getByRole('button', { name: '新增' }).click();
+
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '参数名称' })
+      .locator('input')
+      .fill('站点名称');
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '参数键' })
+      .locator('input')
+      .fill('Site Name');
+
+    await page.locator('.ant-modal-footer button.ant-btn-primary').click();
+
+    // 后端的约束是 ^[a-z][a-z0-9_.-]*$:前端内联校验拦下,
+    // 不落到请求层(否则会收到一个 422)
+    await expect(
+      page.getByText('小写字母开头，仅允许小写字母、数字、_ . -'),
+    ).toBeVisible();
+    expect(createRequests).toHaveLength(0);
+  });
+
   test('编辑提交时把 disabled 的参数键原样带回(后端 update 必填)', async ({
     page,
   }) => {
-    const updateRequests: UpdateRequest[] = [];
+    const updateRequests: { url: string; method: string; body: unknown }[] = [];
 
     await page.route('**/api/v1/system/param/update/**', async (route) => {
       const req = route.request();
@@ -312,9 +285,13 @@ test.describe('参数管理页', () => {
       });
     });
 
-    await setupParamPage(page, { withEditButton: true });
+    await setupModulePage(page, {
+      menus: [paramMenu(true, true)],
+      listUrl: PARAM_LIST_URL,
+      listBody: paramListResponse,
+    });
 
-    await gotoParamPage(page);
+    await gotoModulePage(page, PARAM_PAGE_PATH, menuItem(page));
 
     await page.getByRole('button', { name: '编辑' }).click();
 

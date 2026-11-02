@@ -57,7 +57,14 @@ const ParamModalForm: React.FC<ParamModalProps> = ({
       <ProFormText
         name="config_key"
         label="参数键"
-        rules={[{ required: true }]}
+        rules={[
+          { required: true },
+          {
+            // 与后端 ParamsCreateSchema 的校验保持一致(backend/app/api/v1/module_system/params/schema.py)
+            pattern: /^[a-z][a-z0-9_.-]*$/,
+            message: '小写字母开头，仅允许小写字母、数字、_ . -',
+          },
+        ]}
         disabled={isEdit}
       />
       <ProFormText name="config_value" label="参数值" />
