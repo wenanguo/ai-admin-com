@@ -220,6 +220,14 @@ const PositionManagement: React.FC = () => {
     remove: deletePositions,
   });
 
+  const operationColumns = useCrudColumns<PositionOut>({
+    onEdit: crud.openEdit,
+    onDelete: crud.handleDelete,
+    editPerm: 'module_system:position:update',
+    deletePerm: 'module_system:position:delete',
+    entityName: '岗位',
+  });
+
   const columns: ProColumns<PositionOut>[] = [ /* ...只放数据列... */ ];
 
   return (
@@ -228,13 +236,7 @@ const PositionManagement: React.FC = () => {
         headerTitle="岗位管理"
         rowKey="id"
         actionRef={crud.actionRef}
-        columns={[...columns, ...useCrudColumns<PositionOut>({
-          onEdit: crud.openEdit,
-          onDelete: crud.handleDelete,
-          editPerm: 'module_system:position:update',
-          deletePerm: 'module_system:position:delete',
-          entityName: '岗位',
-        })]}
+        columns={[...columns, ...operationColumns]}
         request={requestPositions}
         search={{ labelWidth: 80 }}
         pagination={CRUD_PAGINATION}
