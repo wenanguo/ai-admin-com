@@ -7,11 +7,12 @@ import { useCallback, useRef, useState } from 'react';
 /**
  * 共享 CRUD 脚手架。
  *
- * 8 个系统管理模块的页面从这里取三样东西:
+ * 8 个系统管理模块的页面从这里取这些东西:
  *
  * - `useCrudTable`: 弹窗开关 / 编辑对象 / 删除 / 提交 的状态机
- * - `useCrudColumns`: 带权限门控的「操作」列(编辑按钮可选 ⇒ 只读页也能用)
+ * - `useCrudColumns`: 带权限门控的「操作」列(编辑入口成对给 ⇒ 只读页也能用)
  * - `useDeleteHandler`: 删除 → 刷新 → 吞异常(没有状态机的页面用)
+ * - `useDeleteHandlerWithoutReload`: 删除 → 吞异常(**不刷新**,名字里写明了)
  * - `CRUD_PAGINATION`: 分页配置(page_size 上限 100 是后端约束,只能定义一次)
  *
  * 声明式的部分(ProTable props、工具栏「新增」按钮、弹窗元素)刻意留在每个页面 ——
@@ -64,19 +65,19 @@ export const CRUD_PAGINATION = {
 };
 
 /**
- * 删除处理器:删除 → 刷新列表 → 吞掉异常。
+ * 删除处理器的公共实现:删除 → (可选)刷新列表 → 吞掉异常。
  *
  * `useCrudTable.handleDelete` 与只读页的删除走的是**同一段逻辑**
  * (刷新那一步漏了页面就不会更新,异常不吞掉会变成未处理的 rejection),
  * 所以必须只有一份实现。
  *
  * @param remove 删除接口(入参是 id 数组)
- * @param actionRef ProTable 的 actionRef;传了就删除后刷新列表
+ * @param reload 刷新列表的回调;不传就不刷新(见 useDeleteHandlerWithoutReload)
  * @returns 绑定到操作列 `onDelete` 的处理函数
  */
-export function useDeleteHandler<T extends CrudRecord>(
+function useDeleteHandlerCore<T extends CrudRecord>(
   remove: (ids: number[]) => Promise<unknown>,
-  actionRef?: React.RefObject<ActionType | undefined>,
+  reload: (() => void) | undefined,
 ): (record: T) => Promise<void> {
   return useCallback(
     async (record: T) => {
@@ -84,13 +85,51 @@ export function useDeleteHandler<T extends CrudRecord>(
       try {
         await remove([record.id]);
         // 成功提示由请求层统一弹(后端信封里的 msg),这里不要再弹一次
-        actionRef?.current?.reload();
+        reload?.();
       } catch {
         // 失败提示也由请求层统一弹,这里只需要把异常消化掉
       }
     },
-    [actionRef, remove],
+    [reload, remove],
   );
+}
+
+/**
+ * 删除处理器:删除 → 刷新列表 → 吞掉异常。
+ *
+ * ⚠️ `actionRef` **必填** —— 少了它就退化成「删完不刷新表格」:
+ * 接口报错了、页面却像没反应,是最难发现的一类 bug。
+ * 确实不需要刷新的场景请用 `useDeleteHandlerWithoutReload`(名字里就写明了不刷新)。
+ *
+ * @param remove 删除接口(入参是 id 数组)
+ * @param actionRef ProTable 的 actionRef;删除成功后调用它的 reload 刷新列表
+ * @returns 绑定到操作列 `onDelete` 的处理函数
+ */
+export function useDeleteHandler<T extends CrudRecord>(
+  remove: (ids: number[]) => Promise<unknown>,
+  actionRef: React.RefObject<ActionType | undefined>,
+): (record: T) => Promise<void> {
+  const reload = useCallback(() => {
+    actionRef.current?.reload();
+  }, [actionRef]);
+  return useDeleteHandlerCore<T>(remove, reload);
+}
+
+/**
+ * 删除处理器(**不刷新列表**):删除 → 吞掉异常。
+ *
+ * 为什么单独给一个名字:「删完刷不刷新」必须由调用方**显式选择**。
+ * 默认的 `useDeleteHandler` 一律刷新;只有在确实没有列表要刷新时
+ * (例如页面自己管着列表的刷新)才用这个 —— 名字里写明「不刷新」,
+ * 避免下一个页面照抄一行 `useDeleteHandler(remove)` 之后表格再也不动。
+ *
+ * @param remove 删除接口(入参是 id 数组)
+ * @returns 绑定到操作列 `onDelete` 的处理函数
+ */
+export function useDeleteHandlerWithoutReload<T extends CrudRecord>(
+  remove: (ids: number[]) => Promise<unknown>,
+): (record: T) => Promise<void> {
+  return useDeleteHandlerCore<T>(remove, undefined);
 }
 
 /**
@@ -153,28 +192,55 @@ export function useCrudTable<T extends CrudRecord, V>(
   };
 }
 
-/** useCrudColumns 的入参 */
-export interface CrudColumnOptions<T> {
-  /**
-   * 点「编辑」。**省略 ⇒ 不渲染「编辑」按钮**(只剩删除按钮)。
-   *
-   * 只读页(如日志管理)没有编辑入口,但删除按钮的权限门控必须与其它模块
-   * 走同一份实现 —— 所以这里做成可选,而不是让页面另抄一份。
-   */
-  onEdit?: (record: T) => void;
+/** 操作列里与「有没有编辑入口」无关的部分 */
+export interface CrudColumnCommon<T> {
   /** 点「删除」(二次确认后触发) */
   onDelete: (record: T) => void | Promise<void>;
-  /**
-   * 编辑按钮的权限码。**省略 ⇒ 不渲染「编辑」按钮**。
-   *
-   * 与 `onEdit` 必须成对出现:两者缺一,都不渲染编辑按钮。
-   */
-  editPerm?: string;
   /** 删除按钮的权限码 */
   deletePerm: string;
   /** 实体中文名,用于删除二次确认的文案 */
   entityName: string;
 }
+
+/** 有编辑入口的形态:`onEdit` 与 `editPerm` **必须成对**出现 */
+export interface CrudColumnEditOptions<T> {
+  /**
+   * 点「编辑」。
+   *
+   * 与 `editPerm` **必须同时给** —— 只给 `onEdit` 编译不过(见 `CrudColumnOptions`)。
+   */
+  onEdit: (record: T) => void;
+  /** 编辑按钮的权限码。与 `onEdit` 必须成对出现 */
+  editPerm: string;
+}
+
+/** 只读形态:不渲染「编辑」按钮(只剩删除按钮) */
+export interface CrudColumnReadOnlyOptions {
+  /** 只读形态:不渲染「编辑」按钮 */
+  onEdit?: never;
+  /** 只读形态:不渲染「编辑」按钮 */
+  editPerm?: never;
+}
+
+/**
+ * useCrudColumns 的入参 —— **联合类型**,`onEdit` 与 `editPerm` 要么同时给、
+ * 要么同时不给。
+ *
+ * 为什么要做成联合类型而不是两个可选属性:可选属性会把
+ * 「忘了传 `editPerm`」从**编译错误**变成**静默少一个「编辑」按钮** ——
+ * 而权限码写错恰恰是脚手架注释里警告的「最难发现的一类 bug」。
+ * 联合类型把这个坑挪回编译期:
+ *
+ * - `onEdit` + `editPerm` ⇒ 渲染「编辑」按钮
+ * - 两个都不给 ⇒ 不渲染「编辑」按钮(只读页,如日志管理)
+ * - 只给一个 ⇒ **编译报错**
+ *
+ * 只读页(如日志管理)没有编辑入口,但删除按钮的权限门控必须与其它模块
+ * 走同一份实现 —— 所以这里加一个分支,而不是让页面另抄一份。
+ */
+export type CrudColumnOptions<T> =
+  | (CrudColumnCommon<T> & CrudColumnEditOptions<T>)
+  | (CrudColumnCommon<T> & CrudColumnReadOnlyOptions);
 
 /**
  * 标准的「操作」列:编辑按钮 + 删除按钮(删除包在 Popconfirm 里)。
@@ -182,8 +248,8 @@ export interface CrudColumnOptions<T> {
  * 两个按钮都按权限码门控 —— 权限码写错会**静默禁用**按钮,是最难发现的一类 bug,
  * 所以这段必须只有一份实现。
  *
- * `onEdit` / `editPerm` 省略时**不渲染「编辑」按钮** —— 只读页(只有删除)走同一份实现,
- * 页面不用再抄一遍权限门控。
+ * `onEdit` / `editPerm` 都不给时**不渲染「编辑」按钮** —— 只读页(只有删除)走同一份实现,
+ * 页面不用再抄一遍权限门控;只给一个则在**编译期**就报错。
  */
 export function useCrudColumns<T>(
   options: CrudColumnOptions<T>,
@@ -199,7 +265,8 @@ export function useCrudColumns<T>(
       valueType: 'option',
       width: 160,
       render: (_, record) => [
-        // 编辑按钮可选:onEdit / editPerm 缺一就不渲染(只读页)
+        // 类型上已保证 onEdit / editPerm 成对(见 CrudColumnOptions),
+        // 这里再兜一层:万一有人用 as 绕过类型,缺一也不渲染(只读页)
         ...(onEdit && editPerm
           ? [
               <Button
