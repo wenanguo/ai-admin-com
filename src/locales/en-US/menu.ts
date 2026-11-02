@@ -52,4 +52,5 @@ export default {
   'menu.chatbot': 'AI Assistant',
   'menu.system': 'System Management',
   'menu.system.user': 'Users',
+  'menu.system.position': 'Positions',
 };

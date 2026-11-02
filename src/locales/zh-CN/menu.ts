@@ -52,4 +52,5 @@ export default {
   'menu.chatbot': 'AI 助手',
   'menu.system': '系统管理',
   'menu.system.user': '用户管理',
+  'menu.system.position': '岗位管理',
 };

@@ -68,6 +68,12 @@ export default [
         icon: 'user',
         component: './module_system/user',
       },
+      {
+        path: '/system/position',
+        name: 'position',
+        icon: 'team',
+        component: './module_system/position',
+      },
     ],
   },
   {
