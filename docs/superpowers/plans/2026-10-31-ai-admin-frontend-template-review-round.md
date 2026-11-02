@@ -107,6 +107,33 @@ React error #185 是 "Maximum update depth exceeded",
 原来的真人验收脚本(`D:/tmp/acceptance.mjs`)留在仓库外,作为
 「对着真实后端走一遍」的补充,不进版本库。
 
+### 真实后端走查结果
+
+对着 `https://www.pmdict.cn/api/v1` 实跑(脚本在仓库外,凭据由人在窗口里输入):
+
+| 检查项 | 结果 |
+|---|---|
+| 登录请求是 form-urlencoded | PASS(字段 `captcha/captcha_key/login_type/password/username`) |
+| 登录接口返回 200 | PASS |
+| 登录后没有落到错误页 | PASS(R14 的修复在真实后端上确认有效) |
+| 侧边栏出现「用户管理」 | PASS(`系统管理 \| 用户管理`) |
+| 侧边栏没有 `ri:` 图标名 | PASS |
+| `GET /system/user/list` 返回 200 | PASS |
+| 分页参数 `page_no=1&page_size=10` | PASS |
+| 表格有真实数据行 | PASS(6 行:shijingfeng / test_user / test_admin / user / admin / super) |
+| 401 后发起 `token/refresh` | PASS |
+| 刷新失败后回到登录页 | PASS |
+| redirect 参数没有套娃 | PASS(顺带修掉的) |
+| `POST /system/auth/logout` 返回 200 | **未验到** —— 自动化点击在真实窗口里落到了 ProTable 工具栏的「密度」按钮上(头像下拉是 hover 触发的)。链路本身在 e2e 里验证过(200 + token 清空 + 回登录页),请求体 `{"token": "<access_token>"}` 也与后端 `LogoutPayloadSchema` 一致 |
+
+顺带发现并修掉的:401 回登录页时 `redirect` 参数会套娃
+(`/user/login?redirect=%2Fuser%2Flogin%3Fredirect%3D…`)。
+
+还有一个**误报**要记一下:「窗口最大化后界面不铺满」不是应用的问题 ——
+是验收脚本把视口钉死在 1440×900 造成的(后来又 maximize 了窗口)。
+实测 1920 视口下 `html/body/root/layout` 全是 1920px,内容区 1664 = 1920 − 256 侧栏。
+脚本已改成 `viewport: null`(跟随真实窗口)。
+
 ## R14 —— 父路由的 redirect 会作用到所有子路径
 
 **这是修复波 W15 自己引入的**:W15 给 `/system` 父路由补了
