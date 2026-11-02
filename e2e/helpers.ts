@@ -331,6 +331,14 @@ export type PermissionGatedButtonOptions = {
   listBody: unknown;
   /** 应用就绪的内容信号(通常是侧边栏菜单项) */
   ready?: Locator;
+  /**
+   * 可选:断言前的准备工作。
+   *
+   * 双 tab 的只读页要断言**第二个 tab** 的按钮,得先把 tab 切过去
+   * (并把那个 tab 的列表接口拦下来)—— 这里给调用方一个口子。
+   * 助手本身仍然不认识任何具体模块。
+   */
+  prepare?: (page: Page) => Promise<void>;
 };
 
 /**
@@ -357,6 +365,7 @@ export async function assertPermissionGatedButton(
     listUrl,
     listBody,
     ready,
+    prepare,
   } = options;
 
   // 同权限的节点先摘掉,再按 granted 决定要不要挂上 —— 避免调用方的菜单里
@@ -374,6 +383,11 @@ export async function assertPermissionGatedButton(
     listBody,
   });
   await gotoModulePage(page, path, ready);
+
+  // 准备工作(切 tab、额外拦截接口 …)在断言之前跑
+  if (prepare) {
+    await prepare(page);
+  }
 
   const button = page.getByRole('button', { name: buttonName }).first();
   if (granted) {

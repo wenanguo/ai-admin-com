@@ -3,11 +3,15 @@ import {
   type ProColumns,
   ProTable,
 } from '@ant-design/pro-components';
-import { useAccess } from '@umijs/max';
-import { Button, Descriptions, Drawer, Popconfirm, Tabs } from 'antd';
+import { Button, Descriptions, Drawer, Tabs } from 'antd';
 import type React from 'react';
 import { useCallback, useRef, useState } from 'react';
-import { CRUD_PAGINATION } from '@/components/CrudTable';
+import type { CrudRecord } from '@/components/CrudTable';
+import {
+  CRUD_PAGINATION,
+  useCrudColumns,
+  useDeleteHandler,
+} from '@/components/CrudTable';
 import type {
   LoginLogOut,
   OperationLogDetailOut,
@@ -16,6 +20,7 @@ import type {
 import {
   deleteLoginLogs,
   deleteOperationLogs,
+  getLoginLogDetail,
   getOperationLogDetail,
   listLoginLogs,
   listOperationLogs,
@@ -42,61 +47,34 @@ function operationStatusText(status?: number | null): string {
   return '-';
 }
 
-/**
- * 只读页的操作列:删除(带二次确认)+ 详情(只读抽屉)。
- *
- * 共享脚手架的 `useCrudColumns` 固定渲染「编辑」按钮,而日志页是只读的
- * (没有新增、没有编辑),所以这里本地实现一份只含删除的版本 ——
- * 权限门控(`access.hasPermission`)与脚手架保持一致:
- * 权限码写错会**静默禁用**按钮,是最难发现的一类 bug。
- */
-function useLogActionColumns<T extends { id?: number | null }>(options: {
-  /** 点「删除」 */
-  onDelete: (record: T) => void | Promise<void>;
-  /** 删除按钮的权限码 */
-  deletePerm: string;
-  /** 实体中文名,用于删除二次确认的文案 */
-  entityName: string;
-  /** 点「详情」(不给就不渲染这个按钮) */
-  onDetail?: (record: T) => void;
-}): ProColumns<T>[] {
-  const access = useAccess();
-  const { onDelete, deletePerm, entityName, onDetail } = options;
+/** 登录日志状态(后端 LoginLogOutSchema.status:1 成功 2 失败) */
+function loginStatusText(status?: number | null): string {
+  if (status === 1) return '成功';
+  if (status === 2) return '失败';
+  return '-';
+}
 
+/**
+ * 只读页的「详情」列 —— 一个详情按钮。
+ *
+ * 共享脚手架的 `useCrudColumns` 只管「编辑 + 删除」的权限门控;
+ * 「详情」是本模块特有的只读入口(不改数据 ⇒ 没有权限码),所以留在页面里。
+ * 列名与脚手架的操作列区分开,免得两列都叫「操作」。
+ */
+function logDetailColumn<T extends CrudRecord>(
+  onDetail: (record: T) => void,
+): ProColumns<T>[] {
   return [
     {
-      title: '操作',
+      title: '详情',
       valueType: 'option',
-      width: 140,
-      render: (_, record) => [
-        ...(onDetail
-          ? [
-              <Button
-                key="detail"
-                type="link"
-                size="small"
-                onClick={() => onDetail(record)}
-              >
-                详情
-              </Button>,
-            ]
-          : []),
-        <Popconfirm
-          key="delete"
-          title={`确认删除该${entityName}?`}
-          onConfirm={() => onDelete(record)}
-          disabled={!access.hasPermission(deletePerm)}
-        >
-          <Button
-            type="link"
-            size="small"
-            danger
-            disabled={!access.hasPermission(deletePerm)}
-          >
-            删除
-          </Button>
-        </Popconfirm>,
-      ],
+      width: 80,
+      search: false,
+      render: (_, record) => (
+        <Button type="link" size="small" onClick={() => onDetail(record)}>
+          详情
+        </Button>
+      ),
     },
   ];
 }
@@ -109,44 +87,52 @@ function useLogActionColumns<T extends { id?: number | null }>(options: {
  * 权限码是**两套**,命名不一致是后端现状:
  * - 登录日志:module_system:login_log:{query,delete}
  * - 操作日志:module_system:log:{query,delete}
+ *
+ * 权限门控与「删除 → 刷新 → 吞异常」都走共享脚手架
+ * (`useCrudColumns` / `useDeleteHandler`),页面里不再抄第二份;
+ * 两个 tab 的差别只剩删除接口的**请求体形状**(登录日志裸数组 / 操作日志 { ids })。
  */
 const LogManagement: React.FC = () => {
   const loginActionRef = useRef<ActionType | undefined>(undefined);
   const operationActionRef = useRef<ActionType | undefined>(undefined);
 
-  const [detail, setDetail] = useState<OperationLogDetailOut | undefined>(
+  const [loginDetail, setLoginDetail] = useState<LoginLogOut | undefined>(
     undefined,
   );
-  const [detailOpen, setDetailOpen] = useState(false);
+  const [loginDetailOpen, setLoginDetailOpen] = useState(false);
+  const [operationDetail, setOperationDetail] = useState<
+    OperationLogDetailOut | undefined
+  >(undefined);
+  const [operationDetailOpen, setOperationDetailOpen] = useState(false);
 
-  const handleDeleteLogin = useCallback(async (record: LoginLogOut) => {
+  // 删除 → 刷新 → 吞异常:共享脚手架的一份实现,两个 tab 只差 remove 的请求体形状
+  const handleDeleteLogin = useDeleteHandler<LoginLogOut>(
+    deleteLoginLogs,
+    loginActionRef,
+  );
+  const handleDeleteOperation = useDeleteHandler<OperationLogOut>(
+    deleteOperationLogs,
+    operationActionRef,
+  );
+
+  const handleLoginDetail = useCallback(async (record: LoginLogOut) => {
     if (!record.id) return;
     try {
-      await deleteLoginLogs([record.id]);
-      // 成功提示由请求层统一弹(后端信封里的 msg),这里不要再弹一次
-      loginActionRef.current?.reload();
+      const res = await getLoginLogDetail(record.id);
+      setLoginDetail(res?.data ?? undefined);
+      setLoginDetailOpen(true);
     } catch {
-      // 失败提示也由请求层统一弹,这里只需要把异常消化掉
+      // 失败提示由请求层统一弹
     }
   }, []);
 
-  const handleDeleteOperation = useCallback(async (record: OperationLogOut) => {
-    if (!record.id) return;
-    try {
-      await deleteOperationLogs([record.id]);
-      operationActionRef.current?.reload();
-    } catch {
-      // 同上
-    }
-  }, []);
-
-  const handleDetail = useCallback(async (record: OperationLogOut) => {
+  const handleOperationDetail = useCallback(async (record: OperationLogOut) => {
     if (!record.id) return;
     try {
       // 列表接口不返回请求体 / 响应体,详情必须走详情接口
       const res = await getOperationLogDetail(record.id);
-      setDetail(res?.data ?? undefined);
-      setDetailOpen(true);
+      setOperationDetail(res?.data ?? undefined);
+      setOperationDetailOpen(true);
     } catch {
       // 失败提示由请求层统一弹
     }
@@ -214,15 +200,16 @@ const LogManagement: React.FC = () => {
     { title: '创建时间', dataIndex: 'created_time', width: 180, search: false },
   ];
 
-  const loginActionColumns = useLogActionColumns<LoginLogOut>({
+  // 操作列:只读页不传 onEdit / editPerm ⇒ 脚手架不渲染「编辑」按钮,
+  // 权限门控仍然只有脚手架这一份实现。
+  const loginActionColumns = useCrudColumns<LoginLogOut>({
     onDelete: handleDeleteLogin,
     deletePerm: 'module_system:login_log:delete',
     entityName: '登录日志',
   });
 
-  const operationActionColumns = useLogActionColumns<OperationLogOut>({
+  const operationActionColumns = useCrudColumns<OperationLogOut>({
     onDelete: handleDeleteOperation,
-    onDetail: handleDetail,
     deletePerm: 'module_system:log:delete',
     entityName: '操作日志',
   });
@@ -242,7 +229,11 @@ const LogManagement: React.FC = () => {
                 headerTitle="登录日志列表"
                 rowKey="id"
                 actionRef={loginActionRef}
-                columns={[...loginColumns, ...loginActionColumns]}
+                columns={[
+                  ...loginColumns,
+                  ...logDetailColumn<LoginLogOut>(handleLoginDetail),
+                  ...loginActionColumns,
+                ]}
                 request={requestLoginLogs}
                 search={{ labelWidth: 80 }}
                 pagination={CRUD_PAGINATION}
@@ -260,7 +251,11 @@ const LogManagement: React.FC = () => {
                 headerTitle="操作日志列表"
                 rowKey="id"
                 actionRef={operationActionRef}
-                columns={[...operationColumns, ...operationActionColumns]}
+                columns={[
+                  ...operationColumns,
+                  ...logDetailColumn<OperationLogOut>(handleOperationDetail),
+                  ...operationActionColumns,
+                ]}
                 request={requestOperationLogs}
                 search={{ labelWidth: 80 }}
                 pagination={CRUD_PAGINATION}
@@ -273,9 +268,9 @@ const LogManagement: React.FC = () => {
       />
 
       <Drawer
-        title="操作日志详情"
-        open={detailOpen}
-        onClose={() => setDetailOpen(false)}
+        title="登录日志详情"
+        open={loginDetailOpen}
+        onClose={() => setLoginDetailOpen(false)}
         width={720}
       >
         <Descriptions
@@ -283,59 +278,130 @@ const LogManagement: React.FC = () => {
           bordered
           size="small"
           items={[
-            { key: 'id', label: 'ID', children: detail?.id ?? '-' },
+            { key: 'id', label: 'ID', children: loginDetail?.id ?? '-' },
+            { key: 'uuid', label: 'UUID', children: loginDetail?.uuid ?? '-' },
             {
-              key: 'request_path',
-              label: '请求路径',
-              children: detail?.request_path ?? '-',
-            },
-            {
-              key: 'request_method',
-              label: '请求方法',
-              children: detail?.request_method ?? '-',
-            },
-            {
-              key: 'response_code',
-              label: '响应状态码',
-              children: detail?.response_code ?? '-',
-            },
-            {
-              key: 'process_time',
-              label: '处理耗时',
-              children: detail?.process_time ?? '-',
+              key: 'username',
+              label: '用户名',
+              children: loginDetail?.username ?? '-',
             },
             {
               key: 'status',
               label: '状态',
-              children: operationStatusText(detail?.status),
+              children: loginStatusText(loginDetail?.status),
             },
             {
-              key: 'description',
-              label: '描述',
-              children: detail?.description ?? '-',
+              key: 'login_ip',
+              label: '登录 IP',
+              children: loginDetail?.login_ip ?? '-',
             },
             {
-              key: 'operator',
-              label: '操作人',
-              children: detail?.created_by?.name ?? '-',
+              key: 'login_location',
+              label: '登录地点',
+              children: loginDetail?.login_location ?? '-',
+            },
+            {
+              key: 'request_browser',
+              label: '浏览器',
+              children: loginDetail?.request_browser ?? '-',
+            },
+            {
+              key: 'request_os',
+              label: '操作系统',
+              children: loginDetail?.request_os ?? '-',
+            },
+            {
+              key: 'msg',
+              label: '提示消息',
+              children: loginDetail?.msg ?? '-',
+            },
+            {
+              key: 'created_by',
+              label: '创建人',
+              children: loginDetail?.created_by?.name ?? '-',
             },
             {
               key: 'created_time',
               label: '创建时间',
-              children: detail?.created_time ?? '-',
+              children: loginDetail?.created_time ?? '-',
+            },
+            {
+              key: 'updated_time',
+              label: '更新时间',
+              children: loginDetail?.updated_time ?? '-',
+            },
+          ]}
+        />
+      </Drawer>
+
+      <Drawer
+        title="操作日志详情"
+        open={operationDetailOpen}
+        onClose={() => setOperationDetailOpen(false)}
+        width={720}
+      >
+        <Descriptions
+          column={1}
+          bordered
+          size="small"
+          items={[
+            { key: 'id', label: 'ID', children: operationDetail?.id ?? '-' },
+            {
+              key: 'request_path',
+              label: '请求路径',
+              children: operationDetail?.request_path ?? '-',
+            },
+            {
+              key: 'request_method',
+              label: '请求方法',
+              children: operationDetail?.request_method ?? '-',
+            },
+            {
+              key: 'response_code',
+              label: '响应状态码',
+              children: operationDetail?.response_code ?? '-',
+            },
+            {
+              key: 'process_time',
+              label: '处理耗时',
+              children: operationDetail?.process_time ?? '-',
+            },
+            {
+              key: 'status',
+              label: '状态',
+              children: operationStatusText(operationDetail?.status),
+            },
+            {
+              key: 'description',
+              label: '描述',
+              children: operationDetail?.description ?? '-',
+            },
+            {
+              key: 'operator',
+              label: '操作人',
+              children: operationDetail?.created_by?.name ?? '-',
+            },
+            {
+              key: 'created_time',
+              label: '创建时间',
+              children: operationDetail?.created_time ?? '-',
             },
             {
               key: 'request_payload',
               label: '请求体',
               children: (
-                <pre style={JSON_STYLE}>{detail?.request_payload ?? '-'}</pre>
+                <pre style={JSON_STYLE}>
+                  {operationDetail?.request_payload ?? '-'}
+                </pre>
               ),
             },
             {
               key: 'response_json',
               label: '响应体',
               children: (
-                <pre style={JSON_STYLE}>{detail?.response_json ?? '-'}</pre>
+                <pre style={JSON_STYLE}>
+                  {operationDetail?.response_json ?? '-'}
+                </pre>
               ),
             },
           ]}

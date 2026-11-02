@@ -84,11 +84,10 @@ export type LoginLogListParams = Partial<PageQuery> & {
 
 export type OperationLogListParams = Partial<PageQuery> & {
   /**
-   * 后端 OperationLogQueryParam 有这个查询参数,但操作日志表**没有** username 列
-   * (后端 __build_conditions 会对不存在的列取属性并抛错),
-   * 所以页面不渲染这个搜索项,这里保留只是对齐后端的查询参数契约。
+   * ⚠️ **刻意没有** `username`:后端 OperationLogQueryParam 有这个查询参数,
+   * 但操作日志表**没有** username 列 —— 后端 __build_conditions 会对不存在的列取属性并抛错
+   * (HTTP 500)。不声明它,调用方在编译期就传不进来。
    */
-  username?: string;
   status?: number;
   request_path?: string;
   request_method?: string;

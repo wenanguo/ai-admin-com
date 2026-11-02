@@ -1,16 +1,22 @@
-import type { ProColumns } from '@ant-design/pro-components';
+import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import type React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, renderHook } from 'vitest-browser-react';
-import { CRUD_PAGINATION, useCrudColumns, useCrudTable } from './index';
+import {
+  CRUD_PAGINATION,
+  useCrudColumns,
+  useCrudTable,
+  useDeleteHandler,
+} from './index';
 
 /**
  * 共享 CRUD 脚手架的单测。
  *
- * 覆盖三件被规格 §5.3 钉死的事:
+ * 覆盖四件被规格 §5.3 钉死的事:
  * 1. 操作列的按钮按权限码门控(权限码写错会静默禁用按钮,是最难发现的一类 bug)
- * 2. 删除走 remove([id])
- * 3. 提交按有没有 editing 记录走 create / update
+ * 2. 省略 onEdit / editPerm 时不渲染「编辑」按钮(只读页走同一份实现)
+ * 3. 删除走 remove([id])
+ * 4. 提交按有没有 editing 记录走 create / update
  */
 
 const mocks = vi.hoisted(() => ({
@@ -49,6 +55,29 @@ const OptionColumn: React.FC<{ record: DemoRecord }> = ({ record }) => {
     editPerm: EDIT_PERM,
     deletePerm: DELETE_PERM,
     entityName: '岗位',
+  });
+  return <div>{renderColumn(columns[0], record)}</div>;
+};
+
+/** 只读页的操作列:省略 onEdit / editPerm ⇒ 只有「删除」按钮 */
+const ReadOnlyOptionColumn: React.FC<{ record: DemoRecord }> = ({ record }) => {
+  const columns = useCrudColumns<DemoRecord>({
+    onDelete: () => {},
+    deletePerm: DELETE_PERM,
+    entityName: '日志',
+  });
+  return <div>{renderColumn(columns[0], record)}</div>;
+};
+
+/** 给了 onEdit 但没给 editPerm ⇒ 同样不渲染「编辑」按钮 */
+const EditPermLessOptionColumn: React.FC<{ record: DemoRecord }> = ({
+  record,
+}) => {
+  const columns = useCrudColumns<DemoRecord>({
+    onEdit: () => {},
+    onDelete: () => {},
+    deletePerm: DELETE_PERM,
+    entityName: '日志',
   });
   return <div>{renderColumn(columns[0], record)}</div>;
 };
@@ -94,6 +123,82 @@ describe('CrudTable 共享脚手架', () => {
     await expect.element(getByRole('button', { name: '删除' })).toBeEnabled();
     expect(mocks.hasPermission).toHaveBeenCalledWith(EDIT_PERM);
     expect(mocks.hasPermission).toHaveBeenCalledWith(DELETE_PERM);
+  });
+
+  it('省略 onEdit 时不渲染「编辑」按钮,只有「删除」(只读页)', async () => {
+    mocks.hasPermission.mockImplementation(
+      (code: string) => code === DELETE_PERM,
+    );
+
+    const { getByRole } = await render(
+      <ReadOnlyOptionColumn record={{ id: 1, name: '后端工程师' }} />,
+    );
+
+    // 只有删除按钮 —— 只读页不该出现编辑入口
+    await expect
+      .element(getByRole('button', { name: '编辑' }))
+      .not.toBeInTheDocument();
+    await expect.element(getByRole('button', { name: '删除' })).toBeEnabled();
+  });
+
+  it('省略 editPerm 时同样不渲染「编辑」按钮', async () => {
+    const { getByRole } = await render(
+      <EditPermLessOptionColumn record={{ id: 1, name: '后端工程师' }} />,
+    );
+
+    await expect
+      .element(getByRole('button', { name: '编辑' }))
+      .not.toBeInTheDocument();
+  });
+
+  it('useDeleteHandler 删除时调用 remove([record.id])', async () => {
+    const remove = vi.fn<(ids: number[]) => Promise<unknown>>();
+    remove.mockResolvedValue(undefined);
+
+    const { result, act } = await renderHook(() =>
+      useDeleteHandler<DemoRecord>(remove),
+    );
+
+    await act(async () => {
+      await result.current({ id: 7, name: '后端工程师' });
+    });
+
+    expect(remove).toHaveBeenCalledWith([7]);
+  });
+
+  it('useDeleteHandler 删除成功后刷新列表,失败时吞掉异常', async () => {
+    const reload = vi.fn();
+    // ActionType 有几十个成员,测试里只需要 reload —— 用一个窄的替身
+    const actionRef = {
+      current: { reload },
+    } as unknown as React.RefObject<ActionType | undefined>;
+
+    const remove = vi.fn<(ids: number[]) => Promise<unknown>>();
+    remove.mockResolvedValue(undefined);
+
+    const { result, act } = await renderHook(() =>
+      useDeleteHandler<DemoRecord>(remove, actionRef),
+    );
+
+    await act(async () => {
+      await result.current({ id: 7, name: '后端工程师' });
+    });
+
+    expect(reload).toHaveBeenCalledTimes(1);
+
+    // 失败:异常被吞掉(提示由请求层统一弹)
+    const failing = vi.fn<(ids: number[]) => Promise<unknown>>();
+    failing.mockRejectedValue(new Error('boom'));
+    const { result: failedResult, act: failedAct } = await renderHook(() =>
+      useDeleteHandler<DemoRecord>(failing, actionRef),
+    );
+
+    await failedAct(async () => {
+      await expect(
+        failedResult.current({ id: 7, name: '后端工程师' }),
+      ).resolves.toBeUndefined();
+    });
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('删除时调用 remove([record.id])', async () => {

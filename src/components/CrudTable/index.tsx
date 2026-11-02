@@ -10,7 +10,8 @@ import { useCallback, useRef, useState } from 'react';
  * 8 个系统管理模块的页面从这里取三样东西:
  *
  * - `useCrudTable`: 弹窗开关 / 编辑对象 / 删除 / 提交 的状态机
- * - `useCrudColumns`: 带权限门控的「操作」列
+ * - `useCrudColumns`: 带权限门控的「操作」列(编辑按钮可选 ⇒ 只读页也能用)
+ * - `useDeleteHandler`: 删除 → 刷新 → 吞异常(没有状态机的页面用)
  * - `CRUD_PAGINATION`: 分页配置(page_size 上限 100 是后端约束,只能定义一次)
  *
  * 声明式的部分(ProTable props、工具栏「新增」按钮、弹窗元素)刻意留在每个页面 ——
@@ -63,6 +64,36 @@ export const CRUD_PAGINATION = {
 };
 
 /**
+ * 删除处理器:删除 → 刷新列表 → 吞掉异常。
+ *
+ * `useCrudTable.handleDelete` 与只读页的删除走的是**同一段逻辑**
+ * (刷新那一步漏了页面就不会更新,异常不吞掉会变成未处理的 rejection),
+ * 所以必须只有一份实现。
+ *
+ * @param remove 删除接口(入参是 id 数组)
+ * @param actionRef ProTable 的 actionRef;传了就删除后刷新列表
+ * @returns 绑定到操作列 `onDelete` 的处理函数
+ */
+export function useDeleteHandler<T extends CrudRecord>(
+  remove: (ids: number[]) => Promise<unknown>,
+  actionRef?: React.RefObject<ActionType | undefined>,
+): (record: T) => Promise<void> {
+  return useCallback(
+    async (record: T) => {
+      if (!record.id) return;
+      try {
+        await remove([record.id]);
+        // 成功提示由请求层统一弹(后端信封里的 msg),这里不要再弹一次
+        actionRef?.current?.reload();
+      } catch {
+        // 失败提示也由请求层统一弹,这里只需要把异常消化掉
+      }
+    },
+    [actionRef, remove],
+  );
+}
+
+/**
  * CRUD 状态机:把「弹窗开关 / 编辑对象 / 删除 / 提交」这套逻辑集中到一处。
  *
  * 页面只剩列定义 + service 调用 + 声明式 JSX。
@@ -89,19 +120,8 @@ export function useCrudTable<T extends CrudRecord, V>(
     setModalOpen(open);
   }, []);
 
-  const handleDelete = useCallback(
-    async (record: T) => {
-      if (!record.id) return;
-      try {
-        await remove([record.id]);
-        // 成功提示由请求层统一弹(后端信封里的 msg),这里不要再弹一次
-        actionRef.current?.reload();
-      } catch {
-        // 失败提示也由请求层统一弹,这里只需要把异常消化掉
-      }
-    },
-    [remove],
-  );
+  // 删除走共享的 useDeleteHandler —— 只有一份实现
+  const handleDelete = useDeleteHandler<T>(remove, actionRef);
 
   const handleSubmit = useCallback(
     async (values: V) => {
@@ -135,12 +155,21 @@ export function useCrudTable<T extends CrudRecord, V>(
 
 /** useCrudColumns 的入参 */
 export interface CrudColumnOptions<T> {
-  /** 点「编辑」 */
-  onEdit: (record: T) => void;
+  /**
+   * 点「编辑」。**省略 ⇒ 不渲染「编辑」按钮**(只剩删除按钮)。
+   *
+   * 只读页(如日志管理)没有编辑入口,但删除按钮的权限门控必须与其它模块
+   * 走同一份实现 —— 所以这里做成可选,而不是让页面另抄一份。
+   */
+  onEdit?: (record: T) => void;
   /** 点「删除」(二次确认后触发) */
   onDelete: (record: T) => void | Promise<void>;
-  /** 编辑按钮的权限码 */
-  editPerm: string;
+  /**
+   * 编辑按钮的权限码。**省略 ⇒ 不渲染「编辑」按钮**。
+   *
+   * 与 `onEdit` 必须成对出现:两者缺一,都不渲染编辑按钮。
+   */
+  editPerm?: string;
   /** 删除按钮的权限码 */
   deletePerm: string;
   /** 实体中文名,用于删除二次确认的文案 */
@@ -152,6 +181,9 @@ export interface CrudColumnOptions<T> {
  *
  * 两个按钮都按权限码门控 —— 权限码写错会**静默禁用**按钮,是最难发现的一类 bug,
  * 所以这段必须只有一份实现。
+ *
+ * `onEdit` / `editPerm` 省略时**不渲染「编辑」按钮** —— 只读页(只有删除)走同一份实现,
+ * 页面不用再抄一遍权限门控。
  */
 export function useCrudColumns<T>(
   options: CrudColumnOptions<T>,
@@ -167,15 +199,20 @@ export function useCrudColumns<T>(
       valueType: 'option',
       width: 160,
       render: (_, record) => [
-        <Button
-          key="edit"
-          type="link"
-          size="small"
-          disabled={!access.hasPermission(editPerm)}
-          onClick={() => onEdit(record)}
-        >
-          编辑
-        </Button>,
+        // 编辑按钮可选:onEdit / editPerm 缺一就不渲染(只读页)
+        ...(onEdit && editPerm
+          ? [
+              <Button
+                key="edit"
+                type="link"
+                size="small"
+                disabled={!access.hasPermission(editPerm)}
+                onClick={() => onEdit(record)}
+              >
+                编辑
+              </Button>,
+            ]
+          : []),
         <Popconfirm
           key="delete"
           title={`确认删除该${entityName}?`}
