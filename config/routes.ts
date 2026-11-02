@@ -100,6 +100,12 @@ export default [
         icon: 'safetyCertificate',
         component: './module_system/role',
       },
+      {
+        path: '/system/dict',
+        name: 'dict',
+        icon: 'book',
+        component: './module_system/dict',
+      },
     ],
   },
   {

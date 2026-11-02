@@ -57,4 +57,5 @@ export default {
   'menu.system.log': 'Logs',
   'menu.system.dept': 'Departments',
   'menu.system.role': 'Roles',
+  'menu.system.dict': 'Dictionaries',
 };
