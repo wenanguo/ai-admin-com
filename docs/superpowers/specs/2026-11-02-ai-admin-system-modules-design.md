@@ -201,24 +201,75 @@ export async function listPositions(params: PositionListParams) {
 
 ### 5.3 页面主体（index.tsx）
 
-照抄 `src/pages/module_system/user/index.tsx` 的骨架：
+**共享脚手架 `src/components/CrudTable/`** —— 8 个模块的页面从它取三样东西，
+页面文件里只剩「列定义 + service 调用 + 声明式 JSX」：
 
+| 导出 | 用途 | 签名要点 |
+|---|---|---|
+| `useCrudTable<T, V>` | CRUD 状态机：弹窗开关、编辑对象、删除处理、提交处理 | 入参 `{ create(values: V), update(id: number, values: V), remove(ids: number[]) }`；返回 `{ actionRef, modalOpen, editing, openCreate, openEdit, closeModal, handleDelete, handleSubmit }` |
+| `getCrudColumns<T>` | 标准「操作」列（编辑 + 删除，按权限码门控） | 入参 `{ onEdit, onDelete, editPerm, deletePerm, entityName }`；内部自己调 `useAccess()` |
+| `CRUD_PAGINATION` | 分页配置常量 | `{ defaultPageSize: 10, pageSizeOptions: [10,20,50,100], showSizeChanger: true }` |
+
+页面文件长这样：
+
+```tsx
+const PositionManagement: React.FC = () => {
+  const crud = useCrudTable<PositionOut, PositionCreateParams>({
+    create: createPosition,
+    update: updatePosition,
+    remove: deletePositions,
+  });
+
+  const columns: ProColumns<PositionOut>[] = [ /* ...只放数据列... */ ];
+
+  return (
+    <>
+      <ProTable<PositionOut>
+        headerTitle="岗位管理"
+        rowKey="id"
+        actionRef={crud.actionRef}
+        columns={[...columns, ...getCrudColumns<PositionOut>({
+          onEdit: crud.openEdit,
+          onDelete: crud.handleDelete,
+          editPerm: 'module_system:position:update',
+          deletePerm: 'module_system:position:delete',
+          entityName: '岗位',
+        })]}
+        request={requestPositions}
+        search={{ labelWidth: 80 }}
+        pagination={CRUD_PAGINATION}
+        onRequestError={() => {}}
+        toolBarRender={() => [ /* 新增按钮，按 createPerm 门控 */ ]}
+      />
+      <PositionModalForm
+        open={crud.modalOpen}
+        record={crud.editing}
+        onOpenChange={crud.closeModal}
+        onSubmit={crud.handleSubmit}
+      />
+    </>
+  );
+};
 ```
-const requestXxx = toProTableRequest<XxxOut>(listXxx);   // 复用 src/services/paginate.ts
-const [actionRef] = useRef<ActionType | undefined>(undefined);
-const [modalOpen, setModalOpen] = useState(false);
-const [editing, setEditing] = useState<XxxOut | undefined>(undefined);
-```
+
+**为什么只抽到「逻辑层」**：8 个模块的页面形态差异很大 —— 岗位/参数/公告/工单是普通表格，
+日志是双 tab 只读，部门是树形，字典是主从分栏，角色多一个授权弹窗。
+一个要同时伺候这 4 种形态的通用 wrapper，props 面会很大，每个页面都要跟它搏斗。
+所以：**带风险的真逻辑**（权限门控、try/catch 吞异常、create-vs-update 分支、reload）
+抽进共享件；**声明式 JSX**（ProTable props、工具栏按钮、弹窗元素）留在每个页面。
+
+**为什么不抽整个 `CrudTable` 组件**：同上，按 YAGNI。
+若将来页面形态趋同，再抽组件不迟。
 
 硬性要求：
 
 | 要求 | 原因 |
 |---|---|
 | 用 `toProTableRequest` 适配，不要手写 `request` | 它已经处理了 `page_no`/`page_size` 夹紧（1..100）、空值剔除和信封解包 |
-| `pagination={{ defaultPageSize: 10, pageSizeOptions: [10,20,50,100] }}` | 后端 `page_size` 上限 100（C2） |
-| 操作列用 `access.hasPermission('<mod>:<action>')` 判定 | 按钮级权限 |
+| `pagination={CRUD_PAGINATION}`，不要自己写分页配置 | `page_size` 上限 100 是后端约束（C2），集中定义避免 8 个页面各写各的 |
+| ProTable 必须传 `onRequestError={() => {}}` | ProComponents v3 在 `onRequestError` 未定义时会把 rejection **重新抛出成 unhandled promise rejection**（控制台噪音 + e2e flake）。错误提示由请求层统一弹（C7），这里只是阻止重抛 |
+| 操作列用 `getCrudColumns` 统一实现 | 权限码写错会**静默禁用**按钮，是最难发现的一类 bug |
 | 新增/编辑用 `ModalForm`，**编辑时不渲染创建专属字段** | 例：用户表单的密码框 |
-| `handleDelete` / `handleEdit` **必须声明在 `columns` 之前** | Biome 的 `noInvalidUseBeforeDeclaration` 会报错 |
 | 页面里**不弹** `message.success/error` | 请求层已统一弹（C7） |
 | 删除用 `Popconfirm` 二次确认 | 不可逆操作 |
 | `import type React from 'react'` + `React.FC` | 与现有页面一致 |
@@ -556,17 +607,26 @@ const actionRef = useRef<ActionType>();                        // ❌ TS 报错
 ### 8.3 组件导出注册表
 
 `src/components/index.ts` 是仓库的组件出口清单（注释写着「统一管理对外输出的组件」）。
-两个新组件都要在那里登记：
+新组件都要在那里登记：
 
 ```ts
 export { default as DeptTreeSelect } from './DeptTreeSelect';
 export { default as MenuPermissionTree } from './MenuPermissionTree';
+export { getCrudColumns, useCrudTable, CRUD_PAGINATION } from './CrudTable';
 ```
 
 > 这不是强制风格问题：`src/components/index.ts` 里已有一条「死代码 `DocLink`」
 > 在 v0.1.0 前被清掉的记录，说明这个注册表会被审查，新组件不加会被当成遗漏。
 
-### 8.4 用户表单的连带改动
+### 8.4 `CrudTable`（共享 CRUD 脚手架）
+
+- 路径：`src/components/CrudTable/index.tsx`
+- 导出：`useCrudTable` / `getCrudColumns` / `CRUD_PAGINATION`（见 §5.3 的签名表）
+- 消费者：**全部 8 个模块页**（只读页 `log` 只用 `getCrudColumns` 或不用）
+- 自测：`src/components/CrudTable/index.test.tsx` —— 至少覆盖
+  「权限码不足时按钮 disabled」「删除时调用 remove(ids)」「提交时按 editing 有无走 create/update」
+
+### 8.5 用户表单的连带改动
 
 `src/pages/module_system/user/ModalForm.tsx` 里：
 

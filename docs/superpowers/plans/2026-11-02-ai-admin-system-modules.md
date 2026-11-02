@@ -54,7 +54,10 @@ npm run e2e       # Playwright，全绿
 
 **参考样板**（照抄它们，不要另创风格）
 
-- 页面骨架：`src/pages/module_system/user/index.tsx`
+- 页面骨架：`src/pages/module_system/position/index.tsx`（Task 1 的产出，已改用共享脚手架）
+- **共享 CRUD 脚手架（必须消费，不要再逐行复制岗位页）**：
+  `src/components/CrudTable/` 的 `useCrudTable` / `getCrudColumns` / `CRUD_PAGINATION`
+  —— 签名与用法见规格 §5.3（`docs/superpowers/specs/2026-11-02-ai-admin-system-modules-design.md`）
 - 表单弹窗：`src/pages/module_system/user/ModalForm.tsx`
 - service 单测：`src/services/api/system/user.test.ts`
 - e2e 用例：`e2e/user-management.spec.ts`
@@ -85,6 +88,7 @@ src/services/api/system/{position,param,log,dept,dict,notice,ticket}.ts
 src/services/api/system/{position,param,log,dept,dict,notice,ticket}.test.ts
 src/pages/module_system/{position,params,log,dept,role,dict,notice,ticket}/index.tsx
 src/pages/module_system/{position,params,log,dept,role,dict,notice,ticket}/ModalForm.tsx
+src/components/CrudTable/{index.tsx,index.test.tsx}
 src/components/DeptTreeSelect/{index.tsx,index.test.tsx}
 src/components/MenuPermissionTree/{index.tsx,index.test.tsx}
 e2e/{position,param,log,dept,role,dict,notice,ticket}.spec.ts
@@ -96,7 +100,8 @@ e2e/{position,param,log,dept,role,dict,notice,ticket}.spec.ts
 config/routes.ts                                  追加 8 条路由
 src/locales/zh-CN/menu.ts                         追加 8 个 key
 src/locales/en-US/menu.ts                         追加 8 个 key
-src/components/index.ts                           登记 2 个新组件
+src/components/index.ts                           登记 3 个新组件
+src/pages/module_system/position/index.tsx        改用共享脚手架（Task 1 修复轮）
 src/services/api/system/role.ts                   扩展（已有 listRoles）
 src/services/api/system/types.ts                  追加 role 的两个类型
 src/pages/module_system/user/ModalForm.tsx        部门 ID → 树选择器（Task 4）
@@ -109,9 +114,19 @@ skills-lock.json                                  修 hash（Task 9）
 README.md                                         更新命令与模块清单（Task 10）
 ```
 
+> **共享 CRUD 脚手架** `src/components/CrudTable/`（`useCrudTable` / `getCrudColumns` /
+> `CRUD_PAGINATION`）由 **Task 1 的修复轮**产出 —— Task 1 的复审判定「整页复制用户页」
+> 是 plan-mandated 的 Important，裁决是抽逻辑层。**Task 2-8 必须消费它，不要再逐行复制岗位页。**
+> 规格见 `docs/superpowers/specs/2026-11-02-ai-admin-system-modules-design.md` §5.3 与 §8.4。
+
 ---
 
 ### Task 1: 岗位管理 position —— 流水线验证
+
+> **⚠️ 本任务有一轮修复（fix round 1）**：复审判定「整页逐行复制用户页」是
+> plan-mandated 的 Important。裁决（见规格 §5.3、§8.4）：抽出共享 CRUD 脚手架
+> `src/components/CrudTable/`（`useCrudTable` / `getCrudColumns` / `CRUD_PAGINATION`），
+> 并把岗位页改成消费它。**Task 2-8 直接消费该脚手架，不要再逐行复制岗位页。**
 
 这一批的目的是把「一个模块 = 六件东西」跑通并固化成模板。后端契约最简单，代价最低。
 
@@ -329,16 +344,28 @@ Expected: PASS —— 6 个用例全绿。
 - 用 `page.route` 拦截 `**/api/v1/system/position/list**`，返回信封包裹的
   `{ items: [{ id: 1, name: '后端工程师', code: 'backend', order: 1, status: 0, created_time: '2026-06-21 17:56:33' }], total: 1, page_no: 1, page_size: 10, has_next: false }`
 - 用 `page.addInitScript` 塞 `localStorage` 的 `remember_me` / `access_token` / `refresh_token`
-- 用 `page.route` 拦截 `**/api/v1/system/user/current/info`，返回含 `menus` 树的信封，
-  **树里要有一条 `route_path: 'position'`、父目录 `route_path: '/system'` 的子项**，
+- 用 `page.route` 拦截 `**/api/v1/system/user/current/info`，返回含 `menus` 树的信封。
+  树里要有一条 `route_path: 'position'`、父目录 `route_path: '/system'` 的子项，
   否则侧边栏不会出现「岗位管理」
-- 断言：
+- **权限码怎么放进 fixture（RF2 的关键）**：
+  权限集合来自 `collectPermissions(info.menus, info.roles)`（`src/app.tsx:62`），
+  它遍历的是**原始**菜单树；而 `buildMenuItems`（`src/menu/adapter.ts:167`）会把
+  `type: 3` 的按钮节点从**侧边栏**里剔掉。
+  ⇒ **`type: 3` 的节点不进菜单、但进权限集合**。
+  所以要让「新增」按钮 enabled，fixture 的 `menus` 里要放一个**按钮节点**，例如：
+  ```json
+  { "id": 30, "parent_id": 3, "name": "新增岗位", "type": 3,
+    "route_path": "", "title": "新增岗位",
+    "permission": "module_system:position:create",
+    "status": 0, "hidden": false, "children": null }
+  ```
+  它挂在「岗位管理」节点下面。断言：
   - 表格有 1 行，单元格含「后端工程师」
   - 列表请求 URL 含 `page_no=1` 与 `page_size=10`
   - **RF1 业务错误**：把 `list` 的拦截改成返回 HTTP 500 + `{ code: -1, msg: '岗位名称已存在', ... }`，
     断言页面出现「岗位名称已存在」这行中文（不是 "Request failed with status code 500"）
-  - **RF2 权限**：`current/info` 的 `menus` 里不放 `module_system:position:create` 权限码时，
-    断言「新增」按钮 `toBeDisabled()`；放上时断言 `toBeEnabled()`
+  - **RF2 权限**：去掉上面那个 `type: 3` 按钮节点时，断言「新增」按钮 `toBeDisabled()`；
+    放上时断言 `toBeEnabled()`
 
 - [ ] **Step 8: 跑 e2e，确认通过**
 
@@ -389,7 +416,8 @@ feat(position): 新增岗位管理页
 - Modify: `src/locales/en-US/menu.ts`
 
 **Interfaces:**
-- Consumes: Task 1 的范式（照抄 `src/pages/module_system/position/index.tsx`）
+- Consumes: Task 1 产出的共享脚手架 `src/components/CrudTable/`
+  （`useCrudTable` / `getCrudColumns` / `CRUD_PAGINATION`，用法见规格 §5.3）
 - Produces:
   ```ts
   // src/services/api/system/param.ts
@@ -463,7 +491,21 @@ Expected: PASS —— 6 个用例全绿。
 
 - [ ] **Step 5: 写页面**
 
-创建 `src/pages/module_system/params/index.tsx` 与 `ModalForm.tsx`，照 Task 1 的岗位页。
+创建 `src/pages/module_system/params/index.tsx` 与 `ModalForm.tsx`。
+
+**用共享脚手架，不要逐行复制岗位页**：
+
+```tsx
+const crud = useCrudTable<ParamOut, ParamCreateParams>({
+  create: createParam, update: updateParam, remove: deleteParams,
+});
+const columns: ProColumns<ParamOut>[] = [ /* ...只放数据列... */ ];
+// ProTable 上：columns={[...columns, ...getCrudColumns<ParamOut>({...})]}、
+// pagination={CRUD_PAGINATION}、onRequestError={() => {}}、
+// actionRef={crud.actionRef}；弹窗用 crud.modalOpen / crud.editing / crud.closeModal / crud.handleSubmit
+```
+
+权限码用 `module_system:param:*`（单数 `param`）。
 
 列：
 
@@ -473,7 +515,7 @@ Expected: PASS —— 6 个用例全绿。
 | 参数名称 | `config_name` | 是 | |
 | 参数键 | `config_key` | 是 | |
 | 参数值 | `config_value` | 否 | |
-| 系统内置 | `config_type` | 是 | `valueType: 'select'`，`valueEnum: { true: { text: '是' }, false: { text: '否' } }` |
+| 系统内置 | `config_type` | 否 | `search: false`；用 `render: (_, record) => record.config_type ? '是' : '否'` 渲染，**不要用 `valueEnum` 配布尔 key**（`false` 是 falsy，valueEnum 匹配有坑） |
 | 状态 | `status` | 是 | `valueEnum` 正常/禁用 |
 | 描述 | `description` | 否 | |
 | 创建时间 | `created_time` | 否 | |
