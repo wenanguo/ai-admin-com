@@ -1,10 +1,13 @@
 import { PlusOutlined } from '@ant-design/icons';
-import type { ActionType } from '@ant-design/pro-components';
 import { type ProColumns, ProTable } from '@ant-design/pro-components';
 import { useAccess } from '@umijs/max';
-import { Button, Popconfirm } from 'antd';
+import { Button } from 'antd';
 import type React from 'react';
-import { useRef, useState } from 'react';
+import {
+  CRUD_PAGINATION,
+  getCrudColumns,
+  useCrudTable,
+} from '@/components/CrudTable';
 import type {
   PositionCreateParams,
   PositionOut,
@@ -22,34 +25,18 @@ const requestPositions = toProTableRequest<PositionOut>(listPositions);
 
 /**
  * 岗位管理 —— 后端菜单 route_path=/system/position,component_path=module_system/position/index。
- * 后续新增业务页面按同一范式复制本文件。
+ *
+ * 骨架逻辑(状态机 / 操作列 / 分页)在共享脚手架 @/components/CrudTable 里,
+ * 本页只留「列定义 + service 调用 + 声明式 JSX」。后续新增业务页面按同一范式。
  */
 const PositionManagement: React.FC = () => {
   const access = useAccess();
-  const actionRef = useRef<ActionType | undefined>(undefined);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<PositionOut | undefined>(undefined);
 
-  const handleDelete = async (record: PositionOut) => {
-    if (!record.id) return;
-    try {
-      await deletePositions([record.id]);
-      // 成功提示由请求层统一弹(后端信封里的 msg),这里不要再弹一次
-      actionRef.current?.reload();
-    } catch {
-      // 失败提示也由请求层统一弹,这里只需要把异常消化掉
-    }
-  };
-
-  const handleEdit = (record: PositionOut) => {
-    setEditing(record);
-    setModalOpen(true);
-  };
-
-  const handleCreate = () => {
-    setEditing(undefined);
-    setModalOpen(true);
-  };
+  const crud = useCrudTable<PositionOut, PositionCreateParams>({
+    create: createPosition,
+    update: updatePosition,
+    remove: deletePositions,
+  });
 
   const columns: ProColumns<PositionOut>[] = [
     { title: 'ID', dataIndex: 'id', width: 80, search: false },
@@ -72,37 +59,6 @@ const PositionManagement: React.FC = () => {
     },
     { title: '描述', dataIndex: 'description', width: 200, search: false },
     { title: '创建时间', dataIndex: 'created_time', width: 180, search: false },
-    {
-      title: '操作',
-      valueType: 'option',
-      width: 160,
-      render: (_, record) => [
-        <Button
-          key="edit"
-          type="link"
-          size="small"
-          disabled={!access.hasPermission('module_system:position:update')}
-          onClick={() => handleEdit(record)}
-        >
-          编辑
-        </Button>,
-        <Popconfirm
-          key="delete"
-          title="确认删除该岗位?"
-          onConfirm={() => handleDelete(record)}
-          disabled={!access.hasPermission('module_system:position:delete')}
-        >
-          <Button
-            type="link"
-            size="small"
-            danger
-            disabled={!access.hasPermission('module_system:position:delete')}
-          >
-            删除
-          </Button>
-        </Popconfirm>,
-      ],
-    },
   ];
 
   return (
@@ -110,44 +66,40 @@ const PositionManagement: React.FC = () => {
       <ProTable<PositionOut>
         headerTitle="岗位管理"
         rowKey="id"
-        actionRef={actionRef}
-        columns={columns}
+        actionRef={crud.actionRef}
+        columns={[
+          ...columns,
+          ...getCrudColumns<PositionOut>({
+            onEdit: crud.openEdit,
+            onDelete: crud.handleDelete,
+            editPerm: 'module_system:position:update',
+            deletePerm: 'module_system:position:delete',
+            entityName: '岗位',
+          }),
+        ]}
         request={requestPositions}
         search={{ labelWidth: 80 }}
-        pagination={{
-          defaultPageSize: 10,
-          pageSizeOptions: [10, 20, 50, 100],
-          showSizeChanger: true,
-        }}
+        pagination={CRUD_PAGINATION}
+        // 错误提示由请求层统一弹,这里只需阻止 ProTable 把 rejection 重新抛出
+        // (ProComponents v3 在 onRequestError 未定义时会 rethrow,产生未捕获的 promise rejection)
+        onRequestError={() => {}}
         toolBarRender={() => [
           <Button
             key="create"
             type="primary"
             icon={<PlusOutlined />}
             disabled={!access.hasPermission('module_system:position:create')}
-            onClick={handleCreate}
+            onClick={crud.openCreate}
           >
             新增
           </Button>,
         ]}
       />
       <PositionModalForm
-        open={modalOpen}
-        record={editing}
-        onOpenChange={setModalOpen}
-        onSubmit={async (values: PositionCreateParams) => {
-          try {
-            if (editing?.id) {
-              await updatePosition(editing.id, values);
-            } else {
-              await createPosition(values);
-            }
-            actionRef.current?.reload();
-            return true;
-          } catch {
-            return false;
-          }
-        }}
+        open={crud.modalOpen}
+        record={crud.editing}
+        onOpenChange={crud.closeModal}
+        onSubmit={crud.handleSubmit}
       />
     </>
   );
