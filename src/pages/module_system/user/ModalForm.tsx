@@ -1,11 +1,12 @@
 import {
   ModalForm,
-  ProFormDigit,
+  ProForm,
   ProFormSelect,
   ProFormText,
   ProFormTextArea,
 } from '@ant-design/pro-components';
 import type React from 'react';
+import DeptTreeSelect from '@/components/DeptTreeSelect';
 import { listRoles } from '@/services/api/system/role';
 import type { UserCreateParams, UserOut } from '@/services/api/system/types';
 
@@ -50,7 +51,13 @@ const UserModalForm: React.FC<UserModalProps> = ({
       <ProFormText name="name" label="姓名" />
       <ProFormText name="mobile" label="手机号" />
       <ProFormText name="email" label="邮箱" />
-      <ProFormDigit name="dept_id" label="部门 ID" />
+      {/*
+        部门:用部门树选择器,不用「部门 ID」数字框了 ——
+        提交的字段名仍是 dept_id(number),后端契约没变。
+      */}
+      <ProForm.Item name="dept_id" label="部门">
+        <DeptTreeSelect placeholder="请选择部门" />
+      </ProForm.Item>
       {/*
         角色:新建用户时不选角色的话,这个账号登录后是空的(没有菜单也没有权限码)。
         后端 UserCreateSchema.role_ids 默认是 [],所以这里必须能选。
