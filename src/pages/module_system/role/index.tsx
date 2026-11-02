@@ -4,6 +4,7 @@ import { useAccess } from '@umijs/max';
 import { Button } from 'antd';
 import type React from 'react';
 import { useCallback, useState } from 'react';
+import { toNodeArray } from '@/components/AntdOperationColumn';
 import {
   CRUD_PAGINATION,
   useCrudColumns,
@@ -21,37 +22,6 @@ import RoleModalForm, { DATA_SCOPE_OPTIONS } from './ModalForm';
 import RolePermissionModal from './PermissionModal';
 
 const requestRoles = toProTableRequest<RoleOut>(listRoles);
-
-/**
- * ProColumns 的 render 允许返回 `{ children, props }`(ProTable 合并单元格用的形态)。
- */
-interface MergedCell {
-  children: React.ReactNode;
-  props: unknown;
-}
-
-/** 是不是合并单元格形态 */
-function isMergedCell(value: unknown): value is MergedCell {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'children' in value &&
-    'props' in value
-  );
-}
-
-/**
- * ReactNode 摊平成数组。
- *
- * 脚手架操作列的 render 返回的是**一组按钮**(数组),
- * 本模块要在这一组后面追加自己的入口,先摊平再拼。
- */
-function toNodeArray(value: React.ReactNode | MergedCell): React.ReactNode[] {
-  if (Array.isArray(value)) return value;
-  if (value === null || value === undefined) return [];
-  if (isMergedCell(value)) return [value.children];
-  return [value];
-}
 
 /**
  * 角色管理 —— 后端菜单 route_path=/system/role,component_path=module_system/role。

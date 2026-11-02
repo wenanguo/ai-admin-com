@@ -9,6 +9,12 @@ import Footer from './Footer';
 import { LangDropdown, VersionDropdown } from './RightContent';
 import { AvatarDropdown } from './RightContent/AvatarDropdown';
 
+export {
+  isMergedCell,
+  type MergedCell,
+  toAntdOperationColumn,
+  toNodeArray,
+} from './AntdOperationColumn';
 /**
  * 业务组件
  */

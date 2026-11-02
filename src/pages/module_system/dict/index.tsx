@@ -8,12 +8,11 @@ import {
   Row,
   Table,
   type TableColumnsType,
-  type TableColumnType,
   Typography,
 } from 'antd';
 import type React from 'react';
 import { useCallback, useEffect, useState } from 'react';
-import type { CrudRecord } from '@/components/CrudTable';
+import { toAntdOperationColumn } from '@/components/AntdOperationColumn';
 import {
   CRUD_PAGINATION,
   useCrudColumns,
@@ -42,62 +41,12 @@ import TypeModalForm from './TypeModalForm';
 const requestDictDatas = toProTableRequest<DictDataOut>(listDictDatas);
 
 /**
- * ProColumns 的 render 允许返回 `{ children, props }`
- * (ProTable 合并单元格用的形态),普通表格不会走到。
- */
-interface MergedCell {
-  children: React.ReactNode;
-  props: unknown;
-}
-
-/** 是不是合并单元格形态 */
-function isMergedCell(value: unknown): value is MergedCell {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'children' in value &&
-    'props' in value
-  );
-}
-
-/** 把 ProColumns 的 render 结果转成 ReactNode */
-function toReactNode(value: React.ReactNode | MergedCell): React.ReactNode {
-  if (isMergedCell(value)) return value.children;
-  return value;
-}
-
-/**
- * 把共享脚手架的操作列接到 antd Table 上。
- *
- * 脚手架的 `useCrudColumns` 返回的是 **ProColumns**(ProTable 专用):
- * - `title` 允许是函数,antd Table 的列不认
- * - `render` 的第 5 个参数(schema)在 ProTable 之外没有来源
- *
- * 左栏是 antd Table,所以把操作列**降级**成 antd 能吃的形状:
- * 按钮本身(权限门控 + 删除二次确认)仍然由脚手架的 render 生成,
- * 页面里没有第二份实现。
- */
-function toAntdOperationColumn<T extends CrudRecord>(
-  column: ProColumns<T>,
-  width: number,
-): TableColumnType<T> {
-  // ProTable 之外没有 schema 实例,脚手架的 render 不用它 —— 用操作列自身补一个同形状的对象
-  const schema = { ...column, type: undefined };
-
-  return {
-    title: '操作',
-    key: 'operation',
-    width,
-    render: (_value, record, index) =>
-      toReactNode(column.render?.(undefined, record, index, undefined, schema)),
-  };
-}
-
-/**
  * 左栏的字典类型列表。
  *
  * 左栏是 antd Table(不是 ProTable)⇒
  * - 分页参数固定 page_no=1 / page_size=100(一次拉够,类型数量有限)
+ *   ⚠️ 上限 100 是 brief 的约定(左栏不分页、不搜索):类型超过 100 个会被**静默截断**。
+ *     这是已知取舍,不是 bug —— 真要放开得先给左栏加分页与搜索。
  * - 刷新要自己管:共享脚手架的 actionRef 刷的是 ProTable,刷不到左栏
  */
 function useDictTypes() {
@@ -114,6 +63,7 @@ function useDictTypes() {
   const reload = useCallback(async () => {
     setLoading(true);
     try {
+      // page_size=100 是 brief 的约定(左栏不分页、不搜索):超过 100 个类型会被静默截断
       const res = await listDictTypes({ page_no: 1, page_size: 100 });
       const items = res?.data?.items ?? [];
       setTypes(items);
@@ -160,22 +110,26 @@ const DictManagement: React.FC = () => {
   /**
    * 字典类型(左栏)。
    *
-   * 左栏不是 ProTable ⇒ 脚手架的 actionRef 刷不到它,
-   * 所以三个写操作各自包一层「写完重新拉列表」。
+   * ⚠️ 左栏不是 ProTable ⇒ 脚手架的 `actionRef` **绑不到它**(那个 ref 刷的是 ProTable),
+   * 所以**左栏的每一个写操作都必须自己调 `reloadTypes()`** ——
+   * 漏掉不会报错,只会「写成功了但左栏列表不动」。
    */
   const typeCrud = useCrudTable<DictTypeOut, DictTypeCreateParams>({
     create: async (values) => {
       const res = await createDictType(values);
+      // 左栏写路径:必须自己刷新(脚手架的 actionRef 绑不到左栏)
       await reloadTypes();
       return res;
     },
     update: async (id, values) => {
       const res = await updateDictType(id, values);
+      // 左栏写路径:必须自己刷新(脚手架的 actionRef 绑不到左栏)
       await reloadTypes();
       return res;
     },
     remove: async (ids) => {
       await deleteDictTypes(ids);
+      // 左栏写路径:必须自己刷新(脚手架的 actionRef 绑不到左栏)
       await reloadTypes();
     },
   });
@@ -211,8 +165,9 @@ const DictManagement: React.FC = () => {
       title: '状态',
       dataIndex: 'status',
       width: 50,
+      // status 可能是 null(后端没给)⇒ 显示 '-',别把它当成 '禁用'
       render: (status: number | null | undefined) =>
-        status === 0 ? '正常' : '禁用',
+        status == null ? '-' : status === 0 ? '正常' : '禁用',
     },
     ...typeOperationColumns.map((column) => toAntdOperationColumn(column, 110)),
   ];
@@ -272,7 +227,7 @@ const DictManagement: React.FC = () => {
               columns={typeColumns}
               dataSource={types}
               loading={typesLoading}
-              // 类型数量有限,一次拉够(左栏不分页)
+              // 类型数量有限,一次拉够(左栏不分页);上限 100 见 useDictTypes 的注释
               pagination={false}
               onRow={(record) => ({
                 onClick: () => setSelected(record),
