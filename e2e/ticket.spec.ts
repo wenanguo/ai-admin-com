@@ -112,6 +112,35 @@ const emptyTicketListResponse = {
   success: true,
 };
 
+/** 还没指派处理人的工单 —— 后端 assigned_by 是 null */
+const unassignedTicketListResponse = {
+  code: 0,
+  msg: '查询成功',
+  data: {
+    items: [
+      {
+        id: 9,
+        title: '还没有人接单',
+        ticket_type: 'suggestion',
+        ticket_content: '待指派',
+        summary: null,
+        images: null,
+        description: null,
+        status: 0,
+        assigned_id: null,
+        assigned_by: null,
+        created_time: '2026-11-02 18:00:00',
+      },
+    ],
+    total: 1,
+    page_no: 1,
+    page_size: 10,
+    has_next: false,
+  },
+  status_code: 200,
+  success: true,
+};
+
 /** 处理人下拉的候选(搜索栏里的远程搜索) */
 const userListResponse = {
   code: 0,
@@ -127,21 +156,59 @@ const userListResponse = {
   success: true,
 };
 
+/** 远程搜索命中关键字时的候选(模拟后端按 name 过滤) */
+const userListSearchResponse = {
+  code: 0,
+  msg: '查询成功',
+  data: {
+    items: [{ id: 4, username: 'lisi', name: '李四' }],
+    total: 1,
+    page_no: 1,
+    page_size: 10,
+    has_next: false,
+  },
+  status_code: 200,
+  success: true,
+};
+
+/** 处理人下拉 mock 的可选项 */
+type UserListMockOptions = {
+  /** 收集到的每次请求带的 name 关键字(null = 没带关键字) */
+  keywords?: (string | null)[];
+  /** 带了 name 关键字时的响应体 */
+  keywordResponse?: unknown;
+};
+
 /**
  * 拦下处理人下拉的数据源。
  *
- * 搜索栏里的「处理人」是远程搜索(ProFormSelect + listUsers),
+ * 搜索栏里的「处理人」是远程搜索(列级 select + listUsers),
  * 页面一挂载就会请求 /system/user/list —— 不拦的话请求会打到真实后端,
  * 报错弹出的提示还会干扰别的断言。
+ *
+ * 传了 keywords 就能拿到「每次请求带的 name 关键字」——
+ * 用来断言远程搜索真的把关键字发出去了(见下面的「处理人下拉能远程搜索」用例)。
  */
-async function mockUserList(page: Page): Promise<void> {
-  await page.route(USER_LIST_URL, (route) =>
-    route.fulfill({
+async function mockUserList(
+  page: Page,
+  options: UserListMockOptions = {},
+): Promise<void> {
+  const { keywords, keywordResponse } = options;
+
+  await page.route(USER_LIST_URL, (route) => {
+    const url = route.request().url();
+    const keyword = new URL(url).searchParams.get('name');
+    keywords?.push(keyword);
+
+    const body =
+      keyword && keywordResponse ? keywordResponse : userListResponse;
+
+    return route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(userListResponse),
-    }),
-  );
+      body: JSON.stringify(body),
+    });
+  });
 }
 
 /** 装受控页面:处理人下拉 + 共享夹具(菜单树 / 登录态 / 列表接口) */
@@ -149,8 +216,9 @@ async function setupTicketPage(
   page: Page,
   listBody: unknown,
   listStatus = 200,
+  userListOptions: UserListMockOptions = {},
 ): Promise<string[]> {
-  await mockUserList(page);
+  await mockUserList(page, userListOptions);
   return setupModulePage(page, {
     menus: [ticketMenu()],
     listUrl: TICKET_LIST_URL,
@@ -273,6 +341,57 @@ test.describe('工单管理页', () => {
     await expect(
       page.locator('.ant-select-dropdown:visible .ant-select-item-option'),
     ).toHaveText(['张三']);
+  });
+
+  test('处理人下拉能远程搜索:输入关键字后请求带上关键字', async ({ page }) => {
+    const keywords: (string | null)[] = [];
+
+    await setupTicketPage(page, ticketListResponse, 200, {
+      keywords,
+      keywordResponse: userListSearchResponse,
+    });
+
+    await gotoModulePage(page, TICKET_PAGE_PATH, menuItem(page));
+
+    // 搜索栏默认只展开第一行,「处理人」在折叠区里 —— 先展开
+    await page.locator('.ant-pro-query-filter-collapse-button').click();
+
+    const assigneeSearch = page
+      .locator('.ant-form-item', { hasText: '处理人' })
+      .locator('input[role="combobox"]');
+    await assigneeSearch.click();
+
+    // ⚠️ 必须真的**打字**。
+    // 列级 select 如果没开 fieldProps.showSearch,antd Select 的输入框是
+    // readOnly ⇒ onSearch 永远不触发 ⇒ 远程搜索是死代码(永远只有第一页候选)。
+    await page.keyboard.type('李');
+
+    // 请求真的带上了关键字(而不是永远只发一次不带关键字的列表请求)
+    await expect.poll(() => keywords).toContain('李');
+
+    // 候选换成了命中关键字的人
+    await expect(
+      page.locator('.ant-select-dropdown:visible .ant-select-item-option'),
+    ).toHaveText(['李四']);
+  });
+
+  test('工单还没指派处理人时显示占位符,不崩', async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    await setupTicketPage(page, unassignedTicketListResponse);
+
+    await gotoModulePage(page, TICKET_PAGE_PATH, menuItem(page));
+
+    // assigned_by 是 null ⇒ 显示占位符,不是空白也不是报错
+    const assigneeCell = page
+      .locator('.ant-table-tbody tr.ant-table-row td')
+      .nth(4);
+    await expect(assigneeCell).toHaveText('-');
+
+    // 没有落到错误页,也没有未捕获的异常
+    await expect(page.getByText('页面出现错误')).toHaveCount(0);
+    expect(pageErrors).toEqual([]);
   });
 
   test('按工单类型筛选时提交的是后端的线上的值', async ({ page }) => {

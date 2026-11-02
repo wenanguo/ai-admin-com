@@ -120,6 +120,22 @@ const TicketManagement: React.FC = () => {
       width: 140,
       valueType: 'select',
       /**
+       * ⚠️ 列级 select **必须**显式开 showSearch,否则远程搜索是死代码。
+       *
+       * 列级 select 渲染的是普通 antd Select,能不能搜只看 fieldProps.showSearch:
+       * 不开的话 rc-select 的输入框是 readOnly(readOnly: !showSearch),
+       * onSearch 永远不触发 ⇒ ProComponents 不会带着关键字去请求,
+       * 下拉里永远只有第一页(page_size: 100)那批人。
+       *
+       * (规格里写的 ProFormSelect 默认 showSearch: true,
+       *  所以「ProFormSelect + 远程搜索」的写法没问题,换成列级 select 就必须补上。)
+       */
+      fieldProps: { showSearch: true },
+      /**
+       * 远程搜索防抖(毫秒)。ProComponents 的默认是 0 —— 每敲一个字发一次请求。
+       */
+      debounceTime: 300,
+      /**
        * 搜索项:处理人是用户 —— 远程搜索,候选来自 listUsers。
        *
        * ⚠️ 这个接口在后端要 `module_system:user:query` 权限;
@@ -144,7 +160,8 @@ const TicketManagement: React.FC = () => {
         );
       },
       // 表格里显示处理人的名字 —— 后端随工单一起返回 assigned_by,
-      // 不用再查一次用户表
+      // 不用再查一次用户表。
+      // ⚠️ assigned_by 可能是 null(工单还没指派处理人)⇒ 给个占位符,不能崩
       render: (_, record) => record.assigned_by?.name ?? '-',
     },
     {
