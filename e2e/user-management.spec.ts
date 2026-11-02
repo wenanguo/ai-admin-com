@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { waitForApp } from './helpers';
 
 /**
  * 用户管理页的前端闭环(接口全部拦截,不需要真实账号)。
@@ -111,6 +112,7 @@ test.describe('用户管理页', () => {
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
     await page.goto('/system/user');
+    await waitForApp(page);
     await page.waitForLoadState('networkidle');
 
     // 回归护栏:父路由的 redirect 曾让这里无限重定向,整页变成错误页

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { waitForApp } from './helpers';
 
 /**
  * 登录 / 退出 / 401 静默刷新 的前端闭环(接口全部拦截,不需要真实账号)。
@@ -142,6 +143,7 @@ test.describe('登录与登录态', () => {
 
     // --- 登录 ---
     await page.goto('/user/login');
+    await waitForApp(page);
     await page.getByPlaceholder('请输入用户名').fill('admin');
     await page.getByPlaceholder('请输入密码').fill('e2e-password');
     await page.getByPlaceholder('请输入验证码').fill('1234');
@@ -215,6 +217,7 @@ test.describe('登录与登录态', () => {
     });
 
     await page.goto('/system/user');
+    await waitForApp(page);
 
     // 先静默刷新,刷新失败才登出
     await expect.poll(() => refreshCalled).toBe(true);
