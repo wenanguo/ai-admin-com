@@ -21,6 +21,7 @@ export {
   useDeleteHandler,
   useDeleteHandlerWithoutReload,
 } from './CrudTable';
+export { default as DeptTreeSelect } from './DeptTreeSelect';
 export { default as ErrorBoundary } from './ErrorBoundary';
 export { default as OfflineBanner } from './OfflineBanner';
 export { default as StandardFormRow } from './StandardFormRow';

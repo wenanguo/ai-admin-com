@@ -88,6 +88,12 @@ export default [
         icon: 'fileSearch',
         component: './module_system/log',
       },
+      {
+        path: '/system/dept',
+        name: 'dept',
+        icon: 'apartment',
+        component: './module_system/dept',
+      },
     ],
   },
   {

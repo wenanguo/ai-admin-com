@@ -55,4 +55,5 @@ export default {
   'menu.system.position': 'Positions',
   'menu.system.param': 'Parameters',
   'menu.system.log': 'Logs',
+  'menu.system.dept': 'Departments',
 };
