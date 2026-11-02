@@ -207,7 +207,8 @@ export async function listPositions(params: PositionListParams) {
 | 导出 | 用途 | 签名要点 |
 |---|---|---|
 | `useCrudTable<T, V>` | CRUD 状态机：弹窗开关、编辑对象、删除处理、提交处理 | 入参 `{ create(values: V), update(id: number, values: V), remove(ids: number[]) }`；返回 `{ actionRef, modalOpen, editing, openCreate, openEdit, closeModal, handleDelete, handleSubmit }` |
-| `useCrudColumns<T>` | 标准「操作」列（编辑 + 删除，按权限码门控） | 入参 `{ onEdit, onDelete, editPerm, deletePerm, entityName }`；内部自己调 `useAccess()`。<br>**必须以 `use` 开头** —— 它调了 hook，Rules of Hooks 的命名约定要求如此；这样 Biome 的 `useHookAtTopLevel` 规则自然通过，不需要 `biome-ignore` 压制 |
+| `useCrudColumns<T>` | 标准「操作」列（编辑 + 删除，按权限码门控） | 入参 `{ onEdit, onDelete, editPerm, deletePerm, entityName }`；内部自己调 `useAccess()`。<br>**必须以 `use` 开头** —— 它调了 hook，Rules of Hooks 的命名约定要求如此；这样 Biome 的 `useHookAtTopLevel` 规则自然通过，不需要 `biome-ignore` 压制。<br>**`onEdit` 与 `editPerm` 必须「同时给」或「同时不给」** —— 只给 `onEdit` 不给 `editPerm`（或反之）**编译不过**（类型上用联合类型保证）。两者都不给 ⇒ 不渲染「编辑」按钮（只读页用）。<br>⚠️ 这条规则存在的原因：可选属性会把「忘了传 `editPerm`」从**编译错误**变成**静默少一个按钮**，而权限码写错恰恰是脚手架注释里警告的「最难发现的一类 bug」。 |
+| `useDeleteHandler<T>(remove, actionRef?)` | 删除处理器（删除 → reload → 吞异常） | 入参 `remove: (ids: number[]) => Promise<unknown>`、**可选** `actionRef`；返回 `(record: T) => Promise<void>`。`useCrudTable.handleDelete` 内部就是它。<br>⚠️ 不传 `actionRef` 则删完**不刷新表格** —— 调用方应当传。 |
 | `CRUD_PAGINATION` | 分页配置常量 | `{ defaultPageSize: 10, pageSizeOptions: [10,20,50,100], showSizeChanger: true }` |
 
 页面文件长这样：
