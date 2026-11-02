@@ -61,6 +61,11 @@ npm run e2e       # Playwright，全绿
 - 表单弹窗：`src/pages/module_system/user/ModalForm.tsx`
 - service 单测：`src/services/api/system/user.test.ts`
 - e2e 用例：`e2e/user-management.spec.ts`
+- **e2e 共享夹具：`e2e/helpers.ts`** —— `buildCurrentUserResponse`（菜单树 + `type:3` 按钮节点）、
+  `seedAuthState`、`businessErrorBody`、`setupModulePage`、`gotoModulePage`、`waitForApp`。
+  **每个模块的 e2e 都必须用它，不要复制 position/param spec 的 fixture**
+  （Task 2 复审裁定：×8 模块约 1200 行重复，已抽出共享件）。
+  共享导航 helper **不用 `networkidle`**（它是已知 flake 源）——用内容信号判断就绪。
 - ProTable 适配器：`src/services/paginate.ts`（`toProTableRequest`）
 
 ---
