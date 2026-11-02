@@ -834,5 +834,5 @@ npm run e2e       # Playwright 全绿
 | 部门 | `module_system:dept:query` | `/system/dept` | `dept` | 只有 `/tree`，无 `/list` |
 | 角色 | `module_system:role:query` | `/system/role` | `role` | 有 `/permission` 授权 |
 | 字典 | `module_system:dict_type:query` / `module_system:dict_data:query` | `/system/dict` | `dict` | 双资源、双套码 |
-| 公告 | `module_system:notice:query` | `/system/notice` | `notice` | `notice_type` 无枚举 |
+| 公告 | `module_system:notice:query` | `/system/notice` | `notice` | `notice_type` 受限枚举 1:通知 2:公告 |
 | 工单 | `module_system:ticket:list` | `/system/ticket` | `ticket` | 列表码是 `:list` 不是 `:query` |
