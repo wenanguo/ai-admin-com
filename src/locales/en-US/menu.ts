@@ -58,4 +58,5 @@ export default {
   'menu.system.dept': 'Departments',
   'menu.system.role': 'Roles',
   'menu.system.dict': 'Dictionaries',
+  'menu.system.notice': 'Notices',
 };

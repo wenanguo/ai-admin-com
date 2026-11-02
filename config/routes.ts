@@ -106,6 +106,12 @@ export default [
         icon: 'book',
         component: './module_system/dict',
       },
+      {
+        path: '/system/notice',
+        name: 'notice',
+        icon: 'notification',
+        component: './module_system/notice',
+      },
     ],
   },
   {
