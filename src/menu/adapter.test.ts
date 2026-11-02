@@ -238,6 +238,25 @@ describe('buildMenuItems', () => {
     warn.mockRestore();
   });
 
+  it('does not warn about an external link that is disabled or hidden', () => {
+    // 停用(status=1)/隐藏(hidden)的外链是被「有意跳过」的,原因不是「它是外链」。
+    // 这时再补一句「外链菜单暂不支持渲染」就是把两种原因搅在一起:
+    // 运维看日志会以为「外链不受支持」才是它没出现的原因。
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const items = buildMenuItems(
+      [
+        menu({ id: 1, type: 4, route_path: '/ext-disabled', status: 1 }),
+        menu({ id: 2, type: 4, route_path: '/ext-hidden', hidden: true }),
+      ],
+      new Set(['/ext-disabled', '/ext-hidden']),
+    );
+
+    expect(items).toHaveLength(0);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it('drops a directory without children whose path is not a frontend route', () => {
     // 空目录没有子项,自身路径也没注册 ⇒ 留着就是一条点进去 404 的死链
     const items = buildMenuItems(

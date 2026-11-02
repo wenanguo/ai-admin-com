@@ -13,6 +13,13 @@ const mockHistory = {
 
 const mockFetchCurrentUser = vi.fn();
 
+// 桥组件是 D2 的接线点:它必须渲染在 <App> 里面,请求层(errorHandler)才拿得到
+// 吃 ConfigProvider 主题的 message 实例。用 spy + 标记节点把它钉死 ——
+// 从 rootContainer 里删掉 <AppMessageBridge /> 时这条断言必须立刻红。
+const { appMessageBridgeRender } = vi.hoisted(() => ({
+  appMessageBridgeRender: vi.fn(),
+}));
+
 vi.mock('@umijs/max', () => ({
   history: mockHistory,
   Link: ({ children }: any) => children,
@@ -28,7 +35,10 @@ vi.mock('@/auth/session', () => ({
 }));
 
 vi.mock('@/components', () => ({
-  AppMessageBridge: () => null,
+  AppMessageBridge: () => {
+    appMessageBridgeRender();
+    return <div data-testid="app-message-bridge" />;
+  },
   AvatarDropdown: () => null,
   ErrorBoundary: ({ children }: any) => children,
   Footer: () => null,
@@ -333,6 +343,10 @@ describe('app layout menuDataRender', () => {
 });
 
 describe('app rootContainer', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('wraps the tree in antd App and keeps the content renderable', async () => {
     // <App> 让提示走 App.useApp() 的实例(不吃主题的静态 message 就被换掉了),
     // 代价是 DOM 多一层 .ant-app —— 内容必须照常渲染出来。
@@ -344,6 +358,23 @@ describe('app rootContainer', () => {
 
     expect(container.querySelector('.ant-app')).toBeTruthy();
     expect(container.querySelector('[data-testid="app-content"]')).toBeTruthy();
+  });
+
+  it('renders the AppMessageBridge inside the antd App wrapper', async () => {
+    // D2 的验收点:桥组件必须渲染在 <App>(.ant-app)里面。
+    // 少了它,提示会退回静态 message API(不吃主题),而 e2e 只比对文案,
+    // 看不出差别 —— 所以这条断言是唯一能挡住「D2 被悄悄回退」的网。
+    const { rootContainer } = await import('./app');
+
+    const { container } = await render(
+      rootContainer(<div data-testid="app-content">内容</div>),
+    );
+
+    expect(appMessageBridgeRender).toHaveBeenCalled();
+    // 标记节点必须落在 .ant-app 里面:渲染了但挂在 App 外面,同样接不上主题
+    expect(
+      container.querySelector('.ant-app [data-testid="app-message-bridge"]'),
+    ).toBeTruthy();
   });
 
   it('takes the request base URL from the single source in services/http', async () => {

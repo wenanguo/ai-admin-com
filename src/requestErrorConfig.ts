@@ -1,4 +1,11 @@
-﻿import type { RequestOptions } from '@@/plugin-request/request';
+﻿/**
+ * 请求层的统一错误处理与提示。
+ *
+ * 提示走 `App.useApp()` 的实例(见 `@/utils/appMessage`):
+ * 静态 message API 不吃 ConfigProvider 的上下文,提示会与页面主题不一致。
+ * 桥组件还没挂上时 `getMessage()` 会退回静态 API,不会崩。
+ */
+import type { RequestOptions } from '@@/plugin-request/request';
 import type { RequestConfig } from '@umijs/max';
 import { getIntl, getRequestInstance, history } from '@umijs/max';
 import { createUnauthorizedError, refreshSession } from '@/auth/session';
@@ -11,12 +18,6 @@ import {
   isUnauthorized,
 } from '@/services/response';
 import { getMessage } from '@/utils/appMessage';
-
-/**
- * 提示走 `App.useApp()` 的实例(见 `@/utils/appMessage`):
- * 静态 message API 不吃 ConfigProvider 的上下文,提示会与页面主题不一致。
- * 桥组件还没挂上时 `getMessage()` 会退回静态 API,不会崩。
- */
 
 /** 重放标记:防止刷新后仍然 401 时无限递归 */
 const RETRIED_FLAG = '__aiadminRetried';

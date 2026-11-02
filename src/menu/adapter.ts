@@ -153,8 +153,10 @@ function toInternal(items: BackendMenu[], parentAbs = ''): InternalMenu[] {
  *
  * 规则:
  * - 按钮(type=3)不生成菜单项
+ * - 停用(status=1)与隐藏(hidden)跳过 —— 这是有意为之,不该再补任何告警
  * - 外链(type=4)本轮不渲染(跳过,并单独告警)
- * - 停用(status=1)与隐藏(hidden)跳过
+ *   告警放在停用/隐藏之后:停用或隐藏的外链根本轮不到「外链不支持」这一步,
+ *   两种跳过原因不能混为一谈
  * - 目录(type=1)允许路径不在前端路由表中(它只是分组);
  *   菜单(type=2)路径必须已在前端注册,否则跳过并告警
  * - 目录只有在「还有可见子项」或「自身路径已在前端注册」时才保留;
@@ -172,15 +174,16 @@ export function buildMenuItems(
       const { item, path } = node;
 
       if (item.type === MENU_TYPE_BUTTON) continue;
+      // 后端 status 是字符串列,数字 1 与字符串 '1' 都要认
+      if (String(item.status) === '1') continue;
+      if (item.hidden) continue;
       // 外链本轮不渲染:跳过是已知且有意的行为,不是「前端缺路由」——
-      // 但要单独告警,否则「这条菜单为什么不见了」没人知道
+      // 但要单独告警,否则「这条菜单为什么不见了」没人知道。
+      // 放在停用/隐藏之后:那两种是有意关掉的,不该再挂上「外链不支持」的告警。
       if (item.type === MENU_TYPE_EXTERNAL) {
         warnOnce(path, `[menu] 外链菜单暂不支持渲染: ${path}`);
         continue;
       }
-      // 后端 status 是字符串列,数字 1 与字符串 '1' 都要认
-      if (String(item.status) === '1') continue;
-      if (item.hidden) continue;
 
       const children = build(node.children);
       const isDirectory = item.type === MENU_TYPE_DIRECTORY;
