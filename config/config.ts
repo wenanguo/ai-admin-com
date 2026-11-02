@@ -47,6 +47,21 @@ export default defineConfig({
   publicPath: PUBLIC_PATH,
 
   /**
+   * @name 构建产物目录
+   * @description umi 的 dev 与 build 共用同一个 outputPath(见 @umijs/preset-umi 的
+   * commands/dev/dev.js 与 commands/build.js,两边都是 `userConfig.outputPath || 'dist'`),
+   * 于是 `npm start` 会把 utoopack 的 lazy-compilation chunk 写进 dist/,
+   * 把 `npm run build` 产出的 41 个静态 HTML 和资源冲掉 —— 构建产物会被开发模式污染。
+   * 这里按 NODE_ENV 分开:build 走 dist,dev 走 dist-dev。
+   *
+   * `max preview` 的进程跑在 NODE_ENV=development 下,靠 NODE_ENV 判断会去找 dist-dev,
+   * 所以 build / preview 这一对命令统一用 UMI_OUTPUT_PATH 显式约定产物目录。
+   */
+  outputPath:
+    process.env.UMI_OUTPUT_PATH ??
+    (process.env.NODE_ENV === 'production' ? 'dist' : 'dist-dev'),
+
+  /**
    * @name 兼容性设置
    * @description 设置 ie11 不一定完美兼容，需要检查自己使用的所有依赖
    * @doc https://umijs.org/docs/api/config#targets

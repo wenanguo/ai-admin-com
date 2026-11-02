@@ -16,6 +16,7 @@
       "!**/src/services/demo",
       "!**/mock",
       "!**/dist",
+      "!**/dist-dev",
       "!**/server",
       "!**/public",
       "!**/coverage",

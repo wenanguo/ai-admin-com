@@ -25,6 +25,21 @@ npm start        # 带 antd-pro 演示页 mock
 > 代理按环境挑选是靠 `config/config.ts` 里的 `proxy: proxy[UMI_ENV]` 这一行实现的,
 > 改代理时不要动它。
 
+### 构建产物目录
+
+`config/config.ts` 里 `outputPath` 按环境分开了:
+
+| 场景 | 目录 | 说明 |
+|---|---|---|
+| `npm run build` / `npm run preview` | `dist/` | 生产构建产物(41 个静态 HTML + 带 hash 的资源) |
+| `npm start` / `npm run dev` | `dist-dev/` | dev server 的 utoopack lazy-compilation chunk |
+
+**不要让 dev 写进 `dist/`** —— umi 的 dev 与 build 共用同一个 `outputPath`
+(`@umijs/preset-umi` 的 `commands/dev/dev.js` 与 `commands/build.js` 都是
+`userConfig.outputPath || 'dist'`),所以历史上 `npm start` 会把构建产物冲掉。
+build / preview 这一对命令统一用 `UMI_OUTPUT_PATH=dist` 显式约定,
+`max preview` 的进程跑在 `NODE_ENV=development` 下,靠 NODE_ENV 判断会去找 `dist-dev`。
+
 ## 登录与登录态
 
 - 登录接口是 **form-urlencoded**,验证码是一次性的:后端每次校验都会消耗掉它,
@@ -83,7 +98,8 @@ npm start        # 带 antd-pro 演示页 mock
 | `npm run build` | 构建 |
 | `npm run lint` | Biome + tsc |
 | `npm test` | 单元测试 |
-| `npm run e2e` | Playwright 端到端(接口全部拦截,**不需要真实账号**) |
+| `npm run e2e` | Playwright 端到端(先构建再跑,接口全部拦截,**不需要真实账号**) |
+| `npm run e2e:only` | 同上,但复用已有 `dist/`,不重新构建 |
 | `npm run biome` | 自动修复格式 |
 | `npx antd lint ./src` | antd 专有检查(废弃用法等) |
 
