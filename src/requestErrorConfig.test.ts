@@ -1,7 +1,9 @@
 import { message } from 'antd';
 import axios from 'axios';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearAuth } from '@/auth/token';
+import type { AppMessage } from '@/utils/appMessage';
+import { setAppMessage } from '@/utils/appMessage';
 import { errorConfig } from './requestErrorConfig';
 
 const mockRequest = vi.fn();
@@ -47,6 +49,19 @@ vi.mock('@/auth/token', () => ({
 }));
 
 type Interceptor = (arg: any) => Promise<any>;
+
+/** 造一个 App.useApp() 的替身(桥组件发布出来的就是这种实例) */
+function createAppMessageDouble(): AppMessage {
+  return {
+    info: vi.fn(),
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+    loading: vi.fn(),
+    open: vi.fn(),
+    destroy: vi.fn(),
+  };
+}
 
 /**
  * umi 注册响应拦截器的方式(见 src/.umi/plugin-request/request.ts):
@@ -716,5 +731,44 @@ describe('401 silent refresh and replay', () => {
 
     expect(clearAuth).not.toHaveBeenCalled();
     expect(mockHistoryReplace).not.toHaveBeenCalled();
+  });
+});
+
+describe('message instance', () => {
+  const errorHandler = errorConfig.errorConfig?.errorHandler as (
+    error: unknown,
+    opts?: unknown,
+  ) => void;
+
+  const bizError = () => {
+    const error: any = new Error('验证码不能为空');
+    error.name = 'BizError';
+    error.info = { code: -1, msg: '验证码不能为空', data: null };
+    return error;
+  };
+
+  afterEach(() => {
+    setAppMessage(null);
+  });
+
+  it('prefers the App.useApp() instance over the static message API', () => {
+    // 静态 message 不吃 ConfigProvider 的上下文,提示与页面主题不一致;
+    // 桥组件发布出实例之后,请求层必须走实例。
+    const appMessage = createAppMessageDouble();
+    setAppMessage(appMessage);
+
+    errorHandler(bizError(), {});
+
+    expect(appMessage.error).toHaveBeenCalledWith('验证码不能为空');
+    expect(message.error).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the static message API when no instance is published', () => {
+    // 桥组件还没挂上(首屏渲染之前)也不能崩:退回静态 API 照样弹提示。
+    setAppMessage(null);
+
+    errorHandler(bizError(), {});
+
+    expect(message.error).toHaveBeenCalledWith('验证码不能为空');
   });
 });

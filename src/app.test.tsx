@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
 
 const mockReplace = vi.fn();
 const mockHistory = {
@@ -27,6 +28,7 @@ vi.mock('@/auth/session', () => ({
 }));
 
 vi.mock('@/components', () => ({
+  AppMessageBridge: () => null,
   AvatarDropdown: () => null,
   ErrorBoundary: ({ children }: any) => children,
   Footer: () => null,
@@ -327,5 +329,29 @@ describe('app layout menuDataRender', () => {
     ] as any);
 
     expect(items?.[0].icon).toBe(icon);
+  });
+});
+
+describe('app rootContainer', () => {
+  it('wraps the tree in antd App and keeps the content renderable', async () => {
+    // <App> 让提示走 App.useApp() 的实例(不吃主题的静态 message 就被换掉了),
+    // 代价是 DOM 多一层 .ant-app —— 内容必须照常渲染出来。
+    const { rootContainer } = await import('./app');
+
+    const { container } = await render(
+      rootContainer(<div data-testid="app-content">内容</div>),
+    );
+
+    expect(container.querySelector('.ant-app')).toBeTruthy();
+    expect(container.querySelector('[data-testid="app-content"]')).toBeTruthy();
+  });
+
+  it('takes the request base URL from the single source in services/http', async () => {
+    // baseURL 只能有一个定义处:src/services/http.ts 的 API_BASE_URL。
+    // 这里断言 app.tsx 用的是它,而不是自己又抄了一份 '/api/v1'。
+    const { request } = await import('./app');
+    const { API_BASE_URL } = await import('@/services/http');
+
+    expect(request.baseURL).toBe(API_BASE_URL);
   });
 });

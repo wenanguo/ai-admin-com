@@ -18,6 +18,7 @@ export {
 /**
  * 业务组件
  */
+export { default as AppMessageBridge } from './AppMessageBridge';
 export { default as ArticleListContent } from './ArticleListContent';
 export { default as AvatarList } from './AvatarList';
 export {
@@ -25,7 +26,6 @@ export {
   useCrudColumns,
   useCrudTable,
   useDeleteHandler,
-  useDeleteHandlerWithoutReload,
 } from './CrudTable';
 export { default as DeptTreeSelect } from './DeptTreeSelect';
 export { default as ErrorBoundary } from './ErrorBoundary';

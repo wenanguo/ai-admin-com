@@ -12,7 +12,6 @@ import { useCallback, useRef, useState } from 'react';
  * - `useCrudTable`: 弹窗开关 / 编辑对象 / 删除 / 提交 的状态机
  * - `useCrudColumns`: 带权限门控的「操作」列(编辑入口成对给 ⇒ 只读页也能用)
  * - `useDeleteHandler`: 删除 → 刷新 → 吞异常(没有状态机的页面用)
- * - `useDeleteHandlerWithoutReload`: 删除 → 吞异常(**不刷新**,名字里写明了)
  * - `CRUD_PAGINATION`: 分页配置(page_size 上限 100 是后端约束,只能定义一次)
  *
  * 声明式的部分(ProTable props、工具栏「新增」按钮、弹窗元素)刻意留在每个页面 ——
@@ -65,19 +64,19 @@ export const CRUD_PAGINATION = {
 };
 
 /**
- * 删除处理器的公共实现:删除 → (可选)刷新列表 → 吞掉异常。
+ * 删除处理器的公共实现:删除 → 刷新列表 → 吞掉异常。
  *
  * `useCrudTable.handleDelete` 与只读页的删除走的是**同一段逻辑**
  * (刷新那一步漏了页面就不会更新,异常不吞掉会变成未处理的 rejection),
  * 所以必须只有一份实现。
  *
  * @param remove 删除接口(入参是 id 数组)
- * @param reload 刷新列表的回调;不传就不刷新(见 useDeleteHandlerWithoutReload)
+ * @param reload 刷新列表的回调
  * @returns 绑定到操作列 `onDelete` 的处理函数
  */
 function useDeleteHandlerCore<T extends CrudRecord>(
   remove: (ids: number[]) => Promise<unknown>,
-  reload: (() => void) | undefined,
+  reload: () => void,
 ): (record: T) => Promise<void> {
   return useCallback(
     async (record: T) => {
@@ -85,7 +84,7 @@ function useDeleteHandlerCore<T extends CrudRecord>(
       try {
         await remove([record.id]);
         // 成功提示由请求层统一弹(后端信封里的 msg),这里不要再弹一次
-        reload?.();
+        reload();
       } catch {
         // 失败提示也由请求层统一弹,这里只需要把异常消化掉
       }
@@ -99,7 +98,6 @@ function useDeleteHandlerCore<T extends CrudRecord>(
  *
  * ⚠️ `actionRef` **必填** —— 少了它就退化成「删完不刷新表格」:
  * 接口报错了、页面却像没反应,是最难发现的一类 bug。
- * 确实不需要刷新的场景请用 `useDeleteHandlerWithoutReload`(名字里就写明了不刷新)。
  *
  * @param remove 删除接口(入参是 id 数组)
  * @param actionRef ProTable 的 actionRef;删除成功后调用它的 reload 刷新列表
@@ -113,23 +111,6 @@ export function useDeleteHandler<T extends CrudRecord>(
     actionRef.current?.reload();
   }, [actionRef]);
   return useDeleteHandlerCore<T>(remove, reload);
-}
-
-/**
- * 删除处理器(**不刷新列表**):删除 → 吞掉异常。
- *
- * 为什么单独给一个名字:「删完刷不刷新」必须由调用方**显式选择**。
- * 默认的 `useDeleteHandler` 一律刷新;只有在确实没有列表要刷新时
- * (例如页面自己管着列表的刷新)才用这个 —— 名字里写明「不刷新」,
- * 避免下一个页面照抄一行 `useDeleteHandler(remove)` 之后表格再也不动。
- *
- * @param remove 删除接口(入参是 id 数组)
- * @returns 绑定到操作列 `onDelete` 的处理函数
- */
-export function useDeleteHandlerWithoutReload<T extends CrudRecord>(
-  remove: (ids: number[]) => Promise<unknown>,
-): (record: T) => Promise<void> {
-  return useDeleteHandlerCore<T>(remove, undefined);
 }
 
 /**

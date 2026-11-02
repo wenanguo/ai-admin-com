@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AUTH_KEYS,
   clearAuth,
@@ -93,5 +93,45 @@ describe('token storage', () => {
     expect(sessionStorage.getItem(AUTH_KEYS.ACCESS_TOKEN)).toBeNull();
     expect(sessionStorage.getItem(AUTH_KEYS.REFRESH_TOKEN)).toBeNull();
     expect(localStorage.getItem(AUTH_KEYS.REMEMBER_ME)).toBeNull();
+  });
+});
+
+/**
+ * 隐私模式 / 禁用 cookie 时,浏览器会抛 SecurityError。
+ *
+ * 抛错的是**存储本身**,不是业务逻辑 —— 所以这一组用例钉住的是:
+ * 读失败当「没登录」,写失败静默忽略,任何情况下都不把异常抛给调用方
+ * (抛出去会让全站请求都失败,而不只是登录态失效)。
+ */
+describe('token storage when the browser blocks storage', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns an empty token instead of throwing when reading throws', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('SecurityError: storage is disabled');
+    });
+
+    expect(getAccessToken()).toBe('');
+    expect(getRefreshToken()).toBe('');
+    expect(isRememberMe()).toBe(false);
+  });
+
+  it('does not throw when writing throws', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError: storage is full');
+    });
+
+    expect(() => setTokens('access', 'refresh', true)).not.toThrow();
+    expect(() => setTokens('access', 'refresh', false)).not.toThrow();
+  });
+
+  it('does not throw when removing throws', () => {
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new Error('SecurityError: storage is disabled');
+    });
+
+    expect(() => clearAuth()).not.toThrow();
   });
 });

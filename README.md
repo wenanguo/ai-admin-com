@@ -61,6 +61,12 @@ build / preview 这一对命令统一用 `UMI_OUTPUT_PATH=dist` 显式约定,
 | `src/menu/adapter.ts` | 后端菜单树 → ProLayout 菜单的唯一转换处 |
 | `src/auth/**` | token 存取与会话操作 |
 | `src/pages/module_*/**` | 业务页面,目录名与后端菜单 `component_path` 对齐 |
+| `.claude/skills/**` 与 `.agents/skills/**` | **两份副本,不是符号链接**:改了一处要同步另一处,否则会漂移(Windows 建符号链接要开发者模式或管理员权限) |
+
+> `skills-lock.json` 里的 `computedHash` 是按**仓库提交的字节**(LF)算的:
+> 技能工具(vercel-labs/skills)对技能目录里的原始字节做 sha256,
+> 而 Windows 上 `core.autocrlf=true` 的检出是 CRLF —— 同一份技能在不同平台
+> 算出来的摘要不一样,改技能文件后记得用同一套字节重算。
 
 ## 菜单约定
 

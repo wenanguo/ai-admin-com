@@ -8,7 +8,6 @@ import {
   useCrudColumns,
   useCrudTable,
   useDeleteHandler,
-  useDeleteHandlerWithoutReload,
 } from './index';
 
 /**
@@ -241,34 +240,6 @@ describe('CrudTable 共享脚手架', () => {
     );
 
     expect(result.current).toBeTypeOf('function');
-  });
-
-  it('useDeleteHandlerWithoutReload 删除时调用 remove([record.id]),且不刷新列表', async () => {
-    const remove = vi.fn<(ids: number[]) => Promise<unknown>>();
-    remove.mockResolvedValue(undefined);
-
-    const { result, act } = await renderHook(() =>
-      useDeleteHandlerWithoutReload<DemoRecord>(remove),
-    );
-
-    await act(async () => {
-      await result.current({ id: 7, name: '后端工程师' });
-    });
-
-    expect(remove).toHaveBeenCalledWith([7]);
-
-    // 失败也吞掉(提示由请求层统一弹)
-    const failing = vi.fn<(ids: number[]) => Promise<unknown>>();
-    failing.mockRejectedValue(new Error('boom'));
-    const { result: failedResult, act: failedAct } = await renderHook(() =>
-      useDeleteHandlerWithoutReload<DemoRecord>(failing),
-    );
-
-    await failedAct(async () => {
-      await expect(
-        failedResult.current({ id: 7, name: '后端工程师' }),
-      ).resolves.toBeUndefined();
-    });
   });
 
   it('删除时调用 remove([record.id])', async () => {

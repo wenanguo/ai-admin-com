@@ -1,22 +1,22 @@
 ﻿import type { RequestOptions } from '@@/plugin-request/request';
 import type { RequestConfig } from '@umijs/max';
 import { getIntl, getRequestInstance, history } from '@umijs/max';
-import { message } from 'antd';
 import { createUnauthorizedError, refreshSession } from '@/auth/session';
 import { clearAuth, getAccessToken } from '@/auth/token';
+import { AUTH_FREE_API_PATHS } from '@/services/http';
 import {
   createBizError,
   isApiResponse,
   isSuccess,
   isUnauthorized,
 } from '@/services/response';
+import { getMessage } from '@/utils/appMessage';
 
-/** 不需要注入 token 的接口 */
-const AUTH_FREE_PATHS = [
-  '/system/auth/login',
-  '/system/auth/token/refresh',
-  '/system/auth/captcha/get',
-];
+/**
+ * 提示走 `App.useApp()` 的实例(见 `@/utils/appMessage`):
+ * 静态 message API 不吃 ConfigProvider 的上下文,提示会与页面主题不一致。
+ * 桥组件还没挂上时 `getMessage()` 会退回静态 API,不会崩。
+ */
 
 /** 重放标记:防止刷新后仍然 401 时无限递归 */
 const RETRIED_FLAG = '__aiadminRetried';
@@ -81,10 +81,10 @@ export const errorConfig: RequestConfig = {
       if (error?.name === 'BizError') {
         const info = error.info;
         if (info?.code === 403) {
-          message.error('无权限访问');
+          getMessage().error('无权限访问');
           return;
         }
-        message.error(info?.msg || '请求失败');
+        getMessage().error(info?.msg || '请求失败');
         return;
       }
 
@@ -92,15 +92,15 @@ export const errorConfig: RequestConfig = {
       if (error?.response) {
         const body = error.response.data;
         if (isApiResponse(body)) {
-          message.error(body.msg || '请求失败');
+          getMessage().error(body.msg || '请求失败');
           return;
         }
-        message.error(`服务异常 (${error.response.status})`);
+        getMessage().error(`服务异常 (${error.response.status})`);
         return;
       }
 
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        message.error(
+        getMessage().error(
           getIntl().formatMessage({
             id: 'app.request.offline',
             defaultMessage: '网络不可用，请检查连接后重试。',
@@ -109,7 +109,7 @@ export const errorConfig: RequestConfig = {
         return;
       }
 
-      message.error('网络连接异常，请稍后重试');
+      getMessage().error('网络连接异常，请稍后重试');
     },
   },
 
@@ -118,7 +118,7 @@ export const errorConfig: RequestConfig = {
     (config: RequestOptions) => {
       const url = String(config.url ?? '');
 
-      if (!AUTH_FREE_PATHS.some((path) => url.includes(path))) {
+      if (!AUTH_FREE_API_PATHS.some((path) => url.includes(path))) {
         const token = getAccessToken();
         if (token) {
           config.headers = {
@@ -161,7 +161,7 @@ export const errorConfig: RequestConfig = {
           !url.includes('logout') &&
           !url.includes('token/refresh')
         ) {
-          message.success(body.msg);
+          getMessage().success(body.msg);
         }
 
         return response;

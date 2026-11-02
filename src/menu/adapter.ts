@@ -48,6 +48,13 @@ const MENU_TYPE_EXTERNAL = 4;
 /** 已经警告过的路径,避免每次渲染都刷屏 */
 const warnedPaths = new Set<string>();
 
+/** 同一条路径只提醒一次(menuDataRender 每次渲染都会重跑) */
+function warnOnce(path: string, text: string): void {
+  if (warnedPaths.has(path)) return;
+  warnedPaths.add(path);
+  console.warn(text);
+}
+
 /** 拼接绝对路径:parentAbs + 相对段 */
 export function joinAbsolutePath(parentAbs: string, segment: string): string {
   const seg = segment.replace(/^\/+/, '');
@@ -146,7 +153,7 @@ function toInternal(items: BackendMenu[], parentAbs = ''): InternalMenu[] {
  *
  * 规则:
  * - 按钮(type=3)不生成菜单项
- * - 外链(type=4)本轮不渲染(跳过且不告警)
+ * - 外链(type=4)本轮不渲染(跳过,并单独告警)
  * - 停用(status=1)与隐藏(hidden)跳过
  * - 目录(type=1)允许路径不在前端路由表中(它只是分组);
  *   菜单(type=2)路径必须已在前端注册,否则跳过并告警
@@ -165,8 +172,12 @@ export function buildMenuItems(
       const { item, path } = node;
 
       if (item.type === MENU_TYPE_BUTTON) continue;
-      // 外链本轮不渲染:跳过是已知且有意的行为,不是「前端缺路由」,所以不告警
-      if (item.type === MENU_TYPE_EXTERNAL) continue;
+      // 外链本轮不渲染:跳过是已知且有意的行为,不是「前端缺路由」——
+      // 但要单独告警,否则「这条菜单为什么不见了」没人知道
+      if (item.type === MENU_TYPE_EXTERNAL) {
+        warnOnce(path, `[menu] 外链菜单暂不支持渲染: ${path}`);
+        continue;
+      }
       // 后端 status 是字符串列,数字 1 与字符串 '1' 都要认
       if (String(item.status) === '1') continue;
       if (item.hidden) continue;
@@ -175,11 +186,7 @@ export function buildMenuItems(
       const isDirectory = item.type === MENU_TYPE_DIRECTORY;
 
       if (!isDirectory && !knownPaths.has(path)) {
-        // 同一条路径只提醒一次:menuDataRender 每次渲染都会重跑
-        if (!warnedPaths.has(path)) {
-          warnedPaths.add(path);
-          console.warn(`[menu] 前端缺少路由: ${path}`);
-        }
+        warnOnce(path, `[menu] 前端缺少路由: ${path}`);
         continue;
       }
 

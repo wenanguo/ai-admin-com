@@ -3,12 +3,14 @@ import type { Settings as LayoutSettings } from '@ant-design/pro-components';
 import { SettingDrawer } from '@ant-design/pro-components';
 import type { RequestConfig, RunTimeLayoutConfig } from '@umijs/max';
 import { getIntl, history, Link } from '@umijs/max';
+import { App } from 'antd';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import React from 'react';
 
 import { fetchCurrentUser } from '@/auth/session';
 import {
+  AppMessageBridge,
   AvatarDropdown,
   ErrorBoundary,
   Footer,
@@ -33,6 +35,10 @@ dayjs.extend(relativeTime);
 
 const isDev = process.env.NODE_ENV === 'development';
 const loginPath = '/user/login';
+/**
+ * 不需要登录态的**前端路由**(不是接口路径)。
+ * 免鉴权的接口清单在 `@/services/http` 的 `AUTH_FREE_API_PATHS`。
+ */
 const authFreePaths = [loginPath, '/user/register', '/user/register-result'];
 
 /** 与后端用户信息绑定的初始状态片段 */
@@ -235,9 +241,13 @@ export const request: RequestConfig = {
 
 export function rootContainer(container: React.ReactNode) {
   return (
-    <>
+    // <App> 让页面上的提示(message / notification)走 App.useApp() 的实例:
+    // 静态 message API 不消费 ConfigProvider 的上下文,提示不吃主题。
+    // AppMessageBridge 把这个实例发布到模块级,请求层(errorHandler)才能用上。
+    <App>
+      <AppMessageBridge />
       <OfflineBanner />
       <ErrorBoundary>{container}</ErrorBoundary>
-    </>
+    </App>
   );
 }

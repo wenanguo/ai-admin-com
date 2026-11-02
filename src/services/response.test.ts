@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { API_BASE_URL } from './http';
+import { API_BASE_URL, AUTH_FREE_API_PATHS } from './http';
 import {
   createBizError,
   isApiResponse,
@@ -161,6 +161,16 @@ describe('response envelope helpers', () => {
   describe('API_BASE_URL', () => {
     it('is the backend API prefix', () => {
       expect(API_BASE_URL).toBe('/api/v1');
+    });
+  });
+
+  describe('AUTH_FREE_API_PATHS', () => {
+    it('lists the endpoints that must not carry a bearer token', () => {
+      // 请求拦截器靠这份清单决定要不要注入 token —— 它只有这一处定义
+      // (src/requestErrorConfig.ts 直接引这里)。
+      expect(AUTH_FREE_API_PATHS).toContain('/system/auth/login');
+      expect(AUTH_FREE_API_PATHS).toContain('/system/auth/token/refresh');
+      expect(AUTH_FREE_API_PATHS).toContain('/system/auth/captcha/get');
     });
   });
 });

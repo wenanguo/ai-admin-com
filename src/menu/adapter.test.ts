@@ -202,8 +202,10 @@ describe('buildMenuItems', () => {
     warn.mockRestore();
   });
 
-  it('skips external links without warning', () => {
-    // type=4 是外链,本轮不渲染 —— 这是已知且有意的行为,不是「前端缺路由」
+  it('skips external links with a dedicated warning', () => {
+    // type=4 是外链,本轮不渲染 —— 这是已知且有意的行为,不是「前端缺路由」。
+    // 但要单独告警:否则「这条菜单为什么不见了」没人知道,
+    // 而且告警文案混进「前端缺少路由」会把两种问题搅在一起。
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const items = buildMenuItems(
@@ -212,7 +214,27 @@ describe('buildMenuItems', () => {
     );
 
     expect(items).toHaveLength(0);
-    expect(warn).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith('[menu] 外链菜单暂不支持渲染: /swagger');
+    // 不能与「前端缺少路由」混为一谈
+    expect(warn).not.toHaveBeenCalledWith('[menu] 前端缺少路由: /swagger');
+    warn.mockRestore();
+  });
+
+  it('warns about the same external link only once', () => {
+    // menuDataRender 每次渲染都会重跑,不去重的话一次渲染能刷几百条
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    buildMenuItems(
+      [menu({ id: 1, type: 4, name: 'docs', route_path: '/docs' })],
+      new Set(['/system/user']),
+    );
+    buildMenuItems(
+      [menu({ id: 1, type: 4, name: 'docs', route_path: '/docs' })],
+      new Set(['/system/user']),
+    );
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('[menu] 外链菜单暂不支持渲染: /docs');
     warn.mockRestore();
   });
 
