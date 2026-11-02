@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import {
+  assertPermissionGatedButton,
   businessErrorBody,
   gotoModulePage,
   type ModuleMenu,
@@ -123,26 +124,28 @@ test.describe('岗位管理页', () => {
   });
 
   test('菜单树里没有按钮节点时「新增」按钮禁用', async ({ page }) => {
-    await setupModulePage(page, {
-      menus: [positionMenu(false)],
+    await assertPermissionGatedButton(page, {
+      buttonName: '新增',
+      permission: 'module_system:position:create',
+      granted: false,
+      menu: positionMenu(true),
+      path: POSITION_PAGE_PATH,
       listUrl: POSITION_LIST_URL,
       listBody: positionListResponse,
+      ready: menuItem(page),
     });
-
-    await gotoModulePage(page, POSITION_PAGE_PATH, menuItem(page));
-
-    await expect(page.getByRole('button', { name: '新增' })).toBeDisabled();
   });
 
   test('菜单树里有按钮节点时「新增」按钮可用', async ({ page }) => {
-    await setupModulePage(page, {
-      menus: [positionMenu(true)],
+    await assertPermissionGatedButton(page, {
+      buttonName: '新增',
+      permission: 'module_system:position:create',
+      granted: true,
+      menu: positionMenu(true),
+      path: POSITION_PAGE_PATH,
       listUrl: POSITION_LIST_URL,
       listBody: positionListResponse,
+      ready: menuItem(page),
     });
-
-    await gotoModulePage(page, POSITION_PAGE_PATH, menuItem(page));
-
-    await expect(page.getByRole('button', { name: '新增' })).toBeEnabled();
   });
 });

@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 /**
  * e2e 共享夹具。
@@ -300,5 +300,85 @@ export async function gotoModulePage(
 
   if (ready) {
     await ready.first().waitFor({ state: 'visible', timeout: 30_000 });
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* 权限门控                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/** 权限门控用例的入参 */
+export type PermissionGatedButtonOptions = {
+  /** 按钮在页面上的可访问名(例如「新增」「删除」) */
+  buttonName: string;
+  /** 按钮的权限码(会被挂成菜单树里的 type=3 节点) */
+  permission: string;
+  /**
+   * 菜单树里**是否**挂这条按钮节点:
+   * - false:不挂 ⇒ 按钮应当被禁用
+   * - true:挂 ⇒ 按钮应当可用
+   */
+  granted: boolean;
+  /** type=3 按钮节点的标题,默认与 buttonName 相同 */
+  buttonTitle?: string;
+  /** 模块菜单(type=2)。同权限的按钮节点由断言自己增删 */
+  menu: ModuleMenu;
+  /** 页面路径 */
+  path: string;
+  /** 列表接口的 URL glob */
+  listUrl: string;
+  /** 列表接口的响应体 */
+  listBody: unknown;
+  /** 应用就绪的内容信号(通常是侧边栏菜单项) */
+  ready?: Locator;
+};
+
+/**
+ * 断言「按钮是否被权限码门控」。
+ *
+ * 机制:后端菜单树里的 type=3 节点带 permission ——
+ * collectPermissions 会把它们收进权限集合(但 buildMenuItems 把它们从侧边栏剔掉),
+ * 所以按钮能不能点,取决于菜单树里有没有那条节点。
+ *
+ * 这里**不写死**模块路径 / 菜单 / 文案:全部由调用方传进来,
+ * 于是每个模块 spec 的权限用例只剩几行。
+ */
+export async function assertPermissionGatedButton(
+  page: Page,
+  options: PermissionGatedButtonOptions,
+): Promise<void> {
+  const {
+    buttonName,
+    permission,
+    granted,
+    buttonTitle,
+    menu,
+    path,
+    listUrl,
+    listBody,
+    ready,
+  } = options;
+
+  // 同权限的节点先摘掉,再按 granted 决定要不要挂上 —— 避免调用方的菜单里
+  // 已经带了这条节点,导致「不挂」的用例其实挂上了
+  const otherButtons = (menu.buttons ?? []).filter(
+    (button) => button.permission !== permission,
+  );
+  const buttons = granted
+    ? [...otherButtons, { title: buttonTitle ?? buttonName, permission }]
+    : otherButtons;
+
+  await setupModulePage(page, {
+    menus: [{ ...menu, buttons }],
+    listUrl,
+    listBody,
+  });
+  await gotoModulePage(page, path, ready);
+
+  const button = page.getByRole('button', { name: buttonName }).first();
+  if (granted) {
+    await expect(button).toBeEnabled();
+  } else {
+    await expect(button).toBeDisabled();
   }
 }

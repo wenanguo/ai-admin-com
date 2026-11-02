@@ -54,4 +54,5 @@ export default {
   'menu.system.user': '用户管理',
   'menu.system.position': '岗位管理',
   'menu.system.param': '参数管理',
+  'menu.system.log': '日志管理',
 };

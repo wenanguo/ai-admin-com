@@ -54,4 +54,5 @@ export default {
   'menu.system.user': 'Users',
   'menu.system.position': 'Positions',
   'menu.system.param': 'Parameters',
+  'menu.system.log': 'Logs',
 };

@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import {
+  assertPermissionGatedButton,
   businessErrorBody,
   gotoModulePage,
   type ModuleMenu,
@@ -171,27 +172,29 @@ test.describe('参数管理页', () => {
   });
 
   test('菜单树里没有按钮节点时「新增」按钮禁用', async ({ page }) => {
-    await setupModulePage(page, {
-      menus: [paramMenu(false, true)],
+    await assertPermissionGatedButton(page, {
+      buttonName: '新增',
+      permission: 'module_system:param:create',
+      granted: false,
+      menu: paramMenu(true, true),
+      path: PARAM_PAGE_PATH,
       listUrl: PARAM_LIST_URL,
       listBody: paramListResponse,
+      ready: menuItem(page),
     });
-
-    await gotoModulePage(page, PARAM_PAGE_PATH, menuItem(page));
-
-    await expect(page.getByRole('button', { name: '新增' })).toBeDisabled();
   });
 
   test('菜单树里有按钮节点时「新增」按钮可用', async ({ page }) => {
-    await setupModulePage(page, {
-      menus: [paramMenu(true, true)],
+    await assertPermissionGatedButton(page, {
+      buttonName: '新增',
+      permission: 'module_system:param:create',
+      granted: true,
+      menu: paramMenu(true, true),
+      path: PARAM_PAGE_PATH,
       listUrl: PARAM_LIST_URL,
       listBody: paramListResponse,
+      ready: menuItem(page),
     });
-
-    await gotoModulePage(page, PARAM_PAGE_PATH, menuItem(page));
-
-    await expect(page.getByRole('button', { name: '新增' })).toBeEnabled();
   });
 
   test('编辑弹窗里参数键 disabled(config_key 是唯一键)', async ({ page }) => {

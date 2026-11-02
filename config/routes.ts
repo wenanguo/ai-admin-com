@@ -82,6 +82,12 @@ export default [
         icon: 'fileText',
         component: './module_system/params',
       },
+      {
+        path: '/system/log',
+        name: 'log',
+        icon: 'fileSearch',
+        component: './module_system/log',
+      },
     ],
   },
   {
