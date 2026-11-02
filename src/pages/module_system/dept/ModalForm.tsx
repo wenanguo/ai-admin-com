@@ -59,8 +59,15 @@ const DeptModalForm: React.FC<DeptModalProps> = ({
         rules={[
           { required: true },
           {
-            // 与后端 DeptCreateSchema 的校验保持一致
-            // (backend/app/api/v1/module_system/dept/schema.py)
+            // 与后端 validate_required_code 的长度约束保持一致(2–64 个字符)
+            // (backend/app/core/validator.py)
+            min: 2,
+            max: 64,
+            message: '长度 2–64 个字符',
+          },
+          {
+            // 与后端 validate_required_code 的正则保持一致
+            // (backend/app/core/validator.py)
             pattern: /^[A-Za-z][A-Za-z0-9_]*$/,
             message: '字母开头，仅允许字母、数字、下划线',
           },

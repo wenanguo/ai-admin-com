@@ -38,10 +38,25 @@ export type DeptCreateParams = {
 
 export type DeptUpdateParams = DeptCreateParams;
 
+/** 拉部门树时的可选项 */
+export type GetDeptTreeOptions = {
+  /**
+   * 不走全局错误处理(失败由调用方自己处理)。
+   *
+   * 请求层的 errorHandler 会给**每一次**失败弹一次全局 toast ——
+   * 没有部门查看权限的用户每开一次弹窗就会挨一次「无权限访问」,
+   * 体验很差。打开这个开关后,失败以 reject 的形式交给调用方,
+   * 调用方可以安静地降级(空下拉 + 行内提示)。
+   */
+  skipErrorHandler?: boolean;
+};
+
 /** 部门树(全量,不接受任何查询参数) */
-export async function getDeptTree() {
+export async function getDeptTree(options?: GetDeptTreeOptions) {
   return request<ApiResponse<DeptOut[]>>('/system/dept/tree', {
     method: 'GET',
+    // 默认不传这个键,调用方不关心时请求参数保持原样
+    ...(options?.skipErrorHandler ? { skipErrorHandler: true } : {}),
   });
 }
 

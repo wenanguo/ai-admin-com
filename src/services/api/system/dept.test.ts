@@ -34,6 +34,16 @@ describe('system dept service', () => {
     });
   });
 
+  it('can opt the dept tree out of the global error handler', async () => {
+    await getDeptTree({ skipErrorHandler: true });
+
+    // 权限不足时由调用方自己降级,不弹全局 toast
+    expect(request).toHaveBeenCalledWith('/system/dept/tree', {
+      method: 'GET',
+      skipErrorHandler: true,
+    });
+  });
+
   it('gets a dept detail by id', async () => {
     await getDeptDetail(7);
 

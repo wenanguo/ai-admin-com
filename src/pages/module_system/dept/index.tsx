@@ -4,11 +4,7 @@ import { useAccess } from '@umijs/max';
 import { Button, Input } from 'antd';
 import type React from 'react';
 import { useCallback, useState } from 'react';
-import {
-  CRUD_PAGINATION,
-  useCrudColumns,
-  useCrudTable,
-} from '@/components/CrudTable';
+import { useCrudColumns, useCrudTable } from '@/components/CrudTable';
 import type { DeptCreateParams, DeptOut } from '@/services/api/system/dept';
 import {
   batchSetDeptsStatus,
@@ -59,6 +55,19 @@ function filterDeptTree(nodes: DeptOut[], keyword: string): DeptOut[] {
   return result;
 }
 
+/**
+ * 统计树里的节点总数(含所有后代)。
+ *
+ * 表格的数据源是**一棵树**,不是一个分页列表:`total` 要算全部节点,
+ * 只算根节点会让分页器的数字对不上(页脚说 N 条,页面却渲染了 N + 后代)。
+ */
+function countDeptNodes(nodes: DeptOut[]): number {
+  return nodes.reduce(
+    (sum, node) => sum + 1 + countDeptNodes(node.children ?? []),
+    0,
+  );
+}
+
 /** 收集有子部门的节点 id(表格默认展开它们) */
 function collectParentIds(nodes: DeptOut[]): number[] {
   const ids: number[] = [];
@@ -105,7 +114,7 @@ const DeptManagement: React.FC = () => {
     return {
       data,
       success: res?.success ?? false,
-      total: data.length,
+      total: countDeptNodes(data),
     };
   }, []);
 
@@ -162,7 +171,10 @@ const DeptManagement: React.FC = () => {
         params={{ keyword }}
         // 整个搜索表单关掉:后端只有树接口,搜索框放在工具栏里
         search={false}
-        pagination={CRUD_PAGINATION}
+        // 树形表格**关掉分页**:后端只有树接口(没有分页列表),
+        // 而 antd 的分页是按**顶层数组**切片的 —— 根部门在第二页以后就再也点不到了。
+        // 树是一个整体数据集,全部渲染出来才对。
+        pagination={false}
         // 错误提示由请求层统一弹,这里只需阻止 ProTable 把 rejection 重新抛出
         // (ProComponents v3 在 onRequestError 未定义时会 rethrow,产生未捕获的 promise rejection)
         onRequestError={() => {}}

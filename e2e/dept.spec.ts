@@ -21,6 +21,13 @@ import {
 
 const DEPT_PAGE_PATH = '/system/dept';
 const DEPT_TREE_URL = '**/api/v1/system/dept/tree**';
+/**
+ * 更宽的 glob:**任何**部门接口都会被捕获。
+ *
+ * 用它来断言「后端没有 /system/dept/list」—— 只拦 tree 的话,
+ * 就算前端真的发了 /list 也捕获不到,断言就是空的(永远不会失败)。
+ */
+const DEPT_ANY_URL = '**/api/v1/system/dept/**';
 
 /** 部门管理的菜单树(route_path 是相对的 'dept',拼上父目录就是 /system/dept) */
 function deptMenu(withButtons = true): ModuleMenu {
@@ -83,13 +90,37 @@ const emptyDeptTreeResponse = {
   success: true,
 };
 
+/**
+ * 12 个根部门(超过默认每页 10 条)—— 用来钉住「树形表格不分页」。
+ *
+ * antd 的分页是按**顶层数组**切片的:根部门超过 10 个时,第 11、12 个
+ * 会被切到第二页 —— 分页器只数根部门,却把整棵树都渲染出来。
+ */
+const manyRootsResponse = {
+  code: 0,
+  msg: '查询部门树成功',
+  data: Array.from({ length: 12 }, (_, index) => ({
+    id: 100 + index,
+    name: `部门${index + 1}`,
+    code: `dept${index + 1}`,
+    order: index + 1,
+    leader: '',
+    status: 0,
+    created_time: '2026-06-21 17:56:33',
+    children: [],
+  })),
+  status_code: 200,
+  success: true,
+};
+
 test.describe('部门管理页', () => {
   test('渲染部门树,数据源是 /system/dept/tree(不是 /list)', async ({
     page,
   }) => {
-    const treeRequests = await setupModulePage(page, {
+    // 拦**所有**部门接口,这样「没有 /list」这条断言才可能失败
+    const deptRequests = await setupModulePage(page, {
       menus: [deptMenu()],
-      listUrl: DEPT_TREE_URL,
+      listUrl: DEPT_ANY_URL,
       listBody: deptTreeResponse,
     });
 
@@ -105,16 +136,19 @@ test.describe('部门管理页', () => {
     await expect(page.getByText('总公司')).toBeVisible();
     await expect(page.getByText('研发部')).toBeVisible();
 
+    // 捕获机制有效:确实抓到了部门接口的请求
+    await expect.poll(() => deptRequests.length).toBeGreaterThan(0);
+    expect(deptRequests[0]).toContain('/system/dept/tree');
+
     // 数据源是树接口,后端没有 /system/dept/list
-    await expect.poll(() => treeRequests.length).toBeGreaterThan(0);
-    expect(treeRequests[0]).toContain('/system/dept/tree');
-    expect(treeRequests[0]).not.toContain('/system/dept/list');
+    // (对**所有**捕获到的部门接口断言,不是只看第一条)
+    expect(deptRequests.filter((url) => url.includes('/list'))).toEqual([]);
   });
 
   test('搜索在前端做:关键字不过后端,过滤的是已加载的树', async ({ page }) => {
-    const treeRequests = await setupModulePage(page, {
+    const deptRequests = await setupModulePage(page, {
       menus: [deptMenu()],
-      listUrl: DEPT_TREE_URL,
+      listUrl: DEPT_ANY_URL,
       listBody: deptTreeResponse,
     });
 
@@ -129,10 +163,29 @@ test.describe('部门管理页', () => {
     await expect(page.locator('.ant-empty')).toBeVisible();
 
     // 关键字**没有**发给后端(后端没有带关键字的树接口)
-    await expect.poll(() => treeRequests.length).toBeGreaterThan(0);
-    for (const url of treeRequests) {
+    await expect.poll(() => deptRequests.length).toBeGreaterThan(0);
+    for (const url of deptRequests) {
       expect(url).not.toContain('keyword');
     }
+  });
+
+  test('根部门超过一页大小时也全部可达(树形表格不分页)', async ({ page }) => {
+    await setupModulePage(page, {
+      menus: [deptMenu()],
+      listUrl: DEPT_ANY_URL,
+      listBody: manyRootsResponse,
+    });
+
+    await gotoModulePage(page, DEPT_PAGE_PATH, menuItem(page));
+
+    // 12 个根部门全部渲染出来(分页的话第 11、12 个会被切到第二页)
+    await expect(page.locator('.ant-table-tbody tr.ant-table-row')).toHaveCount(
+      12,
+    );
+    await expect(page.getByText('部门12')).toBeVisible();
+
+    // 页面上没有分页控件(树是一个整体数据集)
+    await expect(page.locator('.ant-pagination')).toHaveCount(0);
   });
 
   test('业务错误(HTTP 500 + 信封)弹的是后端 msg(RF1)', async ({ page }) => {

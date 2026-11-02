@@ -5,11 +5,13 @@ import DeptTreeSelect from './index';
 /**
  * 部门树选择器的单测。
  *
- * 钉住四件事:
+ * 钉住五件事:
  * - RF5:空树 / 单节点时正常渲染、不抛异常(后端的树可能只有一棵,甚至一棵都没有)
  * - 树形结构:父子两级的标题都渲染成选项
- * - `excludeId`:被排除的节点**连同它的整棵子树**都不出现(选上级部门时防自引用)
+ * - `excludeId`:被排除的节点**连同它的整棵子树**都不出现(选父部门时防自引用)
  * - 选中后 `onChange` 回传部门 id(用户表单靠它提交 dept_id)
+ * - 拉树**不走全局错误处理**:权限不足时安静降级(空下拉 + 行内提示),
+ *   不弹全局 toast
  */
 
 const mocks = vi.hoisted(() => ({
@@ -129,5 +131,51 @@ describe('DeptTreeSelect 部门树选择器', () => {
     await vi.waitFor(() => {
       expect(onChange).toHaveBeenCalledWith(2);
     });
+  });
+
+  it('拉部门树不走全局错误处理(权限不足不该弹全局 toast)', async () => {
+    mocks.getDeptTree.mockResolvedValue(envelope([]));
+
+    const { getByRole } = await render(<DeptTreeSelect />);
+    await waitForTreeLoaded();
+
+    // 组件自己处理失败 ⇒ 请求层不要再弹一次 toast
+    expect(mocks.getDeptTree).toHaveBeenCalledWith({
+      skipErrorHandler: true,
+    });
+    await expect.element(getByRole('combobox')).toBeInTheDocument();
+  });
+
+  it('没有部门权限时安静降级:空下拉 + 行内提示', async () => {
+    // 请求层把后端的业务信封转成 BizError(信封在 error.info 里)
+    mocks.getDeptTree.mockRejectedValue({
+      name: 'BizError',
+      info: { code: 403, msg: '无权限访问', data: null },
+    });
+
+    const { getByRole, getByText } = await render(<DeptTreeSelect />);
+    await waitForTreeLoaded();
+
+    // 选择器还在(表单还能用),只是没有选项
+    await expect.element(getByRole('combobox')).toBeInTheDocument();
+    await getByRole('combobox').click();
+    expect(getByRole('treeitem').elements()).toHaveLength(0);
+
+    // 行内提示说明原因(不是全局 toast)
+    await expect
+      .element(getByText('没有查看部门的权限,无法选择部门'))
+      .toBeVisible();
+  });
+
+  it('其它失败也降级成行内提示(不抛异常)', async () => {
+    mocks.getDeptTree.mockRejectedValue(new Error('network down'));
+
+    const { getByRole, getByText } = await render(<DeptTreeSelect />);
+    await waitForTreeLoaded();
+
+    await expect.element(getByRole('combobox')).toBeInTheDocument();
+    await expect
+      .element(getByText('部门列表加载失败,请稍后重试'))
+      .toBeVisible();
   });
 });
