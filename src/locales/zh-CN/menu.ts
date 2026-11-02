@@ -53,4 +53,5 @@ export default {
   'menu.system': '系统管理',
   'menu.system.user': '用户管理',
   'menu.system.position': '岗位管理',
+  'menu.system.param': '参数管理',
 };

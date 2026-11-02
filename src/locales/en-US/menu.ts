@@ -53,4 +53,5 @@ export default {
   'menu.system': 'System Management',
   'menu.system.user': 'Users',
   'menu.system.position': 'Positions',
+  'menu.system.param': 'Parameters',
 };

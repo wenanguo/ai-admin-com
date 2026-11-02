@@ -74,6 +74,14 @@ export default [
         icon: 'team',
         component: './module_system/position',
       },
+      {
+        // path 用单数(跟后端菜单 route_path /system/param 对齐),
+        // 目录用复数(跟后端 component_path module_system/params 对齐)
+        path: '/system/param',
+        name: 'param',
+        icon: 'fileText',
+        component: './module_system/params',
+      },
     ],
   },
   {
