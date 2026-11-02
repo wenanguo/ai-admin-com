@@ -1,7 +1,7 @@
 # AiAdmin 系统管理模块补齐 —— 设计规格
 
 - 日期：2026-11-02
-- 状态：待评审
+- 状态：已实施（分支 `feat/system-modules`）
 - 上游规格：`docs/superpowers/specs/2026-10-30-ai-admin-frontend-template-design.md`
 - 后端：`D:\project\AiAdmin\backend`（`app/api/v1/module_system`，已逐接口核实）
 - 前端：本仓库（antd-pro v6 / Umi Max 4 / antd 6 / ProComponents 3 / React 19）
