@@ -170,6 +170,24 @@ describe('app getInitialState', () => {
     );
   });
 
+  it('does not nest the redirect parameter when already on the login page', async () => {
+    const { getInitialState } = await import('./app');
+    mockHistory.location = {
+      pathname: '/user/login',
+      search: '?redirect=%2Fsystem%2Fuser',
+      hash: '',
+    };
+    mockFetchCurrentUser.mockRejectedValue(new Error('401'));
+
+    // 登录页自己也会调 fetchUserInfo(登录成功后拉当前用户),
+    // 这时已经在登录页了,再套一层 redirect 就成了
+    // /user/login?redirect=%2Fuser%2Flogin%3Fredirect%3D…
+    const state = await getInitialState();
+    await state.fetchUserInfo?.();
+
+    expect(mockReplace).toHaveBeenCalledWith('/user/login');
+  });
+
   it('includes the default settings in the initial state', async () => {
     const { getInitialState } = await import('./app');
     mockFetchCurrentUser.mockResolvedValue(backendUser);

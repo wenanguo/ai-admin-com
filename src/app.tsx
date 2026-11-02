@@ -63,8 +63,12 @@ export async function getInitialState(): Promise<
       };
     } catch (_error) {
       const { pathname, search, hash } = history.location;
+      // 已经在登录页就别再套一层 redirect —— 否则会越套越深
+      // (/user/login?redirect=%2Fuser%2Flogin%3Fredirect%3D…)
       history.replace(
-        `${loginPath}?redirect=${encodeURIComponent(pathname + search + hash)}`,
+        pathname === loginPath
+          ? loginPath
+          : `${loginPath}?redirect=${encodeURIComponent(pathname + search + hash)}`,
       );
     }
     return undefined;
