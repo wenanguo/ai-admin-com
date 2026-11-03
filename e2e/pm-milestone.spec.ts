@@ -21,6 +21,8 @@ import {
  * - 新增提交的是**线上码**(status_code='in_progress'),且带上 project_id
  * - 编辑把交付物的 JSON 文本还原成对象提交(整对象 PUT)
  * - 交付物不是 JSON 对象时表单内报错,请求根本不发
+ * - 编辑 at_risk 的里程碑:状态**只读**(显示字典标签「风险」而不是原始码),
+ *   人改不了它,提交体里的状态原样回传(INV-13)
  *
  * 菜单树:PM 模块挂在「/pm」目录下(helpers.buildCurrentUserResponse 的
  * MenuParent 参数),子菜单的相对 route_path 'milestone' 会被拼到 /pm 下,
@@ -414,6 +416,8 @@ test.describe('里程碑管理页', () => {
       deliverables: { doc: '需求规格说明书' },
     });
     expect(JSON.stringify(body)).not.toContain('进行中');
+    // 规则独占的状态不进创建请求(INV-13):下拉里没有这两项,提交体里也不该有
+    expect(['at_risk', 'missed']).not.toContain(String(body.status_code));
     // 日期提交为 YYYY-MM-DD 字符串(后端 date 协议),不是时间戳
     expect(String(body.start_date)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(body.start_date).toBe(body.due_date);
@@ -480,6 +484,66 @@ test.describe('里程碑管理页', () => {
     // 日期以 YYYY-MM-DD 字符串原样回传(后端 date 协议)
     expect(body.start_date).toBe('2026-11-05');
     expect(body.due_date).toBe('2026-11-20');
+  });
+
+  test('编辑 at_risk 的里程碑:状态只读显示标签,人改不了', async ({ page }) => {
+    const updateRequests: { url: string; method: string; body: unknown }[] = [];
+
+    await setupMilestonePage(page);
+
+    await page.route(MILESTONE_UPDATE_URL, (route) => {
+      const request = route.request();
+      updateRequests.push({
+        url: request.url(),
+        method: request.method(),
+        body: request.postDataJSON(),
+      });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(okResponse),
+      });
+    });
+
+    await gotoModulePage(
+      page,
+      MILESTONE_PAGE_PATH,
+      page.locator('.ant-menu').getByText('里程碑管理'),
+    );
+
+    // 第二行是 at_risk:规则引擎判定的状态,人不能手工设
+    const row = tableRows(page).filter({ hasText: '联调准备' });
+    await row.getByRole('button', { name: '编辑' }).click();
+    await expect(page.locator('.ant-modal')).toBeVisible();
+
+    const statusItem = modalFormItem(page, '状态');
+    // 显示字典标签(「风险」),不是原始线上码 at_risk
+    await expect(statusItem).toContainText('风险');
+    await expect(statusItem).not.toContainText('at_risk');
+
+    // 只读:没有可输入的下拉,点它也开不出选项
+    await expect(statusItem.locator('input[role="combobox"]')).toHaveCount(0);
+    await statusItem.click();
+    await expect(page.locator('.ant-select-dropdown:visible')).toHaveCount(0);
+
+    // 悬停出说明:这个状态不是人手工设的
+    await statusItem.getByText('风险', { exact: true }).hover();
+    await expect(page.getByText('由规则引擎判定，不可手工设置')).toBeVisible();
+
+    // 改个名字提交:状态原样回传,人没机会挑它
+    await modalFormItem(page, '里程碑名称')
+      .locator('input')
+      .fill('联调准备(改名)');
+    await page.locator('.ant-modal-footer button.ant-btn-primary').click();
+
+    await expect.poll(() => updateRequests.length).toBe(1);
+    expect(updateRequests[0].method).toBe('PUT');
+    expect(updateRequests[0].url).toContain('/pm_milestone/update/12');
+
+    const body = updateRequests[0].body as Record<string, unknown>;
+    expect(body.name).toBe('联调准备(改名)');
+    // 规则独占的状态:只读展示、原样回传 —— 人改不了它
+    expect(body.status_code).toBe('at_risk');
   });
 
   test('交付物不是 JSON 对象时表单内报错,请求根本不发', async ({ page }) => {

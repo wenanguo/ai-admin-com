@@ -7,14 +7,16 @@ import {
   ProFormText,
   ProFormTextArea,
 } from '@ant-design/pro-components';
+import { Tooltip } from 'antd';
 import type React from 'react';
 import { DictSelect } from '@/components/pm/DictSelect';
+import { DictTag } from '@/components/pm/DictTag';
 import type {
   MilestoneCreateParams,
   MilestoneOut,
 } from '@/services/api/pm/milestone';
 import { listProjects } from '@/services/api/pm/project';
-import { RULE_ENGINE_STATUSES } from './constants';
+import { RULE_ENGINE_STATUSES, RULE_ENGINE_TOOLTIP } from './constants';
 
 export type MilestoneModalProps = {
   open: boolean;
@@ -77,6 +79,19 @@ function toDeliverables(value?: string): Record<string, unknown> | null {
 }
 
 /**
+ * 状态不许手工设成规则引擎独占的那两个(INV-13)。
+ *
+ * 下拉里本来就没有这两项,这里是表单层的兜底:
+ * 万一值是从别处塞进来的(比如手工改了 initialValues),也不让它进提交体。
+ */
+function rejectRuleEngineStatus(_: unknown, value?: string): Promise<void> {
+  if (value && RULE_ENGINE_STATUSES.includes(value)) {
+    return Promise.reject(new Error('该状态由规则引擎判定，不可手工设置'));
+  }
+  return Promise.resolve();
+}
+
+/**
  * 里程碑表单。
  *
  * 后端的坑:
@@ -92,6 +107,20 @@ const MilestoneModalForm: React.FC<MilestoneModalProps> = ({
   onOpenChange,
   onSubmit,
 }) => {
+  // 记录当前的状态(线上码)
+  const currentStatus = record?.status_code ?? undefined;
+
+  /*
+    规则引擎独占的状态(at_risk/missed,INV-13):编辑这样的里程碑时状态**只读**。
+    下拉里本来就没有这两个选项,可 rc-select 会把匹配不上的值原样显示出来 ——
+    字段里显示的是原始码 at_risk,人既看不懂也以为能改。
+    所以这里改成只读展示:字典标签(「风险」)+ 「由规则引擎判定」的说明。
+  */
+  const ruleEngineStatus =
+    currentStatus && RULE_ENGINE_STATUSES.includes(currentStatus)
+      ? currentStatus
+      : undefined;
+
   return (
     <ModalForm<MilestoneFormValues>
       title={record?.id ? '编辑里程碑' : '新增里程碑'}
@@ -102,7 +131,8 @@ const MilestoneModalForm: React.FC<MilestoneModalProps> = ({
         description: record?.description ?? undefined,
         start_date: record?.start_date ?? undefined,
         due_date: record?.due_date ?? undefined,
-        status_code: record?.status_code ?? undefined,
+        // 规则独占的状态不注册成表单字段(只读展示),这里也不回填
+        status_code: ruleEngineStatus ? undefined : currentStatus,
         // 交付物存的是 dict,表单里编辑成 JSON 文本
         deliverables: record?.deliverables
           ? JSON.stringify(record.deliverables, null, 2)
@@ -116,6 +146,14 @@ const MilestoneModalForm: React.FC<MilestoneModalProps> = ({
         // 交付物:JSON 文本 → dict(后端是 JSON 列)
         const payload: MilestoneCreateParams = {
           ...values,
+          /*
+            规则独占的状态:原样回传,人改不了它(字段是只读的)。
+            少传是不行的 —— 后端是**整对象 PUT**,
+            ModulePmMilestoneUpdateSchema 继承 CreateSchema,
+            status_code 是必填,缺了会被 pydantic 判 422。
+            回传的是记录里那个值,不是人挑的值。
+          */
+          status_code: ruleEngineStatus ?? values.status_code,
           deliverables: toDeliverables(values.deliverables),
         };
         // 成功提示由请求层统一弹(后端信封里的 msg),这里返回 true/false 决定是否关闭弹窗
@@ -174,17 +212,40 @@ const MilestoneModalForm: React.FC<MilestoneModalProps> = ({
         label="计划截止日期"
         rules={[{ required: true, message: '请选择计划截止日期' }]}
       />
-      <ProForm.Item
-        name="status_code"
-        label="状态"
-        rules={[{ required: true, message: '请选择状态' }]}
-      >
-        {/* value/onChange 都是线上码(dict_value),提交「进行中」后端就是 422 */}
-        <DictSelect
-          dictType="module_pm_milestone_status"
-          excludeValues={RULE_ENGINE_STATUSES}
-        />
-      </ProForm.Item>
+      {ruleEngineStatus ? (
+        /*
+          规则独占的状态:只读展示 —— 字典标签 + 「由规则引擎判定」的说明。
+          刻意**不给 name**:不注册成表单字段,就没有「人挑的值」可言。
+          Tooltip 的子元素要能接收事件与 ref(DictTag 是函数组件、不透传
+          未知属性),所以外面包一层 span(与列表页 StatusCell 同款做法)。
+        */
+        <ProForm.Item label="状态">
+          <Tooltip title={RULE_ENGINE_TOOLTIP}>
+            <span>
+              <DictTag
+                dictType="module_pm_milestone_status"
+                value={ruleEngineStatus}
+              />
+            </span>
+          </Tooltip>
+        </ProForm.Item>
+      ) : (
+        <ProForm.Item
+          name="status_code"
+          label="状态"
+          rules={[
+            { required: true, message: '请选择状态' },
+            // 兜底:规则独占的状态不许手工设(INV-13)
+            { validator: rejectRuleEngineStatus },
+          ]}
+        >
+          {/* value/onChange 都是线上码(dict_value),提交「进行中」后端就是 422 */}
+          <DictSelect
+            dictType="module_pm_milestone_status"
+            excludeValues={RULE_ENGINE_STATUSES}
+          />
+        </ProForm.Item>
+      )}
       <ProFormTextArea
         name="deliverables"
         label="交付物"
