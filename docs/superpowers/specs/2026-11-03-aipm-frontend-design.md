@@ -232,19 +232,22 @@ ProLayout
 
 ### 3.7 前端消费 AI 服务的方式
 
-**契约**（前端视角，AI 服务提供）：
+**契约**（前端视角，AI 服务提供；**路径相对 `AI_API_BASE_URL`**，
+AI 服务内部用 Next.js 的 `/api` 前缀）：
 
 ```
-POST /ai-api/agent/:conversationId/command   { id, type, ... }  → { id, type:'response', success, data }
-POST /ai-api/agent/conversations                                   → { conversationId, title, createdAt }
-GET  /ai-api/agent/conversations?limit=50                           → [{ conversationId, title, updatedAt }]
-GET  /ai-api/agent/:conversationId/events                           → SSE
-GET  /ai-api/agent/:conversationId/state                            → { conversation, messages, pendingActions, isStreaming, model, thinkingLevel }
-GET  /ai-api/pending?status=PENDING                                 → 待确认列表
-POST /ai-api/pending/:id/adjust   { args }                          → 重新预览
-POST /ai-api/audit/:id/undo                                         → 撤销
-GET  /ai-api/audit?actor=&command=&from=&to=&undone=                → 审计列表
+POST /api/agent/conversations                            → { conversationId, title, createdAt }
+GET  /api/agent/conversations?limit=50                    → [{ conversationId, title, updatedAt }]
+POST /api/agent/:conversationId/command                   { id, type, ... }  → { id, type:'response', success, data }
+GET  /api/agent/:conversationId/events                    → SSE
+GET  /api/agent/:conversationId/state                     → { conversation, messages, pendingActions, isStreaming, model, thinkingLevel }
+GET  /api/pending?status=PENDING                          → 待确认列表
+POST /api/pending/:id/adjust   { args }                   → 重新预览
+POST /api/audit/:id/undo                                    → 撤销
+GET  /api/audit?actor=&command=&from=&to=&undone=         → 审计列表
 ```
+
+> 最终 URL = `${AI_API_BASE_URL}/api/...`。**前端不要自己拼 `/ai-api` 前缀**。
 
 > **契约里的三个空缺**（本次补上）：
 > 1. `POST/GET /agent/conversations` —— 会话的新建与列表（§3.8）。
@@ -278,9 +281,13 @@ GET  /ai-api/audit?actor=&command=&from=&to=&undone=                → 审计�
 **契约补充**（前端要用，AI 服务要提供）：
 
 ```
-POST /ai-api/agent/conversations          → { conversationId, title, createdAt }   新建会话
-GET  /ai-api/agent/conversations?limit=50  → [{ conversationId, title, updatedAt }]  当前用户的会话列表
+POST /api/agent/conversations          → { conversationId, title, createdAt }   新建会话
+GET  /api/agent/conversations?limit=50  → [{ conversationId, title, updatedAt }]  当前用户的会话列表
 ```
+
+> 路径**相对 `AI_API_BASE_URL`**。开发期 `AI_API_BASE_URL=/ai-api`（走 `config/proxy.ts`
+> 的转发，`pathRewrite` 去掉前缀），生产期是绝对地址（如 `https://ai.example.com`）。
+> **追加的路径永远是 `/api/...`**，两边一致。
 
 - 「新对话」→ `POST /conversations` 拿到 id，再切换。
 - 「历史对话」→ `GET /conversations` 列表，v1 **只列当前用户自己的**。
@@ -303,8 +310,10 @@ GET  /ai-api/agent/conversations?limit=50  → [{ conversationId, title, updated
 > **URL 形态（已裁决）**：AI 服务**单独部署**，与前端**不同源** ⇒
 > 前端用**绝对 URL**（构建期常量 `AI_API_BASE_URL`，读 `process.env.AI_API_BASE_URL`，
 > 默认 `http://127.0.0.1:3100`），**跨域 + CORS**。
-> 开发期在 `config/proxy.ts` 加一条 `/ai-api/` → AI 服务本地地址的转发，
-> 让浏览器看到同源请求。
+> 开发期在 `config/proxy.ts` 加一条转发：
+> `'/ai-api/'` → `http://127.0.0.1:3100`，并用 `pathRewrite: { '^/ai-api': '' }` 去掉前缀，
+> 于是浏览器请求 `/ai-api/api/agent/x` → AI 服务收到 `/api/agent/x`。
+> 开发期 `AI_API_BASE_URL` 就是 `/ai-api`（相对），浏览器看到的是同源请求。
 > CORS 要求（AI 服务侧）：处理 `OPTIONS` 预检；回
 > `Access-Control-Allow-Origin: <具体前端源>`（**不能用 `*`**）与
 > `Access-Control-Allow-Headers: authorization, content-type`；
@@ -382,11 +391,11 @@ GET  /ai-api/agent/conversations?limit=50  → [{ conversationId, title, updated
 > `ai_*` 表也没有）。**做一条假数字的进度条就是 mock**，违反本项目无 mock 的底线。
 >
 > v1 的做法：
-> - 只**显示**当前模型 —— 数据来自 `GET /ai-api/agent/:cid/state` 的 `model` 字段（契约已有）。
+> - 只**显示**当前模型 —— 数据来自 `GET /api/agent/:cid/state` 的 `model` 字段（契约已有）。
 > - 「配额」按钮 **v1 不做**（没有数据源就不画）。
 > - 换模型是 AI 服务侧的配置（环境变量 `AI_MODEL`），不在前端切。
 >
-> 若以后要做，契约需补 `GET /ai-api/agent/models` 与 `GET /ai-api/agent/quota`，
+> 若以后要做，契约需补 `GET /api/agent/models` 与 `GET /api/agent/quota`，
 > 且配额必须在**服务端**计量并强制（前端禁用输入框只是 UX，不能当配额控制）。
 
 ---
@@ -526,7 +535,7 @@ GET  /ai-api/agent/conversations?limit=50  → [{ conversationId, title, updated
 | < 4 | 低 | `colorTextSecondary` |
 
 > 这条要在代码注释里写清楚：**`level` 是派生量，不是后端字段**。
-> 矩阵阈值要提到一个共享常量里（`src/pages/module_pm/risk/level.ts`），
+> 矩阵阈值要提到一个共享常量里（`src/components/pm/riskLevel.ts`），
 > AI 服务侧的规则引擎也用同一套阈值 —— 两边不一致会出笑话。
 
 **5×5 热力图**：以「概率」为纵、「影响」为横的网格，每格显示落入该格的**风险数**，
@@ -621,7 +630,12 @@ src/
       project/index.tsx  detail.tsx
       milestone/index.tsx
       task/index.tsx  board.tsx
-      risk/index.tsx  level.ts
+      risk/index.tsx  Heatmap.tsx
+  components/pm/                 ← PM 页面共用的件
+    DictSelect.tsx               ← 字典驱动的下拉(选项值用 dict_value)
+    DictTag.tsx                  ← 字典驱动的状态标签(颜色用 list_class)
+    useDictOptions.ts            ← 字典选项的 hook
+    riskLevel.ts                 ← 风险等级矩阵(派生量;后端只有 score)
   services/api/ai/
     client.ts            命令协议 + REST
     sse.ts               SSE 连接与重连
