@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>模板与字段配置 · aicomm</title>
+  <link rel="stylesheet" href="assets/css/app.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="assets/js/mock-data.js"></script>
+  <script src="assets/js/partials.js"></script>
+  <script src="assets/js/app.js"></script>
+</head>
+<body>
+  <div id="app" class="h-screen flex"></div>
+  <div id="ai-fab"></div>
+
+  <script>
+    aicomLayout(`
+    <div class="p-6 space-y-4 bg-gray-50">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-xl font-semibold flex items-center gap-2">
+            <i data-lucide="settings" class="w-5 h-5 text-blue-500"></i> 模板与字段配置（PMO 自服务）
+          </h1>
+          <div class="text-xs text-gray-500 mt-1">范式项目模板 · 自定义字段 · 状态机配置 · AI 配额 · 5 个内置模板</div>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-default btn-sm"><i data-lucide="history" class="w-3.5 h-3.5"></i>变更历史</button>
+          <button class="btn btn-default btn-sm"><i data-lucide="download" class="w-3.5 h-3.5"></i>导出配置</button>
+          <button class="btn btn-primary btn-sm"><i data-lucide="plus" class="w-3.5 h-3.5"></i>新建模板</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-4 gap-4">
+        <div class="card">
+          <div class="card-title">📋 项目模板</div>
+          <ul class="text-xs space-y-1.5">
+            <li class="flex items-center gap-2 px-2 py-1.5 rounded bg-blue-50 text-blue-700 cursor-pointer"><i data-lucide="folder" class="w-3.5 h-3.5"></i><strong>全部模板（5）</strong></li>
+            <li class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer"><i data-lucide="circle" class="w-3.5 h-3.5 text-blue-500"></i>敏捷研发模板</li>
+            <li class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer"><i data-lucide="circle" class="w-3.5 h-3.5 text-green-500"></i>营销活动模板</li>
+            <li class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer"><i data-lucide="circle" class="w-3.5 h-3.5 text-orange-500"></i>基建项目模板</li>
+            <li class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer"><i data-lucide="circle" class="w-3.5 h-3.5 text-red-500"></i>合规审计模板</li>
+            <li class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer"><i data-lucide="circle" class="w-3.5 h-3.5 text-purple-500"></i>客户交付模板</li>
+          </ul>
+        </div>
+
+        <div class="card col-span-3 space-y-4">
+          <!-- 当前模板 -->
+          <div>
+            <div class="flex items-center gap-2 mb-2">
+              <h2 class="text-base font-semibold">敏捷研发模板 <span class="el-tag success">v1.0 内置</span></h2>
+              <button class="ml-auto btn btn-default btn-sm"><i data-lucide="copy" class="w-3.5 h-3.5"></i>克隆</button>
+              <button class="btn btn-default btn-sm"><i data-lucide="edit" class="w-3.5 h-3.5"></i>编辑</button>
+            </div>
+            <p class="text-xs text-gray-500">通用 6 列看板 + 里程碑 + 燃尽图，适用于 2-12 周的研发项目。</p>
+          </div>
+
+          <!-- Tab -->
+          <div class="border-b border-gray-200">
+            <div class="flex items-center" data-tabs>
+              <button data-tab="fields" class="tab-btn active">字段</button>
+              <button data-tab="status" class="tab-btn">状态机</button>
+              <button data-tab="view" class="tab-btn">视图</button>
+              <button data-tab="ai" class="tab-btn">AI 配置</button>
+              <button data-tab="notify" class="tab-btn">通知</button>
+            </div>
+          </div>
+
+          <!-- 字段 -->
+          <div data-panel="fields">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-sm font-medium">字段列表（共 18 个）</h3>
+              <button class="btn btn-primary btn-sm"><i data-lucide="plus" class="w-3.5 h-3.5"></i>新增字段</button>
+            </div>
+            <table class="w-full text-xs">
+              <thead class="text-gray-500 bg-gray-50">
+                <tr><th class="text-left py-2 px-3 w-8">#</th><th class="text-left py-2 px-3">字段</th><th class="text-left py-2 px-3 w-24">类型</th><th class="text-left py-2 px-3 w-16">必填</th><th class="text-left py-2 px-3 w-20">默认值</th><th class="text-left py-2 px-3 w-32">可见角色</th><th class="text-left py-2 px-3 w-16">操作</th></tr>
+              </thead>
+              <tbody>
+                ${[
+                  {n:'name', t:'varchar(128)', req:true, df:'-', v:'全部', sys:true},
+                  {n:'code', t:'varchar(32)', req:true, df:'自动生成', v:'全部', sys:true},
+                  {n:'description', t:'text', req:false, df:'-', v:'全部', sys:true},
+                  {n:'owner_id', t:'FK(User)', req:true, df:'-', v:'PM/PMO', sys:true},
+                  {n:'status', t:'enum', req:true, df:'planning', v:'全部', sys:true},
+                  {n:'priority', t:'enum', req:false, df:'P2', v:'全部', sys:true},
+                  {n:'start_date', t:'date', req:true, df:'-', v:'全部', sys:true},
+                  {n:'due_date', t:'date', req:true, df:'-', v:'全部', sys:true},
+                  {n:'tags', t:'jsonb', req:false, df:'[]', v:'全部', sys:true},
+                  {n:'外部干系人', t:'text (扩展)', req:false, df:'-', v:'Sponsor', sys:false},
+                  {n:'产品验收人', t:'FK(User) 扩展', req:false, df:'-', v:'PM/PMO', sys:false},
+                  {n:'上线 checklist', t:'jsonb 扩展', req:false, df:'[]', v:'PM/PMO', sys:false}
+                ].map((f, i) => `
+                  <tr class="border-t border-gray-100 hover:bg-blue-50/40">
+                    <td class="py-2 px-3 text-gray-400">${i+1}</td>
+                    <td class="py-2 px-3 font-medium">${f.n} ${!f.sys ? '<span class="el-tag purple" style="height:16px;font-size:10px;padding:0 4px">扩展</span>' : ''}</td>
+                    <td class="py-2 px-3 text-gray-500">${f.t}</td>
+                    <td class="py-2 px-3">${f.req ? '<span class="el-tag danger">必填</span>' : '<span class="text-gray-400">—</span>'}</td>
+                    <td class="py-2 px-3 text-gray-500">${f.df}</td>
+                    <td class="py-2 px-3"><span class="el-tag">${f.v}</span></td>
+                    <td class="py-2 px-3"><i data-lucide="more-horizontal" class="w-4 h-4 text-gray-400"></i></td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+            <div class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded text-xs flex items-start gap-2">
+              <i data-lucide="info" class="w-4 h-4 text-blue-500 mt-0.5"></i>
+              <div>扩展字段会随项目模板继承到所有引用此模板的项目。<strong>额外字段编辑权</strong> 仅 PMO 拥有。变更不影响已存在项目。</div>
+            </div>
+          </div>
+
+          <!-- 状态机 -->
+          <div data-panel="status" class="hidden">
+            <h3 class="text-sm font-medium mb-2">任务状态机</h3>
+            <div class="p-4 bg-gray-50 rounded font-mono text-xs space-y-1">
+              <div class="text-blue-500">backlog → todo → in_progress → review → done</div>
+              <div class="text-orange-500 ml-12">↓</div>
+              <div class="ml-12 text-red-500">blocked ──→ (解除) todo</div>
+              <div class="text-gray-500">任何状态 → cancelled</div>
+            </div>
+            <div class="mt-3 grid grid-cols-2 gap-3 text-xs">
+              <div class="p-2 border border-gray-200 rounded"><strong>状态机守卫：</strong>done 必须 actual_hours ≥ 0；review 必须有 reviewer</div>
+              <div class="p-2 border border-gray-200 rounded"><strong>事件触发：</strong>状态变更 → 进度计算 → 风险评估</div>
+            </div>
+
+            <h3 class="text-sm font-medium mt-4 mb-2">里程碑状态机</h3>
+            <div class="p-4 bg-gray-50 rounded font-mono text-xs space-y-1">
+              <div class="text-blue-500">upcoming → in_progress → done</div>
+              <div class="ml-16 text-red-500">↓ (超期未完成) at_risk → missed</div>
+            </div>
+          </div>
+
+          <!-- 视图 -->
+          <div data-panel="view" class="hidden">
+            <h3 class="text-sm font-medium mb-2">默认视图配置</h3>
+            <div class="grid grid-cols-3 gap-3">
+              <div class="p-3 border border-blue-200 bg-blue-50 rounded">
+                <i data-lucide="kanban-square" class="w-5 h-5 text-blue-500"></i>
+                <div class="font-medium mt-1">看板视图（默认）</div>
+                <div class="text-xs text-gray-500 mt-0.5">列 = status · 可拖拽</div>
+              </div>
+              <div class="p-3 border border-gray-200 rounded">
+                <i data-lucide="list-checks" class="w-5 h-5 text-blue-500"></i>
+                <div class="font-medium mt-1">列表视图</div>
+                <div class="text-xs text-gray-500 mt-0.5">多列筛选 · Inline edit</div>
+              </div>
+              <div class="p-3 border border-gray-200 rounded">
+                <i data-lucide="gantt-chart" class="w-5 h-5 text-blue-500"></i>
+                <div class="font-medium mt-1">甘特视图</div>
+                <div class="text-xs text-gray-500 mt-0.5">依赖箭头 · FS/SS</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI 配置 -->
+          <div data-panel="ai" class="hidden">
+            <h3 class="text-sm font-medium mb-2">AI 能力配置</h3>
+            <div class="space-y-2 text-xs">
+              <div class="flex items-center justify-between p-3 border border-gray-200 rounded">
+                <div><strong>NL 建任务</strong> · Sonnet 4.5 + JSON schema</div>
+                <select class="el-input" style="width:auto"><option>启用（默认）</option><option>仅 Sonnet</option><option>仅 Qwen3</option><option>禁用</option></select>
+              </div>
+              <div class="flex items-center justify-between p-3 border border-gray-200 rounded">
+                <div><strong>NL 拆任务</strong> · Sonnet 4.5</div>
+                <select class="el-input" style="width:auto"><option>启用</option></select>
+              </div>
+              <div class="flex items-center justify-between p-3 border border-gray-200 rounded">
+                <div><strong>进度预测</strong> · M3 启用 LLM ensemble</div>
+                <select class="el-input" style="width:auto"><option>启用（burn + CPM + LLM）</option><option>仅 burn + CPM</option></select>
+              </div>
+              <div class="flex items-center justify-between p-3 border border-gray-200 rounded">
+                <div><strong>风险预警</strong> · 规则层 + LLM 解释</div>
+                <select class="el-input" style="width:auto"><option>启用 5 类</option><option>启用 3 类</option></select>
+              </div>
+              <div class="flex items-center justify-between p-3 border border-gray-200 rounded">
+                <div><strong>评论/纪要总结</strong> · Sonnet 4.5</div>
+                <select class="el-input" style="width:auto"><option>启用</option></select>
+              </div>
+              <div class="flex items-center justify-between p-3 border border-gray-200 rounded">
+                <div><strong>智能问答</strong> · Qwen3-Plus + 函数调用</div>
+                <select class="el-input" style="width:auto"><option>启用 10 类</option><option>启用 5 类</option></select>
+              </div>
+            </div>
+
+            <h3 class="text-sm font-medium mt-4 mb-2">配额 / 限速</h3>
+            <div class="grid grid-cols-2 gap-3 text-xs">
+              <div class="p-3 border border-gray-200 rounded">
+                <div class="text-gray-500 mb-1">租户日 token 上限</div>
+                <input type="text" value="100,000 tokens/day" class="el-input">
+              </div>
+              <div class="p-3 border border-gray-200 rounded">
+                <div class="text-gray-500 mb-1">AI 调用 QPS</div>
+                <input type="text" value="10 QPS" class="el-input">
+              </div>
+              <div class="p-3 border border-gray-200 rounded">
+                <div class="text-gray-500 mb-1">单用户配额</div>
+                <input type="text" value="200 calls/day" class="el-input">
+              </div>
+              <div class="p-3 border border-gray-200 rounded">
+                <div class="text-gray-500 mb-1">缓存时长</div>
+                <input type="text" value="24h" class="el-input">
+              </div>
+            </div>
+          </div>
+
+          <!-- 通知 -->
+          <div data-panel="notify" class="hidden">
+            <h3 class="text-sm font-medium mb-2">通知规则</h3>
+            <div class="space-y-2 text-xs">
+              ${[
+                {n:'风险 ≥ 红旗', c:'触发时立刻推送 IM / 邮件'},
+                {n:'任务阻塞 > 1 天', c:'责任人 + PM 同时收到'},
+                {n:'里程碑延期风险', c:'提前 3 天预警'},
+                {n:'评论 @ 我', c:'站内 + 邮件（可选）'},
+                {n:'AI 总结就绪', c:'仅站内'},
+              ].map(n => `
+                <div class="flex items-center justify-between p-3 border border-gray-200 rounded">
+                  <div><strong>${n.n}</strong> · <span class="text-gray-500">${n.c}</span></div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" class="sr-only peer" checked>
+                    <div class="w-9 h-5 bg-blue-500 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                  </label>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部 -->
+      <div class="flex items-center gap-3 text-xs text-gray-500">
+        <i data-lucide="info" class="w-4 h-4"></i>
+        <span>配置变更走审批流（PMO Owner Review），变更日志永久保存。</span>
+      </div>
+    </div>
+    `);
+
+    setTimeout(() => {
+      const tabs = document.querySelector('[data-tabs]');
+      if (tabs) AICOMM.bindTabs('[data-tabs]');
+      if (window.lucide) lucide.createIcons();
+    }, 50);
+  </script>
+</body>
+</html>

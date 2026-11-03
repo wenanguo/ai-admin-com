@@ -61,3 +61,6 @@ requestRecord.mock.js
 
 .vitest
 e2e-out
+
+# macOS 垃圾文件
+.DS_Store

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>评论中心 · aicomm</title>
+  <link rel="stylesheet" href="assets/css/app.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="assets/js/mock-data.js"></script>
+  <script src="assets/js/partials.js"></script>
+  <script src="assets/js/app.js"></script>
+</head>
+<body>
+  <div id="app" class="h-screen flex"></div>
+  <div id="ai-fab"></div>
+
+  <script>
+    const users = window.MOCK.users;
+    function userById(id) { return users.find(u => u.id === id); }
+
+    aicomLayout(`
+    <div class="bg-gray-50">
+      <!-- 上下文任务头 -->
+      <div class="bg-white border-b border-gray-200 px-6 py-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-xs text-gray-500 mb-1">
+              <a href="task-board.html?from=comments" class="text-blue-500 hover:underline">任务看板</a>
+              <i data-lucide="chevron-right" class="inline w-3 h-3 mx-1 text-gray-400"></i>
+              财务对账系统 > 任务 #1003
+            </div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-lg font-semibold">预付款支付幂等性</h1>
+              <span class="el-tag danger">P0</span>
+              <span class="status-pill blocked">blocked</span>
+              <span class="el-tag warning">risk</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="btn btn-default btn-sm"><i data-lucide="sparkles" class="w-3.5 h-3.5"></i>AI 总结</button>
+            <button class="btn btn-default btn-sm"><i data-lucide="bell" class="w-3.5 h-3.5"></i>订阅</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-3 gap-4 p-6">
+        <!-- 左：评论列表 -->
+        <div class="col-span-2 space-y-3">
+          <!-- AI 总结卡片 -->
+          <div class="card border-purple-200 bg-gradient-to-br from-purple-50 to-blue-50">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <div class="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white"><i data-lucide="sparkles" class="w-3.5 h-3.5"></i></div>
+                <strong class="text-sm">AI 总结（评论 + 会议纪要抽取）</strong>
+                <span class="el-tag purple">F1 0.82</span>
+              </div>
+              <span class="text-xs text-gray-400">2026-06-30 11:00</span>
+            </div>
+            <div class="text-xs text-gray-700 space-y-1.5">
+              <div>📌 <strong>主题</strong>：任务 #1003 幂等性设计被阻塞 3 天，影响预付款模块上线。</div>
+              <div>✅ <strong>Action Items</strong>：① 刘洋明早提交 idempotency-key PR ② 王芳协调 ERP 接口方兜底</div>
+              <div>⚠️ <strong>潜在风险</strong>：PRJ-2024-Q4-002 曾因幂等性问题出现 80w 重复支付，建议 Redis + idempotency 双保险</div>
+              <div>❓ <strong>开放问题</strong>：当前接口重试频率是否需要调整？</div>
+            </div>
+            <div class="mt-3 flex gap-2 text-xs">
+              <button class="btn btn-primary btn-sm">转为任务</button>
+              <button class="btn btn-default btn-sm">采纳建议</button>
+              <button class="btn btn-text btn-sm">查看完整总结</button>
+            </div>
+          </div>
+
+          <!-- 评论列表 -->
+          <div class="space-y-3">
+            <!-- 评论 1 -->
+            <div class="card">
+              <div class="flex gap-3">
+                <div class="avatar avatar-c3" style="width:36px;height:36px;font-size:14px">王</div>
+                <div class="flex-1">
+                  <div class="flex items-center gap-2 mb-1">
+                    <strong class="text-sm">王芳</strong>
+                    <span class="text-xs text-gray-400">2026-06-29 10:15</span>
+                    <span class="el-tag primary">PM</span>
+                  </div>
+                  <div class="text-sm text-gray-700 leading-relaxed">幂等设计我明天给个方案，今天被 ERP 接口反复重试阻塞了 <span class="text-blue-500 font-medium">@刘洋</span></div>
+                  <div class="mt-2 flex items-center gap-3 text-xs text-gray-500">
+                    <button class="hover:text-blue-500"><i data-lucide="thumbs-up" class="w-3 h-3 inline"></i> 5</button>
+                    <button class="hover:text-blue-500"><i data-lucide="message-circle" class="w-3 h-3 inline"></i> 回复</button>
+                    <button class="hover:text-blue-500"><i data-lucide="sparkles" class="w-3 h-3 inline"></i> AI 总结</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 回复 -->
+              <div class="ml-9 mt-3 pl-3 border-l-2 border-gray-200">
+                <div class="flex gap-3">
+                  <div class="avatar avatar-c5" style="width:28px;height:28px;font-size:11px">刘</div>
+                  <div class="flex-1">
+                    <div class="flex items-center gap-2 mb-1">
+                      <strong class="text-sm">刘洋</strong>
+                      <span class="text-xs text-gray-400">2026-06-29 11:00</span>
+                    </div>
+                    <div class="text-sm text-gray-700">收到，我下午把 UUID idempotency-key 的 PR 先发你 <span class="text-blue-500 font-medium">@王芳</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 评论 2 + 附件 -->
+            <div class="card">
+              <div class="flex gap-3">
+                <div class="avatar avatar-c1" style="width:36px;height:36px;font-size:14px">张</div>
+                <div class="flex-1">
+                  <div class="flex items-center gap-2 mb-1">
+                    <strong class="text-sm">张伟</strong>
+                    <span class="text-xs text-gray-400">2026-06-29 14:30</span>
+                    <span class="el-tag info">PMO</span>
+                  </div>
+                  <div class="text-sm text-gray-700 leading-relaxed">附上相关历史事故：<strong>PRJ-2024-Q4-002</strong> 因为幂等问题出现过 80w 重复支付，建议本次直接上 Redis + idempotency-key 双保险。</div>
+                  <!-- 附件 -->
+                  <div class="mt-2 inline-flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs">
+                    <i data-lucide="file" class="w-4 h-4 text-blue-500"></i>
+                    <div>
+                      <div class="font-medium text-blue-700">复盘报告.pdf</div>
+                      <div class="text-gray-500 text-[10px]">1.2 MB</div>
+                    </div>
+                    <button class="ml-2 text-blue-500"><i data-lucide="download" class="w-3.5 h-3.5"></i></button>
+                  </div>
+                  <div class="mt-2 flex items-center gap-3 text-xs text-gray-500">
+                    <button class="hover:text-blue-500"><i data-lucide="thumbs-up" class="w-3 h-3 inline"></i> 8</button>
+                    <button class="hover:text-blue-500"><i data-lucide="message-circle" class="w-3 h-3 inline"></i> 回复</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 评论 3：图片 mock -->
+            <div class="card">
+              <div class="flex gap-3">
+                <div class="avatar avatar-c5" style="width:36px;height:36px;font-size:14px">刘</div>
+                <div class="flex-1">
+                  <div class="flex items-center gap-2 mb-1">
+                    <strong class="text-sm">刘洋</strong>
+                    <span class="text-xs text-gray-400">2026-06-29 18:00</span>
+                    <span class="el-tag purple">+1 进展</span>
+                  </div>
+                  <div class="text-sm text-gray-700 leading-relaxed">进度同步：今日完成 5/9 h，明天继续 ETL 解析逻辑这块。<br>代码草稿：</div>
+                  <div class="mt-2 p-3 bg-gray-900 text-green-300 rounded font-mono text-xs overflow-x-auto">
+                    <div><span class="text-purple-400">def</span> <span class="text-yellow-300">make_idem</span>(request):</div>
+                    <div>    key = <span class="text-yellow-300">hashlib</span>.md5(...).hexdigest()</div>
+                    <div>    <span class="text-purple-400">if</span> redis.<span class="text-yellow-300">setnx</span>(<span class="text-red-400">f"idem:{key}"</span>, <span class="text-red-400">"1"</span>, ex=<span class="text-blue-300">3600</span>):</div>
+                    <div>        <span class="text-purple-400">return</span> <span class="text-yellow-300">do_payment</span>(request)</div>
+                    <div>    <span class="text-purple-400">raise</span> <span class="text-yellow-300">DuplicatePayment</span>()</div>
+                  </div>
+                  <div class="mt-2 flex items-center gap-3 text-xs text-gray-500">
+                    <button class="hover:text-blue-500"><i data-lucide="thumbs-up" class="w-3 h-3 inline"></i> 3</button>
+                    <button class="hover:text-blue-500"><i data-lucide="message-circle" class="w-3 h-3 inline"></i> 回复</button>
+                    <button class="hover:text-blue-500"><i data-lucide="git-pull-request" class="w-3 h-3 inline"></i> 创建 PR</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 评论输入 -->
+          <div class="card">
+            <div class="flex gap-3">
+              <div class="avatar avatar-c1" style="width:36px;height:36px;font-size:14px">张</div>
+              <div class="flex-1">
+                <textarea placeholder="发表评论... 支持 Markdown，@提及，附件" class="el-input" rows="3" style="height:auto"></textarea>
+                <div class="mt-2 flex items-center justify-between">
+                  <div class="flex items-center gap-2 text-gray-500">
+                    <button class="hover:text-blue-500"><i data-lucide="paperclip" class="w-4 h-4"></i></button>
+                    <button class="hover:text-blue-500"><i data-lucide="at-sign" class="w-4 h-4"></i></button>
+                    <button class="hover:text-blue-500"><i data-lucide="smile" class="w-4 h-4"></i></button>
+                    <button class="text-purple-500 flex items-center gap-1 text-xs"><i data-lucide="sparkles" class="w-3 h-3"></i>粘贴纪要生成总结</button>
+                  </div>
+                  <div class="flex gap-2">
+                    <button class="btn btn-default btn-sm">取消</button>
+                    <button class="btn btn-primary btn-sm">发布</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右：侧栏 -->
+        <div class="space-y-3">
+          <div class="card">
+            <div class="card-title"><i data-lucide="info" class="w-4 h-4 text-blue-500"></i> 任务信息</div>
+            <ul class="text-xs space-y-2 text-gray-600">
+              <li class="flex justify-between"><span>状态</span><span class="status-pill blocked">blocked</span></li>
+              <li class="flex justify-between"><span>优先级</span><span class="el-tag danger">P0</span></li>
+              <li class="flex justify-between"><span>Assignee</span><span>刘洋</span></li>
+              <li class="flex justify-between"><span>估时</span><span>8h / 实际 4h</span></li>
+              <li class="flex justify-between"><span>截止</span><span>2026-07-08</span></li>
+              <li class="flex justify-between"><span>里程碑</span><span>预付款模块</span></li>
+              <li class="flex justify-between"><span>依赖</span><span>—</span></li>
+              <li class="flex justify-between"><span>关联风险</span><span><a href="risks.html?from=comments" class="text-blue-500">R-501</a></span></li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <div class="card-title"><i data-lucide="users" class="w-4 h-4 text-blue-500"></i> 参与者（3）</div>
+            <div class="space-y-2">
+              ${[3, 5, 1].map(id => {
+                const u = userById(id);
+                return `<div class="flex items-center gap-2 text-xs"><div class="avatar" style="background:${u.color}">${u.avatar}</div><div class="flex-1"><div class="font-medium">${u.name}</div><div class="text-gray-400 text-[10px]">${u.role}</div></div></div>`;
+              }).join('')}
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title"><i data-lucide="history" class="w-4 h-4 text-blue-500"></i> 变更历史</div>
+            <ul class="text-xs space-y-1.5 text-gray-600">
+              <li>📝 张伟 编辑了描述</li>
+              <li>🔴 阻塞 3 天</li>
+              <li>👤 转派给刘洋</li>
+              <li>📌 创建（王芳）</li>
+            </ul>
+          </div>
+
+          <div class="card bg-purple-50 border-purple-200">
+            <div class="card-title text-purple-700"><i data-lucide="bot" class="w-4 h-4"></i> AI 评论洞察</div>
+            <ul class="text-xs text-gray-700 space-y-1.5">
+              <li>• 本评论共 <strong>3 人</strong> 参与，<strong>5 次互动</strong></li>
+              <li>• 提及频率最高：刘洋（2 次）</li>
+              <li>• 关联风险 <strong>R-501</strong>，建议修复后重新评估</li>
+              <li>• 关键词：「幂等」「ERP」「重复支付」</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    `);
+    setTimeout(() => { if (window.lucide) lucide.createIcons(); }, 50);
+  </script>
+</body>
+</html>

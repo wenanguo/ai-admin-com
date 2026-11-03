@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>仪表盘 · aicomm</title>
+  <link rel="stylesheet" href="assets/css/app.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="assets/js/mock-data.js"></script>
+  <script src="assets/js/partials.js"></script>
+  <script src="assets/js/app.js"></script>
+</head>
+<body>
+  <div id="app" class="h-screen flex"></div>
+  <div id="ai-fab"></div>
+
+  <script>
+    const role = new URLSearchParams(location.search).get('role') || 'pmo';
+    const isExec = role === 'exec';
+
+    aicomLayout(`
+    <div class="p-6 space-y-5 bg-gray-50">
+      <!-- 顶部欢迎 -->
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-xl font-semibold text-gray-800">${isExec ? '高管视角' : 'PMO 视角'} · 仪表盘</h1>
+          <div class="text-xs text-gray-500 mt-1 flex items-center gap-2">
+            <i data-lucide="calendar" class="w-3 h-3"></i> 2026 年 6 月 30 日 周二
+            <span class="el-tag primary">Q3 周期：2026-07-01 ~ 2026-09-30</span>
+            <span class="el-tag success">本周 AI 调用 47 次</span>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <div class="flex border border-gray-200 rounded overflow-hidden">
+            <button class="px-3 py-1.5 text-xs ${!isExec ? 'bg-blue-500 text-white' : 'bg-white text-gray-600'}" onclick="location.href='?role=pmo'">PMO</button>
+            <button class="px-3 py-1.5 text-xs ${isExec ? 'bg-blue-500 text-white' : 'bg-white text-gray-600'}" onclick="location.href='?role=exec'">高管</button>
+          </div>
+          <button class="btn btn-default btn-sm"><i data-lucide="download" class="w-3.5 h-3.5"></i>导出周报</button>
+          <button class="btn btn-primary btn-sm"><i data-lucide="sparkles" class="w-3.5 h-3.5"></i>AI 周报</button>
+        </div>
+      </div>
+
+      <!-- AI 今日洞察（规则算数字 + AI 措辞） -->
+      <div class="card p-4 bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+        <div class="flex items-start gap-3">
+          <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 text-white flex items-center justify-center shrink-0">
+            <i data-lucide="sparkles" class="w-4 h-4"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-semibold text-gray-800 mb-1">AI 今日洞察</div>
+            <div class="text-xs text-gray-600 leading-relaxed">
+              <strong>3 个项目里，2 个有「有风险」里程碑</strong>：财务对账系统（预付款模块，预计延期 6 天）与营销活动平台（营销活动上线，逾期 5 天）。
+              共性问题：<strong>关键路径任务阻塞时长偏长</strong>（均卡在跨部门审批），解法不是加人而是推动上游。
+            </div>
+            <div class="flex gap-2 mt-2">
+              <button class="btn btn-primary btn-sm" onclick="window.__aipmAsk('列出所有项目里阻塞超过 3 天的任务，按项目分组')">✦ 让 AI 处理</button>
+              <button class="btn btn-default btn-sm" onclick="location.href='risks.html?from=dashboard'">查看风险登记册</button>
+            </div>
+          </div>
+          <div class="text-[11px] text-gray-400 text-right shrink-0 leading-relaxed">
+            延期天数 / 阻塞时长 / 风险等级<br><strong>由规则引擎计算</strong>（无 LLM 也刷新）<br>措辞由 AI 润色
+          </div>
+        </div>
+      </div>
+
+      <!-- KPI -->
+      <div class="grid grid-cols-4 gap-4">
+        <div class="card kpi-card-gradient">
+          <div class="absolute top-0 right-0 w-32 h-32 rounded-full" style="background:radial-gradient(circle,#409EFF22 0%,transparent 70%)"></div>
+          <div class="flex items-center justify-between relative">
+            <div>
+              <div class="text-xs text-gray-500 mb-1">活跃项目数</div>
+              <div class="kpi-value">18</div>
+              <div class="kpi-trend up mt-1"><i data-lucide="trending-up" class="inline w-3 h-3"></i> +3 较上月</div>
+            </div>
+            <div class="w-12 h-12 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center"><i data-lucide="folder-kanban" class="w-6 h-6"></i></div>
+          </div>
+          <div class="mt-3 text-xs text-blue-500 cursor-pointer hover:underline" onclick="location.href='projects.html?from=dashboard'">查看全部 →</div>
+        </div>
+        <div class="card kpi-card-gradient">
+          <div class="absolute top-0 right-0 w-32 h-32 rounded-full" style="background:radial-gradient(circle,#67C23A22 0%,transparent 70%)"></div>
+          <div class="flex items-center justify-between relative">
+            <div>
+              <div class="text-xs text-gray-500 mb-1">进行中任务</div>
+              <div class="kpi-value">142</div>
+              <div class="kpi-trend up mt-1"><i data-lucide="trending-up" class="inline w-3 h-3"></i> 完成率 68%</div>
+            </div>
+            <div class="w-12 h-12 rounded-lg bg-green-50 text-green-500 flex items-center justify-center"><i data-lucide="list-checks" class="w-6 h-6"></i></div>
+          </div>
+          <div class="mt-3 text-xs text-blue-500 cursor-pointer hover:underline" onclick="location.href='task-list.html?from=dashboard'">查看任务 →</div>
+        </div>
+        <div class="card kpi-card-gradient">
+          <div class="absolute top-0 right-0 w-32 h-32 rounded-full" style="background:radial-gradient(circle,#E6A23C22 0%,transparent 70%)"></div>
+          <div class="flex items-center justify-between relative">
+            <div>
+              <div class="text-xs text-gray-500 mb-1">项目健康度</div>
+              <div class="kpi-value flex items-baseline gap-1">72<span class="text-lg text-gray-400 font-normal">/100</span></div>
+              <div class="kpi-trend down mt-1"><i data-lucide="trending-down" class="inline w-3 h-3"></i> -5 较上周</div>
+            </div>
+            <div class="w-12 h-12 rounded-lg bg-orange-50 text-orange-500 flex items-center justify-center"><i data-lucide="heart-pulse" class="w-6 h-6"></i></div>
+          </div>
+          <div class="mt-3 text-xs text-blue-500 cursor-pointer hover:underline" onclick="location.href='risks.html?from=dashboard'">查看风险 →</div>
+        </div>
+        <div class="card kpi-card-gradient">
+          <div class="absolute top-0 right-0 w-32 h-32 rounded-full" style="background:radial-gradient(circle,#7C3AED22 0%,transparent 70%)"></div>
+          <div class="flex items-center justify-between relative">
+            <div>
+              <div class="text-xs text-gray-500 mb-1">本周 AI 建议</div>
+              <div class="kpi-value">23</div>
+              <div class="kpi-trend up mt-1"><i data-lucide="sparkles" class="inline w-3 h-3"></i> 采纳率 61%</div>
+            </div>
+            <div class="w-12 h-12 rounded-lg bg-purple-50 text-purple-500 flex items-center justify-center"><i data-lucide="bot" class="w-6 h-6"></i></div>
+          </div>
+          <div class="mt-3 text-xs text-blue-500 cursor-pointer hover:underline" onclick="location.href='ai-assistant.html?from=dashboard'">查看 →</div>
+        </div>
+      </div>
+
+      <!-- 主图 + 健康度 -->
+      <div class="grid grid-cols-3 gap-4">
+        <div class="card col-span-2">
+          <div class="card-title">
+            <i data-lucide="trending-down" class="w-4 h-4 text-blue-500"></i> 燃尽图（财务对账系统 · PRJ-001）
+            <div class="ml-auto flex gap-2">
+              <span class="el-tag info">实线：计划</span>
+              <span class="el-tag primary">虚线：实际</span>
+              <span class="el-tag purple">区间：AI 预测 P50/P90</span>
+            </div>
+          </div>
+          <div class="chart-box" style="height:260px"><canvas id="burndownChart"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">
+            <i data-lucide="pie-chart" class="w-4 h-4 text-green-500"></i> 项目健康度分布
+            <button class="ml-auto text-xs text-blue-500 hover:underline">导出</button>
+          </div>
+          <div class="chart-box" style="height:220px"><canvas id="healthChart"></canvas></div>
+          <div class="mt-3 space-y-1.5 text-xs">
+            <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-500 rounded-full"></span><span class="text-gray-600 flex-1">健康（绿灯）</span><span class="font-medium">8</span><span class="text-gray-400">44%</span></div>
+            <div class="flex items-center gap-2"><span class="w-2 h-2 bg-yellow-500 rounded-full"></span><span class="text-gray-600 flex-1">关注（黄灯）</span><span class="font-medium">6</span><span class="text-gray-400">33%</span></div>
+            <div class="flex items-center gap-2"><span class="w-2 h-2 bg-red-500 rounded-full"></span><span class="text-gray-600 flex-1">风险（红灯）</span><span class="font-medium">3</span><span class="text-gray-400">17%</span></div>
+            <div class="flex items-center gap-2"><span class="w-2 h-2 bg-gray-400 rounded-full"></span><span class="text-gray-600 flex-1">已完成</span><span class="font-medium">1</span><span class="text-gray-400">6%</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 项目健康度列表 + AI 建议 -->
+      <div class="grid grid-cols-3 gap-4">
+        <div class="card col-span-2">
+          <div class="card-title">
+            <i data-lucide="folder-kanban" class="w-4 h-4 text-orange-500"></i> 项目组合健康度
+            <div class="ml-auto flex gap-2">
+              <select class="el-input" style="width:auto;height:28px"><option>全部 18</option><option>我的 5</option><option>关注 3</option></select>
+              <button class="btn btn-sm btn-default">近 30 天</button>
+            </div>
+          </div>
+          <table class="w-full text-xs">
+            <thead class="text-gray-500 border-b border-gray-200">
+              <tr><th class="text-left py-2 px-2">项目</th><th class="text-left py-2 px-2">PM</th><th class="text-left py-2 px-2">健康度</th><th class="text-left py-2 px-2 w-1/3">进度</th><th class="text-left py-2 px-2">截止</th><th class="text-left py-2 px-2">风险</th></tr>
+            </thead>
+            <tbody>
+              ${[
+                {n: '财务对账系统升级', p: '王芳', h: 'yellow', pc: 62, d: '09-30', r: 2},
+                {n: 'SSO 单点登录接入', p: '李军', h: 'green', pc: 45, d: '08-15', r: 1},
+                {n: '数字化营销活动平台', p: '李军', h: 'red', pc: 35, d: '07-30', r: 3},
+                {n: '合规审计二期', p: '王芳', h: 'green', pc: 5, d: '11-30', r: 0},
+                {n: '客户交付中台', p: '张伟', h: 'yellow', pc: 52, d: '10-15', r: 1}
+              ].map(r => `
+                <tr class="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onclick="location.href='project-detail.html?from=dashboard&id=1'">
+                  <td class="py-2.5 px-2 font-medium text-gray-800">${r.n}</td>
+                  <td class="py-2.5 px-2 text-gray-600">${r.p}</td>
+                  <td class="py-2.5 px-2"><span class="health-badge ${r.h}">${r.h === 'green' ? '健康' : r.h === 'yellow' ? '关注' : '风险'}</span></td>
+                  <td class="py-2.5 px-2">
+                    <div class="flex items-center gap-2">
+                      <div class="flex-1 h-2 bg-gray-100 rounded overflow-hidden"><div class="h-full" style="width:${r.pc}%;background:${r.h === 'red' ? '#F56C6C' : r.h === 'yellow' ? '#E6A23C' : '#67C23A'}"></div></div>
+                      <span class="text-xs text-gray-500 w-8 text-right">${r.pc}%</span>
+                    </div>
+                  </td>
+                  <td class="py-2.5 px-2 text-gray-500">${r.d}</td>
+                  <td class="py-2.5 px-2">${r.r > 0 ? `<span class="el-tag ${r.r > 1 ? 'danger' : 'warning'}">${r.r} 个</span>` : `<span class="text-gray-400">—</span>`}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-title">
+            <i data-lucide="sparkles" class="w-4 h-4 text-purple-500"></i> AI Coach 建议
+            <span class="ml-auto el-tag purple">今日 5 条</span>
+          </div>
+          <div class="space-y-2 text-xs">
+            <div class="p-3 border border-red-200 bg-red-50 rounded">
+              <div class="flex items-start gap-2"><i data-lucide="alert-octagon" class="w-4 h-4 text-red-500 mt-0.5"></i><div class="flex-1"><strong>P0 · 高 · 营销活动平台</strong><div class="text-gray-600 mt-1">任务 #3002 已逾期 5 天，依赖任务 #3010 受阻塞，建议增援 1 名设计或调整上线日期。</div><a href="risks.html?from=dashboard" class="text-blue-500 hover:underline mt-1 inline-block">→ 查看风险</a></div></div>
+            </div>
+            <div class="p-3 border border-orange-200 bg-orange-50 rounded">
+              <div class="flex items-start gap-2"><i data-lucide="alert-triangle" class="w-4 h-4 text-orange-500 mt-0.5"></i><div class="flex-1"><strong>P1 · 财务对账系统</strong><div class="text-gray-600 mt-1">幂等性任务 #1003 已阻塞 3 天，ERP 接口方建议 7/5 前提交方案。</div><a href="task-board.html?from=dashboard" class="text-blue-500 hover:underline mt-1 inline-block">→ 查看任务</a></div></div>
+            </div>
+            <div class="p-3 border border-yellow-200 bg-yellow-50 rounded">
+              <div class="flex items-start gap-2"><i data-lucide="trending-up" class="w-4 h-4 text-yellow-600 mt-0.5"></i><div class="flex-1"><strong>P2 · 建议</strong><div class="text-gray-600 mt-1">合规审计二期提前 1 个月预定测评机构，目前档期已紧张。</div><a href="risks.html?from=dashboard" class="text-blue-500 hover:underline mt-1 inline-block">→ 查看</a></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      ${isExec ? `
+      <!-- 高管视角额外板块 -->
+      <div class="grid grid-cols-2 gap-4">
+        <div class="card">
+          <div class="card-title"><i data-lucide="milestone" class="w-4 h-4 text-orange-500"></i> 关键节点（未来 30 天）</div>
+          <ul class="space-y-2.5 text-xs">
+            <li class="flex items-center gap-3"><span class="w-2 h-2 bg-orange-500 rounded-full"></span><strong class="flex-1">营销活动平台 · 618 灰度</strong><span class="text-gray-500">07-20</span></li>
+            <li class="flex items-center gap-3"><span class="w-2 h-2 bg-blue-500 rounded-full"></span><strong class="flex-1">SSO 灰度上线</strong><span class="text-gray-500">08-05</span></li>
+            <li class="flex items-center gap-3"><span class="w-2 h-2 bg-green-500 rounded-full"></span><strong class="flex-1">客户交付中台 · M1 完成</strong><span class="text-gray-500">08-10</span></li>
+            <li class="flex items-center gap-3"><span class="w-2 h-2 bg-purple-500 rounded-full"></span><strong class="flex-1">财务对账系统 UAT</strong><span class="text-gray-500">09-15</span></li>
+            <li class="flex items-center gap-3"><span class="w-2 h-2 bg-red-500 rounded-full"></span><strong class="flex-1">财务对账系统 上线交付</strong><span class="text-gray-500">09-30</span></li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><i data-lucide="users" class="w-4 h-4 text-blue-500"></i> PM 负载分布</div>
+          <div class="space-y-3 text-xs">
+            ${[
+              {n: '张伟（PMO）', n2: '监管 12 个项目', p: 65, c: '#909399'},
+              {n: '王芳', n2: '3 个项目并行', p: 92, c: '#F56C6C'},
+              {n: '李军', n2: '3 个项目并行', p: 78, c: '#E6A23C'},
+              {n: '赵磊 / 刘洋 / 陈敏', n2: '一线执行者', p: 45, c: '#67C23A'}
+            ].map(x => `
+              <div>
+                <div class="flex justify-between mb-1"><span class="font-medium">${x.n}</span><span class="text-gray-500">${x.n2}</span></div>
+                <div class="h-2 bg-gray-100 rounded overflow-hidden"><div class="h-full" style="width:${x.p}%;background:${x.c}"></div></div>
+              </div>
+            `).join('')}
+          </div>
+          <div class="mt-3 p-2 bg-orange-50 border border-orange-200 rounded text-xs text-orange-700 flex items-start gap-2"><i data-lucide="alert-triangle" class="w-4 h-4 mt-0.5"></i><span>AI 建议：王芳负载过高，建议将合规审计二期部分子任务拆分。</span></div>
+        </div>
+      </div>
+      ` : ''}
+    </div>
+    `);
+
+    // 渲染 Chart.js
+    setTimeout(() => {
+      // 燃尽图
+      // 修复说明：
+      // 1) P50/P90 预测必须从"最后一个实际点"平滑出发，而不是从那点瞬移到一条独立的虚线
+      // 2) P50/P90 的 tension 必须为 0（直线）——预测带是直线外推，不是曲线
+      // 3) 实际线只在有数据的范围内填充，否则 null 之后填充会画一坨
+      // 4) 标注"今日（06-30）"竖线和 P50/P90 的 ETA 标注
+      const burnCtx = document.getElementById('burndownChart');
+      if (burnCtx) {
+        const labels = ['06-15','06-22','06-29','07-06','07-13','07-20','07-27','08-03','08-10','08-17','08-24','08-31','09-07','09-14','09-21','09-28'];
+        // 总预估 240h；前 6 周（6 个数据点 = 0..5）已记录实际
+        // 今日 = 06-30 ≈ index 3；为便于看视觉，"实际数据"覆盖到 06-30（index 3），后面 null
+        const planData    = [240, 220, 200, 180, 160, 140, 120, 105, 90, 75, 60, 50, 38, 26, 14, 0];
+        const actualData  = [240, 225, 210, 195, null, null, null, null, null, null, null, null, null, null, null, null];
+        // P50 / P90 起点为今日（index 3）的实际值 195h；终点为预测 ETA
+        // P50：按当前速率（195h/21天 ≈ 9.3h/天），剩余 195h 需 21天，约 07-21 落 0 → index 6
+        // P90：含风险，剩余 195h 需 28天，约 07-28 落 0 → index 7
+        const p50Data     = [null, null, null, 195, 165, 130, 90, 50, 0,  null, null, null, null, null, null, null];
+        const p90Data     = [null, null, null, 195, 175, 150, 120, 90, 60, 35,  10,  0,  null, null, null, null];
+        // 把 ETA 日期标注在数据集末尾（非 null）
+        const eta50Index  = p50Data.indexOf(0);   // 7
+        const eta90Index  = p90Data.indexOf(0);   // 10
+
+        // 自定义插件：在 ETA 落点画一条 P50/P90 的 ETA label
+        const etaLabelPlugin = {
+          id: 'etaLabel',
+          afterDatasetsDraw(chart) {
+            const { ctx, scales: { x, y } } = chart;
+            ctx.save();
+            ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
+            // P50 label
+            if (eta50Index >= 0) {
+              const px = x.getPixelForValue(eta50Index);
+              const py = y.getPixelForValue(0);
+              ctx.fillStyle = '#7C3AED';
+              ctx.fillText('P50 → ' + labels[eta50Index], px - 30, py - 8);
+            }
+            // P90 label
+            if (eta90Index >= 0) {
+              const px = x.getPixelForValue(eta90Index);
+              const py = y.getPixelForValue(0);
+              ctx.fillStyle = '#67C23A';
+              ctx.fillText('P90 → ' + labels[eta90Index], px - 30, py + 14);
+            }
+            ctx.restore();
+          }
+        };
+
+        // 今日竖线插件
+        const todayLinePlugin = {
+          id: 'todayLine',
+          beforeDatasetsDraw(chart) {
+            const todayIdx = 3; // 06-30
+            const { ctx, scales: { x, y } } = chart;
+            const px = x.getPixelForValue(todayIdx);
+            ctx.save();
+            ctx.strokeStyle = '#F56C6C';
+            ctx.setLineDash([3, 3]);
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(px, y.top);
+            ctx.lineTo(px, y.bottom);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#F56C6C';
+            ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+            ctx.fillText('TODAY', px + 4, y.top + 12);
+            ctx.restore();
+          }
+        };
+
+        new Chart(burnCtx, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [
+              {
+                label: '计划',
+                data: planData,
+                borderColor: '#909399',
+                borderDash: [4, 4],
+                backgroundColor: 'transparent',
+                tension: 0,           // 直线（计划应是理想直线）
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                order: 4
+              },
+              {
+                label: '实际',
+                data: actualData,
+                borderColor: '#409EFF',
+                backgroundColor: 'rgba(64,158,255,0.10)',
+                tension: 0,
+                fill: '-1',           // 相对上一条 dataset（计划）的差，即"距计划"
+                spanGaps: false,      // null 处断开
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                order: 2
+              },
+              {
+                label: 'P50 预测',
+                data: p50Data,
+                borderColor: '#7C3AED',
+                borderDash: [6, 4],
+                backgroundColor: 'transparent',
+                tension: 0,           // 直线外推
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                order: 3
+              },
+              {
+                label: 'P90 预测',
+                data: p90Data,
+                borderColor: '#67C23A',
+                borderDash: [2, 4],
+                backgroundColor: 'transparent',
+                tension: 0,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                order: 1
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            spanGaps: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y == null ? '—' : ctx.parsed.y + 'h'}`
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: { display: true, text: '剩余估时（h）', font: { size: 11 } },
+                grid: { color: '#f0f1f2' }
+              },
+              x: {
+                grid: { display: false }
+              }
+            }
+          },
+          plugins: [todayLinePlugin, etaLabelPlugin]
+        });
+      }
+
+      const healthCtx = document.getElementById('healthChart');
+      if (healthCtx) {
+        new Chart(healthCtx, {
+          type: 'doughnut',
+          data: {
+            labels: ['健康','关注','风险','已完成'],
+            datasets: [{ data: [8,6,3,1], backgroundColor: ['#67C23A','#E6A23C','#F56C6C','#909399'], borderWidth: 2, borderColor: '#fff' }]
+          },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '60%' }
+        });
+      }
+      if (window.lucide) lucide.createIcons();
+    }, 50);
+  </script>
+</body>
+</html>

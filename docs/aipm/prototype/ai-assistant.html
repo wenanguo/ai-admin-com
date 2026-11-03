@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 项目助理 · aicomm</title>
+  <link rel="stylesheet" href="assets/css/app.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="assets/js/mock-data.js"></script>
+  <script src="assets/js/partials.js"></script>
+  <script src="assets/js/app.js"></script>
+</head>
+<body>
+  <div id="app" class="h-screen flex"></div>
+  <div id="ai-fab"></div>
+
+  <script>
+    /* ===== 工作台视图渲染 ===== */
+    function aipmRenderPanel(v) {
+      const box = document.getElementById('aipm-panel');
+      if (!box) return;
+      const pend = MOCK.pendingActions.filter(p => p.status === 'pending');
+      const n = document.getElementById('aipm-pend-n');
+      if (n) n.textContent = pend.length;
+      if (v === 'pending') {
+        box.innerHTML = pend.length ? `<div class="space-y-3">${pend.map(p => `
+          <div class="border border-gray-200 rounded-lg overflow-hidden bg-white">
+            <div class="px-3 py-2 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+              <code class="text-purple-600">${p.command}</code>
+              <span class="el-tag warning">待确认</span>
+              <span class="ml-auto text-[11px] text-gray-400">${p.expires_at.slice(11)} 过期</span>
+            </div>
+            <div class="p-3">
+              <div class="font-medium text-gray-700 mb-1">${p.title}</div>
+              <div class="text-[11px] text-gray-400 mb-2">来自：${p.reason}</div>
+              <table class="w-full text-[11px]">
+                <thead><tr class="text-gray-400 border-b border-gray-100"><th class="text-left py-1">实体</th><th class="text-left py-1">原值</th><th class="text-left py-1">新值</th><th class="text-left py-1">负责人</th></tr></thead>
+                <tbody>${p.hits.map(h => `<tr class="border-b border-gray-50 last:border-0">
+                  <td class="py-1">${h.title}</td><td class="py-1 text-gray-400 line-through">${h.from}</td>
+                  <td class="py-1 font-medium">${h.to}</td><td class="py-1 text-gray-500">${h.owner}</td></tr>`).join('')}</tbody>
+              </table>
+              <div class="mt-2 px-2 py-1.5 bg-orange-50 border border-orange-200 rounded text-[11px] text-orange-700">
+                <i data-lucide="alert-triangle" class="w-3 h-3 inline"></i> ${p.warning}</div>
+            </div>
+            <div class="px-3 py-2 border-t border-gray-100 flex gap-2">
+              <button class="px-2.5 py-1 bg-blue-500 text-white rounded text-[11px]">确认执行</button>
+              <button class="px-2.5 py-1 border border-gray-300 rounded text-[11px]">取消</button>
+              <button class="px-2.5 py-1 text-gray-500 rounded text-[11px]">调整范围</button>
+            </div>
+          </div>`).join('')}</div>` :
+          `<div class="text-center text-gray-400 py-8"><i data-lucide="check-circle" class="w-8 h-8 mx-auto mb-2 opacity-40"></i>没有待确认的操作</div>`;
+      } else if (v === 'audit') {
+        box.innerHTML = `<table class="w-full text-[11px]">
+          <thead><tr class="text-gray-400 border-b border-gray-100"><th class="text-left py-1.5">时间</th><th class="text-left py-1.5">执行方</th><th class="text-left py-1.5">命令</th><th class="text-left py-1.5">变更</th><th class="text-right py-1.5">操作</th></tr></thead>
+          <tbody>${MOCK.auditLogs.map(a => `<tr class="border-b border-gray-50 last:border-0">
+            <td class="py-1.5 text-gray-400">${a.time}</td>
+            <td class="py-1.5">${a.actor === 'AI' ? '<span class="el-tag purple">AI</span>' : '<span class="el-tag primary">人</span>'} ${a.actor_name}</td>
+            <td class="py-1.5"><code class="text-purple-600">${a.command}</code></td>
+            <td class="py-1.5 text-gray-600">${a.summary}</td>
+            <td class="py-1.5 text-right">${a.undoable ? '<button class="text-gray-400 hover:text-red-500">↩ 撤销</button>' : '<span class="text-gray-300">只读</span>'}</td>
+          </tr>`).join('')}</tbody></table>
+          <div class="text-[11px] text-gray-400 mt-2">审计 append-only：撤销是新增一条指向原记录的日志。</div>`;
+      } else {
+        box.innerHTML = `
+          <div class="grid grid-cols-2 gap-4">
+            <div class="p-3 border border-green-200 bg-green-50 rounded">
+              <div class="font-medium text-green-800 mb-1.5"><i data-lucide="cpu" class="w-3.5 h-3.5 inline"></i> 规则引擎（确定性，无 LLM 也能算）</div>
+              <ul class="text-[11px] text-green-900 space-y-1 list-disc pl-4">
+                <li>里程碑健康度（进度 / 速度比 / 阻塞时长 → 有风险、已错过）</li>
+                <li>进度三口径（任务完成率 / 估时完成率 / 里程碑达成率）</li>
+                <li>风险 score = 概率 × 影响，等级四级映射</li>
+                <li>5 类风险自动识别（延期 / 阻塞 / 过载 / 流失 / 范围蔓延）</li>
+                <li>ETA 预测（burndown 外推 + CPM 关键路径 → P50 / P90）</li>
+                <li>相对日期解析（周起点、时区、闭区间）</li>
+              </ul>
+            </div>
+            <div class="p-3 border border-purple-200 bg-purple-50 rounded">
+              <div class="font-medium text-purple-800 mb-1.5"><i data-lucide="sparkles" class="w-3.5 h-3.5 inline"></i> LLM（MiniMax，只负责理解与措辞）</div>
+              <ul class="text-[11px] text-purple-900 space-y-1 list-disc pl-4">
+                <li>自然语言 → 命令参数抽取（tool-calling）</li>
+                <li>把规则算出的结论写成人类可读的说明</li>
+                <li>建议下一步动作（拆任务 / 排期 / 指派）</li>
+                <li>纪要与评论的结构化摘要</li>
+              </ul>
+            </div>
+          </div>
+          <div class="mt-3 p-3 border border-orange-200 bg-orange-50 rounded text-[11px] text-orange-800">
+            <strong>边界：</strong>LLM 不能写库、不能定权限、不能自己决定"要不要人确认"。
+            破坏性操作一律先进待确认队列；所有写操作留审计且可撤销。
+          </div>`;
+      }
+      if (window.lucide) lucide.createIcons();
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.aipm-tab').forEach(b => b.addEventListener('click', () => {
+        document.querySelectorAll('.aipm-tab').forEach(x => {
+          const on = x === b;
+          x.classList.toggle('border-purple-500', on); x.classList.toggle('text-purple-600', on);
+          x.classList.toggle('border-transparent', !on); x.classList.toggle('text-gray-500', !on);
+        });
+        aipmRenderPanel(b.dataset.v);
+      }));
+      aipmRenderPanel('pending');
+    });
+
+    const intents = [
+      { icon: 'plus-circle', title: '进度查询', desc: '"上周我负责的项目进度如何？哪个有延期风险？"', color: 'blue', example: '你最近负责 5 个项目。其中 3 个进度正常（财务对账 +8%、SSO +5%、客户中台 +7%）；营销活动平台 ⚠️ 延期风险，建议复盘……' },
+      { icon: 'user-check', title: 'Owner 查询', desc: '"谁在 P0 任务上阻塞我？"', color: 'green', example: '检测到您被以下 P0 任务阻塞：① #1003 由刘洋负责（幂等性，待 PR）② #2010 由赵磊负责（前端联调）③ #3042 由王芳负责（设计稿）' },
+      { icon: 'alert-triangle', title: '风险查询', desc: '"识别财务对账系统的潜在风险"', color: 'red', example: '财务对账系统检测到 5 类风险：延期（score 9）、阻塞（score 20）、过载、过载、合规口径……' },
+      { icon: 'gauge', title: '负载查询', desc: '"PM 王芳目前负载如何？"', color: 'orange', example: '王芳负载 92%，同时负责 3 个 P0 项目。当前 P0 任务 11 个，超阈值 30%。建议拆分或转派。' },
+      { icon: 'link-2', title: '依赖查询', desc: '"任务 #1001 的关键依赖？"', color: 'purple', example: '#1001（预付款 ETL）→ #1002（UI）FS；#1001 → #1003（幂等性）FS；#1003 → #1007（监控大盘）FS。当前阻塞在 #1003。' },
+      { icon: 'history', title: '历史相似', desc: '"有没有类似 SSO 接 OA 的历史项目？"', color: 'cyan', example: '找到 3 个相似项目：PRJ-2024-Q2-018（SSO 飞书，92% 相似度）、PRJ-2025-Q3-007（SSO 钉钉，85%）。建议复用其 SAML 模板。' },
+      { icon: 'file-text', title: '总结查询', desc: '"总结这个项目的关键里程碑"', color: 'teal', example: '财务对账系统：6 个里程碑，已完成 1（业务蓝图）、进行中 1（预付款 62%）、未开始 4……' },
+      { icon: 'shield', title: 'SLA 查询', desc: '"财务对账系统 SLA 是否安全？"', color: 'amber', example: '预付款模块：剩余 3 个 P0 任务，估时 38h，按当前速率 4.8h/天，可按期达成。开票模块：⚠️ 仅剩 18 天，11 个任务，建议增援。' },
+      { icon: 'file-search', title: '文档查询', desc: '"SSO 选型报告在哪？"', color: 'indigo', example: 'SSO 选型报告（v1.2，2026-06-28）由李军创建，附件：[Keycloak vs Authing 对比.docx]，存放在 PRJ-002 文档库。' },
+      { icon: 'lightbulb', title: '建议查询', desc: '"本周该关注什么？"', color: 'pink', example: '本周建议：① 复盘营销活动平台延期根因 ② 提前预定等保测评机构 ③ 王芳负载拆分。' }
+    ];
+
+    function intentCard(i) {
+      const c = i.color;
+      return `
+      <div class="card cursor-pointer hover:border-${c}-400 hover:shadow-md transition" onclick="useExample('${i.title}')">
+        <div class="flex items-center gap-2 mb-2">
+          <div class="w-8 h-8 rounded-lg bg-${c}-50 text-${c}-500 flex items-center justify-center"><i data-lucide="${i.icon}" class="w-4 h-4"></i></div>
+          <strong class="text-sm">${i.title}</strong>
+        </div>
+        <div class="text-xs text-gray-500 mb-2">${i.desc}</div>
+        <div class="text-xs text-gray-700 p-2 bg-gray-50 rounded">${i.example}</div>
+      </div>`;
+    }
+
+    aicomLayout(`
+    <div class="p-6 space-y-4 bg-gray-50">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-xl font-semibold flex items-center gap-2">
+            <div class="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white"><i data-lucide="sparkles" class="w-4 h-4"></i></div>
+            AI 工作台
+            <span class="el-tag purple">对话 · 待确认 · 审计</span>
+          </h1>
+          <div class="text-xs text-gray-500 mt-1">由 MiniMax（MiniMax-M3.1-Flash）驱动 · 命令层受控写入 · 实时引用</div>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-default btn-sm"><i data-lucide="history" class="w-3.5 h-3.5"></i>历史对话</button>
+          <button class="btn btn-default btn-sm"><i data-lucide="settings" class="w-3.5 h-3.5"></i>配额</button>
+          <button class="btn btn-primary btn-sm"><i data-lucide="plus" class="w-3.5 h-3.5"></i>新对话</button>
+        </div>
+      </div>
+
+      <!-- 模型选择 / 配额 -->
+      <div class="card flex items-center gap-4 text-xs">
+        <div class="flex items-center gap-2"><i data-lucide="brain" class="w-4 h-4 text-purple-500"></i><span class="text-gray-500">当前模型：</span>
+          <select class="el-input" style="width:auto"><option>MiniMax-M3.1-Flash（默认 / 快）</option><option>MiniMax-M3（复杂任务）</option><option>MiniMax-M2.7-highspeed（成本优先）</option></select>
+        </div>
+        <div class="flex items-center gap-2 ml-auto">
+          <span class="text-gray-500">今日配额：</span>
+          <div class="w-32 h-2 bg-gray-100 rounded overflow-hidden"><div class="h-full bg-gradient-to-r from-purple-400 to-blue-400" style="width:35%"></div></div>
+          <span class="font-medium">350 / 1000 tokens</span>
+        </div>
+      </div>
+
+      <!-- 工作台三视图（全宽版）：待确认 / 审计 / 能力总览 -->
+      <div class="card">
+        <div class="card-title">
+          <i data-lucide="layout-dashboard" class="w-4 h-4 text-purple-500"></i> 工作台视图
+          <span class="ml-auto text-xs text-gray-500">右侧常驻工作台的完整版（⌘B 可折叠）</span>
+        </div>
+        <div class="flex border-b border-gray-200 -mx-4 -mt-3 mb-4">
+          <button class="aipm-tab px-4 py-2 text-xs font-medium border-b-2 border-purple-500 text-purple-600" data-v="pending">待确认队列 <span class="ml-1 px-1.5 rounded text-[10px] bg-red-500 text-white" id="aipm-pend-n">0</span></button>
+          <button class="aipm-tab px-4 py-2 text-xs font-medium border-b-2 border-transparent text-gray-500" data-v="audit">审计日志</button>
+          <button class="aipm-tab px-4 py-2 text-xs font-medium border-b-2 border-transparent text-gray-500" data-v="rules">规则与 AI 的分工</button>
+        </div>
+        <div id="aipm-panel" class="text-xs"></div>
+      </div>
+
+      <!-- 意图分类卡片 -->
+      <div>
+        <h2 class="text-sm font-semibold text-gray-700 mb-3">10 类意图（点击即可体验）</h2>
+        <div class="grid grid-cols-2 gap-4">
+          ${intents.map(intentCard).join('')}
+        </div>
+      </div>
+
+      <!-- 对话区 -->
+      <div class="card">
+        <div class="card-title">
+          <i data-lucide="message-circle" class="w-4 h-4 text-blue-500"></i> 对话演示
+          <span class="ml-auto text-xs text-gray-500">已实现 5/10 类意图 · 平均响应 P95 < 6s</span>
+        </div>
+        <div id="chatMessages" class="space-y-3 mb-3 max-h-[400px] overflow-y-auto">
+          <div class="flex gap-2">
+            <div class="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 text-white flex items-center justify-center text-xs shrink-0"><i data-lucide="bot" class="w-3.5 h-3.5"></i></div>
+            <div class="bg-gray-50 rounded-lg p-3 max-w-2xl text-sm">
+              你好，我是 AI 项目助理。可以帮你查询 <strong>10 类项目信息</strong>，或帮你 <strong>建任务、拆任务、识别风险、总结纪要</strong>。
+              <div class="mt-2 text-xs text-gray-500">下方输入框可直接提问，或点击上方意图卡片体验。</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex gap-2 border-t border-gray-100 pt-3">
+          <input id="chatInput" type="text" placeholder="试试：『@AI 总结本周项目』或『谁在 P0 任务上阻塞我？』" class="flex-1 el-input" style="height:36px">
+          <button class="btn btn-default btn-sm" onclick="document.getElementById('chatInput').value='@AI '"><i data-lucide="at-sign" class="w-3.5 h-3.5"></i></button>
+          <button class="btn btn-default btn-sm"><i data-lucide="paperclip" class="w-3.5 h-3.5"></i></button>
+          <button onclick="sendChat()" class="btn btn-primary btn-sm"><i data-lucide="send" class="w-3.5 h-3.5"></i>发送</button>
+        </div>
+      </div>
+    </div>
+    `);
+
+    function sendChat() {
+      const input = document.getElementById('chatInput');
+      const q = input.value.trim();
+      if (!q) return;
+      input.value = '';
+      const msg = document.getElementById('chatMessages');
+      msg.insertAdjacentHTML('beforeend', `<div class="flex gap-2 justify-end"><div class="bg-blue-500 text-white rounded-lg p-3 max-w-2xl text-sm">${q}</div></div>`);
+      msg.insertAdjacentHTML('beforeend', `<div id="typing" class="flex gap-2"><div class="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 text-white flex items-center justify-center text-xs shrink-0"><i data-lucide="bot" class="w-3.5 h-3.5"></i></div><div class="bg-gray-50 rounded-lg p-3 text-sm text-gray-500"><span class="inline-block animate-pulse">●</span><span class="inline-block animate-pulse" style="animation-delay:0.2s">●</span><span class="inline-block animate-pulse" style="animation-delay:0.4s">●</span> 识别意图中...</div></div>`);
+      msg.scrollTop = msg.scrollHeight;
+
+      setTimeout(() => {
+        document.getElementById('typing').remove();
+        // 找匹配的意图
+        const intent = intents.find(i => q.includes(i.title) || i.desc.indexOf(q) !== -1 || i.example.indexOf(q.replace('@AI ', '')) !== -1);
+        const matched = intent || intents[Math.floor(Math.random() * intents.length)];
+        msg.insertAdjacentHTML('beforeend', `
+          <div class="flex gap-2">
+            <div class="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 text-white flex items-center justify-center text-xs shrink-0"><i data-lucide="bot" class="w-3.5 h-3.5"></i></div>
+            <div class="bg-gray-50 rounded-lg p-3 max-w-2xl text-sm">
+              <div class="text-xs text-purple-600 font-medium mb-1"><i data-lucide="lightbulb" class="w-3 h-3 inline"></i> 意图识别：<strong>${matched.title}</strong>（置信度 ${(0.85 + Math.random()*0.1).toFixed(2)}）</div>
+              <div class="leading-relaxed">${matched.example}</div>
+              <div class="mt-2 text-xs text-blue-500 flex items-center gap-3">
+                <a href="javascript:;" class="hover:underline">→ 查看引用卡片</a>
+                <span>·</span>
+                <a href="javascript:;" class="hover:underline">→ 跳转到来源</a>
+              </div>
+              <div class="mt-2 text-xs text-gray-400"><i data-lucide="clock" class="w-3 h-3 inline"></i> 2.3s · tokens 156</div>
+            </div>
+          </div>`);
+        msg.scrollTop = msg.scrollHeight;
+        if (window.lucide) lucide.createIcons();
+      }, 800);
+    }
+    function useExample(name) {
+      const intent = intents.find(i => i.title === name);
+      document.getElementById('chatInput').value = intent.desc.replace(/[":？，。]/g, '').replace(/"/g, '');
+      sendChat();
+    }
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'chatInput') sendChat();
+    });
+
+    setTimeout(() => { if (window.lucide) lucide.createIcons(); }, 50);
+  </script>
+</body>
+</html>

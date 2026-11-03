@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>里程碑管理 · aicomm</title>
+  <link rel="stylesheet" href="assets/css/app.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="assets/js/mock-data.js"></script>
+  <script src="assets/js/partials.js"></script>
+  <script src="assets/js/app.js"></script>
+</head>
+<body>
+  <div id="app" class="h-screen flex"></div>
+  <div id="ai-fab"></div>
+
+  <script>
+    // ====== 数据准备：从 MOCK 聚合 ======
+    const allMilestones = window.MOCK.milestones;
+    const allTasks = window.MOCK.tasks;
+    const allProjects = window.MOCK.projects;
+    const allUsers = window.MOCK.users;
+
+    // 当前项目（顶部 select 切换；默认项目 1）
+    let currentProjectId = 1;
+    function userById(id) { return allUsers.find(u => u.id === id) || { name: '?', avatar: '?' }; }
+
+    function getMilestonesOf(pid) {
+      return allMilestones.filter(m => m.project_id === pid);
+    }
+    function getTasksOf(mid) {
+      return allTasks.filter(t => t.milestone_id === mid);
+    }
+
+    // 完成情况聚合
+    function aggregate(tasks) {
+      const total = tasks.length;
+      const done = tasks.filter(t => t.status === 'done').length;
+      const in_progress = tasks.filter(t => t.status === 'in_progress').length;
+      const blocked = tasks.filter(t => t.status === 'blocked').length;
+      const review = tasks.filter(t => t.status === 'review').length;
+      const todo = tasks.filter(t => t.status === 'todo').length;
+      const backlog = tasks.filter(t => t.status === 'backlog').length;
+      const cancelled = tasks.filter(t => t.status === 'cancelled').length;
+      const totalHours = tasks.reduce((s, t) => s + (t.estimate_hours || 0), 0);
+      const doneHours = tasks.filter(t => t.status === 'done').reduce((s, t) => s + (t.actual_hours || t.estimate_hours || 0), 0);
+      const completion = total ? Math.round((done / total) * 100) : 0;
+      // AI 预测：基于 doneHours / 已耗时天数 × 剩余估算
+      const aiEtaDays = (() => {
+        if (!total || done >= total) return 0;
+        const remainingHours = totalHours - doneHours;
+        // 假设团队日均产出 ≈ 8h（mock 简化）
+        return Math.max(1, Math.round(remainingHours / 8));
+      })();
+      return { total, done, in_progress, blocked, review, todo, backlog, cancelled, totalHours, doneHours, completion, aiEtaDays };
+    }
+
+    function statusSegPct(n, total) {
+      return total ? (n / total) * 100 : 0;
+    }
+
+    function completionColor(c) {
+      if (c >= 80) return 'green';
+      if (c >= 40) return 'blue';
+      if (c >= 10) return 'orange';
+      return 'red';
+    }
+
+    // AI 预测完成日（基于当前完成率 + 速率 + 截止日）
+    function aiPredictDate(milestone, agg) {
+      if (agg.completion === 100) return { date: milestone.due_date, label: '已达成', color: '#67C23A' };
+      if (agg.total === 0) return { date: '—', label: '无任务', color: '#909399' };
+      // 模拟：剩余天数 + 加权（剩余任务阻塞率高 +3 天）
+      const penalty = agg.blocked * 3 + agg.review * 1;
+      const today = new Date('2026-06-30');
+      const predicted = new Date(today.getTime() + (agg.aiEtaDays + penalty) * 86400000);
+      const dueDate = new Date(milestone.due_date);
+      const overdue = predicted > dueDate;
+      return {
+        date: predicted.toISOString().slice(0, 10),
+        label: overdue ? '⚠️ 预计延期' : '✓ 可按时',
+        color: overdue ? '#F56C6C' : '#67C23A',
+        overdue
+      };
+    }
+
+    // ====== 甘特时间轴计算 ======
+    const startDate = new Date('2026-06-15');
+    const endDate = new Date('2026-09-30');
+    const totalDays = Math.round((endDate - startDate) / 86400000);
+    const weeks = [];
+    for (let i = 0; i <= totalDays; i += 7) {
+      const d = new Date(startDate.getTime() + i * 86400000);
+      weeks.push((d.getMonth() + 1).toString().padStart(2, '0') + '-' + d.getDate().toString().padStart(2, '0'));
+    }
+    function dateOffset(date) {
+      return Math.round((new Date(date) - startDate) / 86400000);
+    }
+
+    // ====== 渲染 ======
+    function renderMilestonesTable() {
+      const ms = getMilestonesOf(currentProjectId);
+      return ms.map((m, idx) => {
+        const tasks = getTasksOf(m.id);
+        const agg = aggregate(tasks);
+        const pred = aiPredictDate(m, agg);
+        const color = completionColor(agg.completion);
+        return `
+          <tr class="border-t border-gray-100 accordion-toggle" data-mid="${m.id}" onclick="toggleAccordion(${m.id})">
+            <td class="py-3 px-4">
+              <div class="flex items-center gap-2">
+                <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-gray-400 chevron" id="chev-${m.id}"></i>
+                <strong>${m.name}</strong>
+                ${idx === 0 ? '<span class="el-tag success" style="height:18px;font-size:10px;padding:0 4px">已达成</span>' : ''}
+                ${agg.blocked > 0 ? `<span class="el-tag danger" style="height:18px;font-size:10px;padding:0 4px"><i data-lucide="alert-octagon" class="w-2.5 h-2.5 inline"></i>${agg.blocked} 阻塞</span>` : ''}
+              </div>
+            </td>
+            <td class="py-3 px-4"><span class="status-pill ${m.status}">${m.status}</span></td>
+            <td class="py-3 px-4 text-gray-600">${m.start_date} ~ ${m.due_date}</td>
+            <td class="py-3 px-4 text-gray-500">${m.actual_end_date ? m.start_date + ' ~ ' + m.actual_end_date : '—'}</td>
+            <td class="py-3 px-4 text-gray-600 text-xs">${(m.deliverables || []).join('、') || '—'}</td>
+            <!-- 新：完成情况列 -->
+            <td class="py-3 px-4" style="min-width:240px">
+              <div class="flex items-center gap-2 mb-1.5">
+                <div class="progress-bar flex-1">
+                  <div class="progress-fill ${color}" style="width:${agg.completion}%"></div>
+                </div>
+                <span class="text-xs font-semibold text-${color === 'green' ? 'green' : color === 'red' ? 'red' : color === 'orange' ? 'orange' : 'blue'}-600" style="min-width:38px;text-align:right">${agg.completion}%</span>
+              </div>
+              <div class="status-stack mb-1" title="done:${agg.done} in_progress:${agg.in_progress} blocked:${agg.blocked} review:${agg.review} todo:${agg.todo} backlog:${agg.backlog}">
+                ${agg.done ? `<span class="seg-done" style="width:${statusSegPct(agg.done, agg.total)}%"></span>` : ''}
+                ${agg.in_progress ? `<span class="seg-in_progress" style="width:${statusSegPct(agg.in_progress, agg.total)}%"></span>` : ''}
+                ${agg.blocked ? `<span class="seg-blocked" style="width:${statusSegPct(agg.blocked, agg.total)}%"></span>` : ''}
+                ${agg.review ? `<span class="seg-review" style="width:${statusSegPct(agg.review, agg.total)}%"></span>` : ''}
+                ${agg.todo ? `<span class="seg-todo" style="width:${statusSegPct(agg.todo, agg.total)}%"></span>` : ''}
+                ${agg.backlog ? `<span class="seg-backlog" style="width:${statusSegPct(agg.backlog, agg.total)}%"></span>` : ''}
+              </div>
+              <div class="flex items-center gap-2 text-[10px] text-gray-500">
+                <span><span class="w-1.5 h-1.5 rounded-full inline-block" style="background:var(--color-success)"></span> ${agg.done}</span>
+                <span><span class="w-1.5 h-1.5 rounded-full inline-block" style="background:var(--color-warning)"></span> ${agg.in_progress}</span>
+                <span><span class="w-1.5 h-1.5 rounded-full inline-block" style="background:var(--color-danger)"></span> ${agg.blocked}</span>
+                <span><span class="w-1.5 h-1.5 rounded-full inline-block" style="background:#7C3AED"></span> ${agg.review}</span>
+                <span><span class="w-1.5 h-1.5 rounded-full inline-block" style="background:var(--color-primary)"></span> ${agg.todo}</span>
+                <span class="ml-auto text-gray-400">${agg.totalHours}h 估时 / ${agg.doneHours}h 已投</span>
+              </div>
+            </td>
+            <!-- 新：AI 完成预测列 -->
+            <td class="py-3 px-4" style="min-width:130px">
+              <div class="text-sm font-medium" style="color:${pred.color}">${pred.date}</div>
+              <div class="text-[10px] text-gray-500 mt-0.5 flex items-center gap-1">
+                <i data-lucide="sparkles" class="w-2.5 h-2.5 text-purple-500"></i>
+                ${pred.label}
+              </div>
+            </td>
+            <td class="py-3 px-4 text-right">
+              <button class="text-blue-500 text-xs hover:underline" onclick="event.stopPropagation();location.href='task-board.html?from=milestones&milestone=${m.id}'">看板</button>
+              <button class="text-blue-500 text-xs hover:underline ml-2" onclick="event.stopPropagation();location.href='task-list.html?from=milestones&milestone=${m.id}'">列表</button>
+            </td>
+          </tr>
+          ${renderAccordionContent(m.id, tasks)}
+        `;
+      }).join('');
+    }
+
+    function renderAccordionContent(mid, tasks) {
+      if (tasks.length === 0) {
+        return `<tr class="accordion-row hidden" id="acc-${mid}"><td colspan="8">
+          <div class="accordion-content text-center text-xs text-gray-400 py-6">
+            <i data-lucide="inbox" class="w-6 h-6 inline-block mb-1"></i>
+            <div>该里程碑暂无任务</div>
+          </div>
+        </td></tr>`;
+      }
+      const rows = tasks.map(t => {
+        const u = userById(t.assignee_id);
+        const overdue = t.due_date && new Date(t.due_date) < new Date('2026-06-30') && t.status !== 'done';
+        return `
+          <tr class="border-t border-gray-100 hover:bg-blue-50/30">
+            <td class="py-2 px-4 pl-12 text-xs">
+              <div class="flex items-center gap-2">
+                <span class="text-gray-400 font-mono">#${t.id}</span>
+                <span class="font-medium text-gray-800">${t.title}</span>
+                ${t.ai && t.ai.suggested ? '<span class="el-tag purple" style="height:16px;font-size:10px;padding:0 4px"><i data-lucide="sparkles" class="w-2.5 h-2.5 inline"></i>AI</span>' : ''}
+                ${overdue ? '<span class="el-tag danger" style="height:16px;font-size:10px;padding:0 4px">延期</span>' : ''}
+              </div>
+            </td>
+            <td class="py-2 px-4"><span class="status-pill ${t.status}">${t.status}</span></td>
+            <td class="py-2 px-4">
+              <div class="flex items-center gap-1.5">
+                <div class="avatar" style="width:20px;height:20px;font-size:10px">${u.avatar}</div>
+                <span class="text-xs">${u.name}</span>
+              </div>
+            </td>
+            <td class="py-2 px-4 text-xs">
+              <span class="text-gray-700">${t.estimate_hours || 0}h</span>
+              ${t.actual_hours ? `<span class="text-green-500 ml-1">/ ${t.actual_hours}h</span>` : ''}
+            </td>
+            <td class="py-2 px-4 text-xs ${overdue ? 'text-red-500' : 'text-gray-500'}">${t.due_date || '—'}</td>
+            <td class="py-2 px-4 text-xs">${(t.labels || []).slice(0, 2).map(l => `<span class="el-tag" style="height:16px;font-size:10px;padding:0 4px">${l}</span>`).join(' ')}</td>
+            <td class="py-2 px-4 text-xs">
+              ${(t.dependencies || []).length ? `<span class="text-blue-500 flex items-center gap-0.5"><i data-lucide="link" class="w-3 h-3"></i>${t.dependencies.map(d => '#' + d).join(', ')}</span>` : '<span class="text-gray-300">—</span>'}
+            </td>
+            <td class="py-2 px-4 text-right">
+              <a href="comments.html?from=milestones&target=${t.id}" class="text-blue-500 text-xs hover:underline">详情</a>
+            </td>
+          </tr>
+        `;
+      }).join('');
+      return `<tr class="accordion-row hidden" id="acc-${mid}"><td colspan="8">
+        <div class="accordion-content">
+          <div class="flex items-center gap-2 mb-2 text-xs text-gray-500">
+            <i data-lucide="list-checks" class="w-3.5 h-3.5"></i>
+            <strong>${tasks.length} 个任务</strong>
+            <span class="ml-3">完成 ${tasks.filter(t=>t.status==='done').length} / 阻塞 ${tasks.filter(t=>t.status==='blocked').length} / 进行中 ${tasks.filter(t=>t.status==='in_progress').length}</span>
+            <button class="ml-auto text-blue-500 hover:underline flex items-center gap-1" onclick="location.href='task-board.html?from=milestones&milestone=${mid}'">
+              <i data-lucide="external-link" class="w-3 h-3"></i> 在看板上查看
+            </button>
+          </div>
+          <table class="w-full">
+            <thead class="text-gray-500 text-[10px]">
+              <tr>
+                <th class="text-left py-1.5 px-4 pl-12 font-medium">任务</th>
+                <th class="text-left py-1.5 px-4 font-medium">状态</th>
+                <th class="text-left py-1.5 px-4 font-medium">负责人</th>
+                <th class="text-left py-1.5 px-4 font-medium">估时/实际</th>
+                <th class="text-left py-1.5 px-4 font-medium">截止</th>
+                <th class="text-left py-1.5 px-4 font-medium">标签</th>
+                <th class="text-left py-1.5 px-4 font-medium">依赖</th>
+                <th class="text-right py-1.5 px-4 font-medium">操作</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </td></tr>`;
+    }
+
+    // 手风琴切换
+    window.toggleAccordion = function(mid) {
+      const row = document.getElementById('acc-' + mid);
+      const chev = document.getElementById('chev-' + mid);
+      if (!row) return;
+      const isHidden = row.classList.contains('hidden');
+      row.classList.toggle('hidden');
+      if (chev) chev.classList.toggle('open', isHidden);
+    };
+
+    // ====== 项目切换 ======
+    window.switchProject = function(pid) {
+      currentProjectId = pid;
+      const tableBody = document.getElementById('ms-table-body');
+      if (tableBody) {
+        tableBody.innerHTML = renderMilestonesTable();
+        if (window.lucide) lucide.createIcons();
+      }
+    };
+
+    aicomLayout(`
+    <div class="p-6 space-y-4 bg-gray-50">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-xl font-semibold flex items-center gap-2">
+            <i data-lucide="flag" class="w-5 h-5 text-orange-500"></i> 里程碑管理
+          </h1>
+          <div class="text-xs text-gray-500 mt-1 flex items-center gap-3">
+            <select class="el-input" style="width:auto;height:28px" onchange="switchProject(+this.value)">
+              ${allProjects.map(p => `<option value="${p.id}" ${p.id===currentProjectId?'selected':''}>${p.name}</option>`).join('')}
+            </select>
+            <span>共 <strong>${getMilestonesOf(currentProjectId).length}</strong> 个里程碑 · <strong>${allTasks.filter(t => getMilestonesOf(currentProjectId).some(m=>m.id===t.milestone_id)).length}</strong> 个任务</span>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <div class="flex border border-gray-200 rounded overflow-hidden">
+            <button class="px-3 py-1.5 text-xs bg-blue-500 text-white">甘特</button>
+            <button class="px-3 py-1.5 text-xs bg-white text-gray-600">列表</button>
+          </div>
+          <button class="btn btn-default btn-sm"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>重新预测</button>
+          <button class="btn btn-primary btn-sm"><i data-lucide="plus" class="w-3.5 h-3.5"></i>新建里程碑</button>
+        </div>
+      </div>
+
+      <!-- KPI 摘要 -->
+      <div class="grid grid-cols-4 gap-3">
+        ${(() => {
+          const ms = getMilestonesOf(currentProjectId);
+          const tasks = allTasks.filter(t => ms.some(m => m.id === t.milestone_id));
+          const agg = aggregate(tasks);
+          const doneMS = ms.filter(m => m.status === 'done').length;
+          return [
+            { label: '里程碑完成率', val: Math.round(doneMS / ms.length * 100) + '%', trend: '+1', trendUp: true, icon: 'flag', color: 'blue' },
+            { label: '任务完成率', val: agg.completion + '%', trend: '+8%', trendUp: true, icon: 'check-circle', color: 'green' },
+            { label: '在途任务', val: agg.in_progress, trend: '', trendUp: true, icon: 'loader', color: 'orange' },
+            { label: '阻塞/风险', val: agg.blocked, trend: '+1', trendUp: false, icon: 'alert-octagon', color: 'red' }
+          ].map(k => `
+            <div class="card flex items-center gap-3">
+              <div class="w-10 h-10 rounded flex items-center justify-center" style="background:${k.color === 'blue' ? '#ecf5ff' : k.color === 'green' ? '#f0f9eb' : k.color === 'orange' ? '#fdf6ec' : '#fef0f0'};color:${k.color === 'blue' ? '#409eff' : k.color === 'green' ? '#67c23a' : k.color === 'orange' ? '#e6a23c' : '#f56c6c'}">
+                <i data-lucide="${k.icon}" class="w-5 h-5"></i>
+              </div>
+              <div class="flex-1">
+                <div class="kpi-value">${k.val}</div>
+                <div class="kpi-label flex items-center gap-2">
+                  ${k.label}
+                  ${k.trend ? `<span class="kpi-trend ${k.trendUp ? 'up' : 'down'}">${k.trend}</span>` : ''}
+                </div>
+              </div>
+            </div>
+          `).join('');
+        })()}
+      </div>
+
+      <!-- AI 预测 banner -->
+      <div class="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded p-3 flex items-center gap-3 text-sm">
+        <div class="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white"><i data-lucide="sparkles" class="w-4 h-4"></i></div>
+        <div class="flex-1">
+          <div class="font-medium">AI 进度预测 · 关键路径法（CPM）+ 历史相似项目</div>
+          <div class="text-xs text-gray-600 mt-0.5">预计达成 <strong class="text-purple-600">2026-09-28</strong>（P50，置信度 78%）｜ <strong class="text-orange-600">P90 = 2026-10-05</strong>。识别关键路径：需求蓝图 → 预付款 → 对账 → UAT → 上线</div>
+        </div>
+        <button class="btn btn-default btn-sm">展开详情</button>
+      </div>
+
+      <!-- 甘特图 -->
+      <div class="card">
+        <div class="card-title">
+          <i data-lucide="gantt-chart" class="w-4 h-4 text-blue-500"></i> 甘特时间线
+          <div class="ml-auto flex items-center gap-3 text-xs text-gray-500">
+            <span class="flex items-center gap-1"><span class="w-3 h-1.5 bg-green-500 rounded"></span>已完成</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-1.5 bg-orange-500 rounded"></span>进行中</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-1.5 bg-blue-500 rounded"></span>未开始</span>
+          </div>
+        </div>
+
+        <div class="gantt-axis" style="grid-template-columns: repeat(${weeks.length}, 1fr); padding-left: 168px; padding-right: 68px;">
+          ${weeks.map(w => `<div>${w}</div>`).join('')}
+        </div>
+
+        ${getMilestonesOf(currentProjectId).map(m => {
+          const ps = dateOffset(m.start_date);
+          const pe = dateOffset(m.due_date);
+          const widthPct = ((pe - ps) / totalDays) * 100;
+          const leftPct = (ps / totalDays) * 100;
+          const statusLabel = m.status === 'done' ? '✓ 已完成' : m.status === 'in_progress' ? '⟳ 进行中' : '◯ 未开始';
+          return `
+            <div class="gantt-row">
+              <div class="text-xs">
+                <div class="font-medium">${m.name}</div>
+                <div class="text-gray-400 text-[10px]">${m.start_date} ~ ${m.due_date}</div>
+              </div>
+              <div class="gantt-bar-wrap">
+                <div class="gantt-bar ${m.status}" style="left:${leftPct}%; width:${widthPct}%;">
+                  ${statusLabel}
+                </div>
+              </div>
+              <div class="text-xs text-gray-500 text-right">${pe - ps}天</div>
+            </div>
+          `;
+        }).join('')}
+
+        <!-- 今天线 -->
+        <div class="relative mt-2 h-6">
+          <div class="absolute" style="left: calc(168px + ${(dateOffset('2026-06-30') / totalDays) * 100}% * (100% - 168px - 68px) / 100%); bottom: -200px; width: 2px; background: red; height: 200px;"></div>
+          <div class="text-xs text-red-500" style="position:absolute; left: 50%; transform: translateX(-50%)"><i data-lucide="flag" class="w-3 h-3 inline"></i> TODAY (06-30)</div>
+        </div>
+      </div>
+
+      <!-- 里程碑列表（含完成情况 + AI 预测 + 手风琴任务） -->
+      <div class="card p-0">
+        <div class="card-title px-4 pt-4">
+          <i data-lucide="list" class="w-4 h-4 text-blue-500"></i> 里程碑列表 · 任务完成情况
+          <span class="ml-auto text-xs text-gray-500 flex items-center gap-3">
+            <span><i data-lucide="mouse-pointer-click" class="w-3 h-3 inline"></i> 点击行展开该里程碑的任务</span>
+            <span>·</span>
+            <span>共 ${getMilestonesOf(currentProjectId).length} 个里程碑</span>
+          </span>
+        </div>
+        <table class="w-full text-xs">
+          <thead class="text-gray-500 bg-gray-50">
+            <tr>
+              <th class="text-left py-2.5 px-4">名称</th>
+              <th class="text-left py-2.5 px-4">状态</th>
+              <th class="text-left py-2.5 px-4">计划起止</th>
+              <th class="text-left py-2.5 px-4">实际起止</th>
+              <th class="text-left py-2.5 px-4">交付物</th>
+              <th class="text-left py-2.5 px-4">任务完成情况</th>
+              <th class="text-left py-2.5 px-4">AI 完成预测</th>
+              <th class="text-right py-2.5 px-4">操作</th>
+            </tr>
+          </thead>
+          <tbody id="ms-table-body">
+            ${renderMilestonesTable()}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- AI 建议 -->
+      <div class="grid grid-cols-2 gap-4">
+        <div class="card">
+          <div class="card-title"><i data-lucide="lightbulb" class="w-4 h-4 text-yellow-500"></i> AI 拆里程碑建议</div>
+          <div class="text-xs text-gray-600 space-y-2">
+            <p>基于项目总工期（107 天）和团队历史速度，建议将 <strong>集成 + UAT</strong> 里程碑拆为「集成联调」和「UAT」两个独立里程碑，便于问题追溯。</p>
+            <button class="btn btn-primary btn-sm"><i data-lucide="check" class="w-3.5 h-3.5"></i>采纳建议</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title"><i data-lucide="git-branch" class="w-4 h-4 text-blue-500"></i> 关键路径</div>
+          <ol class="text-xs text-gray-700 space-y-1.5">
+            <li>① 需求蓝图（已完成）</li>
+            <li>② 预付款模块 ← 当前 · 完成 33%（1/3 done，1/3 in_progress，1/3 blocked）</li>
+            <li>③ 对账自动化</li>
+            <li>④ 集成 + UAT</li>
+            <li>⑤ 上线交付</li>
+          </ol>
+          <div class="mt-3 text-xs text-orange-500 flex items-center gap-1"><i data-lucide="alert-triangle" class="w-3 h-3"></i> 预付款模块阻塞任务 #1003，可能延误关键路径 3 天</div>
+        </div>
+      </div>
+    </div>
+    `);
+    setTimeout(() => { if (window.lucide) lucide.createIcons(); }, 50);
+  </script>
+</body>
+</html>

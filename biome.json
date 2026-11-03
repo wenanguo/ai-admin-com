@@ -25,7 +25,8 @@
       "!biome.json",
       "!tailwind.css",
       "!package-lock.json",
-      "!**/.worktrees"
+      "!**/.worktrees",
+      "!docs/aipm"
     ]
   },
   "formatter": {

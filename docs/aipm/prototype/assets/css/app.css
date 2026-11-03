@@ -1,0 +1,340 @@
+/* ============================================================
+ * 全局微调样式
+ * ============================================================ */
+:root {
+  --color-primary: #409EFF;
+  --color-success: #67C23A;
+  --color-warning: #E6A23C;
+  --color-danger: #F56C6C;
+  --color-info: #909399;
+  --color-bg: #F5F7FA;
+  --color-border: #E4E7ED;
+  --radius: 4px;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', Helvetica, 'Microsoft YaHei', Arial, sans-serif;
+  font-size: 14px;
+  background: var(--color-bg);
+  color: #303133;
+}
+* { box-sizing: border-box; }
+button { font-family: inherit; }
+
+/* 卡片 */
+.card {
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Element Plus 风格按钮 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: #fff;
+  color: #606266;
+}
+.btn:hover { opacity: 0.9; }
+.btn-primary { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.btn-primary:hover { background: #66b1ff; border-color: #66b1ff; }
+.btn-success { background: var(--color-success); color: #fff; border-color: var(--color-success); }
+.btn-warning { background: var(--color-warning); color: #fff; border-color: var(--color-warning); }
+.btn-danger { background: var(--color-danger); color: #fff; border-color: var(--color-danger); }
+.btn-default { background: #fff; border-color: #dcdfe6; color: #606266; }
+.btn-default:hover { color: var(--color-primary); border-color: #b3d8ff; background: #ecf5ff; }
+.btn-text { background: transparent; color: var(--color-primary); }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-lg { padding: 10px 20px; font-size: 14px; }
+
+/* 标签 (Element Plus el-tag) */
+.el-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  height: 22px;
+  line-height: 20px;
+  font-size: 12px;
+  border-radius: var(--radius);
+  border: 1px solid;
+  background: #fff;
+}
+.el-tag.primary { color: var(--color-primary); border-color: #b3d8ff; background: #ecf5ff; }
+.el-tag.success { color: var(--color-success); border-color: #c2e7b0; background: #f0f9eb; }
+.el-tag.warning { color: var(--color-warning); border-color: #f3d19e; background: #fdf6ec; }
+.el-tag.danger { color: var(--color-danger); border-color: #fbc4c4; background: #fef0f0; }
+.el-tag.info { color: var(--color-info); border-color: #d3d4d6; background: #f4f4f5; }
+.el-tag.purple { color: #7C3AED; border-color: #d8c5ff; background: #f5edff; }
+
+/* 优先级色条 */
+.priority-bar {
+  width: 3px;
+  border-radius: 2px;
+  align-self: stretch;
+}
+.priority-P0 { background: var(--color-danger); }
+.priority-P1 { background: var(--color-warning); }
+.priority-P2 { background: #409EFF; }
+.priority-P3 { background: var(--color-info); }
+
+/* 健康度徽章 */
+.health-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.health-badge::before { content: ''; width: 8px; height: 8px; border-radius: 50%; }
+.health-badge.green { color: var(--color-success); }
+.health-badge.green::before { background: var(--color-success); }
+.health-badge.yellow { color: var(--color-warning); }
+.health-badge.yellow::before { background: var(--color-warning); }
+.health-badge.red { color: var(--color-danger); }
+.health-badge.red::before { background: var(--color-danger); }
+
+/* 状态徽章（任务） */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  background: #f4f4f5;
+  color: #606266;
+}
+.status-pill.backlog { background: #f4f4f5; color: #909399; }
+.status-pill.todo { background: #ecf5ff; color: #409eff; }
+.status-pill.in_progress { background: #fdf6ec; color: #e6a23c; }
+.status-pill.blocked { background: #fef0f0; color: #f56c6c; }
+.status-pill.review { background: #f5edff; color: #7c3aed; }
+.status-pill.done { background: #f0f9eb; color: #67c23a; }
+.status-pill.cancelled { background: #f4f4f5; color: #909399; text-decoration: line-through; }
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #c0c4cc; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #909399; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* 看板拖拽 */
+.task-card { cursor: grab; transition: all 0.15s; }
+.task-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-1px); }
+.task-card:active { cursor: grabbing; }
+.kanban-col { min-height: 200px; }
+
+/* 风险热力图 */
+.heat-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 48px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 4px;
+  margin: 2px;
+  color: #fff;
+  position: relative;
+}
+.heat-cell.low { background: #67C23A; opacity: 0.5; }
+.heat-cell.medium { background: #E6A23C; opacity: 0.7; }
+.heat-cell.high { background: #F56C6C; opacity: 0.85; }
+.heat-cell.extreme { background: #C03639; }
+.heat-cell.empty { background: #fafafa; color: #c0c4cc; }
+
+/* 甘特图样式 */
+.gantt-row { display: grid; grid-template-columns: 160px 1fr 60px; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--color-border); }
+.gantt-bar-wrap { position: relative; height: 20px; background: #f4f4f5; border-radius: 3px; }
+.gantt-bar { position: absolute; height: 100%; border-radius: 3px; display: flex; align-items: center; padding-left: 6px; font-size: 11px; color: #fff; white-space: nowrap; overflow: hidden; }
+.gantt-bar.done { background: #67C23A; }
+.gantt-bar.in_progress { background: #E6A23C; }
+.gantt-bar.upcoming { background: #409EFF; }
+.gantt-bar.at_risk { background: #F56C6C; }
+.gantt-bar.missed { background: #C03639; }
+.gantt-axis { display: grid; font-size: 10px; color: #909399; padding-left: 168px; padding-right: 68px; height: 22px; }
+.gantt-axis > div { border-left: 1px dashed #ebeef5; padding-left: 4px; }
+
+/* AI 浮窗动画 */
+@keyframes aiPulse {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* KPI 数字 */
+.kpi-value {
+  font-size: 28px;
+  font-weight: 600;
+  color: #303133;
+  line-height: 1.1;
+}
+.kpi-label {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 6px;
+}
+.kpi-trend { font-size: 12px; }
+.kpi-trend.up { color: var(--color-success); }
+.kpi-trend.down { color: var(--color-danger); }
+
+/* 头像 */
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+/* tab 切换 */
+.tab-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  border-bottom: 2px solid transparent;
+  color: #606266;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.tab-btn:hover { color: var(--color-primary); }
+.tab-btn.active { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 500; }
+
+/* 表单 */
+.el-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: var(--radius);
+  background: #fff;
+  font-size: 12px;
+  transition: border-color 0.2s;
+  outline: none;
+}
+.el-input:focus { border-color: var(--color-primary); }
+
+/* 登录页 */
+.login-bg {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+}
+
+/* KPI 数字渐变 */
+.kpi-card-gradient {
+  position: relative;
+  overflow: hidden;
+}
+.kpi-card-gradient::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  opacity: 0.1;
+}
+
+/* Mock 头像色池 */
+.avatar-c1 { background: #409EFF; }
+.avatar-c2 { background: #67C23A; }
+.avatar-c3 { background: #E6A23C; }
+.avatar-c4 { background: #F56C6C; }
+.avatar-c5 { background: #909399; }
+.avatar-c6 { background: #9B59B6; }
+.avatar-c7 { background: #1ABC9C; }
+.avatar-c8 { background: #E74C3C; }
+
+/* 完成率进度条 */
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: #f0f1f2;
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+.progress-bar > .progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+.progress-bar > .progress-fill.green { background: var(--color-success); }
+.progress-bar > .progress-fill.orange { background: var(--color-warning); }
+.progress-bar > .progress-fill.red { background: var(--color-danger); }
+.progress-bar > .progress-fill.blue { background: var(--color-primary); }
+
+/* 状态分布条（迷你 stacked bar） */
+.status-stack {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #f0f1f2;
+}
+.status-stack > span {
+  height: 100%;
+  display: block;
+}
+.status-stack > .seg-done { background: var(--color-success); }
+.status-stack > .seg-in_progress { background: var(--color-warning); }
+.status-stack > .seg-blocked { background: var(--color-danger); }
+.status-stack > .seg-review { background: #7C3AED; }
+.status-stack > .seg-todo { background: var(--color-primary); }
+.status-stack > .seg-backlog { background: #dcdfe6; }
+.status-stack > .seg-cancelled { background: #c0c4cc; }
+
+/* 手风琴行 */
+.accordion-row > td {
+  background: #fafbfc !important;
+  padding: 0 !important;
+}
+.accordion-content {
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
+  background: #fff;
+}
+.accordion-toggle {
+  cursor: pointer;
+  user-select: none;
+}
+.accordion-toggle:hover { background: #f5f7fa; }
+.chevron {
+  transition: transform 0.2s;
+  display: inline-block;
+}
+.chevron.open { transform: rotate(90deg); }
+
+/* ============================================================
+   Chart.js 画布容器
+   responsive:true + maintainAspectRatio:false 时，canvas 会按父容器高度撑开；
+   若父容器高度是 auto，会形成"图表变高 → 容器变高 → 再撑开"的无限循环。
+   固定高度的 .chart-box 是解药。
+   ============================================================ */
+.chart-box { position: relative; width: 100%; }
+.chart-box > canvas { display: block; width: 100% !important; height: 100% !important; }
