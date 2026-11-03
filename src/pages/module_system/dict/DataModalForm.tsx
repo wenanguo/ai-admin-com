@@ -28,7 +28,7 @@ export type DataModalProps = {
  * 字典数据一定属于某个字典类型(dict_type_id),而页面上一次只处理一个类型
  * ⇒ 类型选择框只有「当前类型」一个选项,新增时默认选中它。
  *
- * ⚠️ 后端 `DictDataCreateSchema` 有**三个**必填字段:
+ * ⚠️ 后端 `DictDataCreateSchema` 有**五个**必填字段:
  *   `dict_sort`(1–999)、`dict_label`、`dict_value`、`dict_type`、`dict_type_id`。
  *   `dict_type` 是字典类型的**编码**(如 user_status),不是 id ——
  *   它由当前选中的字典类型带出,这里做成只读字段(与上游 Vue 产品一致),
