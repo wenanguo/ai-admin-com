@@ -139,6 +139,13 @@ export default [
         icon: 'project',
         component: './module_pm/project',
       },
+      {
+        // 详情页只在路由里注册(菜单里没有这一项,从列表页的详情入口进);
+        // 项目 id 是路径参数,页面里用 useParams 读
+        path: '/pm/project/:id',
+        name: 'pmProjectDetail',
+        component: './module_pm/project/detail',
+      },
     ],
   },
   {

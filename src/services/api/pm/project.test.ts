@@ -4,6 +4,7 @@ import {
   createProject,
   deleteProjects,
   getProjectDetail,
+  getProjectMembers,
   listProjects,
   updateProject,
 } from './project';
@@ -39,6 +40,43 @@ describe('pm project service', () => {
     expect(request).toHaveBeenCalledWith('/pm_project/detail/7', {
       method: 'GET',
     });
+  });
+
+  it('gets project members by id (bare list, not a page envelope)', async () => {
+    vi.mocked(request).mockResolvedValueOnce({
+      code: 0,
+      msg: '获取项目成员列表成功',
+      data: [
+        {
+          id: 9,
+          project_id: 7,
+          user_id: 3,
+          role_code: 'owner',
+          joined_at: '2026-11-01T09:00:00',
+          user_info: { id: 3, username: 'zhangsan', name: '张三' },
+        },
+      ],
+      status_code: 200,
+      success: true,
+    });
+
+    const res = await getProjectMembers(7);
+
+    // 路径参数接口：项目 id 在路径上，不在查询串里
+    expect(request).toHaveBeenCalledWith('/pm_project/members/7', {
+      method: 'GET',
+    });
+    // 响应是数组信封：data 直接是成员列表，没有 items/total 的分页包裹
+    expect(res?.data).toEqual([
+      {
+        id: 9,
+        project_id: 7,
+        user_id: 3,
+        role_code: 'owner',
+        joined_at: '2026-11-01T09:00:00',
+        user_info: { id: 3, username: 'zhangsan', name: '张三' },
+      },
+    ]);
   });
 
   it('creates a project', async () => {

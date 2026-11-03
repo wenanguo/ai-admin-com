@@ -117,6 +117,40 @@ export async function getProjectDetail(
   });
 }
 
+/**
+ * 项目成员(JOIN sys_user 的出参,姓名等用户信息在 user_info 冗余字段里)。
+ * 字段全部可空:接口只保证 project_id/user_id/role_code 有值
+ */
+export interface ProjectMemberOut {
+  id?: number | null;
+  project_id?: number | null;
+  user_id?: number | null;
+  /** 项目角色码(字典 module_pm_project_role) */
+  role_code?: string | null;
+  joined_at?: string | null;
+  /** JOIN sys_user 带出来的用户信息,可能为 null(用户被删时) */
+  user_info?: {
+    id?: number | null;
+    username?: string | null;
+    name?: string | null;
+  } | null;
+}
+
+/**
+ * 项目成员列表。
+ *
+ * 注意与其它子列表不一样:这是路径参数接口(/pm_project/members/{id}),
+ * 返回的是**数组**而不是分页信封 —— data 直接就是成员列表,
+ * 没有 items/total 包裹
+ */
+export async function getProjectMembers(
+  id: number,
+): Promise<ApiResponse<ProjectMemberOut[]>> {
+  return request<ApiResponse<ProjectMemberOut[]>>(`/pm_project/members/${id}`, {
+    method: 'GET',
+  });
+}
+
 /** 创建项目 */
 export async function createProject(
   params: ProjectCreateParams,
