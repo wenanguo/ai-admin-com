@@ -105,10 +105,16 @@ build / preview 这一对命令统一用 `UMI_OUTPUT_PATH=dist` 显式约定,
 | `src/components/**`                        | 共用组件(部门树选择器、菜单权限树、CRUD 脚手架),统一出口是 `src/components/index.ts`                  |
 | `.claude/skills/**` 与 `.agents/skills/**` | **两份副本,不是符号链接**:改了一处要同步另一处,否则会漂移(Windows 建符号链接要开发者模式或管理员权限) |
 
-> `skills-lock.json` 里的 `computedHash` 是按**仓库提交的字节**(LF)算的:
-> 技能工具(vercel-labs/skills)对技能目录里的原始字节做 sha256,
-> 而 Windows 上 `core.autocrlf=true` 的检出是 CRLF —— 同一份技能在不同平台
-> 算出来的摘要不一样,改技能文件后记得用同一套字节重算。
+> `skills-lock.json` 里的 `computedHash` 是**上游源文件**的摘要 ——
+> 由技能工具(vercel-labs/skills)按它自己的算法算出来。
+>
+> ⚠️ **在本地复算不出这个值**:仓库提交的字节(LF 的 git blob)与 Windows 上
+> `core.autocrlf=true` 检出的字节(CRLF)分别做 sha256,都对不上 `computedHash` ——
+> 所以「对技能目录里的原始字节做 sha256」这类说法是**不成立**的,
+> 算出来的值不一样是正常的,别拿它当校验基线。
+>
+> 改了技能文件之后,用**官方的技能工具**重新生成 `skills-lock.json`,
+> 不要手改里面的哈希。
 
 ## 菜单约定
 
