@@ -31,6 +31,13 @@
 - **C7** 成功/失败提示由请求层统一弹，**页面里不再弹第二次**。
 - **C8** 登录接口是 form-urlencoded；查询参数有正则校验，前端要先挡。
 
+- **service 层是「各模块的 CRUD 面」的后端契约镜像，不是后端全部端点的完整镜像。**
+  每个模块的 service 覆盖列表 / 详情 / 创建 / 更新 / 删除 / 批量启停；
+  `*:export` 导出类端点本轮**不做**（导出载荷格式未核实），
+  `notice/available|panel|read|read-all|unread-count`、`param/key|value|info`、
+  `log/*/create` 这些扩展端点也没做。
+  ⇒ 引用它做理由时只能说「CRUD 面」，不能说「忠实镜像 / faithful mirror」。
+
 **命名与代码约定**
 
 - 页面目录名必须等于后端菜单 `component_path` 去掉 `module_system/` 前缀和 `/index` 后缀。

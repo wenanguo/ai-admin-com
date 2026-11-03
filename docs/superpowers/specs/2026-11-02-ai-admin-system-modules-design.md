@@ -149,9 +149,17 @@ src/pages/module_system/<comp>/
 
 ### 5.2 Service 层
 
-`src/services/api/system/<mod>.ts`，导出该模块的全部接口函数。
+`src/services/api/system/<mod>.ts`，导出该模块 **CRUD 面**的接口函数
+（列表 / 详情 / 创建 / 更新 / 删除 / 批量启停）。
 类型放在**同一个文件**里（不要往 `types.ts` 堆 —— 8 个模块会把那个文件撑爆，
 而且 `types.ts` 里的 `User*` 类型被用户页和 `access.ts` 依赖，保持它稳定）。
+
+> ⚠️ service 层是**部分**镜像，不是后端接口的**完整**镜像：
+> `*:export` 导出类端点本轮**不做**（导出载荷格式未核实），
+> 另外还有 `notice/available|panel|read|read-all|unread-count`、
+> `param/key|value|info`、`log/*/create` 这些扩展端点也没做。
+> 写「忠实镜像 / faithful mirror」是不准确的 —— service 层覆盖的是
+> **各模块的 CRUD 面**，不是后端的全部端点。
 
 ```ts
 // src/services/api/system/position.ts
