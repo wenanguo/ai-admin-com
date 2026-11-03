@@ -536,8 +536,11 @@ const actionRef = useRef<ActionType>();                        // ❌ TS 报错
 - 类型搜索项：`dict_name`、`dict_type`、`status`
 - 数据搜索项：`dict_label`、`dict_type`、`status`
 - 类型表单：`dict_name`(必填)、`dict_type`(必填)、`dict_sort`、`status`、`description`
-- 数据表单：`dict_label`(必填)、`dict_value`(必填)、`dict_type_id`(必填)、
+- 数据表单：`dict_sort`(必填,1–999)、`dict_label`(必填)、`dict_value`(必填)、
+  `dict_type`(必填,**当前选中字典类型的编码**,不是 id)、`dict_type_id`(必填)、
   `css_class`、`list_class`、`is_default`(bool)、`status`、`description`
+  > `dict_sort` 与 `dict_type` 是后端 `DictDataCreateSchema` 的**必填**字段 ——
+  > 少一个就是 422(`Field required`)。`dict_type` 由「当前选中的字典类型」带出。
 - 权限码：`module_system:dict_type:{query,detail,create,update,delete,patch,export}`、
   `module_system:dict_data:{query,detail,create,update,delete,patch,export}`
   > 字典是**两套独立权限码**，不是一个 `dict:*`。

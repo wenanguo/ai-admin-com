@@ -26,6 +26,7 @@ import {
 const DICT_PAGE_PATH = '/system/dict';
 const DICT_TYPE_LIST_URL = '**/api/v1/system/dict/type/list**';
 const DICT_DATA_LIST_URL = '**/api/v1/system/dict/data/list**';
+const DICT_DATA_CREATE_URL = '**/api/v1/system/dict/data/create**';
 
 /**
  * 字典管理的菜单树。
@@ -104,6 +105,7 @@ const dictDataListResponse = {
     items: [
       {
         id: 11,
+        dict_sort: 1,
         dict_label: '已启用',
         dict_value: '1',
         dict_type: 'user_status',
@@ -117,6 +119,7 @@ const dictDataListResponse = {
       },
       {
         id: 12,
+        dict_sort: 2,
         dict_label: '已停用',
         dict_value: '0',
         dict_type: 'user_status',
@@ -432,5 +435,71 @@ test.describe('字典管理页', () => {
     await expect(
       page.locator('.ant-modal .ant-form-item', { hasText: '字典类型' }),
     ).toContainText('用户状态(user_status)');
+  });
+
+  test('新增字典数据时提交体带上后端必填的 dict_sort 与 dict_type', async ({
+    page,
+  }) => {
+    const createRequests: { body: Record<string, unknown> }[] = [];
+
+    await page.route(DICT_DATA_CREATE_URL, async (route) => {
+      createRequests.push({ body: route.request().postDataJSON() });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: '创建字典数据成功',
+          data: null,
+          status_code: 200,
+          success: true,
+        }),
+      });
+    });
+
+    await setupModulePage(page, {
+      menus: [
+        dictMenu([
+          { title: '新增数据', permission: 'module_system:dict_data:create' },
+        ]),
+      ],
+      listUrl: DICT_TYPE_LIST_URL,
+      listBody: dictTypeListResponse,
+    });
+
+    await page.route(DICT_DATA_LIST_URL, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(dictDataListResponse),
+      }),
+    );
+
+    await gotoModulePage(page, DICT_PAGE_PATH, menuItem(page));
+
+    await page.getByRole('button', { name: '新增数据' }).click();
+
+    await expect(page.locator('.ant-modal')).toBeVisible();
+
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '字典标签' })
+      .locator('input')
+      .fill('已启用');
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '字典键值' })
+      .locator('input')
+      .fill('1');
+
+    await page.locator('.ant-modal-footer button.ant-btn-primary').click();
+
+    await expect.poll(() => createRequests.length).toBe(1);
+    // ⚠️ dict_sort 与 dict_type 是后端的必填字段,少一个就是 422
+    expect(createRequests[0].body).toMatchObject({
+      dict_sort: 1,
+      dict_type: 'user_status',
+      dict_label: '已启用',
+      dict_value: '1',
+      dict_type_id: 1,
+    });
   });
 });

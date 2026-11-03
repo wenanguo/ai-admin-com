@@ -10,6 +10,11 @@ import type { ApiResponse, PageQuery, PageResult } from '@/services/types';
  * - 列表参数是 page_no / page_size,响应体字段是 `items`
  * - 删除的请求体是**裸数组**(不是 `{ ids }`)
  * - 批量启停是 PATCH,请求体是 `{ ids, status }` 两个平级字段
+ *
+ * ⚠️ 字典数据有**两个后端必填**的字段容易被漏掉:
+ *   `dict_sort`(1–999)与 `dict_type`(字典类型**编码**,不是 id)——
+ *   少任何一个,FastAPI 的 body 校验就会直接 422(`Field required`)。
+ *   `dict_type` 由「当前选中的字典类型」带出,`dict_type_id` 才是 id。
  */
 
 /** 后端 DictTypeOutSchema */
@@ -26,6 +31,8 @@ export interface DictTypeOut {
 /** 后端 DictDataOutSchema */
 export interface DictDataOut {
   id?: number | null;
+  /** 排序(后端 DictDataOutSchema 继承自 DictDataCreateSchema) */
+  dict_sort?: number | null;
   dict_label?: string | null;
   dict_value?: string | null;
   dict_type?: string | null;
@@ -63,8 +70,12 @@ export type DictTypeCreateParams = {
 export type DictTypeUpdateParams = DictTypeCreateParams;
 
 export type DictDataCreateParams = {
+  /** 排序 —— 后端必填,取值 1–999 */
+  dict_sort: number;
   dict_label: string;
   dict_value: string;
+  /** 字典类型**编码**(如 user_status)—— 后端必填,取所选字典类型的 dict_type */
+  dict_type: string;
   dict_type_id: number;
   css_class?: string | null;
   list_class?: string | null;

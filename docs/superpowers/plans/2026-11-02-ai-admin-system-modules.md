@@ -1205,6 +1205,7 @@ role.ts 已有 listRoles(用户表单在用),在原文件上扩展,没有新建�
   }
   export interface DictDataOut {
     id?: number | null;
+    dict_sort?: number | null;
     dict_label?: string | null;
     dict_value?: string | null;
     dict_type?: string | null;
@@ -1235,8 +1236,10 @@ role.ts 已有 listRoles(用户表单在用),在原文件上扩展,没有新建�
   };
   export type DictTypeUpdateParams = DictTypeCreateParams;
   export type DictDataCreateParams = {
+    dict_sort: number;
     dict_label: string;
     dict_value: string;
+    dict_type: string;
     dict_type_id: number;
     css_class?: string | null;
     list_class?: string | null;
@@ -1312,8 +1315,12 @@ npx vitest run src/services/api/system/dict.test.ts
 - 数据行操作：编辑（`dict_data:update`）/ 删除（`dict_data:delete`）
 
 `TypeModalForm.tsx`：`dict_name`（必填）、`dict_type`（必填）、`dict_sort`、`status`、`description`
-`DataModalForm.tsx`：`dict_label`（必填）、`dict_value`（必填）、`dict_type_id`（必填，选当前类型）、
+`DataModalForm.tsx`：`dict_sort`（必填,1–999）、`dict_label`（必填）、`dict_value`（必填）、
+`dict_type_id`（必填,选当前类型）、`dict_type`（必填,**当前选中字典类型的编码**,只读带出）、
 `css_class`、`list_class`、`is_default`（`ProFormSwitch`）、`status`、`description`
+
+> ⚠️ 字典数据的 `dict_sort` 与 `dict_type` 是后端 `DictDataCreateSchema` 的**必填**字段 ——
+> 少一个就是 422(`Field required`)。`dict_type` 是**编码**(如 `user_status`),不是 id。
 
 **权限码是两套**：`module_system:dict_type:*` 与 `module_system:dict_data:*`，不要混用。
 

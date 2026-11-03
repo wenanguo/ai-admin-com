@@ -30,6 +30,9 @@ vi.mock('@umijs/max', () => ({
  * - 列表用 page_no / page_size,响应体字段是 items
  * - 删除的请求体是**裸数组**(不是 { ids })
  * - 批量启停是 PATCH,请求体是 { ids, status } 两个平级字段
+ *
+ * ⚠️ 字典数据的写路径有两个后端必填字段:`dict_sort`(1–999)与 `dict_type`(类型编码),
+ *   少一个就是 422 —— 这里用单测把提交体钉死。
  */
 describe('system dict service', () => {
   beforeEach(() => {
@@ -138,27 +141,43 @@ describe('system dict service', () => {
 
   it('creates a dict data', async () => {
     await createDictData({
+      dict_sort: 1,
       dict_label: '启用',
       dict_value: '1',
+      dict_type: 'user_status',
       dict_type_id: 3,
     });
 
     expect(request).toHaveBeenCalledWith('/system/dict/data/create', {
       method: 'POST',
-      data: { dict_label: '启用', dict_value: '1', dict_type_id: 3 },
+      data: {
+        dict_sort: 1,
+        dict_label: '启用',
+        dict_value: '1',
+        dict_type: 'user_status',
+        dict_type_id: 3,
+      },
     });
   });
 
   it('updates a dict data by id', async () => {
     await updateDictData(7, {
+      dict_sort: 2,
       dict_label: '启用',
       dict_value: '1',
+      dict_type: 'user_status',
       dict_type_id: 3,
     });
 
     expect(request).toHaveBeenCalledWith('/system/dict/data/update/7', {
       method: 'PUT',
-      data: { dict_label: '启用', dict_value: '1', dict_type_id: 3 },
+      data: {
+        dict_sort: 2,
+        dict_label: '启用',
+        dict_value: '1',
+        dict_type: 'user_status',
+        dict_type_id: 3,
+      },
     });
   });
 
