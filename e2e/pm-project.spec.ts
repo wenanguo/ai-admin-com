@@ -1,6 +1,13 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { gotoModulePage, seedAuthState } from './helpers';
+import {
+  gotoModulePage,
+  modalFormItem,
+  pickInModal,
+  pickToday,
+  seedAuthState,
+  tableRows,
+} from './helpers';
 
 /**
  * 项目管理列表页(/pm/project)的前端闭环,接口全部拦截。
@@ -14,8 +21,10 @@ import { gotoModulePage, seedAuthState } from './helpers';
  * - 删除的请求体是**裸数组**(后端 delete 接口收 ids: list[int])
  *
  * 菜单树与既有 spec 的差别:PM 模块挂在「/pm」目录下,不是 /system ——
- * helpers.buildCurrentUserResponse 把父目录写死成 /system,这里手造信封
- * (子菜单的相对 route_path 'project' 会被拼到 /pm 下,必须与前端路由表对齐)。
+ * 这里手造信封(子菜单的相对 route_path 'project' 会被拼到 /pm 下,
+ * 必须与前端路由表对齐)。helpers.buildCurrentUserResponse 现在也支持
+ * 自定义父目录(helpers 的 MenuParent),但这份夹具的 id/用户字段是
+ * 本 spec 自己的,保持原样不动。
  */
 
 const PROJECT_PAGE_PATH = '/pm/project';
@@ -416,44 +425,6 @@ function membersResponse(members: unknown[]) {
     status_code: 200,
     success: true,
   };
-}
-
-/** 弹窗里的表单项(按 label 文案找,不依赖 antd 的 id 生成规则) */
-function modalFormItem(page: Page, label: string) {
-  return page.locator('.ant-modal .ant-form-item', { hasText: label });
-}
-
-/** 在弹窗的下拉表单项里选一个候选(字典下拉 / 负责人远程搜索共用) */
-async function pickInModal(
-  page: Page,
-  label: string,
-  optionText: string,
-): Promise<void> {
-  await modalFormItem(page, label).locator('input[role="combobox"]').click();
-  await page
-    .locator('.ant-select-dropdown:visible .ant-select-item-option', {
-      hasText: optionText,
-    })
-    .click();
-}
-
-/** 在弹窗的日期表单项里选「今天」(提交时序列化成 YYYY-MM-DD 字符串) */
-async function pickToday(page: Page, label: string): Promise<void> {
-  // 日期面板开合有动画:上一个面板还没关完(仍 display:block)就点下一个
-  // 输入框时,新面板尚未挂载,选择器会解析到正在关闭的旧面板的单元格 ——
-  // 它随后 display:none,点击永远等不到可见。所以先等旧面板关完再开新的。
-  await expect(page.locator('.ant-picker-dropdown:visible')).toHaveCount(0);
-  await modalFormItem(page, label).locator('.ant-picker input').click();
-  const todayCell = page.locator(
-    '.ant-picker-dropdown:visible .ant-picker-cell-today',
-  );
-  await expect(todayCell).toBeVisible();
-  await todayCell.click();
-}
-
-/** 表格行 —— 用例关心的就绪信号(不用 networkidle) */
-function tableRows(page: Page) {
-  return page.locator('.ant-table-tbody tr.ant-table-row');
 }
 
 /**

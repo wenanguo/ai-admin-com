@@ -1,7 +1,7 @@
 import { PlusOutlined } from '@ant-design/icons';
 import { type ProColumns, ProTable } from '@ant-design/pro-components';
 import { useAccess } from '@umijs/max';
-import { Button, Tag } from 'antd';
+import { Button } from 'antd';
 import type React from 'react';
 import { useMemo } from 'react';
 import {
@@ -10,6 +10,8 @@ import {
   useCrudTable,
 } from '@/components/CrudTable';
 import { DictTag } from '@/components/pm/DictTag';
+import { renderJsonTags } from '@/components/pm/JsonTags';
+import { toValueEnum } from '@/components/pm/toValueEnum';
 import { useDictOptions } from '@/components/pm/useDictOptions';
 import type {
   ProjectCreateParams,
@@ -26,33 +28,6 @@ import { toProTableRequest } from '@/services/paginate';
 import ProjectModalForm from './ModalForm';
 
 const requestProjects = toProTableRequest<ProjectOut>(listProjects);
-
-/** 字典选项 → 搜索下拉的 valueEnum(label 给人看,value 是线上码) */
-function toValueEnum(
-  options: { label: string; value: string }[],
-): Record<string, { text: string }> {
-  return Object.fromEntries(
-    options.map((option) => [option.value, { text: option.label }]),
-  );
-}
-
-/**
- * 标签列:后端存的是 JSON 数组字符串('["财务","合规"]'),
- * 表格里渲染成 Tag 串;解析失败或不是字符串数组时显示占位,不冒充数据。
- */
-function renderTags(record: ProjectOut): React.ReactNode {
-  if (!record.tags) return '-';
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(record.tags);
-  } catch {
-    return '-';
-  }
-  if (!Array.isArray(parsed)) return '-';
-  const tags = parsed.filter((tag): tag is string => typeof tag === 'string');
-  if (tags.length === 0) return '-';
-  return tags.map((tag) => <Tag key={tag}>{tag}</Tag>);
-}
 
 /**
  * 项目管理列表页 —— 路由 /pm/project(菜单由后端下发,目录挂在 /pm 下)。
@@ -168,7 +143,7 @@ const ProjectManagement: React.FC = () => {
       dataIndex: 'tags',
       width: 200,
       search: false,
-      render: (_, record) => renderTags(record),
+      render: (_, record) => renderJsonTags(record.tags),
     },
     {
       title: '创建时间',

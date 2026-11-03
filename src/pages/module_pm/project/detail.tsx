@@ -16,7 +16,12 @@ import {
 import type React from 'react';
 import { useEffect, useState } from 'react';
 import { DictTag } from '@/components/pm/DictTag';
-import { type RiskLevel, riskLevel } from '@/components/pm/riskLevel';
+import { renderJsonTags } from '@/components/pm/JsonTags';
+import {
+  RISK_LEVEL_COLOR,
+  riskLevel,
+  riskLevelLabel,
+} from '@/components/pm/riskLevel';
 import { listMilestones, type MilestoneOut } from '@/services/api/pm/milestone';
 import {
   getProjectDetail,
@@ -32,43 +37,6 @@ import { listTasks, type TaskOut } from '@/services/api/pm/task';
  * 上限(100,同 CRUD_PAGINATION)就不再翻页了
  */
 const SUB_LIST_PARAMS = { page_no: 1, page_size: 100 } as const;
-
-/**
- * 风险等级 → 展示文案。等级的推导在共享件 riskLevel 里(阈值与
- * AI 服务侧规则引擎一致),这里只做"等级 → 给人看的文案与颜色"的映射
- */
-const RISK_LEVEL_LABEL: Record<RiskLevel, string> = {
-  SEVERE: '严重',
-  HIGH: '高',
-  MEDIUM: '中',
-  LOW: '低',
-};
-
-/** 风险等级 → antd Tag 预设色(🔴🟠🟡🟢 → error/warning/gold/success) */
-const RISK_LEVEL_COLOR: Record<RiskLevel, string> = {
-  SEVERE: 'error',
-  HIGH: 'warning',
-  MEDIUM: 'gold',
-  LOW: 'success',
-};
-
-/**
- * 标签列:后端存的是 JSON 数组字符串('["财务","合规"]'),
- * 解析后渲染成 Tag 串;坏数据显示占位(与列表页同款逻辑)
- */
-function renderTags(tags?: string | null): React.ReactNode {
-  if (!tags) return '-';
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(tags);
-  } catch {
-    return '-';
-  }
-  if (!Array.isArray(parsed)) return '-';
-  const labels = parsed.filter((tag): tag is string => typeof tag === 'string');
-  if (labels.length === 0) return '-';
-  return labels.map((tag) => <Tag key={tag}>{tag}</Tag>);
-}
 
 /** 日期区间的展示:两个日期中缀一个 ~,空值用占位符 */
 function dateRange(start?: string | null, end?: string | null): string {
@@ -123,7 +91,7 @@ function OverviewTab({ project }: { project: ProjectOut }) {
       label: '计划区间',
       children: dateRange(project.start_date, project.due_date),
     },
-    { key: 'tags', label: '标签', children: renderTags(project.tags) },
+    { key: 'tags', label: '标签', children: renderJsonTags(project.tags) },
     {
       key: 'description',
       label: '描述',
@@ -299,7 +267,7 @@ function RisksTab({ projectId }: { projectId: number }) {
               <span>{risk.title ?? '-'}</span>
               {level ? (
                 <Tag color={RISK_LEVEL_COLOR[level]}>
-                  {RISK_LEVEL_LABEL[level]}
+                  {riskLevelLabel(level)}
                 </Tag>
               ) : null}
               {risk.score == null ? null : <span>{risk.score} 分</span>}

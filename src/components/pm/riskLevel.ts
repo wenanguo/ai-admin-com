@@ -26,3 +26,29 @@ export function riskLevel(score: number): RiskLevel {
   if (score >= 4) return 'MEDIUM';
   return 'LOW';
 }
+
+/**
+ * 风险等级 → 展示文案。
+ *
+ * 阈值不在这里复制(见文件头):这一层只做「等级 → 给人看的文案与颜色」的映射,
+ * 推导仍然只有 riskLevel 一处。
+ */
+const RISK_LEVEL_LABEL: Record<RiskLevel, string> = {
+  SEVERE: '严重',
+  HIGH: '高',
+  MEDIUM: '中',
+  LOW: '低',
+};
+
+/** 风险等级 → 给人看的文案(严重 / 高 / 中 / 低) */
+export function riskLevelLabel(level: RiskLevel): string {
+  return RISK_LEVEL_LABEL[level];
+}
+
+/** 风险等级 → antd Tag 预设色(🔴🟠🟡🟢 → error/warning/gold/success) */
+export const RISK_LEVEL_COLOR: Record<RiskLevel, string> = {
+  SEVERE: 'error',
+  HIGH: 'warning',
+  MEDIUM: 'gold',
+  LOW: 'success',
+};

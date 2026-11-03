@@ -110,24 +110,52 @@ export type CurrentUserEnvelope = {
 };
 
 /**
+ * 菜单树的父目录(type=1)。
+ *
+ * 后端把模块菜单挂在一个目录下:系统管理的模块挂在 '/system' 下,
+ * PM 的模块挂在 '/pm' 下。子菜单的 route_path 是**相对**的
+ * ('position' → /system/position,'milestone' → /pm/milestone),
+ * 必须和前端路由表逐字对齐。
+ */
+export type MenuParent = {
+  /** 父目录的绝对路由路径(如 /system、/pm) */
+  routePath: string;
+  /** 侧边栏显示的标题(如 系统管理、项目管理) */
+  title: string;
+  /** 父目录的菜单 id;默认 2 */
+  id?: number;
+};
+
+/** 默认父目录:系统管理。既有模块(/system/*)的 spec 全部走这个默认值。 */
+const DEFAULT_MENU_PARENT: MenuParent = {
+  routePath: '/system',
+  title: '系统管理',
+};
+
+/**
  * 造 current/info 的菜单树信封。
  *
- * 结构固定为「/system 目录 → 模块菜单(type=2) → 按钮节点(type=3)」,
- * 与后端适配器的拼接方式一致:子菜单的 route_path 是相对的
- * ('position' → /system/position),必须和前端路由表逐字对齐。
+ * 结构固定为「父目录(type=1) → 模块菜单(type=2) → 按钮节点(type=3)」,
+ * 与后端适配器的拼接方式一致。
+ *
+ * @param menus 模块子菜单(任意多个)
+ * @param parent 父目录;默认 /system 系统管理 —— PM 模块传 {routePath:'/pm'}
  */
 export function buildCurrentUserResponse(
   menus: ModuleMenu[],
+  parent: MenuParent = DEFAULT_MENU_PARENT,
 ): CurrentUserEnvelope {
   let nextButtonId = 30;
 
+  const parentId = parent.id ?? 2;
+
   const children: MenuNode[] = menus.map((menu, index) => {
-    const id = 3 + index;
+    const id = parentId + 1 + index;
     const buttons = menu.buttons ?? [];
 
     return {
       id,
-      parent_id: 2,
+      parent_id: parentId,
       name: menu.title,
       type: 2,
       order: index + 1,
@@ -167,13 +195,13 @@ export function buildCurrentUserResponse(
       roles: [],
       menus: [
         {
-          id: 2,
+          id: parentId,
           parent_id: null,
-          name: '系统管理',
+          name: parent.title,
           type: 1,
           order: 2,
-          route_path: '/system',
-          title: '系统管理',
+          route_path: parent.routePath,
+          title: parent.title,
           permission: null,
           status: 0,
           hidden: false,
@@ -224,6 +252,11 @@ export function businessErrorBody(msg: string): BusinessErrorBody {
 export type ModulePageFixture = {
   /** 菜单树里的模块子菜单(可以多个) */
   menus: ModuleMenu[];
+  /**
+   * 菜单树的父目录;默认 /system 系统管理。
+   * PM 模块的 spec 传 { routePath: '/pm', title: '项目管理' }
+   */
+  parent?: MenuParent;
   /** 列表接口的 URL glob(能匹配到 /api/v1/system/position/list 的请求) */
   listUrl: string;
   /** 列表接口的响应体 */
@@ -255,7 +288,7 @@ export async function setupModulePage(
   page: Page,
   fixture: ModulePageFixture,
 ): Promise<string[]> {
-  const { menus, listUrl, listBody, listStatus = 200 } = fixture;
+  const { menus, parent, listUrl, listBody, listStatus = 200 } = fixture;
 
   const listRequests: string[] = [];
 
@@ -263,7 +296,7 @@ export async function setupModulePage(
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(buildCurrentUserResponse(menus)),
+      body: JSON.stringify(buildCurrentUserResponse(menus, parent)),
     }),
   );
 
@@ -301,6 +334,53 @@ export async function gotoModulePage(
   if (ready) {
     await ready.first().waitFor({ state: 'visible', timeout: 30_000 });
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* 弹窗与表格的定位器                                                          */
+/* -------------------------------------------------------------------------- */
+
+/** 弹窗里的表单项(按 label 文案找,不依赖 antd 的 id 生成规则) */
+export function modalFormItem(page: Page, label: string) {
+  return page.locator('.ant-modal .ant-form-item', { hasText: label });
+}
+
+/**
+ * 在弹窗的下拉表单项里选一个候选(字典下拉 / 远程搜索下拉共用)。
+ *
+ * 选项来自接口(字典或远程搜索),点开后等选项出现即可 ——
+ * Playwright 的点击会自动等元素可见。
+ */
+export async function pickInModal(
+  page: Page,
+  label: string,
+  optionText: string,
+): Promise<void> {
+  await modalFormItem(page, label).locator('input[role="combobox"]').click();
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option', {
+      hasText: optionText,
+    })
+    .click();
+}
+
+/** 在弹窗的日期表单项里选「今天」(提交时序列化成 YYYY-MM-DD 字符串) */
+export async function pickToday(page: Page, label: string): Promise<void> {
+  // 日期面板开合有动画:上一个面板还没关完(仍 display:block)就点下一个
+  // 输入框时,新面板尚未挂载,选择器会解析到正在关闭的旧面板的单元格 ——
+  // 它随后 display:none,点击永远等不到可见。所以先等旧面板关完再开新的。
+  await expect(page.locator('.ant-picker-dropdown:visible')).toHaveCount(0);
+  await modalFormItem(page, label).locator('.ant-picker input').click();
+  const todayCell = page.locator(
+    '.ant-picker-dropdown:visible .ant-picker-cell-today',
+  );
+  await expect(todayCell).toBeVisible();
+  await todayCell.click();
+}
+
+/** 表格行 —— 用例关心的就绪信号(不用 networkidle) */
+export function tableRows(page: Page) {
+  return page.locator('.ant-table-tbody tr.ant-table-row');
 }
 
 /* -------------------------------------------------------------------------- */
