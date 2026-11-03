@@ -10,7 +10,7 @@ import {
   useCrudTable,
 } from '@/components/CrudTable';
 import type {
-  TicketCreateParams,
+  TicketFormValues,
   TicketOut,
   TicketStatus,
 } from '@/services/api/system/ticket';
@@ -53,7 +53,10 @@ const TICKET_STATUS_BADGE: Record<
 const TicketManagement: React.FC = () => {
   const access = useAccess();
 
-  const crud = useCrudTable<TicketOut, TicketCreateParams>({
+  // ⚠️ 表单值类型是 TicketFormValues(创建/更新两个 schema 的字段全集):
+  // - createTicket / updateTicket 各自的参数类型都只认自己的字段集合,
+  //   TicketFormValues 是两者的子型 ⇒ 两个 service 都能直接塞进来(结构型子型)
+  const crud = useCrudTable<TicketOut, TicketFormValues>({
     create: createTicket,
     update: updateTicket,
     remove: deleteTickets,

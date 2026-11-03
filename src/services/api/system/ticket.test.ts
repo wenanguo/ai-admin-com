@@ -42,11 +42,15 @@ describe('system ticket service', () => {
     });
   });
 
-  it('creates a ticket', async () => {
+  // 创建走 TicketCreateSchema(description ≤255):**没有** reply 字段 ——
+  // 之前把 reply 混进创建入参,pydantic 默认 extra='ignore' 把它静默丢弃,
+  // 新写的回复永远存不进去
+  it('creates a ticket with description, not reply', async () => {
     await createTicket({
       title: '登录报错',
       ticket_content: '登录时后端返回 500',
       ticket_type: 'bug',
+      description: '客户环境必现',
     });
 
     expect(request).toHaveBeenCalledWith('/system/ticket/create', {
@@ -55,25 +59,44 @@ describe('system ticket service', () => {
         title: '登录报错',
         ticket_content: '登录时后端返回 500',
         ticket_type: 'bug',
+        description: '客户环境必现',
       },
     });
+    // 与下面的更新用例互为镜像:创建请求体**不允许**出现 reply
+    expect(request).toHaveBeenCalledWith(
+      '/system/ticket/create',
+      expect.objectContaining({
+        data: expect.not.objectContaining({ reply: expect.anything() }),
+      }),
+    );
   });
 
-  it('updates a ticket by id', async () => {
+  // 更新走 TicketUpdateSchema(有 reply / status / assigned_id):与创建相反,
+  // 带 reply、不带 description / images —— 提交了对方 schema 没有的字段,
+  // 一样会被静默丢弃
+  it('updates a ticket with reply, not description or images', async () => {
     await updateTicket(7, {
-      title: '登录报错',
-      ticket_content: '登录时后端返回 500',
-      ticket_type: 'bug',
+      title: '登录报错(已定位)',
+      reply: '是网关的证书过期,已修复',
     });
 
     expect(request).toHaveBeenCalledWith('/system/ticket/update/7', {
       method: 'PUT',
       data: {
-        title: '登录报错',
-        ticket_content: '登录时后端返回 500',
-        ticket_type: 'bug',
+        title: '登录报错(已定位)',
+        reply: '是网关的证书过期,已修复',
       },
     });
+    // 与上面的创建用例互为镜像:更新请求体**不允许**出现 description / images
+    expect(request).toHaveBeenCalledWith(
+      '/system/ticket/update/7',
+      expect.objectContaining({
+        data: expect.not.objectContaining({
+          description: expect.anything(),
+          images: expect.anything(),
+        }),
+      }),
+    );
   });
 
   it('deletes tickets by a bare id array', async () => {

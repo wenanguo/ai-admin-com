@@ -18,6 +18,9 @@ import {
  * - RF2:按钮级权限来自后端菜单树里的 type=3 节点
  * - 工单类型是**受限枚举**:提交给后端的是 suggestion / bug / optimize / other,
  *   表格里渲染成中文(建议 / 缺陷 / 优化 / 其他)
+ * - 创建/更新入参是后端的**两个 schema**:创建带 description(没有 reply),
+ *   更新带 reply(没有 description / images)—— 提交对方 schema 没有的字段
+ *   会被 pydantic 静默丢弃
  * - 批量更新走 **PUT** /system/ticket/batch,入参是 { ids, status }
  *
  * 菜单树 / 登录态 / 业务错误信封都由 ./helpers 提供 —— helpers 不认识任何具体模块,
@@ -27,6 +30,7 @@ import {
 const TICKET_PAGE_PATH = '/system/ticket';
 const TICKET_LIST_URL = '**/api/v1/system/ticket/list**';
 const TICKET_CREATE_URL = '**/api/v1/system/ticket/create**';
+const TICKET_UPDATE_URL = '**/api/v1/system/ticket/update**';
 const TICKET_BATCH_URL = '**/api/v1/system/ticket/batch**';
 /** 处理人下拉的数据源(搜索栏里是远程搜索,页面一挂载就会请求它) */
 const USER_LIST_URL = '**/api/v1/system/user/list**';
@@ -95,6 +99,24 @@ const ticketListResponse = {
   },
   status_code: 200,
   success: true,
+};
+
+/**
+ * 图片是**非空** JSON 数组文本的工单 —— 编辑提交的断言用:
+ * TicketUpdateSchema 没有 images,编辑弹窗不该渲染它;
+ * 渲染了就会把库里的值原样提交、再被后端静默丢弃
+ */
+const ticketWithImagesListResponse = {
+  ...ticketListResponse,
+  data: {
+    ...ticketListResponse.data,
+    items: [
+      {
+        ...ticketListResponse.data.items[0],
+        images: '["https://example.com/a.png"]',
+      },
+    ],
+  },
 };
 
 /** RF3:后端返回空列表 */
@@ -262,10 +284,31 @@ test.describe('工单管理页', () => {
     expect(listRequests[0]).toContain('page_size=10');
   });
 
-  test('编辑工单时预填的是后端返回的 reply(不是不存在的 description)', async ({
+  test('编辑工单:预填 reply、提交 reply,不带 description 与 images', async ({
     page,
   }) => {
-    await setupTicketPage(page, ticketListResponse);
+    const updateRequests: { method: string; body: unknown }[] = [];
+
+    await page.route(TICKET_UPDATE_URL, async (route) => {
+      const req = route.request();
+      updateRequests.push({
+        method: req.method(),
+        body: req.postDataJSON(),
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: '更新成功',
+          data: null,
+          status_code: 200,
+          success: true,
+        }),
+      });
+    });
+
+    await setupTicketPage(page, ticketWithImagesListResponse);
 
     await gotoModulePage(page, TICKET_PAGE_PATH, menuItem(page));
 
@@ -279,6 +322,34 @@ test.describe('工单管理页', () => {
         .locator('.ant-modal .ant-form-item', { hasText: '回复内容' })
         .locator('textarea'),
     ).toHaveValue('工单管理页的测试数据');
+
+    // 更新态不渲染创建态的字段:描述与图片链接都是 TicketCreateSchema 的字段,
+    // TicketUpdateSchema 没有 —— 渲染了就是「提交了也存不进去」的死字段
+    await expect(
+      page.locator('.ant-modal .ant-form-item', { hasText: '描述' }),
+    ).toHaveCount(0);
+    await expect(
+      page.locator('.ant-modal .ant-form-item', { hasText: '图片链接' }),
+    ).toHaveCount(0);
+
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '回复内容' })
+      .locator('textarea')
+      .fill('已定位:网关证书过期,已修复');
+
+    await page.locator('.ant-modal-footer button.ant-btn-primary').click();
+
+    await expect.poll(() => updateRequests.length).toBe(1);
+    // ⚠️ 方法是 PUT,路径是 /system/ticket/update/{id}
+    expect(updateRequests[0].method).toBe('PUT');
+    // 更新走 TicketUpdateSchema:带 reply;description / images 不带 ——
+    // 没提交的字段后端按 exclude_unset 保持原值(不会被空值覆写)
+    expect(updateRequests[0].body).toMatchObject({
+      title: '登录时报 500',
+      reply: '已定位:网关证书过期,已修复',
+    });
+    expect(updateRequests[0].body).not.toHaveProperty('description');
+    expect(updateRequests[0].body).not.toHaveProperty('images');
   });
 
   test('业务错误(HTTP 500 + 信封)弹的是后端 msg(RF1)', async ({ page }) => {
@@ -499,6 +570,78 @@ test.describe('工单管理页', () => {
       ticket_content: '登录时后端返回 500',
       ticket_type: 'bug',
     });
+  });
+
+  test('新增工单提交的是 description(TicketCreateSchema 没有 reply)', async ({
+    page,
+  }) => {
+    const createRequests: { body: unknown }[] = [];
+
+    await page.route(TICKET_CREATE_URL, async (route) => {
+      createRequests.push({ body: route.request().postDataJSON() });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: '创建成功',
+          data: null,
+          status_code: 200,
+          success: true,
+        }),
+      });
+    });
+
+    await setupTicketPage(page, ticketListResponse);
+
+    await gotoModulePage(page, TICKET_PAGE_PATH, menuItem(page));
+
+    await page.getByRole('button', { name: '新增' }).click();
+
+    await expect(page.locator('.ant-modal')).toBeVisible();
+
+    // 创建态不渲染「回复内容」—— reply 是 TicketUpdateSchema 的字段,
+    // 创建接口不收它,渲染了就是「提交了也存不进去」的死字段
+    await expect(
+      page.locator('.ant-modal .ant-form-item', { hasText: '回复内容' }),
+    ).toHaveCount(0);
+
+    // 工单类型(必填):选「缺陷」—— 提交给后端的是线上的 'bug'
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '工单类型' })
+      .locator('input[role="combobox"]')
+      .click();
+    await page
+      .locator('.ant-select-dropdown:visible .ant-select-item-option')
+      .filter({ hasText: '缺陷' })
+      .click();
+
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '工单标题' })
+      .locator('input')
+      .fill('登录时报 500');
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '工单内容' })
+      .locator('textarea')
+      .fill('登录时后端返回 500');
+    // 创建态的「描述」—— TicketCreateSchema.description(max_length=255)
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '描述' })
+      .locator('textarea')
+      .fill('客户环境必现');
+
+    await page.locator('.ant-modal-footer button.ant-btn-primary').click();
+
+    await expect.poll(() => createRequests.length).toBe(1);
+    // ⚠️ 创建走 TicketCreateSchema:带 description;
+    //    reply 是更新态的字段,创建请求里出现它就是 bug(后端会静默丢弃)
+    expect(createRequests[0].body).toMatchObject({
+      title: '登录时报 500',
+      ticket_content: '登录时后端返回 500',
+      ticket_type: 'bug',
+      description: '客户环境必现',
+    });
+    expect(createRequests[0].body).not.toHaveProperty('reply');
   });
 
   test('批量更新走 PUT /system/ticket/batch,入参是 { ids, status }', async ({

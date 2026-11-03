@@ -70,23 +70,55 @@ export type TicketListParams = Partial<PageQuery> & {
   status?: number;
 };
 
+/**
+ * 创建工单的入参 —— 后端 `TicketCreateSchema`。
+ *
+ * ⚠️ 创建与更新是**两个 schema**,字段集合不一样:
+ *    - 创建只有 description(≤255,给创建人补充说明用),**没有** reply ——
+ *      回复是处理人的动作,走更新接口
+ *    - 之前把 reply 混进了创建入参:pydantic 默认忽略未知字段,
+ *      填了回复的创建请求会被后端**静默丢掉**,永远存不进去
+ */
 export type TicketCreateParams = {
   title: string;
   ticket_content: string;
   ticket_type: TicketType;
   summary?: string | null;
   images?: string | null;
-  /**
-   * 回复内容 —— 后端 `TicketUpdateSchema.reply`。
-   *
-   * ⚠️ 不是 `description`:后端的响应模型里只有 `reply`,用 `description`
-   *   的话编辑时会把库里存的值覆盖成一个看不见的空值。
-   *   (创建接口 `TicketCreateSchema` 没有 `reply` 字段,提交它会被忽略。)
-   */
-  reply?: string | null;
+  /** 补充描述(后端 TicketCreateSchema.description,max_length=255) */
+  description?: string | null;
 };
 
-export type TicketUpdateParams = TicketCreateParams;
+/**
+ * 更新工单的入参 —— 后端 `TicketUpdateSchema`。
+ *
+ * 与创建的区别:回复(reply)、状态(status)、处理人(assigned_id)
+ * 只在更新时出现;所有字段都可选 —— 后端 update 用
+ * `model_dump(exclude_unset=True)`,没提交的字段保持库里的原值。
+ */
+export type TicketUpdateParams = {
+  title?: string;
+  ticket_content?: string;
+  summary?: string | null;
+  ticket_type?: TicketType;
+  /** 回复内容(后端 TicketUpdateSchema.reply) */
+  reply?: string | null;
+  /** 状态 0..3(后端 TicketUpdateSchema.status) */
+  status?: TicketStatus;
+  /** 处理人 id(后端 TicketUpdateSchema.assigned_id,gt 0) */
+  assigned_id?: number;
+  /** 补充描述(后端 TicketUpdateSchema.description,max_length=255) */
+  description?: string | null;
+};
+
+/**
+ * 工单弹窗能采集的值的全集:创建态的必填字段 + 更新态才有的可选字段。
+ *
+ * 弹窗是同一个组件:新增态提交 TicketCreateParams 的形状,
+ * 编辑态提交 TicketUpdateParams 的形状 —— 用这个交集类型声明的表单值
+ * 能无断言地满足两个 service 的签名(结构性子型,多余键在变量传递时合法)。
+ */
+export type TicketFormValues = TicketCreateParams & Partial<TicketUpdateParams>;
 
 /**
  * 批量更新的入参 —— 后端 `TicketBatchSchema` 就这两个字段。

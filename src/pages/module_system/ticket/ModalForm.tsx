@@ -6,7 +6,7 @@ import {
 } from '@ant-design/pro-components';
 import type React from 'react';
 import type {
-  TicketCreateParams,
+  TicketFormValues,
   TicketOut,
   TicketStatus,
   TicketType,
@@ -16,7 +16,7 @@ export type TicketModalProps = {
   open: boolean;
   record?: TicketOut;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (values: TicketCreateParams) => Promise<boolean>;
+  onSubmit: (values: TicketFormValues) => Promise<boolean>;
 };
 
 /**
@@ -73,15 +73,17 @@ const TicketModalForm: React.FC<TicketModalProps> = ({
   onSubmit,
 }) => {
   return (
-    <ModalForm<TicketCreateParams>
+    <ModalForm<TicketFormValues>
       title={record?.id ? '编辑工单' : '新增工单'}
       open={open}
+      // ⚠️ 只声明两个 schema 共有的字段:images / description 是创建态的字段,
+      // 编辑态不渲染对应的表单项,把它放进 initialValues 会把库里的值
+      // 原样塞进表单 store、随提交发出去(后端 TicketUpdateSchema 没有它们)
       initialValues={{
         title: record?.title ?? undefined,
         ticket_type: toTicketType(record?.ticket_type),
         ticket_content: record?.ticket_content ?? undefined,
         summary: record?.summary ?? undefined,
-        images: record?.images ?? undefined,
         reply: record?.reply ?? undefined,
       }}
       // antd v6 里 destroyOnClose 已废弃,用 destroyOnHidden
@@ -119,20 +121,40 @@ const TicketModalForm: React.FC<TicketModalProps> = ({
         label="内容摘要"
         fieldProps={{ rows: 2 }}
       />
-      <ProFormText
-        name="images"
-        label="图片链接"
-        // 后端 images 存的是「图片 URL 的 JSON 数组」这一串文本
-        fieldProps={{
-          placeholder: '图片 URL 的 JSON 数组,如 ["https://example.com/a.png"]',
-        }}
-      />
-      {/*
-        回复内容 —— 后端 `TicketOutSchema.reply`。
-        ⚠️ 不是「描述」:后端响应里没有 description,拿它当表单初值会得到
-        一个永远为空的框,一提交就把库里存的值覆盖掉。
-      */}
-      <ProFormTextArea name="reply" label="回复内容" fieldProps={{ rows: 3 }} />
+      {record?.id ? (
+        /*
+          回复内容 —— 只在编辑态渲染(后端 TicketOutSchema.reply)。
+          ⚠️ 不是「描述」:后端响应里没有 description,拿它当表单初值会得到
+          一个永远为空的框,一提交就把库里存的值覆盖掉。
+          创建态不渲染它:TicketCreateSchema 没有 reply,提交了也被静默丢弃。
+        */
+        <ProFormTextArea
+          name="reply"
+          label="回复内容"
+          fieldProps={{ rows: 3 }}
+        />
+      ) : (
+        <>
+          <ProFormTextArea
+            name="description"
+            label="描述"
+            fieldProps={{ rows: 3 }}
+            rules={[
+              // 后端 TicketCreateSchema.description 的 max_length=255
+              { max: 255, message: '描述不超过 255 个字符' },
+            ]}
+          />
+          <ProFormText
+            name="images"
+            label="图片链接"
+            // 后端 images 存的是「图片 URL 的 JSON 数组」这一串文本
+            fieldProps={{
+              placeholder:
+                '图片 URL 的 JSON 数组,如 ["https://example.com/a.png"]',
+            }}
+          />
+        </>
+      )}
     </ModalForm>
   );
 };
