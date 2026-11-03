@@ -1,0 +1,226 @@
+import { PlusOutlined } from '@ant-design/icons';
+import { type ProColumns, ProTable } from '@ant-design/pro-components';
+import { useAccess } from '@umijs/max';
+import { Button, Tag } from 'antd';
+import type React from 'react';
+import { useMemo } from 'react';
+import {
+  CRUD_PAGINATION,
+  useCrudColumns,
+  useCrudTable,
+} from '@/components/CrudTable';
+import { DictTag } from '@/components/pm/DictTag';
+import { useDictOptions } from '@/components/pm/useDictOptions';
+import type {
+  ProjectCreateParams,
+  ProjectOut,
+} from '@/services/api/pm/project';
+import {
+  createProject,
+  deleteProjects,
+  listProjects,
+  updateProject,
+} from '@/services/api/pm/project';
+import { listUsers } from '@/services/api/system/user';
+import { toProTableRequest } from '@/services/paginate';
+import ProjectModalForm from './ModalForm';
+
+const requestProjects = toProTableRequest<ProjectOut>(listProjects);
+
+/** 字典选项 → 搜索下拉的 valueEnum(label 给人看,value 是线上码) */
+function toValueEnum(
+  options: { label: string; value: string }[],
+): Record<string, { text: string }> {
+  return Object.fromEntries(
+    options.map((option) => [option.value, { text: option.label }]),
+  );
+}
+
+/**
+ * 标签列:后端存的是 JSON 数组字符串('["财务","合规"]'),
+ * 表格里渲染成 Tag 串;解析失败或不是字符串数组时显示占位,不冒充数据。
+ */
+function renderTags(record: ProjectOut): React.ReactNode {
+  if (!record.tags) return '-';
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(record.tags);
+  } catch {
+    return '-';
+  }
+  if (!Array.isArray(parsed)) return '-';
+  const tags = parsed.filter((tag): tag is string => typeof tag === 'string');
+  if (tags.length === 0) return '-';
+  return tags.map((tag) => <Tag key={tag}>{tag}</Tag>);
+}
+
+/**
+ * 项目管理列表页 —— 路由 /pm/project(菜单由后端下发,目录挂在 /pm 下)。
+ *
+ * 骨架逻辑(状态机 / 操作列 / 分页)在共享脚手架 @/components/CrudTable 里,
+ * 本页只留「列定义 + service 调用 + 声明式 JSX」,与 module_system 各页同范式。
+ * 状态/优先级/可见性是字典驱动:表格标签用 DictTag,下拉提交的是线上码。
+ */
+const ProjectManagement: React.FC = () => {
+  const access = useAccess();
+
+  const crud = useCrudTable<ProjectOut, ProjectCreateParams>({
+    create: createProject,
+    update: updateProject,
+    remove: deleteProjects,
+  });
+
+  // 字典选项:表格标签(DictTag 内部也用它)与搜索下拉(valueEnum)共用,
+  // useDictOptions 有模块级缓存,这里两个类型只发一次请求
+  const { options: statusOptions } = useDictOptions('module_pm_project_status');
+  const { options: priorityOptions } = useDictOptions('module_pm_priority');
+
+  const statusValueEnum = useMemo(
+    () => toValueEnum(statusOptions),
+    [statusOptions],
+  );
+  const priorityValueEnum = useMemo(
+    () => toValueEnum(priorityOptions),
+    [priorityOptions],
+  );
+
+  const columns: ProColumns<ProjectOut>[] = [
+    { title: 'ID', dataIndex: 'id', width: 80, search: false },
+    {
+      title: '项目名称',
+      dataIndex: 'name',
+      width: 200,
+      fieldProps: { placeholder: '支持模糊查询' },
+    },
+    {
+      title: '项目编码',
+      dataIndex: 'code',
+      width: 160,
+      fieldProps: { placeholder: '支持模糊查询' },
+    },
+    {
+      title: '状态',
+      dataIndex: 'status_code',
+      width: 100,
+      valueEnum: statusValueEnum,
+      render: (_, record) => (
+        <DictTag
+          dictType="module_pm_project_status"
+          value={record.status_code}
+        />
+      ),
+    },
+    {
+      title: '优先级',
+      dataIndex: 'priority_code',
+      width: 100,
+      valueEnum: priorityValueEnum,
+      render: (_, record) => (
+        <DictTag dictType="module_pm_priority" value={record.priority_code} />
+      ),
+    },
+    {
+      title: '负责人',
+      dataIndex: 'owner_id',
+      width: 140,
+      valueType: 'select',
+      // ⚠️ 列级 select 必须显式开 showSearch,否则远程搜索是死代码
+      // (rc-select 的输入框 readOnly,onSearch 永远不触发) —— 见工单页处理人列
+      fieldProps: { showSearch: true },
+      // 远程搜索防抖(毫秒);ProComponents 的默认是 0,每敲一个字发一次请求
+      debounceTime: 300,
+      /*
+        搜索项:负责人是用户,候选来自 listUsers,按姓名远程搜。
+        ⚠️ 这个接口在后端要 module_system:user:query 权限;
+        没有这个权限时只有这一项搜索用不了,列表本身不受影响。
+      */
+      request: async ({ keyWords }: { keyWords?: string }) => {
+        const keyword = keyWords?.trim();
+        const res = await listUsers({
+          page_no: 1,
+          page_size: 100,
+          ...(keyword ? { name: keyword } : {}),
+        });
+        return (res?.data?.items ?? []).flatMap((user) =>
+          user.id == null
+            ? []
+            : [
+                {
+                  label: user.name ?? user.username ?? String(user.id),
+                  value: user.id,
+                },
+              ],
+        );
+      },
+      // 表格里读后端随行返回的 owner_by 冗余字段,不用再查用户表
+      render: (_, record) => record.owner_by?.name ?? '-',
+    },
+    {
+      title: '计划区间',
+      dataIndex: 'start_date',
+      width: 200,
+      search: false,
+      render: (_, record) =>
+        `${record.start_date ?? '-'} ~ ${record.due_date ?? '-'}`,
+    },
+    {
+      title: '标签',
+      dataIndex: 'tags',
+      width: 200,
+      search: false,
+      render: (_, record) => renderTags(record),
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'created_time',
+      width: 180,
+      search: false,
+    },
+  ];
+
+  const operationColumns = useCrudColumns<ProjectOut>({
+    onEdit: crud.openEdit,
+    onDelete: crud.handleDelete,
+    editPerm: 'module_pm_project:pm_project:update',
+    deletePerm: 'module_pm_project:pm_project:delete',
+    entityName: '项目',
+  });
+
+  return (
+    <>
+      <ProTable<ProjectOut>
+        headerTitle="项目管理"
+        rowKey="id"
+        actionRef={crud.actionRef}
+        columns={[...columns, ...operationColumns]}
+        request={requestProjects}
+        search={{ labelWidth: 80 }}
+        pagination={CRUD_PAGINATION}
+        // 错误提示由请求层统一弹,这里只需阻止 ProTable 把 rejection 重新抛出
+        // (ProComponents v3 在 onRequestError 未定义时会 rethrow,产生未捕获的 promise rejection)
+        onRequestError={() => {}}
+        toolBarRender={() => [
+          <Button
+            key="create"
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={
+              !access.hasPermission('module_pm_project:pm_project:create')
+            }
+            onClick={crud.openCreate}
+          >
+            新增
+          </Button>,
+        ]}
+      />
+      <ProjectModalForm
+        open={crud.modalOpen}
+        record={crud.editing}
+        onOpenChange={crud.closeModal}
+        onSubmit={crud.handleSubmit}
+      />
+    </>
+  );
+};
+
+export default ProjectManagement;

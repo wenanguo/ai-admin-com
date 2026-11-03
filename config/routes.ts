@@ -121,6 +121,27 @@ export default [
     ],
   },
   {
+    // PM 模块(项目管理):目录 /pm + 各业务页。菜单由后端下发(adapter),
+    // 前端只注册路由 —— 菜单里能不能看到入口取决于后端有没有播 PM 菜单种子
+    path: '/pm',
+    name: 'pm',
+    icon: 'project',
+    routes: [
+      {
+        // redirect 挂在子路由上(与 /system 同理):挂在父路由上会让
+        // /pm/project 被重定向到自己 ⇒ React Router 无限重定向
+        path: '/pm',
+        redirect: '/pm/project',
+      },
+      {
+        path: '/pm/project',
+        name: 'project',
+        icon: 'project',
+        component: './module_pm/project',
+      },
+    ],
+  },
+  {
     path: '/admin',
     name: 'admin',
     icon: 'crown',
