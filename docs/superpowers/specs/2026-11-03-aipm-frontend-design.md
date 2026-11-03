@@ -46,6 +46,9 @@
 | 工作台宿主 | 页面右侧 `<aside>`，`hidden` 折叠 | **antd `Layout.Sider`**，`collapsedWidth=40` | 原型折叠后主内容**宽度不变**（右侧留白），是偷懒；Sider 让主内容跟着收窄 |
 | 状态/类型标签 | 硬编码 `el-tag success` | **字典驱动**（`list_class`） | 后端字典带 `list_class`/`css_class`，状态色跟着字典走，不在前端硬编码 |
 | 风险等级 | mock 里有 `level` | **前端按矩阵算** | 后端 `pm_risk` **只有 `score`，没有 `level`** —— 等级是 AIPM 02 §5.3 的派生量 |
+| 风险 `score` | 前端以为后端算 | **前端算并提交** | 后端 `ModulePmRiskCreateSchema.score` 是**必填**且 `create_service` **直接透传**（不计算）⇒ 前端必须算 `probability × impact` 一起提交 |
+| 里程碑状态 | 6 态 | **5 态** | 后端字典 `module_pm_milestone_status` 只有 `upcoming`/`in_progress`/`at_risk`/`done`/`missed`，**没有 `cancelled`** |
+| 任务的项目/里程碑名 | 列里直接取 | **侧载列表解析** | `ModulePmTaskOutSchema` 只有 `assignee_by`/`reporter_by`，**没有 `project_by`/`milestone_by`** |
 | 数据 | `MOCK.*` | **真实后端** | 本项目无 mock 政策 |
 
 ---
@@ -233,13 +236,20 @@ ProLayout
 
 ```
 POST /ai-api/agent/:conversationId/command   { id, type, ... }  → { id, type:'response', success, data }
-GET  /ai-api/agent/:conversationId/events                          → SSE
-GET  /ai-api/agent/:conversationId/state                           → { conversation, messages, pendingActions, isStreaming, model, thinkingLevel }
-GET  /ai-api/pending?status=PENDING                                → 待确认列表
-POST /ai-api/pending/:id/adjust   { args }                         → 重新预览
-POST /ai-api/audit/:id/undo                                          → 撤销
-GET  /ai-api/audit?actor=&command=&from=&to=&undone=               → 审计列表
+POST /ai-api/agent/conversations                                   → { conversationId, title, createdAt }
+GET  /ai-api/agent/conversations?limit=50                           → [{ conversationId, title, updatedAt }]
+GET  /ai-api/agent/:conversationId/events                           → SSE
+GET  /ai-api/agent/:conversationId/state                            → { conversation, messages, pendingActions, isStreaming, model, thinkingLevel }
+GET  /ai-api/pending?status=PENDING                                 → 待确认列表
+POST /ai-api/pending/:id/adjust   { args }                          → 重新预览
+POST /ai-api/audit/:id/undo                                         → 撤销
+GET  /ai-api/audit?actor=&command=&from=&to=&undone=                → 审计列表
 ```
+
+> **契约里的三个空缺**（本次补上）：
+> 1. `POST/GET /agent/conversations` —— 会话的新建与列表（§3.8）。
+> 2. `auth_expired` SSE 事件 —— token 过期时的通知（§3.10）。
+> 3. 事件序号 —— 用于丢帧检测（§3.9）。
 
 **SSE 事件 → 前端状态机**（AIPM 03 §4 的事件表）：
 
@@ -263,12 +273,46 @@ GET  /ai-api/audit?actor=&command=&from=&to=&undone=               → 审计列
 - 前端记录每个 SSE 事件的序号；检测到序号跳变 ⇒ 调 `GET /state` 拉全量快照**重建**对话与待确认。
 - 不做增量补偿 —— 快照重建更简单也更可靠。
 
-### 3.8 三种降级态
+### 3.8 会话生命周期
+
+**契约补充**（前端要用，AI 服务要提供）：
+
+```
+POST /ai-api/agent/conversations          → { conversationId, title, createdAt }   新建会话
+GET  /ai-api/agent/conversations?limit=50  → [{ conversationId, title, updatedAt }]  当前用户的会话列表
+```
+
+- 「新对话」→ `POST /conversations` 拿到 id，再切换。
+- 「历史对话」→ `GET /conversations` 列表，v1 **只列当前用户自己的**。
+- 前端持久化 `conversationId` 到 `localStorage`；刷新后用它拉 `GET /state` 恢复。
+- 失效（服务端已删/过期）→ 降级为自动新建一个。
+
+### 3.9 SSE 的鉴权与传输
+
+**裁决：用 `fetch` + `ReadableStream` 手写 SSE 解析，不用原生 `EventSource`。**
+
+| 方案 | 取舍 |
+|---|---|
+| **`fetch` + 手写 SSE 解析**（选） | 能带 `Authorization` 头 ⇒ 沿用现有的 Bearer token 机制；可控重连与丢帧检测。代价：自己写解析与重连（约 100 行），或用 `@microsoft/fetch-event-source` |
+| 原生 `EventSource` | ❌ **不能带自定义头** ⇒ 鉴权无解 |
+| token 走 query param | ❌ JWT 会进 nginx access log，违反合并设计 §6.4「token 不进日志」 |
+
+⇒ 前端 `services/api/ai/sse.ts` 用 `fetch` + `ReadableStream`，按 `text/event-stream`
+的格式拆帧（`data:` 行累积到空行则为一个事件），并在 `AbortController` 里断开。
+
+> **URL 形态取决于生产部署形态**（待决，见交付消息）：
+> - 若生产是 nginx 反代（同源）⇒ 用**相对路径** `/ai-api/...`，无 CORS。
+> - 若不是 ⇒ 需要**绝对 URL** + CORS + 预检配置。
+
+**丢帧检测**：每个事件带自增序号；序号跳变 ⇒ 调 `GET /state` 拉快照**重建**（AIPM 03 §4
+「快照是最终真相」）。不做增量补偿。
+
+### 3.10 三种降级态
 
 | 情况 | 表现 |
 |---|---|
 | AI 服务不可达 | 侧栏头部显示 `Tag color="error"`「AI 服务不可用」；对话区显示 `Alert`「AI 暂不可用，请手动操作」；**PM 页面与系统管理页面完全不受影响**（AIPM 00 §5 第 6 条） |
-| 401（用户的 AiAdmin token 过期） | 走**现有的**静默刷新流程（`src/auth/session.ts`）；刷新成功后重发原命令；失败则清登录态回登录页 |
+| 401（用户的 AiAdmin token 过期） | AI 服务回 `auth_expired` 事件 ⇒ 前端走**现有的**静默刷新流程（`src/auth/session.ts`）⇒ 刷新成功后重连 SSE 并重发原命令；刷新失败则清登录态回登录页。**该 SSE 事件必须由 AI 服务发出**（AIPM 03 的事件表里没有，要补） |
 | 模型不可用（`AI_UNAVAILABLE`） | `tool_result` 为失败，助手气泡里说明原因；**不重试写操作**（AIPM 03 §7） |
 
 > **AI 挂了系统不瘫**这条反目标，在界面上的体现就是：**AI 侧栏的任何错误都不允许影响主内容区**。
@@ -323,11 +367,20 @@ GET  /ai-api/audit?actor=&command=&from=&to=&undone=               → 审计列
 > CPM 关键路径**不可用**，ETA 实际只有 burndown（无 P50/P90）。
 > 页面不能承诺它给不出来的东西。
 
-### 4.3 模型选择与配额
+### 4.3 模型与配额
 
-- 模型下拉：`MiniMax-M3.1-Flash`（默认/快）· `MiniMax-M3`（复杂任务）· `MiniMax-M2.7-highspeed`（成本优先）。
-- **模型可配**：下拉的选项来自 AI 服务（`GET /ai-api/agent/models`），不是前端硬编码。
-- 配额进度条：`Progress`；超配额时输入框禁用并提示。
+> **裁决（v1）**：**不做模型切换下拉，不做配额进度条。**
+>
+> 理由：契约里没有模型列表端点，也没有配额的数据源（`GET /state` 不含配额，
+> `ai_*` 表也没有）。**做一条假数字的进度条就是 mock**，违反本项目无 mock 的底线。
+>
+> v1 的做法：
+> - 只**显示**当前模型 —— 数据来自 `GET /ai-api/agent/:cid/state` 的 `model` 字段（契约已有）。
+> - 「配额」按钮 **v1 不做**（没有数据源就不画）。
+> - 换模型是 AI 服务侧的配置（环境变量 `AI_MODEL`），不在前端切。
+>
+> 若以后要做，契约需补 `GET /ai-api/agent/models` 与 `GET /ai-api/agent/quota`，
+> 且配额必须在**服务端**计量并强制（前端禁用输入框只是 UX，不能当配额控制）。
 
 ---
 
@@ -383,7 +436,7 @@ GET  /ai-api/audit?actor=&command=&from=&to=&undone=               → 审计列
 | 列 | 备注 |
 |---|---|
 | 里程碑名称 / 所属项目 | `project_by.name` |
-| 状态 | 字典 `module_pm_milestone_status`：`upcoming`/`in_progress`/`at_risk`/`done`/`missed`/`cancelled` |
+| 状态 | 字典 `module_pm_milestone_status`：`upcoming`/`in_progress`/`at_risk`/`done`/`missed`（**5 态，后端没有 `cancelled`**） |
 | 进度 | `progress` 0–100，进度条 |
 | 健康度 | `health_score` 0–100 |
 | 计划区间 / 实际区间 | |
@@ -403,7 +456,8 @@ GET  /ai-api/audit?actor=&command=&from=&to=&undone=               → 审计列
 
 | 列 | 备注 |
 |---|---|
-| 标题 / 所属项目 / 所属里程碑 | `project_id` / `milestone_id` |
+| 标题 | `title` |
+| 所属项目 / 所属里程碑 | `project_id` / `milestone_id` —— ⚠️ 响应**没有** `project_by`/`milestone_by` ⇒ **侧载项目/里程碑列表在户端映射成名字** |
 | 状态 | 字典 `module_pm_task_status`（7 态） |
 | 优先级 | P0–P3 |
 | 类型 | 字典 `module_pm_task_type`（feature/bug/ops/research/spike） |
@@ -416,7 +470,7 @@ GET  /ai-api/audit?actor=&command=&from=&to=&undone=               → 审计列
 
 **搜索项**：`title` / `status_code` / `priority_code` / `type_code` / `assignee_id` / `project_id`。
 
-**看板页 `/pm/task/board`** —— 6 列：
+**看板页 `/pm/task/board`** —— **6 列**（裁决：已取消的任务**不进看板**）：
 
 | 列 | 状态 |
 |---|---|
@@ -425,7 +479,10 @@ GET  /ai-api/audit?actor=&command=&from=&to=&undone=               → 审计列
 | 进行中 | `in_progress` |
 | 阻塞 | `blocked` |
 | 评审 | `review` |
-| 已完成 / 已取消 | `done` / `cancelled` |
+| 已完成 | `done` |
+
+> **裁决**：看板是「当前工作」视图，`cancelled` 的任务已经退出工作流，不占看板列。
+> 拖到第 6 列 = `done`；要取消任务走列表页的编辑弹窗。
 
 - 卡片：标题 + 优先级标签 + 负责人 `Avatar` + 估时 + 截止日（逾期标红）。
 - **拖拽改状态**：后端的任务更新是**整对象 PUT**（`ModulePmTaskUpdateSchema` 继承
@@ -447,8 +504,8 @@ GET  /ai-api/audit?actor=&command=&from=&to=&undone=               → 审计列
 | 风险标题 / 所属项目 | |
 | 分类 | 字典 `module_pm_risk_category`（schedule/scope/quality/resource/compliance） |
 | 概率 / 影响 | 1–5 |
-| 分数 | `score` = 概率 × 影响（后端算） |
-| **等级** | **前端按矩阵算**（见下） |
+| 分数 | `score` = 概率 × 影响 —— ⚠️ **后端不计算**（`score` 是必填字段，`create_service` 透传）⇒ **表单实时算并一起提交** |
+| **等级** | **前端按矩阵算**（后端没有 `level` 字段） |
 | 状态 | 字典 `module_pm_risk_status`（identified/analyzing/mitigating/realized/closed） |
 | 负责人 / 缓解措施截止 | `owner_id` / `due_date` |
 
@@ -469,11 +526,14 @@ GET  /ai-api/audit?actor=&command=&from=&to=&undone=               → 审计列
 颜色按该格最高 score 的等级。点格子 → 过滤下面的列表。**v1 只读，不做拖拽建风险。**
 
 **表单字段**：`project_id`（必填）、`title`（必填）、`description`、`category_code`（必填，字典）、
-`probability`（必填，1–5）、`impact`（必填，1–5）、`status_code`（字典）、`owner_id`、
-`mitigation_plan`、`contingency_plan`、`due_date`、`trigger_date`。
+`probability`（必填，1–5）、`impact`（必填，1–5）、**`score`（必填，前端算 = 概率 × 影响）**、
+`status_code`（字典，必填）、`owner_id`（必填 —— 后端 schema 里 `owner_id: int` 非可空）、
+`mitigation_plan`、`contingency_plan`、`due_date`、`trigger_date`、
+`created_via_code`（必填；人工写固定传 `manual`）。
 
-> `score` **不在表单里**（后端算）；`created_via_code` 与 `ai_suggestion` 也不在表单里
-> （那是 AI 写路径的字段）。
+> `ai_suggestion` **不在表单里**（那是 AI 写路径的字段）。
+> `score` 与 `created_via_code` 是后端必填但用户不该看见的字段 ——
+> 前端算好/填好再提交，**不要露在界面上**。
 
 ---
 
@@ -496,18 +556,24 @@ GET  /ai-api/audit?actor=&command=&from=&to=&undone=               → 审计列
 
 ### 6.2 后端要补的菜单种子（合并设计 §6.3 的 B1）
 
-前端要落地这些路由，后端就得下发对应的菜单节点。需要的菜单与权限码：
+前端要落地这些路由，后端就得下发对应的菜单节点。
 
-| 菜单 | 路径 | 按钮权限码 |
-|---|---|---|
-| 项目管理 | `/pm/project` | `module_pm_project:{list,query,detail,create,update,delete,patch,export}` |
-| 里程碑管理 | `/pm/milestone` | `module_pm_milestone:{...}` |
-| 任务管理 | `/pm/task` | `module_pm_task:{...}` |
-| 风险登记 | `/pm/risk` | `module_pm_risk:{...}` |
-| AI 工作台 | `/ai/workspace` | `module_ai_workspace:use` |
-
-> **权限码的实际值必须以后端种子为准**。上表是按现有命名规律推的，
-> 实现前要先读后端的 `AuthPermission` 依赖里到底写的什么。
+> ⚠️ **权限码的拼写必须以后端 controller 里实际写的为准。** 已核实：
+>
+> | 实体 | 实际权限码 |
+> |---|---|
+> | 项目 | `module_pm_project:pm_project:{query,detail,create,update,delete,patch,export,import,download,transition,member:write}` |
+> | 里程碑 | `module_pm_project:pm_milestone:{query,detail,create,update,delete,patch,export,import,download}` |
+> | 任务 | `module_pm_project:pm_task:{query,detail,create,update,delete,patch,export,import,download}` |
+> | 风险 | `module_pm_risk:pm_risk:{query,detail,create,update,delete,patch,export,import,download}` |
+>
+> ⇒ 形式是**三段式** `module_pm_<插件模块>:<子模块>:<动作>`，
+> **不是** `module_pm_task:list` 那种两段式。
+> 前端 `useAccess().hasPermission()` 必须用上表的**完整字符串**。
+>
+> **⚠️ B1 的归属未定**：PM 菜单种子是**后端 SQL**。本仓库把后端当只读，
+> 但没有种子这 5 个页面就永远不会被菜单下发 ⇒ 种子是本条工作线的**前置依赖**。
+> 谁写这个 SQL 需要明确（见交付消息）。
 
 ### 6.3 前端侧的门控
 
@@ -592,9 +658,13 @@ src/
 | U6 | AI 服务不可达时，侧栏显示降级提示，**PM 页面与系统管理页面完全正常** | e2e + 手动 |
 | U7 | 5 个 PM 页面字段与后端 schema 一致（逐条核对） | 契约测试 |
 | U8 | 状态/类型/分类标签**字典驱动**（改字典颜色，页面跟着变） | 手动 |
+| U8.1 | 里程碑状态只有 5 个（`upcoming`/`in_progress`/`at_risk`/`done`/`missed`） | 单测 |
 | U9 | 风险等级按矩阵算，且与 AI 服务侧的阈值一致 | 单测（两侧同一份常量或同一份契约） |
+| U9.1 | 风险表单提交体里的 `score` = 概率 × 影响（后端不计算，必填） | e2e 钉死提交体 |
+| U9.2 | 风险表单提交 `created_via_code: 'manual'`、`owner_id`、`status_code`（后端必填） | e2e 钉死提交体 |
 | U10 | 里程碑表单里**没有** `at_risk` / `missed` 选项 | 单测 |
 | U11 | 看板拖拽改状态走整对象 PUT，且失败时卡片**回滚原位** | e2e |
+| U11.1 | 看板 6 列，`cancelled` 不在看板；拖到第 6 列写 `done` | e2e |
 | U12 | 现有 279 单测 + 80 e2e **零回归** | 门禁 |
 
 ---
