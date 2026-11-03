@@ -25,6 +25,17 @@ import { getCurrentUser } from '@/services/api/system/user';
  * 所以这里的约定是:
  * - 提交给后端的是「全选 ∪ 半选」的并集(`onChange` 回传的就是它);
  * - 喂回 Tree 的只有「全选」。
+ *
+ * ## 「不在树里的 id」必须原样带走
+ *
+ * 树的数据源是**当前用户**的菜单(`getCurrentUser()` 的 `menus`)——
+ * 角色已授权、但当前用户自己没有的菜单(id 不在这棵树里)**不在树中**。
+ * 它们没法在树上被勾选,也就没法被取消 —— 但如果每次交互都只按树里的
+ * 勾选结果重建集合,这些 id 会在**第一次交互**后被悄悄丢掉。
+ * 后端 `set_role_menus_crud` 是**整体替换**角色的菜单集合 ⇒
+ * 丢一个 id 就是静默地撤销一条权限。
+ *
+ * 所以交互时:树里勾到的照旧带上,**树里没有的上一次合并结果也带上**。
  */
 export interface MenuPermissionTreeProps {
   /** 选中的菜单 id(勾选与半选的并集) */
@@ -163,8 +174,14 @@ export default function MenuPermissionTree({
       ? (info.halfCheckedKeys ?? [])
       : checked.halfChecked;
 
+    // ⚠️ 不在这棵树里的 id(角色已授权、但当前用户自己看不到的菜单)
+    //   树上勾不到也取消不了 ⇒ 原样带走。
+    //   丢了就是**静默撤销权限**(后端是整体替换角色的菜单集合)。
+    const treeIds = new Set(ids);
+    const invisible = merged.filter((id) => !treeIds.has(id));
+
     const nextMerged = Array.from(
-      new Set<Key>([...checkedIds, ...halfCheckedIds]),
+      new Set<Key>([...invisible, ...checkedIds, ...halfCheckedIds]),
     ).filter((key): key is number => typeof key === 'number');
 
     setInternalValue(nextMerged);

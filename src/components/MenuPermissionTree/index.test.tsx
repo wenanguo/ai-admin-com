@@ -14,6 +14,8 @@ import MenuPermissionTree from './index';
  * - **半选的父节点不能进 Tree 的 checkedKeys**:rc-tree 的 conductCheck
  *   会把「勾中的父节点」的所有后代都算勾中,没勾的兄弟节点会被一起勾上,
  *   下一次交互就把没授权的菜单提交出去了
+ * - **不在树里的 id 必须在交互后活下来**:角色已授权、但当前用户自己没有的菜单
+ *   不在这棵树里(树上勾不到也取消不了)—— 交互时丢掉它就是静默撤销权限
  */
 
 const mocks = vi.hoisted(() => ({
@@ -244,5 +246,29 @@ describe('MenuPermissionTree 菜单权限树', () => {
     const submitted = onChange.mock.calls[1]?.[0] as number[];
     expect(submitted).toContain(6);
     expect(submitted).not.toContain(7);
+  });
+
+  it('不在树里的已授权菜单 id,交互之后依然在提交集合里', async () => {
+    const onChange = vi.fn();
+
+    // 999 是角色已授权、但**当前用户自己没有**的菜单(不在树里)
+    const { getByRole } = await render(
+      <MenuPermissionTree value={[999]} onChange={onChange} />,
+    );
+    await waitForMenusLoaded();
+
+    await getByRole('checkbox', { name: '角色管理' }).click();
+
+    await vi.waitFor(() => {
+      expect(onChange).toHaveBeenCalled();
+    });
+
+    const submitted = onChange.mock.calls[0]?.[0] as number[];
+    // 树里新勾上的
+    expect(submitted).toContain(3);
+    // 不在树里的那个不能被丢掉 —— 丢了就是静默撤销权限
+    expect(submitted).toContain(999);
+    // 去重
+    expect(new Set(submitted).size).toBe(submitted.length);
   });
 });
