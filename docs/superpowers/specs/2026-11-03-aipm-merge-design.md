@@ -112,7 +112,7 @@ AiAdmin 后端  D:/project/AiAdmin/backend/app/plugin/
 | 约束 | 证据 | 影响 |
 |---|---|---|
 | 生产是**静态导出** | `config/config.ts:224` `exportStatic: {}`；`npm run build` 产出 41 个静态 HTML | **生产环境没有 Node 进程** ⇒ agent 不能寄居在前端的运行时里 |
-| 部署是 nginx 静态托管 | `.github/workflows/deploy.yml`（GitHub Pages 预览）；`config/proxy.ts` 把 `/api/` 转发到后端 | 可以加一条 `location /ai-api/` 反代 ⇒ 前端与 AI 服务**同源**，无 CORS |
+| 部署是 nginx 静态托管 | `.github/workflows/deploy.yml`（GitHub Pages 预览）；`config/proxy.ts` 把 `/api/` 转发到后端 | ⚠️ **已裁决：AI 服务单独部署**（异源）⇒ 浏览器用**绝对 URL** 调 AI 服务，**跨域 + CORS**（见 §5.4） |
 | umi 4.7 **没有 BFF 插件** | `node_modules/@umijs/plugins/dist/` 无 bff；`@umijs/preset-umi/dist/features/apiRoute` 是给 Vercel/Netlify/Worker 的 | "把 agent 放进 umi `server/`" **不可行** |
 | pi SDK 在 npm 上 | `@earendil-works/pi-coding-agent@1.5.0`（本地 1.4.0） | agent 服务可用 TypeScript 实现 |
 
@@ -191,7 +191,7 @@ A' 保留 A 的**合并形状**（一个前端、一个事实源、AI 层叠在�
 │   ├─ PM 5 页（项目/里程碑/任务/风险/看板）—— 本次新建                   │
 │   └─ 右侧常驻 AI 工作台（对话 / 待确认 / 审计）—— 本次新建            │
 └───────┬────────────────────────────────────┬───────────────────────┘
-        │ /api/v1/**                         │ /ai-api/**
+        │ /api/v1/**                         │ /ai-api/**（跨域）
         ▼                                    ▼
 ┌────────────────────────┐        ┌──────────────────────────────────┐
 │ FastAPI · AiAdmin      │◄───────│ Next.js AI 服务（常驻 Node 进程）   │
@@ -202,7 +202,10 @@ A' 保留 A 的**合并形状**（一个前端、一个事实源、AI 层叠在�
 └────────────────────────┘        │  · SSE 事件流                      │
                                   └──────────────────────────────────┘
                                           ▲
-                                   nginx 同源反代 /ai-api/
+                              独立部署（不同源）⇒ CORS
+
+  ⓘ 前端静态产物可由 nginx / CDN / GitHub Pages 托管；
+    AI 服务是**独立部署单元**，用构建期常量 AI_API_BASE_URL 指向它
 ```
 
 ### 4.3 为什么不是 B
@@ -263,7 +266,31 @@ SSE 只跨 nginx 一跳。
           → 结果 / 待确认 → SSE 推回浏览器
 ```
 
-### 5.3 为什么前端不直连 AiAdmin 的 PM API 来做 AI 的活
+### 5.4 部署形态（已裁决）
+
+**AI 服务单独部署，与前端不同源。**
+
+| 决定 | 后果 |
+|---|---|
+| 前端静态产物（nginx / CDN / GitHub Pages 均可） | 不变 |
+| AI 服务 = 独立部署单元（独立域名或端口） | 前端需要知道它的**绝对 URL** |
+| 异源 ⇒ **CORS** | AI 服务必须处理 `OPTIONS` 预检，并回 `Access-Control-Allow-Origin: <前端源>`、`Access-Control-Allow-Headers: authorization, content-type` |
+| 请求带 `Authorization` 头 ⇒ **必然触发预检** | 预检缓存不能超过 5 分钟，否则换 token 会失败 |
+| SSE 用 `fetch` + `ReadableStream`（不用 `EventSource`） | 跨域时仍可控重连与丢帧检测；读的是响应体流，不依赖 CORS 暴露响应头 |
+
+**配置方式**：前端用一个构建期常量 `AI_API_BASE_URL`（读 `process.env.AI_API_BASE_URL`，
+默认 `http://127.0.0.1:3100`），生产由部署方注入。
+
+**开发期**：`config/proxy.ts` 加一条 `/ai-api/` → AI 服务本地地址的转发，
+这样开发时浏览器看到的是同源请求，不用配 CORS。
+
+**安全**：
+- CORS 的 `Access-Control-Allow-Origin` **不能用 `*`**，必须回具体的已登记前端源并校验 `Origin`。
+- AI 服务不持有长期凭据（§6.4），只透传用户 token ⇒ 跨源暴露的只是「用户在本站已有的权限」，
+  不构成额外的能力扩大。
+- 仍需注意：跨源 + 带 token ⇒ 不能用通配符源，且必须校验 `Origin`。
+
+### 5.5 为什么前端不直连 AiAdmin 的 PM API 来做 AI 的活
 
 AIPM 03 §1 的原话：「前端**永远不直连外部 API**（否则凭据泄露、权限绕过、审计断链）」。
 在本方案里，AiAdmin 就是那个"外部 API"，规则不变：
@@ -313,6 +340,15 @@ ai_entity_ref     id, entity_type, external_id, title_cache, last_synced_at
 ai_derived_state  id, entity_ref, kind(MILESTONE_HEALTH|ETA|RISK_SUGGESTION), payload(json), computed_at
 ```
 
+> **已裁决：v1 单租户 ⇒ 表里不加 `tenant_id`。**
+>
+> 依据：后端所有 PM 模型都带 `TenantMixin`，但种子数据 `tenant_id=1`，
+> 且本项目当前前端**没有任何租户 UI**。多租户 SaaS 化已列为 v1 非目标（§2.2）。
+>
+> **代价与补救**：若以后要支持多租户，`ai_*` 表要加 `tenant_id` + 所有查询加作用域。
+> 因为 `ai_audit_log` 是**只追加**的，事后补列很痛 ⇒ 届时需要写数据迁移脚本
+> （把历史记录归到租户 1）。这个代价是现在**省掉 5 个字段**换来的，明确记在这里。
+
 **砍掉的**：`User` / `Session`（用 AiAdmin 的）、`SyncCache`（AiAdmin 就是事实源，不缓存）、
 `ProgressSnapshot`（燃尽图数据可由 `ai_derived_state` 承载，见下）。
 
@@ -325,15 +361,23 @@ ai_derived_state  id, entity_ref, kind(MILESTONE_HEALTH|ETA|RISK_SUGGESTION), pa
 
 | # | 后端改动 | 为什么必须 | 规模 |
 |---|---|---|---|
-| B1 | 补 `sys_menu` 种子：PM 5 个菜单节点 + 对应按钮权限码（`module_pm_project:list` 等） | 后端决定菜单显示什么、前端决定路由能不能落地。没有种子，PM 页面永远不会被菜单下发 | 一份 SQL |
+| B1 | 补 `sys_menu` 种子：PM 5 个菜单节点 + 对应按钮权限码 | 后端决定菜单显示什么、前端决定路由能不能落地。没有种子，PM 页面永远不会被菜单下发 | 一份 SQL · **归属：后端**（已裁决） |
 | B2 | 补 `module_pm_task` 的 `blocked_since` 字段 | AIPM 02 §5.1 的健康度规则要算「阻塞时长」，当前 `blocked_reason` 只有原因没有起始时间 | 一条 migration + 一个字段 |
 
 **特别说明**：这次不做 AIPM 07 Q2 问的「外部 API 能力位」相关改造 —— 那些能力**本来就有**
 （AiAdmin 已有 batch、delete、依赖表、评论），不需要加。
 
+> **⚠️ B1 的权限码拼写**：后端 controller 里实际写的是**三段式**
+> `module_pm_<插件模块>:<子模块>:<动作>`（如 `module_pm_project:pm_task:patch`、
+> `module_pm_risk:pm_risk:query`），**不是** `module_pm_task:list` 那种两段式。
+> 种子必须按实际拼法写，否则菜单能显示但按钮全部 403。
+
 > **不在本次范围**：给 AiAdmin 加服务账号/API Key 机制（§6.4 用用户透传绕开了）、
 > 给 AiAdmin 加「写操作 + 审计同事务」的接口（§9.2 用降级方案绕开了）。
 > 这两项记入后续 backlog。
+
+> **已裁决：B1（PM 菜单种子）由后端写**，不是前端工作线的交付物。
+> 但它是前端 5 个 PM 页面的**前置依赖** ⇒ 实施计划里要把它列为外部依赖并跟踪。
 
 ### 6.4 裁决四：AI 服务用什么身份调 PM API
 
@@ -528,8 +572,13 @@ AI 服务自己的 `lint/test/build`。
 「读 → 合并 → 写」。适配层必须自己维护读-改-写，且**冲突检测只能靠 `updated_at` 比较**
 （后端不提供版本号/ETag）。这直接影响 AIPM 01 §4.5 的冲突检测强度。
 
-> **待裁决（见交付消息）**：依赖图缺失导致 CPM 与 ETA 的 P50/P90 不可用。
-> 是接受降级（v1 不动后端），还是追加 B3（补依赖 CRUD + 可选 PATCH/批量端点）？
+> **已裁决：接受降级，v1 不动后端依赖 CRUD。**
+> ⇒ ETA 只有 burndown（无 P50/P90）；`add_task_dependency` / `remove_task_dependency`
+> **不注册**（AIPM 06 §3：无依赖图时命令返回明确错误）；
+> 界面与文案**不得承诺 P50/P90**（前端设计的 §4.2 已按此改写）。
+> **代价**：ETA 精度低于 AIPM 原设计；关键路径分析、CPM 相关的能力全部缺席。
+> **什么时候值得翻案**：若产品对「能否按期完成」的判断要求置信区间，
+> 再追加 B3（依赖 CRUD + 可选 PATCH/批量端点）。
 
 ### 9.2 硬约束的降级与代价
 
@@ -562,7 +611,7 @@ AI 服务自己的 `lint/test/build`。
 | Next.js Route Handlers 的 SSE 在生产（长时间连接、反向代理）下的行为 | P4 的核心 | **P0 就做一个 spike**：起一个 SSE 路由 + nginx 反代，压测 30 分钟长连接与断线重连 |
 | Prisma + MySQL 的连接池在 AI 服务高并发下的表现 | P0 | spike 时一并测 |
 | pi agent SDK 在 Next.js Route Handlers（无 CLI 环境）里的可用性 | P4 | spike 时验证 `createAgentSession` + `customTools` 能否在 Route Handler 里跑 |
-| 静态前端 + 同源反代 `/ai-api/` 的 SSE 跨域/缓冲问题 | P5 | nginx 配置 `proxy_buffering off;`；spike 验证 |
+| 静态前端 + **异源**调 AI 服务的 SSE 跨域/缓冲问题 | P5 | AI 服务处理 CORS 与预检；nginx/CDN 侧不动；spike 验证 |
 
 > **这三条 spike 全部归到 P0**，且 **P0 的验收标准就是"三个 spike 都有结论"**。
 > 如果 pi agent 在 Route Handler 里跑不起来，方案需要在 P0 就调整（最可能的退路：
@@ -579,7 +628,7 @@ AI 服务自己的 `lint/test/build`。
 | 1 | 一句话操作 | 输入「把本周所有 P0 任务的截止日顺延到下周一」→ 返回命中清单预览 → 确认后落库，日期由后端按 Asia/Shanghai 周一为起点解析 |
 | 2 | 确认门槛 | 风险降级、跨项目批量、删除、拆分、改期 > 3 天均需确认；单条常规改动直接执行 |
 | 3 | 可回溯 | 每次 AI 写入都有 `ai_audit_log`；拆分与批量撤销后数据与操作前完全一致；冲突时拒绝静默覆盖 |
-| 4 | 可解释的判定 | 里程碑显示「有风险」时能说明依据；ETA 给出 P50/P90 与置信度 |
+| 4 | 可解释的判定 | 里程碑显示「有风险」时能说明依据；ETA 给出预测日与置信度。**（v1 不含 P50/P90 —— CPM 因缺依赖图不可用，见 §9.1.1）** |
 | 5 | 规则优先 | 无 key 时健康度、风险识别、进度口径照常工作 |
 | 6 | AI 挂了系统不瘫 | 关掉 key 后手动建任务、改状态、各视图、审计与撤销全部可用 |
 | 7 | 人工与 AI 同路径 | 人工拖拽看板与 AI 命令**都产生审计记录**，AI 侧的记录带字段级 before/after 且可撤销（G2 的重新定义见 §6.8 与 §9.2） |
