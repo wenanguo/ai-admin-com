@@ -5,7 +5,7 @@ import MenuPermissionTree from './index';
 /**
  * 菜单权限树的单测。
  *
- * 钉住五件事:
+ * 钉住六件事:
  * - 数据源是 `getCurrentUser()` 返回的 **menus 树**(带 children),
  *   不是 /platform/menu/tree 的扁平列表 —— 父子两级都要渲染出来
  * - 空菜单树不抛异常(RF5:后端可能一个菜单都没下发)
