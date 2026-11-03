@@ -356,4 +356,46 @@ test.describe('公告管理页', () => {
       notice_type: '2',
     });
   });
+
+  test('公告标题超过 64 个字符时表单内报错,不发请求', async ({ page }) => {
+    const createRequests: unknown[] = [];
+
+    await page.route('**/api/v1/system/notice/create**', async (route) => {
+      createRequests.push(route.request().postDataJSON());
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: '创建公告成功',
+          data: null,
+          status_code: 200,
+          success: true,
+        }),
+      });
+    });
+
+    await setupModulePage(page, {
+      menus: [noticeMenu()],
+      listUrl: NOTICE_LIST_URL,
+      listBody: noticeListResponse,
+    });
+
+    await gotoModulePage(page, NOTICE_PAGE_PATH, menuItem(page));
+
+    await page.getByRole('button', { name: '新增' }).click();
+
+    // 后端 NoticeCreateSchema.notice_title 的 max_length=64
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '公告标题' })
+      .locator('input')
+      .fill('标'.repeat(65));
+
+    await page.locator('.ant-modal-footer button.ant-btn-primary').click();
+
+    // 表单内报错(不是后端 422 之后的 toast)
+    await expect(page.getByText('公告标题不超过 64 个字符')).toBeVisible();
+    // 请求根本没发出去
+    expect(createRequests).toHaveLength(0);
+  });
 });

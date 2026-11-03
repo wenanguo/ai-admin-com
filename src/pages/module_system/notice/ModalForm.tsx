@@ -75,7 +75,12 @@ const NoticeModalForm: React.FC<NoticeModalProps> = ({
       <ProFormText
         name="notice_title"
         label="公告标题"
-        rules={[{ required: true, message: '请输入公告标题' }]}
+        rules={[
+          { required: true, message: '请输入公告标题' },
+          // 后端 NoticeCreateSchema.notice_title 的 max_length=64
+          // (backend/app/api/v1/module_system/notice/schema.py)
+          { max: 64, message: '公告标题不超过 64 个字符' },
+        ]}
       />
       <ProFormSelect
         name="notice_type"

@@ -73,10 +73,28 @@ const DeptModalForm: React.FC<DeptModalProps> = ({
           },
         ]}
       />
-      <ProFormDigit name="order" label="排序" />
+      {/*
+        长度与取值范围跟后端的 schema 对齐
+        (backend/app/api/v1/module_system/dept/schema.py):
+        phone ≤ 20 / email ≤ 128 / order ≥ 0 —— 不在表单里挡就是 422 toast。
+      */}
+      <ProFormDigit
+        name="order"
+        label="排序"
+        min={0}
+        rules={[{ type: 'number', min: 0, message: '排序不能小于 0' }]}
+      />
       <ProFormText name="leader" label="负责人" />
-      <ProFormText name="phone" label="联系电话" />
-      <ProFormText name="email" label="邮箱" />
+      <ProFormText
+        name="phone"
+        label="联系电话"
+        rules={[{ max: 20, message: '联系电话不超过 20 个字符' }]}
+      />
+      <ProFormText
+        name="email"
+        label="邮箱"
+        rules={[{ max: 128, message: '邮箱不超过 128 个字符' }]}
+      />
       <ProForm.Item name="parent_id" label="上级部门">
         <DeptTreeSelect
           excludeId={record?.id ?? undefined}

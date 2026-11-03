@@ -57,7 +57,12 @@ const TypeModalForm: React.FC<TypeModalProps> = ({
       <ProFormText
         name="dict_name"
         label="字典名称"
-        rules={[{ required: true }]}
+        rules={[
+          { required: true, message: '请输入字典名称' },
+          // 后端 DictTypeCreateSchema.dict_name 的 max_length=64
+          // (backend/app/api/v1/module_system/dict/schema.py)
+          { max: 64, message: '字典名称不超过 64 个字符' },
+        ]}
       />
       <ProFormText
         name="dict_type"

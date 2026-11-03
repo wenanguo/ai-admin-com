@@ -27,6 +27,7 @@ const DICT_PAGE_PATH = '/system/dict';
 const DICT_TYPE_LIST_URL = '**/api/v1/system/dict/type/list**';
 const DICT_DATA_LIST_URL = '**/api/v1/system/dict/data/list**';
 const DICT_DATA_CREATE_URL = '**/api/v1/system/dict/data/create**';
+const DICT_TYPE_CREATE_URL = '**/api/v1/system/dict/type/create**';
 
 /**
  * 字典管理的菜单树。
@@ -499,5 +500,67 @@ test.describe('字典管理页', () => {
       dict_value: '1',
       dict_type_id: 1,
     });
+  });
+
+  test('字典类型编码不符合后端的正则时表单内报错,不发请求', async ({
+    page,
+  }) => {
+    const createRequests: unknown[] = [];
+
+    await page.route(DICT_TYPE_CREATE_URL, async (route) => {
+      createRequests.push(route.request().postDataJSON());
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: '创建字典类型成功',
+          data: null,
+          status_code: 200,
+          success: true,
+        }),
+      });
+    });
+
+    await setupModulePage(page, {
+      menus: [
+        dictMenu([
+          { title: '新增类型', permission: 'module_system:dict_type:create' },
+        ]),
+      ],
+      listUrl: DICT_TYPE_LIST_URL,
+      listBody: dictTypeListResponse,
+    });
+
+    await page.route(DICT_DATA_LIST_URL, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(dictDataListResponse),
+      }),
+    );
+
+    await gotoModulePage(page, DICT_PAGE_PATH, menuItem(page));
+
+    await page.getByRole('button', { name: '新增类型' }).click();
+
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '字典名称' })
+      .locator('input')
+      .fill('用户状态');
+    // 后端 validate_dict_type 的正则是 ^[a-z][a-z0-9_]*$
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '字典类型' })
+      .locator('input')
+      .fill('User Status');
+
+    await page.locator('.ant-modal-footer button.ant-btn-primary').click();
+
+    // 表单内报错(不是后端 422 之后的 toast)
+    await expect(
+      page.getByText('小写字母开头,只能包含小写字母、数字与下划线'),
+    ).toBeVisible();
+    // 请求根本没发出去
+    expect(createRequests).toHaveLength(0);
   });
 });

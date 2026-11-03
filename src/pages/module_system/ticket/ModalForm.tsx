@@ -95,7 +95,12 @@ const TicketModalForm: React.FC<TicketModalProps> = ({
       <ProFormText
         name="title"
         label="工单标题"
-        rules={[{ required: true, message: '请输入工单标题' }]}
+        rules={[
+          { required: true, message: '请输入工单标题' },
+          // 后端 TicketCreateSchema.title 的 max_length=200
+          // (backend/app/api/v1/module_system/ticket/schema.py)
+          { max: 200, message: '工单标题不超过 200 个字符' },
+        ]}
       />
       <ProFormSelect
         name="ticket_type"
