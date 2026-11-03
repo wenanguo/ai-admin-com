@@ -10,11 +10,12 @@ import {
 /**
  * 部门管理页的前端闭环(接口全部拦截,不需要真实账号)。
  *
- * 覆盖四件事:
+ * 覆盖五件事:
  * - 树形表格渲染出两级部门;数据源是 `/system/dept/tree`(后端没有列表接口)
  * - RF1:后端业务错误(HTTP 500 + 信封)由请求层转成 BizError,弹的是后端的 msg
  * - RF3:后端返回空树时表格显示空状态,不白屏、不报错
  * - RF2:按钮级权限来自后端菜单树里的 type=3 节点(权限码是 module_system:dept:*)
+ * - 排序清空后提交体**不带** order 字段(后端 order 是必填 int,null 就是 422)
  *
  * 菜单树 / 登录态 / 业务错误信封都由 ./helpers 提供 —— helpers 不认识任何具体模块。
  */
@@ -253,5 +254,66 @@ test.describe('部门管理页', () => {
       listBody: deptTreeResponse,
       ready: menuItem(page),
     });
+  });
+
+  test('排序清空后提交体不带 order 字段(后端 order 是必填 int)', async ({
+    page,
+  }) => {
+    const createRequests: { body: unknown }[] = [];
+
+    await page.route('**/api/v1/system/dept/create**', async (route) => {
+      createRequests.push({ body: route.request().postDataJSON() });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: '创建部门成功',
+          data: null,
+          status_code: 200,
+          success: true,
+        }),
+      });
+    });
+
+    await setupModulePage(page, {
+      menus: [deptMenu()],
+      listUrl: DEPT_TREE_URL,
+      listBody: deptTreeResponse,
+    });
+
+    await gotoModulePage(page, DEPT_PAGE_PATH, menuItem(page));
+
+    await page.getByRole('button', { name: '新增' }).click();
+
+    await expect(page.locator('.ant-modal')).toBeVisible();
+
+    // 必填项:部门名称 + 部门编码
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '部门名称' })
+      .locator('input')
+      .fill('测试部');
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '部门编码' })
+      .locator('input')
+      .fill('qa');
+
+    // 排序:填一个再清空 —— InputNumber 清空后表单值是 null
+    const orderInput = page
+      .locator('.ant-modal .ant-form-item', { hasText: '排序' })
+      .locator('input');
+    await orderInput.fill('2');
+    await orderInput.fill('');
+
+    await page.locator('.ant-modal-footer button.ant-btn-primary').click();
+
+    await expect.poll(() => createRequests.length).toBe(1);
+    // ⚠️ 空排序不带 order 字段(不是 order: null):后端 DeptCreateSchema.order
+    //    是必填 int,传 null 就是 422;不带它走后端默认值 1
+    expect(createRequests[0].body).toMatchObject({
+      name: '测试部',
+      code: 'qa',
+    });
+    expect(createRequests[0].body).not.toHaveProperty('order');
   });
 });
