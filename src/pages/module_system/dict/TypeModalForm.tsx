@@ -69,6 +69,8 @@ const TypeModalForm: React.FC<TypeModalProps> = ({
         label="字典类型"
         rules={[
           { required: true, message: '请输入字典类型' },
+          // 后端 DictTypeCreateSchema.dict_type 的 max_length=255
+          { max: 255, message: '字典类型不超过 255 个字符' },
           {
             // 与后端 validate_dict_type 的正则保持一致
             // (backend/app/api/v1/module_system/dict/schema.py)

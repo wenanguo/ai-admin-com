@@ -12,13 +12,14 @@ import {
  * 字典管理页的前端闭环(接口全部拦截,不需要真实账号)。
  *
  * 本页是**主从结构**:左栏字典类型,右栏该类型下的字典数据。
- * 覆盖五件事:
+ * 覆盖六件事:
  * - 左栏渲染类型、右栏渲染该类型下的数据,且右栏请求带上 dict_type 筛选
  * - 点左栏的类型能切换右栏的筛选
  * - RF1:后端业务错误(HTTP 500 + 信封)由请求层转成 BizError,弹的是后端的 msg
  * - RF3:后端返回空列表时表格显示空状态,不白屏、不报错
  * - RF2:按钮级权限来自后端菜单树里的 type=3 节点,且**两套权限码互不通用**
  *   (module_system:dict_type:* 与 module_system:dict_data:*)
+ * - 超长输入在表单内报错不发请求:类型编码 / 标签 / 键值 ≤ 255(与后端 schema 对齐)
  *
  * 菜单树 / 登录态 / 业务错误信封都由 ./helpers 提供 —— helpers 不认识任何具体模块。
  */
@@ -560,6 +561,124 @@ test.describe('字典管理页', () => {
     await expect(
       page.getByText('小写字母开头,只能包含小写字母、数字与下划线'),
     ).toBeVisible();
+    // 请求根本没发出去
+    expect(createRequests).toHaveLength(0);
+  });
+
+  test('字典类型编码超过 255 个字符时表单内报错,不发请求', async ({ page }) => {
+    const createRequests: unknown[] = [];
+
+    await page.route(DICT_TYPE_CREATE_URL, async (route) => {
+      createRequests.push(route.request().postDataJSON());
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: '创建字典类型成功',
+          data: null,
+          status_code: 200,
+          success: true,
+        }),
+      });
+    });
+
+    await setupModulePage(page, {
+      menus: [
+        dictMenu([
+          { title: '新增类型', permission: 'module_system:dict_type:create' },
+        ]),
+      ],
+      listUrl: DICT_TYPE_LIST_URL,
+      listBody: dictTypeListResponse,
+    });
+
+    await page.route(DICT_DATA_LIST_URL, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(dictDataListResponse),
+      }),
+    );
+
+    await gotoModulePage(page, DICT_PAGE_PATH, menuItem(page));
+
+    await page.getByRole('button', { name: '新增类型' }).click();
+
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '字典名称' })
+      .locator('input')
+      .fill('用户状态');
+    // 256 个小写字母:过了后端的正则(^[a-z][a-z0-9_]*$),
+    // 但超了 DictTypeCreateSchema.dict_type 的 max_length=255
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '字典类型' })
+      .locator('input')
+      .fill('a'.repeat(256));
+
+    await page.locator('.ant-modal-footer button.ant-btn-primary').click();
+
+    // 表单内报错(不是后端 422 之后的 toast)
+    await expect(page.getByText('字典类型不超过 255 个字符')).toBeVisible();
+    // 请求根本没发出去
+    expect(createRequests).toHaveLength(0);
+  });
+
+  test('字典标签超过 255 个字符时表单内报错,不发请求', async ({ page }) => {
+    const createRequests: unknown[] = [];
+
+    await page.route(DICT_DATA_CREATE_URL, async (route) => {
+      createRequests.push(route.request().postDataJSON());
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: '创建字典数据成功',
+          data: null,
+          status_code: 200,
+          success: true,
+        }),
+      });
+    });
+
+    await setupModulePage(page, {
+      menus: [
+        dictMenu([
+          { title: '新增数据', permission: 'module_system:dict_data:create' },
+        ]),
+      ],
+      listUrl: DICT_TYPE_LIST_URL,
+      listBody: dictTypeListResponse,
+    });
+
+    await page.route(DICT_DATA_LIST_URL, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(dictDataListResponse),
+      }),
+    );
+
+    await gotoModulePage(page, DICT_PAGE_PATH, menuItem(page));
+
+    await page.getByRole('button', { name: '新增数据' }).click();
+
+    // 256 个字:超了 DictDataCreateSchema.dict_label 的 max_length=255
+    // (dict_value 同样是 255,规则在同一个表单里成对出现)
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '字典标签' })
+      .locator('input')
+      .fill('标'.repeat(256));
+    await page
+      .locator('.ant-modal .ant-form-item', { hasText: '字典键值' })
+      .locator('input')
+      .fill('1');
+
+    await page.locator('.ant-modal-footer button.ant-btn-primary').click();
+
+    // 表单内报错(不是后端 422 之后的 toast)
+    await expect(page.getByText('字典标签不超过 255 个字符')).toBeVisible();
     // 请求根本没发出去
     expect(createRequests).toHaveLength(0);
   });

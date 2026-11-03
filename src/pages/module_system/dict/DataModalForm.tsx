@@ -84,12 +84,20 @@ const DataModalForm: React.FC<DataModalProps> = ({
       <ProFormText
         name="dict_label"
         label="字典标签"
-        rules={[{ required: true, message: '请输入字典标签' }]}
+        rules={[
+          { required: true, message: '请输入字典标签' },
+          // 后端 DictDataCreateSchema.dict_label 的 max_length=255
+          { max: 255, message: '字典标签不超过 255 个字符' },
+        ]}
       />
       <ProFormText
         name="dict_value"
         label="字典键值"
-        rules={[{ required: true, message: '请输入字典键值' }]}
+        rules={[
+          { required: true, message: '请输入字典键值' },
+          // 后端 DictDataCreateSchema.dict_value 的 max_length=255
+          { max: 255, message: '字典键值不超过 255 个字符' },
+        ]}
       />
       <ProFormSelect
         name="dict_type_id"
@@ -106,11 +114,18 @@ const DataModalForm: React.FC<DataModalProps> = ({
         }
         rules={[{ required: true, message: '请选择字典类型' }]}
       />
-      {/*
+      {/**
         字典类型**编码** —— 后端必填(dict_type),由当前选中的字典类型带出。
         只读展示:改它就得换字典类型,那是「字典类型」下拉的事。
+        必填规则照给:后端 DictDataCreateSchema.dict_type 是必填的,
+        万一带不出值,让用户在表单里看见,而不是等后端 422。
       */}
-      <ProFormText name="dict_type" label="数据类型" disabled />
+      <ProFormText
+        name="dict_type"
+        label="数据类型"
+        disabled
+        rules={[{ required: true }]}
+      />
       <ProFormText name="css_class" label="样式类名" />
       <ProFormText name="list_class" label="回显样式" />
       <ProFormSwitch name="is_default" label="是否默认" />
