@@ -146,6 +146,13 @@ export default [
         name: 'pmProjectDetail',
         component: './module_pm/project/detail',
       },
+      {
+        // 里程碑管理页:竖排时间线(行按显示排序 → 计划开始日纵向读),不做甘特
+        path: '/pm/milestone',
+        name: 'milestone',
+        icon: 'flag',
+        component: './module_pm/milestone',
+      },
     ],
   },
   {

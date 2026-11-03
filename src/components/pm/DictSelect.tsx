@@ -1,5 +1,5 @@
 import { Select } from 'antd';
-import type { JSX } from 'react';
+import { type JSX, useMemo } from 'react';
 import { useDictOptions } from './useDictOptions';
 
 /**
@@ -24,6 +24,14 @@ export interface DictSelectProps {
   onChange?: (v?: string) => void;
   placeholder?: string;
   allowClear?: boolean;
+  /**
+   * 要从选项里剔的线上码。
+   *
+   * 用于「这个状态不该由人手工设」的场合(里程碑的 at_risk/missed 由规则
+   * 引擎独占写权,INV-13):字典里明明有这两项,但表单里不让选。
+   * 不给就是**全量选项**(与字典一致)。
+   */
+  excludeValues?: string[];
 }
 
 /** 字典下拉:选项来自字典接口,label 给人看、value 给后端 */
@@ -34,8 +42,18 @@ export function DictSelect(props: DictSelectProps): JSX.Element {
     onChange,
     placeholder = '请选择',
     allowClear = true,
+    excludeValues,
   } = props;
   const { options, loading } = useDictOptions(dictType);
+
+  // 被剔除的线上码不出现在下拉里(规则独占写的状态,人不许手工设)
+  const selectableOptions = useMemo(
+    () =>
+      excludeValues?.length
+        ? options.filter((option) => !excludeValues.includes(option.value))
+        : options,
+    [excludeValues, options],
+  );
 
   return (
     <Select<string>
@@ -47,7 +65,7 @@ export function DictSelect(props: DictSelectProps): JSX.Element {
       placeholder={placeholder}
       allowClear={allowClear}
       loading={loading}
-      options={options}
+      options={selectableOptions}
     />
   );
 }
