@@ -271,7 +271,7 @@ const LogManagement: React.FC = () => {
         title="登录日志详情"
         open={loginDetailOpen}
         onClose={() => setLoginDetailOpen(false)}
-        width={720}
+        size={720}
       >
         <Descriptions
           column={1}
@@ -338,7 +338,7 @@ const LogManagement: React.FC = () => {
         title="操作日志详情"
         open={operationDetailOpen}
         onClose={() => setOperationDetailOpen(false)}
-        width={720}
+        size={720}
       >
         <Descriptions
           column={1}
