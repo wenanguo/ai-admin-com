@@ -37,7 +37,14 @@ export interface TicketOut {
   ticket_content?: string | null;
   summary?: string | null;
   images?: string | null;
-  description?: string | null;
+  /**
+   * 回复内容 —— 后端 `TicketOutSchema` 里只有 `reply`,**没有** `description`。
+   *
+   * ⚠️ 之前这里写的是 `description`:后端响应里根本没有这个字段 ⇒
+   *   编辑弹窗的「描述」永远是空的,用户随手一改就把库里存的值覆盖掉,
+   *   而真正的回复内容从来没人显示过。
+   */
+  reply?: string | null;
   /** 处理人 id(后端 TicketOutSchema.assigned_id) */
   assigned_id?: number | null;
   /**
@@ -69,7 +76,14 @@ export type TicketCreateParams = {
   ticket_type: TicketType;
   summary?: string | null;
   images?: string | null;
-  description?: string | null;
+  /**
+   * 回复内容 —— 后端 `TicketUpdateSchema.reply`。
+   *
+   * ⚠️ 不是 `description`:后端的响应模型里只有 `reply`,用 `description`
+   *   的话编辑时会把库里存的值覆盖成一个看不见的空值。
+   *   (创建接口 `TicketCreateSchema` 没有 `reply` 字段,提交它会被忽略。)
+   */
+  reply?: string | null;
 };
 
 export type TicketUpdateParams = TicketCreateParams;

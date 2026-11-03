@@ -82,7 +82,7 @@ const TicketModalForm: React.FC<TicketModalProps> = ({
         ticket_content: record?.ticket_content ?? undefined,
         summary: record?.summary ?? undefined,
         images: record?.images ?? undefined,
-        description: record?.description ?? undefined,
+        reply: record?.reply ?? undefined,
       }}
       // antd v6 里 destroyOnClose 已废弃,用 destroyOnHidden
       modalProps={{ destroyOnHidden: true }}
@@ -122,11 +122,12 @@ const TicketModalForm: React.FC<TicketModalProps> = ({
           placeholder: '图片 URL 的 JSON 数组,如 ["https://example.com/a.png"]',
         }}
       />
-      <ProFormTextArea
-        name="description"
-        label="描述"
-        fieldProps={{ rows: 3 }}
-      />
+      {/*
+        回复内容 —— 后端 `TicketOutSchema.reply`。
+        ⚠️ 不是「描述」:后端响应里没有 description,拿它当表单初值会得到
+        一个永远为空的框,一提交就把库里存的值覆盖掉。
+      */}
+      <ProFormTextArea name="reply" label="回复内容" fieldProps={{ rows: 3 }} />
     </ModalForm>
   );
 };

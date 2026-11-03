@@ -177,6 +177,14 @@ const TicketManagement: React.FC = () => {
         ]),
       ),
     },
+    {
+      // 回复内容 —— 后端 TicketOutSchema 里是 reply(不是 description)
+      title: '回复',
+      dataIndex: 'reply',
+      width: 200,
+      ellipsis: true,
+      search: false,
+    },
     { title: '创建时间', dataIndex: 'created_time', width: 180, search: false },
   ];
 

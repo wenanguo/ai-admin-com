@@ -80,7 +80,7 @@ const ticketListResponse = {
         ticket_content: '登录时后端返回 500',
         summary: '登录报错',
         images: null,
-        description: '工单管理页的测试数据',
+        reply: '工单管理页的测试数据',
         status: 1,
         assigned_id: 3,
         // 后端随工单一起返回处理人(assigned_by)
@@ -125,7 +125,7 @@ const unassignedTicketListResponse = {
         ticket_content: '待指派',
         summary: null,
         images: null,
-        description: null,
+        reply: null,
         status: 0,
         assigned_id: null,
         assigned_by: null,
@@ -244,7 +244,7 @@ test.describe('工单管理页', () => {
     );
     await expect(page.getByText('登录时报 500')).toBeVisible();
 
-    // 列顺序:勾选 / ID / 工单标题 / 工单类型 / 处理人 / 状态 / 创建时间
+    // 列顺序:勾选 / ID / 工单标题 / 工单类型 / 处理人 / 状态 / 回复 / 创建时间
     // (第一列是 rowSelection 的勾选框)
     const cells = page.locator('.ant-table-tbody tr.ant-table-row td');
     await expect(cells.nth(2)).toHaveText('登录时报 500');
@@ -253,11 +253,32 @@ test.describe('工单管理页', () => {
     // 处理人显示名字(后端随工单返回 assigned_by),不是 id
     await expect(cells.nth(4)).toHaveText('张三');
     await expect(cells.nth(5)).toHaveText('处理中');
+    // 回复列显示后端返回的 reply(后端响应里没有 description 这个字段)
+    await expect(cells.nth(6)).toHaveText('工单管理页的测试数据');
 
     // 分页参数用后端约定的 page_no / page_size
     await expect.poll(() => listRequests.length).toBeGreaterThan(0);
     expect(listRequests[0]).toContain('page_no=1');
     expect(listRequests[0]).toContain('page_size=10');
+  });
+
+  test('编辑工单时预填的是后端返回的 reply(不是不存在的 description)', async ({
+    page,
+  }) => {
+    await setupTicketPage(page, ticketListResponse);
+
+    await gotoModulePage(page, TICKET_PAGE_PATH, menuItem(page));
+
+    await page.getByRole('button', { name: '编辑' }).first().click();
+
+    await expect(page.locator('.ant-modal')).toBeVisible();
+    // ⚠️ 后端 TicketOutSchema 里是 reply —— 表单得绑到它,
+    // 绑到不存在的 description 就是「永远为空的框 + 覆写库里存的值」
+    await expect(
+      page
+        .locator('.ant-modal .ant-form-item', { hasText: '回复内容' })
+        .locator('textarea'),
+    ).toHaveValue('工单管理页的测试数据');
   });
 
   test('业务错误(HTTP 500 + 信封)弹的是后端 msg(RF1)', async ({ page }) => {
