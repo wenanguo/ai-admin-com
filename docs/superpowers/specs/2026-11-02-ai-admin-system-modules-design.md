@@ -535,7 +535,8 @@ const actionRef = useRef<ActionType>();                        // ❌ TS 报错
   这是本轮唯一的非「一表一页」形态。
 - 类型搜索项：`dict_name`、`dict_type`、`status`
 - 数据搜索项：`dict_label`、`dict_type`、`status`
-- 类型表单：`dict_name`(必填)、`dict_type`(必填)、`dict_sort`、`status`、`description`
+- 类型表单：`dict_name`(必填)、`dict_type`(必填,须匹配 `^[a-z][a-z0-9_]*$`)、`status`、`description`
+  > 类型**没有**「排序」：后端 `DictTypeCreateSchema` 与 `DictTypeModel` 里都没有 `dict_sort`。
 - 数据表单：`dict_sort`(必填,1–999)、`dict_label`(必填)、`dict_value`(必填)、
   `dict_type`(必填,**当前选中字典类型的编码**,不是 id)、`dict_type_id`(必填)、
   `css_class`、`list_class`、`is_default`(bool)、`status`、`description`

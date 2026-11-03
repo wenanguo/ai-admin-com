@@ -15,6 +15,9 @@ import type { ApiResponse, PageQuery, PageResult } from '@/services/types';
  *   `dict_sort`(1–999)与 `dict_type`(字典类型**编码**,不是 id)——
  *   少任何一个,FastAPI 的 body 校验就会直接 422(`Field required`)。
  *   `dict_type` 由「当前选中的字典类型」带出,`dict_type_id` 才是 id。
+ *
+ * ⚠️ 字典**类型**没有 `dict_sort`:后端 `DictTypeCreateSchema` 与 `DictTypeModel`
+ *   里都没有这个字段,提交了会被静默丢弃 —— 类型表单里也就没有「排序」。
  */
 
 /** 后端 DictTypeOutSchema */
@@ -22,7 +25,6 @@ export interface DictTypeOut {
   id?: number | null;
   dict_name?: string | null;
   dict_type?: string | null;
-  dict_sort?: number | null;
   status?: number | null;
   description?: string | null;
   created_time?: string | null;
@@ -62,7 +64,6 @@ export type DictDataListParams = Partial<PageQuery> & {
 export type DictTypeCreateParams = {
   dict_name: string;
   dict_type: string;
-  dict_sort?: number;
   status?: number;
   description?: string | null;
 };

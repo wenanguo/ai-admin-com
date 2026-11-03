@@ -1198,7 +1198,6 @@ role.ts 已有 listRoles(用户表单在用),在原文件上扩展,没有新建�
     id?: number | null;
     dict_name?: string | null;
     dict_type?: string | null;
-    dict_sort?: number | null;
     status?: number | null;
     description?: string | null;
     created_time?: string | null;
@@ -1230,7 +1229,6 @@ role.ts 已有 listRoles(用户表单在用),在原文件上扩展,没有新建�
   export type DictTypeCreateParams = {
     dict_name: string;
     dict_type: string;
-    dict_sort?: number;
     status?: number;
     description?: string | null;
   };
@@ -1314,7 +1312,8 @@ npx vitest run src/services/api/system/dict.test.ts
 - 类型行操作：编辑（`dict_type:update`）/ 删除（`dict_type:delete`）
 - 数据行操作：编辑（`dict_data:update`）/ 删除（`dict_data:delete`）
 
-`TypeModalForm.tsx`：`dict_name`（必填）、`dict_type`（必填）、`dict_sort`、`status`、`description`
+`TypeModalForm.tsx`：`dict_name`（必填）、`dict_type`（必填,须匹配 `^[a-z][a-z0-9_]*$`）、`status`、`description`
+  > 类型**没有**「排序」：后端 `DictTypeCreateSchema` 与 `DictTypeModel` 里都没有 `dict_sort`。
 `DataModalForm.tsx`：`dict_sort`（必填,1–999）、`dict_label`（必填）、`dict_value`（必填）、
 `dict_type_id`（必填,选当前类型）、`dict_type`（必填,**当前选中字典类型的编码**,只读带出）、
 `css_class`、`list_class`、`is_default`（`ProFormSwitch`）、`status`、`description`

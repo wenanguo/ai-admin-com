@@ -1,6 +1,5 @@
 import {
   ModalForm,
-  ProFormDigit,
   ProFormSelect,
   ProFormText,
   ProFormTextArea,
@@ -23,6 +22,11 @@ export type TypeModalProps = {
  *
  * 字典类型是字典数据的归属方(dict_data.dict_type_id 指向它),
  * 所以类型编码(dict_type)就是业务侧读字典时用的 key。
+ *
+ * ⚠️ 类型**没有**「排序」:后端 `DictTypeCreateSchema` 与 `DictTypeModel`
+ *   里都没有 `dict_sort` 字段,提交了会被静默丢弃。
+ * ⚠️ 字典类型编码必须满足后端的 `^[a-z][a-z0-9_]*$`
+ *   (dict/schema.py 的 validate_dict_type),所以前端加同样的正则规则。
  */
 const TypeModalForm: React.FC<TypeModalProps> = ({
   open,
@@ -39,7 +43,6 @@ const TypeModalForm: React.FC<TypeModalProps> = ({
       initialValues={{
         dict_name: record?.dict_name ?? undefined,
         dict_type: record?.dict_type ?? undefined,
-        dict_sort: record?.dict_sort ?? undefined,
         status: record?.status ?? 0,
         description: record?.description ?? undefined,
       }}
@@ -59,9 +62,16 @@ const TypeModalForm: React.FC<TypeModalProps> = ({
       <ProFormText
         name="dict_type"
         label="字典类型"
-        rules={[{ required: true }]}
+        rules={[
+          { required: true, message: '请输入字典类型' },
+          {
+            // 与后端 validate_dict_type 的正则保持一致
+            // (backend/app/api/v1/module_system/dict/schema.py)
+            pattern: /^[a-z][a-z0-9_]*$/,
+            message: '小写字母开头,只能包含小写字母、数字与下划线',
+          },
+        ]}
       />
-      <ProFormDigit name="dict_sort" label="排序" />
       <ProFormSelect
         name="status"
         label="状态"
