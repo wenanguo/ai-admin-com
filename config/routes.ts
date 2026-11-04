@@ -140,8 +140,8 @@ export default [
         component: './module_pm/project',
       },
       {
-        // 详情页只在路由里注册(菜单里没有这一项,列表页也没有详情入口):
-        // 按 URL /pm/project/<id> 进;项目 id 是路径参数,页面里用 useParams 读
+        // 详情页只在路由里注册(菜单里没有这一项,入口在列表页的**项目名称**链接):
+        // /pm/project/<id> 进;项目 id 是路径参数,页面里用 useParams 读
         path: '/pm/project/:id',
         name: 'pmProjectDetail',
         component: './module_pm/project/detail',

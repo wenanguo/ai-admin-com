@@ -443,6 +443,77 @@ test.describe('风险登记册页', () => {
     await expect(aiRow).toContainText('ai_suggested');
   });
 
+  test('项目侧载只覆盖最新的 100 个项目时给出提示', async ({ page }) => {
+    await setupRiskPage(page);
+
+    // 侧载的项目列表:后端一共 250 个,但只回了 2 条 ⇒ 侧载被截断了
+    await page.unroute(PROJECT_LIST_URL);
+    await page.route(PROJECT_LIST_URL, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...projectListResponse,
+          data: { ...projectListResponse.data, total: 250 },
+        }),
+      }),
+    );
+
+    await gotoModulePage(
+      page,
+      RISK_PAGE_PATH,
+      page.locator('.ant-menu').getByText('风险登记册'),
+    );
+
+    // 上限**不静默**:页面上有一条提示说清侧载盖了什么
+    // (热力图那一条不在 —— 风险没截断)
+    const alerts = page.locator('.ant-alert');
+    await expect(alerts).toHaveCount(1);
+    await expect(alerts.first()).toContainText('只覆盖最新的 100 个项目');
+    await expect(alerts.first()).toContainText('250 个项目');
+  });
+
+  test('编辑时负责人显示名字,不是裸 id', async ({ page }) => {
+    await setupRiskPage(page);
+
+    // 用户列表里**没有**风险的负责人(张三):远程搜索只回一页,
+    // 负责人不在候选里时编辑框里就只是个裸 id —— 行里的 owner_by 把它补上
+    await page.unroute(USER_LIST_URL);
+    await page.route(USER_LIST_URL, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...userListResponse,
+          data: {
+            items: [userListResponse.data.items[1]],
+            total: 1,
+            page_no: 1,
+            page_size: 100,
+            has_next: false,
+          },
+        }),
+      }),
+    );
+
+    await gotoModulePage(
+      page,
+      RISK_PAGE_PATH,
+      page.locator('.ant-menu').getByText('风险登记册'),
+    );
+
+    await tableRows(page)
+      .filter({ hasText: '第三方接口交付延期' })
+      .getByRole('button', { name: '编辑' })
+      .click();
+    await expect(page.locator('.ant-modal')).toBeVisible();
+
+    // 负责人显示的是名字(不是 id 1)
+    const owner = modalFormItem(page, '负责人').locator('.ant-select-content');
+    await expect(owner).toContainText('张三');
+    await expect(owner).not.toContainText('1');
+  });
+
   test('新增风险提交 score(概率 × 影响)', async ({ page }) => {
     const createRequests: { url: string; method: string; body: unknown }[] = [];
 

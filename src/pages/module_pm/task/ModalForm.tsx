@@ -12,6 +12,7 @@ import { useModel } from '@umijs/max';
 import { Alert, Spin } from 'antd';
 import type React from 'react';
 import { DictSelect } from '@/components/pm/DictSelect';
+import { listMilestones } from '@/services/api/pm/milestone';
 import type {
   TaskCreateParams,
   TaskOut,
@@ -19,7 +20,7 @@ import type {
 } from '@/services/api/pm/task';
 import { listTasks } from '@/services/api/pm/task';
 import { listUsers } from '@/services/api/system/user';
-import type { MilestoneOption, ProjectOption } from './useProjectNames';
+import type { ProjectOption } from './useProjectNames';
 
 export type TaskModalProps = {
   open: boolean;
@@ -34,8 +35,6 @@ export type TaskModalProps = {
   onSubmit: (values: TaskCreateParams | TaskUpdateParams) => Promise<boolean>;
   /** 侧载的项目选项(列表页已拉过,表单不再发请求) */
   projectOptions: ProjectOption[];
-  /** 侧载的里程碑选项(表单里按所选项目过滤) */
-  milestoneOptions: MilestoneOption[];
   /** 侧载是否还在途(在途时下拉是空的,先转圈别让人干瞪眼) */
   optionsLoading: boolean;
 };
@@ -117,15 +116,27 @@ function validateLabels(_: unknown, value: string | undefined): Promise<void> {
  *
  * ⚠️ 这个接口在后端要 module_system:user:query 权限;
  * 没有时表单里只有这一项填不了,其它不受影响。
+ *
+ * `current` 是**行里的负责人**(后端随行返回的 assignee_by 冗余字段):
+ * 远程搜索只回一页(100 个用户),负责人不在这页里时,编辑弹窗只能显示一个
+ * 裸 id(3)。把它补进候选就显示名字了 —— 提交的值仍然是 id(后端要的是 id)。
+ * 有搜索词时不补:补了也不匹配搜索词。
  */
-async function fetchUserOptions(params: { keyWords?: string }) {
+async function fetchUserOptions(
+  params: { keyWords?: string },
+  current?: {
+    id?: number | null;
+    name?: string | null;
+    username?: string | null;
+  } | null,
+) {
   const keyword = params.keyWords?.trim();
   const res = await listUsers({
     page_no: 1,
     page_size: 100,
     ...(keyword ? { name: keyword } : {}),
   });
-  return (res?.data?.items ?? []).flatMap((user) =>
+  const options = (res?.data?.items ?? []).flatMap((user) =>
     user.id == null
       ? []
       : [
@@ -135,6 +146,15 @@ async function fetchUserOptions(params: { keyWords?: string }) {
           },
         ],
   );
+  if (keyword || !current || current.id == null) return options;
+  if (options.some((option) => option.value === current.id)) return options;
+  return [
+    {
+      label: current.name ?? current.username ?? String(current.id),
+      value: current.id,
+    },
+    ...options,
+  ];
 }
 
 /**
@@ -240,7 +260,6 @@ const TaskModalForm: React.FC<TaskModalProps> = ({
   onOpenChange,
   onSubmit,
   projectOptions,
-  milestoneOptions,
   optionsLoading,
 }) => {
   // 编辑对象的 id(新增时是 null)
@@ -298,23 +317,46 @@ const TaskModalForm: React.FC<TaskModalProps> = ({
             options={projectOptions}
             rules={[{ required: true, message: '请选择所属项目' }]}
           />
-          {/* 里程碑与父任务都跟着所选项目走(INV-02:不能跨项目) */}
-          <ProFormDependency name={['project_id']}>
-            {({ project_id }: { project_id?: number }) => (
-              <ProFormSelect
-                name="milestone_id"
-                label="所属里程碑"
-                showSearch
-                fieldProps={{
-                  optionFilterProp: 'label',
-                  placeholder: '先选项目,再选里程碑',
-                }}
-                options={milestoneOptions.filter(
-                  (option) => option.projectId === project_id,
-                )}
-              />
-            )}
-          </ProFormDependency>
+          {/*
+            里程碑与父任务都跟着所选项目走(INV-02:不能跨项目)。
+
+            里程碑的候选是**按所选项目单独拉**的(不是全局侧载的那 100 条):
+            侧载只覆盖最新的 100 个里程碑,跨项目一多就漏 —— 单个项目很少有
+            100 个里程碑,按项目拉才是全的(依赖 project_id 变化重新请求)。
+          */}
+          <ProFormSelect
+            name="milestone_id"
+            label="所属里程碑"
+            showSearch
+            dependencies={['project_id']}
+            fieldProps={{
+              optionFilterProp: 'label',
+              placeholder: '先选项目,再选里程碑',
+            }}
+            request={async ({
+              project_id,
+            }: {
+              project_id?: number;
+              keyWords?: string;
+            }) => {
+              if (project_id == null) return [];
+              const res = await listMilestones({
+                page_no: 1,
+                page_size: 100,
+                project_id,
+              });
+              return (res?.data?.items ?? []).flatMap((milestone) =>
+                milestone.id == null
+                  ? []
+                  : [
+                      {
+                        label: milestone.name ?? String(milestone.id),
+                        value: milestone.id,
+                      },
+                    ],
+              );
+            }}
+          />
           <ProFormDependency name={['project_id']}>
             {({ project_id }: { project_id?: number }) => (
               <ProFormSelect
@@ -389,7 +431,9 @@ const TaskModalForm: React.FC<TaskModalProps> = ({
             showSearch
             debounceTime={300}
             fieldProps={{ placeholder: '输入姓名搜索' }}
-            request={fetchUserOptions}
+            // 行里的负责人(assignee_by)一并当候选:远程搜索只回一页,
+            // 负责人不在那一页里时,编辑框里就只是个裸 id
+            request={(params) => fetchUserOptions(params, record?.assignee_by)}
           />
           {/* 工时是数字(后端是 Decimal,不是字符串) */}
           <ProFormDigit

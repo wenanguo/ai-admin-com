@@ -234,10 +234,11 @@ const boardListResponse = {
  * 装好受控页面:登录态 + PM 菜单树 + 任务列表 + 两个字典。
  *
  * @param canDrag 是否授予 `…:update` 权限(没有它卡片不可拖拽)
+ * @param total 后端一共多少个任务(默认夹具里的 7;给 250 就是「看板只拉得回一页」)
  */
 async function setupBoardPage(
   page: Page,
-  options?: { canDrag?: boolean },
+  options?: { canDrag?: boolean; total?: number },
 ): Promise<string[]> {
   const canDrag = options?.canDrag ?? true;
   const buttons = canDrag ? boardMenu.buttons : [];
@@ -246,7 +247,12 @@ async function setupBoardPage(
     menus: [{ ...boardMenu, buttons }],
     parent: { routePath: '/pm', title: '项目管理' },
     listUrl: TASK_LIST_URL,
-    listBody: boardListResponse,
+    listBody: options?.total
+      ? {
+          ...boardListResponse,
+          data: { ...boardListResponse.data, total: options.total },
+        }
+      : boardListResponse,
   });
 
   // 字典:列标题(任务状态)与卡片上的优先级标签
@@ -339,6 +345,20 @@ test.describe('任务看板页', () => {
     // 已取消的任务也不出现在看板上
     await expect(boardCard(page, 27)).toHaveCount(0);
     await expect(page.getByText('放弃的需求')).toHaveCount(0);
+  });
+
+  test('任务数超过一页时提示说清「只拉到 100 条」与已取消的不进看板', async ({
+    page,
+  }) => {
+    // 后端一共 250 个任务,但看板只拉得回第一页(100 条)
+    await setupBoardPage(page, { total: 250 });
+
+    const alert = page.locator('.ant-alert');
+    await expect(alert).toHaveCount(1);
+    // 提示说的是**实际发生的事**:只拉到前 100 条 + 已取消的不进看板
+    await expect(alert).toContainText('只拉了前 100 个任务');
+    await expect(alert).toContainText('250 个');
+    await expect(alert).toContainText('已取消');
   });
 
   test('卡片显示标题/优先级/负责人/估时/截止日,逾期的标红', async ({

@@ -532,13 +532,17 @@ GET  /api/agent/conversations?limit=50  → [{ conversationId, title, updatedAt 
 
 **等级矩阵**（AIPM 02 §5.3，**前端算，因为后端没有 `level` 字段**）：
 
-| score | 等级 | 颜色 |
+| score | 等级 | 颜色（antd Tag 预设色） |
 |---|---|---|
-| ≥ 16 | 严重 | `colorError` |
-| 9–15 | 高 | `colorWarning` |
-| 4–8 | 中 | `colorPrimary` |
-| < 4 | 低 | `colorTextSecondary` |
+| ≥ 16 | 严重 | `error` |
+| 9–15 | 高 | `warning` |
+| 4–8 | 中 | `gold` |
+| < 4 | 低 | `success` |
 
+> **颜色是红橙黄绿的交通灯**（实现见 `src/components/pm/riskLevel.ts` 的
+> `RISK_LEVEL_COLOR`）。低危原本想用 `colorTextSecondary`（灰），但灰字在白底上
+> 几乎看不见 —— 改成 `success`（绿）更符合直觉。
+>
 > 这条要在代码注释里写清楚：**`level` 是派生量，不是后端字段**。
 > 矩阵阈值要提到一个共享常量里（`src/components/pm/riskLevel.ts`），
 > AI 服务侧的规则引擎也用同一套阈值 —— 两边不一致会出笑话。
@@ -595,6 +599,8 @@ GET  /api/agent/conversations?limit=50  → [{ conversationId, title, updatedAt 
 >
 > ⇒ 形式是**三段式** `module_pm_<插件模块>:<子模块>:<动作>`，
 > **不是** `module_pm_task:list` 那种两段式。
+> ⚠️ **有一条例外**：项目成员那条是**四段**
+> （`module_pm_project:pm_project:member:write`）—— 别按三段式种。
 > 前端 `useAccess().hasPermission()` 必须用上表的**完整字符串**。
 >
 > ⚠️ 另注：**列表权限码是 `query`，不是 `list`**（工单那个 `module_system:ticket:list`

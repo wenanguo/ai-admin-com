@@ -4,13 +4,14 @@
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task.
 > Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在 `ai-admin-com` 里建成 PM 管理的 5 个页面（项目、里程碑、任务列表、任务看板、风险），
+**Goal:** 在 `ai-admin-com` 里建成 PM 管理的 **6 个路由 / 4 个模块**
+（项目管理：列表 + 详情 · 里程碑 · 任务列表 · 任务看板 · 风险登记册），
 全部走真实后端 AiAdmin 的 PM 插件，字段与后端 schema 逐条对齐。
 
 **Architecture:** 照本仓既有范式 —— `ProTable` + `ModalForm` + `@/components/CrudTable` 的
 `useCrudTable`/`useCrudColumns`；service 层一模块一份，出入参类型**逐字对齐后端 schema**；
 状态/类型/分类**字典驱动**（后端字典带 `list_class`）；权限用 `useAccess().hasPermission()`
-门控，权限码是后端 controller 里的**三段式**。
+门控，权限码是后端 controller 里的**三段式**（项目成员那条是**四段**）。
 
 **Tech Stack:** React 19 · antd 6 · ProComponents 3 · Umi Max 4 · TypeScript · Vitest · Playwright
 
@@ -29,6 +30,8 @@
   `module_pm_project:pm_project:*` · `module_pm_project:pm_milestone:*` ·
   `module_pm_project:pm_task:*` · `module_pm_risk:pm_risk:*`。
   **不是** `module_pm_task:list` 那种两段式。列表权限码是 **`query`**。
+  ⚠️ **有一条例外**：项目成员那条是**四段**
+  （`module_pm_project:pm_project:member:write`）—— 别按三段式写。
 - **状态/类型/分类标签字典驱动**：选项来自 `getDictDataByType(dictType)`，
   标签颜色用字典项的 `list_class`。**不在前端硬编码状态色**。
 - **表单校验必须逐条对齐后端 schema**（长度、范围、必填）。后端 422 要在前端变成表单错误。
@@ -51,7 +54,7 @@
 
 | 依赖 | 归属 | 卡住什么 |
 |---|---|---|
-| **B1 PM 菜单种子**（`platform_menu` 里 PM 的菜单节点 + 按钮权限码） | **后端** | 没有种子，这 5 个页面**不会被菜单下发** ⇒ 页面路由注册了也进不去。Task 9 里要加一条检查 |
+| **B1 PM 菜单种子**（`platform_menu` 里 PM 的菜单节点 + 按钮权限码） | **后端** | 没有种子，这 6 个路由**不会被菜单下发** ⇒ 页面路由注册了也进不去。Task 9 里要加一条检查 |
 | PM 表单字典的 `list_class` 已种 | 后端 | 已有（`pm_v2_seed_v1.sql`），但若后端改动要回归 |
 
 ---
@@ -541,7 +544,9 @@ EOF
     并列出后端要种下的菜单节点与按钮权限码。
 
 - [ ] **Step 4: 全量门禁** —— Run: `npm run lint && npm test && npm run build && npm run e2e`
-  Expected: 全绿；**既有的 279 单测 + 80 e2e 零回归**
+  Expected: 全绿；**全量 324 单测 + 126 e2e 零回归**
+  （PM 页面这一轮做完时是 324 单测 + 118 e2e，后来的修复波次又加了 8 条 e2e；
+  PM 页面这一轮之前是 279 单测 + 80 e2e，那部分一条都不能回归）
 
 - [ ] **Step 5: 提交**
 
@@ -559,9 +564,9 @@ EOF
 ## 完成判据
 
 - [ ] `npm run lint` 干净（biome + tsc）
-- [ ] `npm test` 全绿，且**既有用例零回归**
+- [ ] `npm test` 全绿，且**既有用例零回归**（全量 324 条；PM 页面这一轮之前是 279 条）
 - [ ] `npm run build` 成功
-- [ ] `npm run e2e` 全绿，且**既有 80 条零回归**
+- [ ] `npm run e2e` 全绿，且**既有 80 条零回归**（全量 126 条；PM 页面这一轮做完时是 118 条）
 - [ ] spec §8 的 U7–U12 逐条验过：
   - U7 字段与后端 schema 逐条一致（Task 1 的类型 + 各页 e2e）
   - U8 标签字典驱动（Task 2）

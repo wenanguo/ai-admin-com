@@ -33,7 +33,13 @@ import RiskModalForm from './ModalForm';
 const requestRisks = toProTableRequest<RiskOut>(listRisks);
 
 /** 侧载一次的上限:后端 page_size 最大 100(同 CRUD_PAGINATION) */
-const SIDE_LOAD_PARAMS = { page_no: 1, page_size: 100 } as const;
+const SIDE_LOAD_PARAMS = {
+  page_no: 1,
+  page_size: 100,
+  // 排序显式写出来:后端的默认排序也是 id 倒序,但写出来才能保证
+  // 「侧载到的是最新的 100 条」是构造出来的,而不是后端改了默认值才知道
+  order_by: JSON.stringify([{ id: 'desc' }]),
+} as const;
 
 /** 项目下拉选项(label 给人看,value 是项目 id) */
 interface ProjectOption {
@@ -49,12 +55,19 @@ interface ProjectOption {
  * 1. **一次**:挂载时拉一次,不是在每行的 render 里发请求
  * 2. **查表**:列的 render 只做 Map 查表
  * 3. **降级**:拉失败只是没有名字(失败提示由请求层统一弹,这里不抛)
+ *
+ * ⚠️ 侧载有上限(后端 page_size 最大 100):这里取的是**最新的** 100 个项目,
+ * 更早的项目在表格里只能看到 id(见 lookupProjectName)。上限**不静默**:
+ * 后端的总数会带出去,页面据此给提示。
  */
 function useProjectSideLoad(): {
   names: Map<number, string>;
   options: ProjectOption[];
+  /** 后端一共多少个项目 */
+  total: number;
 } {
   const [options, setOptions] = useState<ProjectOption[]>([]);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,6 +83,7 @@ function useProjectSideLoad(): {
           });
         }
         setOptions(next);
+        setTotal(res?.data?.total ?? 0);
       })
       .catch(() => {
         // 失败提示由请求层统一弹,这里降级成空选项
@@ -84,7 +98,7 @@ function useProjectSideLoad(): {
     [options],
   );
 
-  return { names, options };
+  return { names, options, total };
 }
 
 /**
@@ -120,7 +134,11 @@ const RiskRegister: React.FC = () => {
   });
 
   // 侧载的项目名字:一次拉,列里查表映射成名字
-  const { names: projectNames, options: projectOptions } = useProjectSideLoad();
+  const {
+    names: projectNames,
+    options: projectOptions,
+    total: projectTotal,
+  } = useProjectSideLoad();
 
   // 字典选项:表格标签(DictTag 内部也用它)与搜索下拉(valueEnum)共用,
   // useDictOptions 有模块级缓存,这里两个类型各只发一次请求
@@ -327,6 +345,18 @@ const RiskRegister: React.FC = () => {
           type="info"
           showIcon
           title={`热力图最多统计前 ${allRisks.length} 条风险(共 ${allTotal} 条),其余请到下面的列表里翻页查看`}
+        />
+      ) : null}
+      {/*
+        项目名的侧载也有上限:后端 page_size 最大 100,这里取的是最新的 100 个
+        项目 ⇒ 更早的项目在表格里显示为 id。这条上限不静默,给一条提示。
+      */}
+      {projectTotal > projectOptions.length ? (
+        <Alert
+          type="info"
+          showIcon
+          title="项目名来自侧载列表,只覆盖最新的 100 个项目"
+          description={`后端一共 ${projectTotal} 个项目,侧载到的只是最新的 100 个,更早的项目在表格里显示为项目 id。`}
         />
       ) : null}
       <ProTable<RiskOut>

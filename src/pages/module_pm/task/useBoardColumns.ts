@@ -45,8 +45,10 @@ export const BOARD_COLUMNS: { status: BoardStatus; title: string }[] = [
 /**
  * 看板一次拉满:后端 page_size 的上限是 100(PaginationQueryParam)。
  *
- * ⚠️ **看板最多只能看到前 100 个任务** —— 超过 100 个的项目,后面的任务
- * 在看板上不出现(页面上会有一条提示,不静默截断)。要翻页看全量请去任务列表页。
+ * ⚠️ **看板只拉得到前 100 个任务** —— 排在后面的任务在看板上不出现
+ * (页面上会有一条提示,不静默截断)。而且拉回来的任务里**已取消的会被丢掉**
+ * (cancelled 不在六列里),所以卡片数可能比 100 还少。
+ * 要翻页看全量请去任务列表页。
  */
 const BOARD_LIST_PARAMS = { page_no: 1, page_size: 100 } as const;
 

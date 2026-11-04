@@ -16,10 +16,22 @@ import { listProjects } from '@/services/api/pm/project';
  * 2. **查表**:列的 render 只做 Map 查表,不发请求。
  * 3. **降级**:某一张表拉失败,只是那一张没有名字,另一张照常 ——
  *    失败提示由请求层统一弹,这里不抛。
+ *
+ * ⚠️ **侧载有上限,上限是可见的**:后端 page_size 最大 100,这里一次只拉 100 条
+ * (排序显式写成 id 倒序 ⇒ 拿到的是**最新的** 100 条)。项目与里程碑都是会
+ * 越攒越多的东西,所以「第 101 条开始就查不到名字」是迟早的事。
+ * 页面据此给出提示(见 task/index.tsx 的 Alert),**不静默截断**:
+ * 侧载到的条数与后端的总数都会带出去,页面据此判断要不要提示。
  */
 
 /** 侧载一次的上限:后端 page_size 最大 100(同 CRUD_PAGINATION) */
-const SIDE_LOAD_PARAMS = { page_no: 1, page_size: 100 } as const;
+const SIDE_LOAD_PARAMS = {
+  page_no: 1,
+  page_size: 100,
+  // 排序显式写出来:后端的默认排序也是 id 倒序,但写出来才能保证
+  // 「侧载到的是最新的 100 条」是构造出来的,而不是后端改了默认值才知道
+  order_by: JSON.stringify([{ id: 'desc' }]),
+} as const;
 
 /** 项目下拉选项(label 给人看,value 是项目 id) */
 export interface ProjectOption {
@@ -45,6 +57,10 @@ export interface ProjectNames {
   milestoneOptions: MilestoneOption[];
   /** 侧载是否还在途 */
   loading: boolean;
+  /** 后端一共多少个项目(侧载只拿到其中 100 条,差值用来提示) */
+  projectTotal: number;
+  /** 后端一共多少个里程碑(侧载只拿到其中 100 条,差值用来提示) */
+  milestoneTotal: number;
 }
 
 /** 项目列表 → 下拉选项(没有 id 的行没法当候选项,丢掉) */
@@ -82,7 +98,7 @@ function toMilestoneOptions(
 /**
  * 侧载项目与里程碑的名字映射。
  *
- * 页面与表单共用这一份:表单的项目/里程碑下拉直接用返回的选项,
+ * 页面与表单共用这一份:表单的项目下拉直接用返回的选项,
  * 不再单独发请求(里程碑页的「所属项目」是远程搜索,这里是侧载复用)。
  */
 export function useProjectNames(): ProjectNames {
@@ -90,6 +106,8 @@ export function useProjectNames(): ProjectNames {
   const [milestoneOptions, setMilestoneOptions] = useState<MilestoneOption[]>(
     [],
   );
+  const [projectTotal, setProjectTotal] = useState(0);
+  const [milestoneTotal, setMilestoneTotal] = useState(0);
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [milestonesLoading, setMilestonesLoading] = useState(true);
 
@@ -99,6 +117,7 @@ export function useProjectNames(): ProjectNames {
       .then((res) => {
         if (cancelled) return;
         setProjectOptions(toProjectOptions(res?.data?.items ?? []));
+        setProjectTotal(res?.data?.total ?? 0);
       })
       .catch(() => {
         // 失败提示由请求层统一弹,这里降级成空选项
@@ -117,6 +136,7 @@ export function useProjectNames(): ProjectNames {
       .then((res) => {
         if (cancelled) return;
         setMilestoneOptions(toMilestoneOptions(res?.data?.items ?? []));
+        setMilestoneTotal(res?.data?.total ?? 0);
       })
       .catch(() => {
         // 失败提示由请求层统一弹,这里降级成空选项
@@ -146,5 +166,7 @@ export function useProjectNames(): ProjectNames {
     projectOptions,
     milestoneOptions,
     loading: projectsLoading || milestonesLoading,
+    projectTotal,
+    milestoneTotal,
   };
 }

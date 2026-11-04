@@ -1,6 +1,6 @@
 import { PlusOutlined } from '@ant-design/icons';
 import { type ProColumns, ProTable } from '@ant-design/pro-components';
-import { useAccess } from '@umijs/max';
+import { Link, useAccess } from '@umijs/max';
 import { Button } from 'antd';
 import type React from 'react';
 import { useMemo } from 'react';
@@ -66,6 +66,16 @@ const ProjectManagement: React.FC = () => {
       dataIndex: 'name',
       width: 200,
       fieldProps: { placeholder: '支持模糊查询' },
+      /*
+        项目名称是**详情页的入口**:点它进 /pm/project/:id。
+        菜单里没有「项目详情」这一项(后端种子只种了列表),详情页从列表进。
+      */
+      render: (_, record) =>
+        record.id == null ? (
+          (record.name ?? '-')
+        ) : (
+          <Link to={`/pm/project/${record.id}`}>{record.name ?? '-'}</Link>
+        ),
     },
     {
       title: '项目编码',

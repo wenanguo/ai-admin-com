@@ -101,15 +101,27 @@ async function fetchProjectOptions(params: { keyWords?: string }) {
  *
  * ⚠️ 这个接口在后端要 module_system:user:query 权限;
  * 没有时表单里只有这一项填不了,其它不受影响。
+ *
+ * `current` 是**行里的负责人**(后端 service 逐行补上的 owner_by 冗余字段):
+ * 远程搜索只回一页(100 个用户),负责人不在这页里时,编辑弹窗只能显示一个
+ * 裸 id(3)。把它补进候选就显示名字了 —— 提交的值仍然是 id(后端要的是 id)。
+ * 有搜索词时不补:补了也不匹配搜索词。
  */
-async function fetchUserOptions(params: { keyWords?: string }) {
+async function fetchUserOptions(
+  params: { keyWords?: string },
+  current?: {
+    id?: number | null;
+    name?: string | null;
+    username?: string | null;
+  } | null,
+) {
   const keyword = params.keyWords?.trim();
   const res = await listUsers({
     page_no: 1,
     page_size: 100,
     ...(keyword ? { name: keyword } : {}),
   });
-  return (res?.data?.items ?? []).flatMap((user) =>
+  const options = (res?.data?.items ?? []).flatMap((user) =>
     user.id == null
       ? []
       : [
@@ -119,6 +131,15 @@ async function fetchUserOptions(params: { keyWords?: string }) {
           },
         ],
   );
+  if (keyword || !current || current.id == null) return options;
+  if (options.some((option) => option.value === current.id)) return options;
+  return [
+    {
+      label: current.name ?? current.username ?? String(current.id),
+      value: current.id,
+    },
+    ...options,
+  ];
 }
 
 /**
@@ -290,7 +311,9 @@ const RiskModalForm: React.FC<RiskModalProps> = ({
         debounceTime={300}
         fieldProps={{ placeholder: '输入姓名搜索' }}
         rules={[{ required: true, message: '请选择负责人' }]}
-        request={fetchUserOptions}
+        // 行里的负责人(owner_by)一并当候选:远程搜索只回一页,
+        // 负责人不在那一页里时,编辑框里就只是个裸 id
+        request={(params) => fetchUserOptions(params, record?.owner_by)}
       />
       <ProFormTextArea
         name="mitigation_plan"

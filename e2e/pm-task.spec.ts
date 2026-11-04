@@ -496,6 +496,134 @@ test.describe('任务管理页', () => {
     expect(milestoneRequests).toHaveLength(1);
   });
 
+  test('侧载的项目/里程碑只覆盖最新的 100 条时给出提示', async ({ page }) => {
+    await setupTaskPage(page);
+
+    // 侧载的项目列表:后端一共 250 个,但只回了 2 条 ⇒ 侧载被截断了
+    await page.unroute(PROJECT_LIST_URL);
+    await page.route(PROJECT_LIST_URL, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...projectListResponse,
+          data: { ...projectListResponse.data, total: 250 },
+        }),
+      }),
+    );
+
+    await gotoModulePage(
+      page,
+      TASK_PAGE_PATH,
+      page.locator('.ant-menu').getByText('任务管理'),
+    );
+
+    // 上限**不静默**:页面上有一条提示说清侧载盖了什么
+    const alert = page.locator('.ant-alert');
+    await expect(alert).toHaveCount(1);
+    await expect(alert).toContainText('只覆盖最新的 100 条');
+    await expect(alert).toContainText('250 个项目');
+  });
+
+  test('里程碑下拉按所选项目单独拉,不是全局侧载的那 100 条', async ({
+    page,
+  }) => {
+    const milestoneRequests: string[] = [];
+
+    await setupTaskPage(page);
+
+    // 里程碑列表:带 project_id 就只回那个项目的(与后端一样)
+    await page.unroute(MILESTONE_LIST_URL);
+    await page.route(MILESTONE_LIST_URL, (route) => {
+      const url = new URL(route.request().url());
+      milestoneRequests.push(url.toString());
+      const projectId = url.searchParams.get('project_id');
+      const items = projectId
+        ? milestoneListResponse.data.items.filter(
+            (milestone) => String(milestone.project_id) === projectId,
+          )
+        : milestoneListResponse.data.items;
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...milestoneListResponse,
+          data: { ...milestoneListResponse.data, items },
+        }),
+      });
+    });
+
+    await gotoModulePage(
+      page,
+      TASK_PAGE_PATH,
+      page.locator('.ant-menu').getByText('任务管理'),
+    );
+
+    await page.getByRole('button', { name: '新增' }).click();
+    await expect(page.locator('.ant-modal')).toBeVisible();
+
+    await pickChecked(page, '所属项目', 'AIPM 核心项目');
+
+    // 里程碑的请求带了 project_id(而不是全局那一百条)
+    await expect
+      .poll(() => milestoneRequests.some((url) => url.includes('project_id=1')))
+      .toBe(true);
+
+    // 下拉里只有所选项目的里程碑(另一个项目的「联调准备」不在)
+    await expect(page.locator('.ant-select-dropdown:visible')).toHaveCount(0);
+    await modalFormItem(page, '所属里程碑')
+      .locator('input[role="combobox"]')
+      .click();
+    const options = page.locator(
+      '.ant-select-dropdown:visible .ant-select-item-option',
+    );
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toContainText('需求分析完成');
+  });
+
+  test('编辑时负责人显示名字,不是裸 id', async ({ page }) => {
+    await setupTaskPage(page);
+
+    // 用户列表里**没有**任务的负责人(张三):远程搜索只回一页,
+    // 负责人不在候选里时编辑框里就只是个裸 id —— 行里的 assignee_by 把它补上
+    await page.unroute(USER_LIST_URL);
+    await page.route(USER_LIST_URL, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...userListResponse,
+          data: {
+            items: [userListResponse.data.items[1]],
+            total: 1,
+            page_no: 1,
+            page_size: 100,
+            has_next: false,
+          },
+        }),
+      }),
+    );
+
+    await gotoModulePage(
+      page,
+      TASK_PAGE_PATH,
+      page.locator('.ant-menu').getByText('任务管理'),
+    );
+
+    await tableRows(page)
+      .filter({ hasText: '输出需求规格说明书' })
+      .getByRole('button', { name: '编辑' })
+      .click();
+    await expect(page.locator('.ant-modal')).toBeVisible();
+
+    // 负责人显示的是名字(不是 id 1)
+    const assignee = modalFormItem(page, '负责人').locator(
+      '.ant-select-content',
+    );
+    await expect(assignee).toContainText('张三');
+    await expect(assignee).not.toContainText('1');
+  });
+
   test('新增任务提交 type_code/status_code/priority_code 的线上码', async ({
     page,
   }) => {

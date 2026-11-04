@@ -1,7 +1,7 @@
 import { PlusOutlined } from '@ant-design/icons';
 import { type ProColumns, ProTable } from '@ant-design/pro-components';
 import { useAccess } from '@umijs/max';
-import { Button } from 'antd';
+import { Alert, Button } from 'antd';
 import type React from 'react';
 import { useMemo } from 'react';
 import {
@@ -68,6 +68,8 @@ const TaskManagement: React.FC = () => {
     projectOptions,
     milestoneOptions,
     loading: optionsLoading,
+    projectTotal,
+    milestoneTotal,
   } = useProjectNames();
 
   // 字典选项:表格标签(DictTag 内部也用它)与搜索下拉(valueEnum)共用,
@@ -249,8 +251,26 @@ const TaskManagement: React.FC = () => {
     entityName: '任务',
   });
 
+  /*
+    侧载有上限(后端 page_size 最大 100):项目与里程碑都会越攒越多,
+    侧载到的是最新的 100 条 ⇒ 更早的实体在表格里查不到名字(显示为 -)。
+    这条上限**不静默**:侧载被截断时给一条提示(与看板页、风险页同款)。
+  */
+  const sideLoadTruncated =
+    projectTotal > 0 &&
+    (projectTotal > projectOptions.length ||
+      milestoneTotal > milestoneOptions.length);
+
   return (
     <>
+      {sideLoadTruncated ? (
+        <Alert
+          type="info"
+          showIcon
+          title="项目名与里程碑名来自侧载列表,只覆盖最新的 100 条"
+          description={`后端分页上限是 100 条:一共 ${projectTotal} 个项目、${milestoneTotal} 个里程碑,侧载到的只是最新的 100 条,更早的在表格里显示为 -。表单的「所属里程碑」下拉按所选项目单独拉取,不受这条限制。`}
+        />
+      ) : null}
       <ProTable<TaskOut>
         headerTitle="任务管理"
         rowKey="id"
@@ -280,7 +300,6 @@ const TaskManagement: React.FC = () => {
         onOpenChange={crud.closeModal}
         onSubmit={crud.handleSubmit}
         projectOptions={projectOptions}
-        milestoneOptions={milestoneOptions}
         optionsLoading={optionsLoading}
       />
     </>

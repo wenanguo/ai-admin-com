@@ -110,6 +110,10 @@ const ProjectModalForm: React.FC<ProjectModalProps> = ({
           module_system:user:query 权限;没有时只有这项表单填不了。
           ProFormSelect 默认 showSearch: true,与列级 select 不同
           (列级必须显式开,见工单页处理人列的注释)。
+
+          行里的负责人(owner_by,后端随行返回的冗余字段)一并当候选:
+          远程搜索只回一页(100 个用户),负责人不在这页里时,编辑框里
+          只能显示一个裸 id。补进去就显示名字 —— 提交的值仍然是 id。
         */
         request={async ({ keyWords }: { keyWords?: string }) => {
           const keyword = keyWords?.trim();
@@ -118,7 +122,7 @@ const ProjectModalForm: React.FC<ProjectModalProps> = ({
             page_size: 100,
             ...(keyword ? { name: keyword } : {}),
           });
-          return (res?.data?.items ?? []).flatMap((user) =>
+          const options = (res?.data?.items ?? []).flatMap((user) =>
             user.id == null
               ? []
               : [
@@ -128,6 +132,18 @@ const ProjectModalForm: React.FC<ProjectModalProps> = ({
                   },
                 ],
           );
+          const owner = record?.owner_by;
+          if (keyword || !owner || owner.id == null) return options;
+          if (options.some((option) => option.value === owner.id)) {
+            return options;
+          }
+          return [
+            {
+              label: owner.name ?? owner.username ?? String(owner.id),
+              value: owner.id,
+            },
+            ...options,
+          ];
         }}
       />
       <ProForm.Item

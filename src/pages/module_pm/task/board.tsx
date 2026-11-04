@@ -152,7 +152,8 @@ const TaskBoard: React.FC = () => {
         <Alert
           type="info"
           showIcon
-          title={`看板最多显示前 100 个任务(共 ${total} 个),其余请到「任务管理」页查看`}
+          title={`看板只拉了前 100 个任务(共 ${total} 个),其余请到「任务管理」页查看`}
+          description="已取消(cancelled)的任务不进看板 —— 看板上的卡片会比拉到的条数更少。"
         />
       ) : null}
       {loading ? (

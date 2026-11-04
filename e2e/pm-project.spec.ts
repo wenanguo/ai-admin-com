@@ -979,6 +979,63 @@ test.describe('项目管理列表页', () => {
     });
   });
 
+  test('点项目名称进详情页(菜单里没有详情项,入口在列表页)', async ({
+    page,
+  }) => {
+    // 列表页与详情页的接口一起装好:点完链接直接落到详情页
+    await setupProjectPage(page);
+    await setupProjectDetailPage(page);
+
+    await gotoModulePage(page, PROJECT_PAGE_PATH, tableRows(page).first());
+
+    // 项目名称是个链接,指向 /pm/project/:id
+    const link = tableRows(page)
+      .first()
+      .getByRole('link', { name: 'AIPM 核心项目' });
+    await expect(link).toBeVisible();
+    await link.click();
+
+    // 详情页真的打开了(地址变了 + 详情的内容渲染出来了)
+    await expect(page).toHaveURL(/\/pm\/project\/1$/);
+    const head = page.locator('.ant-card-head');
+    await expect(head).toContainText('AIPM 核心项目');
+    await expect(head).toContainText('AIPM-CORE');
+  });
+
+  test('编辑时负责人显示名字,不是裸 id', async ({ page }) => {
+    await setupProjectPage(page);
+
+    // 用户列表里**没有**项目的负责人(张三):远程搜索只回一页,
+    // 负责人不在候选里时编辑框里就只是个裸 id —— 行里的 owner_by 把它补上
+    await page.unroute(USER_LIST_URL);
+    await page.route(USER_LIST_URL, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...userListResponse,
+          data: {
+            items: [userListResponse.data.items[1]],
+            total: 1,
+            page_no: 1,
+            page_size: 100,
+            has_next: false,
+          },
+        }),
+      }),
+    );
+
+    await gotoModulePage(page, PROJECT_PAGE_PATH, tableRows(page).first());
+
+    await page.getByRole('button', { name: '编辑' }).first().click();
+    await expect(page.locator('.ant-modal')).toBeVisible();
+
+    // 负责人显示的是名字(不是 id 1)
+    const owner = modalFormItem(page, '负责人').locator('.ant-select-content');
+    await expect(owner).toContainText('张三');
+    await expect(owner).not.toContainText('1');
+  });
+
   test('删除的请求体是裸数组(后端收 ids: list[int])', async ({ page }) => {
     const deleteRequests: { url: string; method: string; body: unknown }[] = [];
 

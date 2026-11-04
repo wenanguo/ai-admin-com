@@ -80,8 +80,8 @@ PM(项目管理)侧共 6 个路由,同样全部对接真实后端:
 | 任务看板   | `/pm/task/board`  | `src/pages/module_pm/task/board.tsx`     |
 | 风险登记册 | `/pm/risk`        | `src/pages/module_pm/risk/`              |
 
-> 项目详情**只在路由里注册**,菜单里没有这一项(列表页也没有详情入口)——
-> 按 URL `/pm/project/<id>` 进。看板与风险是各自独立的页面,不是列表页的 tab。
+> 项目详情**只在路由里注册**,菜单里没有这一项 —— 从项目列表点**项目名称**
+> 的链接就进得去(`/pm/project/<id>`)。看板与风险是各自独立的页面,不是列表页的 tab。
 
 PM 的 6 个页面另有两组共享件:
 
@@ -112,7 +112,8 @@ PM 的 6 个路由已经在 `config/routes.ts` 注册,直接输地址就能打�
 (种子到了但 `route_path` 与前端路由对不上时,菜单项会被跳过,
 控制台打印 `[menu] 前端缺少路由: <path>` —— 详见「菜单约定」。)
 
-下面这四组是后端 controller 里 `AuthPermission([...])` 校验的**全部**权限码 ——
+下面这四组是**这四个模块**(项目 / 里程碑 / 任务 / 风险)的 controller 里
+`AuthPermission([...])` 校验的**全部**权限码 ——
 不只是页面按钮用到的那几个(`export` / `import` / `download` 后端都有接口,
 前端这轮还没做按钮,码照样要种下)。码一般是**三段式**(`模块:实体:动作`),
 与 `platform_menu.permission` 列的注释一致:
@@ -123,6 +124,11 @@ PM 的 6 个路由已经在 `config/routes.ts` 注册,直接输地址就能打�
 | 里程碑 `pm_milestone` | `module_pm_project:pm_milestone` | `query` `detail` `create` `update` `delete` `patch` `export` `import` `download`                             |
 | 任务 `pm_task`        | `module_pm_project:pm_task`      | `query` `detail` `create` `update` `delete` `patch` `export` `import` `download`                             |
 | 风险 `pm_risk`        | `module_pm_risk:pm_risk`         | `query` `detail` `create` `update` `delete` `patch` `export` `import` `download`                             |
+
+> ⚠️ **后端还有两族权限码不在上面的清单里**:`module_pm_meeting:pm_meeting:*`
+> (会议)与 `module_pm_comment:pm_comment:*`(评论)。这两个模块**在本前端还没有页面**
+> ⇒ 它们的权限码不在上面这张表里。后端只种上面这四组的话,会议与评论的菜单入口
+> 是空的(前端没页面,种了也点不开);要开这两块得先补页面。
 
 > **第一段是菜单目录**:里程碑与任务挂在 `module_pm_project` 目录下,风险挂在
 > `module_pm_risk` 目录下;第二段是实体,第三段是动作 —— 别种成两段。
@@ -143,6 +149,11 @@ PM 的 6 个路由已经在 `config/routes.ts` 注册,直接输地址就能打�
   将来补页面时只要在 `config/routes.ts` 注册同名路由,菜单就会自动出现,不用改后端
 - **导出功能本轮没做**:后端有 `*:export` 权限码,但这 9 个系统管理页面与 6 个 PM 页面
   都没有导出按钮
+- **任务页/风险页的名字是侧载的**:后端的任务与风险响应里**没有**项目名/里程碑名,
+  前端把项目表与里程碑表各拉一次做映射。后端分页上限是 100 条 ⇒ 侧载只覆盖
+  **最新的 100 条**,更早的实体在表格里显示为 `-`(风险页显示为项目 id)。
+  这条上限**不静默**:侧载被截断时页面上会给一条提示。
+  任务表单的「所属里程碑」下拉是**按所选项目单独拉**的,不受这条限制
 - **公告是纯文本**:公告正文用普通多行文本框录入,不是富文本编辑器
 
 ## 登录与登录态

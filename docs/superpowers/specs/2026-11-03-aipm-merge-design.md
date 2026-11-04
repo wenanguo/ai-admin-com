@@ -371,6 +371,9 @@ ai_derived_state  id, entity_ref, kind(MILESTONE_HEALTH|ETA|RISK_SUGGESTION), pa
 > `module_pm_<插件模块>:<子模块>:<动作>`（如 `module_pm_project:pm_task:patch`、
 > `module_pm_risk:pm_risk:query`），**不是** `module_pm_task:list` 那种两段式。
 > 种子必须按实际拼法写，否则菜单能显示但按钮全部 403。
+> **⚠️ 有一条例外：项目成员那条是四段**
+> （`module_pm_project:pm_project:member:write`）—— 别按三段式种，
+> 详见前端设计规格 §6.2 与 README 的「PM 页面的后端依赖」。
 
 > **不在本次范围**：给 AiAdmin 加服务账号/API Key 机制（§6.4 用用户透传绕开了）、
 > 给 AiAdmin 加「写操作 + 审计同事务」的接口（§9.2 用降级方案绕开了）。
