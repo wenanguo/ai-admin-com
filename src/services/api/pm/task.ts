@@ -10,8 +10,10 @@ import type { ApiResponse, PageQuery, PageResult } from '@/services/types';
  * - 删除的请求体是**裸数组**(不是 `{ ids }`),支持批量
  * - `reviewers` / `labels` 语义是数组和标签,但后端存的是**字符串** ——
  *   序列化/反序列化是表单层的职责,service 层原样透传
- * - `sort_order` / `created_via_code` 可空:后端 service 分别用 `0` / `'web'` 兜底
- * - `reporter_id` 可空:为 None 时后端用当前登录用户回填
+ * - `reporter_id` / `sort_order` / `created_via_code` 三列在库里都是 **NOT NULL**:
+ *   schema 里虽然可空,但 `create_service` **不做任何兜底**(直接 `CRUD.create`),
+ *   不提交就是 INSERT NULL ⇒ 新增时必须带上,更新时不能带
+ *   (更新用 `model_dump(exclude_unset=True)`,不带的字段原样保留)
  */
 
 /** 后端 ModulePmTaskOutSchema.assignee_by / reporter_by —— 用户信息 {id, name, username} */
@@ -46,7 +48,7 @@ export interface TaskOut {
   actual_hours?: number | null;
   /** 当前负责人(sys_user.id) */
   assignee_id?: number | null;
-  /** 创建人(sys_user.id;后端在为空时用当前登录用户回填) */
+  /** 创建人(sys_user.id)—— 库里 NOT NULL:新增时必须带上当前登录用户 */
   reporter_id?: number | null;
   /** 评审人ID列表(后端存字符串) */
   reviewers?: string | null;
@@ -60,9 +62,9 @@ export interface TaskOut {
   actual_start_date?: string | null;
   /** 实际结束日期 */
   actual_end_date?: string | null;
-  /** 看板拖拽排序(空时后端用 0 兜底) */
+  /** 看板拖拽排序 —— 库里 NOT NULL:新增时带上(默认 0) */
   sort_order?: number | null;
-  /** 创建方式(字典:module_pm_task_created_via;空时后端用 'web' 兜底) */
+  /** 创建方式(字典:module_pm_task_created_via)—— 库里 NOT NULL:新增时带上 */
   created_via_code?: string | null;
   /** 阻塞原因 */
   blocked_reason?: string | null;
@@ -122,7 +124,7 @@ export type TaskCreateParams = {
   actual_hours?: number | null;
   /** 当前负责人(sys_user.id) */
   assignee_id?: number | null;
-  /** 创建人(sys_user.id);为 None 时后端用当前登录用户回填 */
+  /** 创建人(sys_user.id)—— 库里 NOT NULL:新增时必须带上当前登录用户 */
   reporter_id?: number | null;
   /** 评审人ID列表(后端存字符串) */
   reviewers?: string | null;
@@ -136,16 +138,28 @@ export type TaskCreateParams = {
   actual_start_date?: string | null;
   /** 实际结束日期 */
   actual_end_date?: string | null;
-  /** 看板拖拽排序(空时后端用 0 兜底) */
+  /** 看板拖拽排序 —— 库里 NOT NULL:新增时带上(默认 0) */
   sort_order?: number | null;
-  /** 创建方式(字典:module_pm_task_created_via;空时后端用 'web' 兜底) */
+  /** 创建方式(字典:module_pm_task_created_via)—— 库里 NOT NULL:新增时带上 */
   created_via_code?: string | null;
   /** 阻塞原因 */
   blocked_reason?: string | null;
 };
 
-/** 更新要传整对象:后端 UpdateSchema 继承 CreateSchema,必填集相同 */
-export type TaskUpdateParams = TaskCreateParams;
+/**
+ * 更新载荷:**不含** `reporter_id` / `sort_order` / `created_via_code`。
+ *
+ * 这三列不是用户可编辑的(报告人是创建人、排序是看板顺序、创建方式是来源),
+ * 更新时一个都不带 ⇒ 后端 `model_dump(exclude_unset=True)` 原样保留库里的值。
+ * 带 null 是 NOT NULL 违约,带旧值是把库里的值原样写回去 —— 两种都是错。
+ *
+ * 必填集仍与新增相同:后端 UpdateSchema 继承 CreateSchema,整对象 PUT,
+ * 缺一个必填字段就 422。
+ */
+export type TaskUpdateParams = Omit<
+  TaskCreateParams,
+  'reporter_id' | 'sort_order' | 'created_via_code'
+>;
 
 /** 任务列表 */
 export async function listTasks(

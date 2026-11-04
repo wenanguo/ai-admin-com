@@ -12,7 +12,11 @@ import {
 import { DictTag } from '@/components/pm/DictTag';
 import { toValueEnum } from '@/components/pm/toValueEnum';
 import { useDictOptions } from '@/components/pm/useDictOptions';
-import type { TaskCreateParams, TaskOut } from '@/services/api/pm/task';
+import type {
+  TaskCreateParams,
+  TaskOut,
+  TaskUpdateParams,
+} from '@/services/api/pm/task';
 import {
   createTask,
   deleteTasks,
@@ -50,7 +54,8 @@ function lookupName(names: Map<number, string>, id?: number | null): string {
 const TaskManagement: React.FC = () => {
   const access = useAccess();
 
-  const crud = useCrudTable<TaskOut, TaskCreateParams>({
+  // 载荷有两种形状:新增带创建三列,更新不带 —— 见 services/api/pm/task.ts
+  const crud = useCrudTable<TaskOut, TaskCreateParams | TaskUpdateParams>({
     create: createTask,
     update: updateTask,
     remove: deleteTasks,
@@ -221,13 +226,18 @@ const TaskManagement: React.FC = () => {
       render: (_, record) => record.blocked_reason ?? '-',
     },
     {
-      // 创建方式没有配字典(后端的 module_pm_task_created_via 也没有 'web' 这一项),
-      // 直接显示线上码
+      // 创建方式有字典(module_pm_task_created_via:manual/nl_chat/import/api),
+      // 跟其它字典列一样渲染成中文标签
       title: '创建方式',
       dataIndex: 'created_via_code',
       width: 110,
       search: false,
-      render: (_, record) => record.created_via_code ?? '-',
+      render: (_, record) => (
+        <DictTag
+          dictType="module_pm_task_created_via"
+          value={record.created_via_code}
+        />
+      ),
     },
   ];
 

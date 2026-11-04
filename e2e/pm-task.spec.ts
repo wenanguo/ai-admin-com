@@ -18,7 +18,8 @@ import {
  * - 新增提交的是**线上码**(type_code='feature' / status_code='in_progress' /
  *   priority_code='P1'),不是中文标签
  * - 表单提交**全部必填字段**(project_id/title/type_code/status_code/priority_code)
- * - 编辑是**读-改-写**:先 GET 详情填表,再 PUT(后端没有 PATCH,PUT 是整对象)
+ * - 新增还要带上后端 NOT NULL 的三列(创建人/排序/创建方式)—— 后端 create 不兜底
+ * - 编辑**直接用列表行填表**:不发详情请求,PUT 不带那三列
  *
  * 菜单树:PM 模块挂在「/pm」目录下(helpers.buildCurrentUserResponse 的
  * MenuParent 参数),子菜单的相对 route_path 'task' 会被拼到 /pm 下,
@@ -107,6 +108,14 @@ const priorityDictResponse = dictDataResponse([
   { dict_label: '低', dict_value: 'P3', list_class: 'default' },
 ]);
 
+/** 创建方式(后端种子 SQL 的四项:manual / nl_chat / import / api —— 没有 'web') */
+const taskCreatedViaDictResponse = dictDataResponse([
+  { dict_label: '手动', dict_value: 'manual', list_class: 'default' },
+  { dict_label: 'NL对话', dict_value: 'nl_chat', list_class: 'primary' },
+  { dict_label: '导入', dict_value: 'import', list_class: 'info' },
+  { dict_label: 'API', dict_value: 'api', list_class: 'info' },
+]);
+
 /**
  * 列表里的第一行(形状对齐 TaskOut)。
  *
@@ -134,7 +143,7 @@ const taskRow = {
   actual_start_date: '2026-11-06',
   actual_end_date: null,
   sort_order: 0,
-  created_via_code: 'web',
+  created_via_code: 'manual',
   blocked_reason: null,
   assignee_by: { id: 1, name: '张三', username: 'zhangsan' },
   reporter_by: { id: 2, name: '李四', username: 'lisi' },
@@ -167,7 +176,7 @@ const blockedTaskRow = {
   actual_start_date: null,
   actual_end_date: null,
   sort_order: 1,
-  created_via_code: 'web',
+  created_via_code: 'manual',
   blocked_reason: '等待三方接口联调',
   assignee_by: null,
   reporter_by: { id: 2, name: '李四', username: 'lisi' },
@@ -185,15 +194,6 @@ const taskListResponse = {
     page_size: 10,
     has_next: false,
   },
-  status_code: 200,
-  success: true,
-};
-
-/** 详情接口的信封:与列表行是同一条任务(编辑是读-改-写) */
-const taskDetailResponse = {
-  code: 0,
-  msg: '获取任务详情成功',
-  data: taskRow,
   status_code: 200,
   success: true,
 };
@@ -318,6 +318,37 @@ const okResponse = {
 };
 
 /**
+ * 在弹窗的下拉里选一个候选,并**核对**值真的进去了。
+ *
+ * 为什么不用 helpers.pickInModal 就完事:它只点一次选项、不核对结果。
+ * 实测(6 个 worker 并行时)会偶发「点空」—— 下拉还开着,值却是空的,
+ * 于是必填项校验不过、请求发不出去,用例以「没等到请求」的形式挂掉,
+ * 而且是偶发的,极难定位(e2e/helpers.ts 是共享夹具,本轮不改它)。
+ *
+ * 这里在它之后再核对一次显示值,没进去就关掉下拉重选(最多 3 轮)。
+ */
+async function pickChecked(
+  page: Page,
+  label: string,
+  optionText: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await pickInModal(page, label, optionText);
+    try {
+      // 选中后表单项里会出现这个文案
+      await expect(modalFormItem(page, label)).toContainText(optionText, {
+        timeout: 3000,
+      });
+      return;
+    } catch {
+      // 没进去:可能下拉还开着(卡住的 portal),先关掉再重选
+      await page.keyboard.press('Escape');
+    }
+  }
+  throw new Error(`下拉「${label}」没能选中「${optionText}」`);
+}
+
+/**
  * 装好受控页面:登录态 + PM 菜单树 + 任务列表 + 三个字典 + 侧载的项目/里程碑列表。
  * 返回侧载请求的收集器(断言「只拉一次」用)。
  */
@@ -386,6 +417,14 @@ async function setupTaskPage(page: Page): Promise<{
     }),
   );
 
+  await page.route(dictDataUrl('module_pm_task_created_via'), (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(taskCreatedViaDictResponse),
+    }),
+  );
+
   return { projectRequests, milestoneRequests };
 }
 
@@ -422,8 +461,8 @@ test.describe('任务管理页', () => {
     await expect(row.getByText('8', { exact: true })).toBeVisible();
     await expect(row.getByText('4', { exact: true })).toBeVisible();
     await expect(row.getByText('0', { exact: true })).toBeVisible();
-    // 创建方式没有字典,直接显示线上码
-    await expect(row).toContainText('web');
+    // 创建方式有字典:渲染成中文标签(「手动」)
+    await expect(row).toContainText('手动');
 
     // 第二行:阻塞原因与占位符
     const blockedRow = rows.filter({ hasText: '修复登录超时' });
@@ -488,14 +527,14 @@ test.describe('任务管理页', () => {
     await expect(page.locator('.ant-modal')).toBeVisible();
 
     // 所属项目:侧载的项目列表(表单不再单独发请求)
-    await pickInModal(page, '所属项目', 'AIPM 核心项目');
+    await pickChecked(page, '所属项目', 'AIPM 核心项目');
 
     await modalFormItem(page, '任务标题').locator('input').fill('E2E 任务');
 
     // 类型/状态/优先级:字典下拉,提交的是线上码
-    await pickInModal(page, '类型', '功能');
-    await pickInModal(page, '状态', '进行中');
-    await pickInModal(page, '优先级', '高');
+    await pickChecked(page, '类型', '功能');
+    await pickChecked(page, '状态', '进行中');
+    await pickChecked(page, '优先级', '高');
 
     await page.locator('.ant-modal-footer button.ant-btn-primary').click();
 
@@ -517,6 +556,14 @@ test.describe('任务管理页', () => {
   });
 
   test('任务表单提交全部必填字段', async ({ page }) => {
+    /*
+      这个用例最重:连开 6 个下拉(项目/里程碑/类型/状态/优先级/负责人)
+      + 2 个日期面板,每次开下一个之前还要等上一个关完。
+      默认 30s 的用例超时在机器并行跑的时候不够(实测会超时),
+      这里单独放宽 —— 放宽的是**用例预算**,不是断言的等待时长。
+    */
+    test.setTimeout(60_000);
+
     const createRequests: { url: string; method: string; body: unknown }[] = [];
 
     await setupTaskPage(page);
@@ -544,27 +591,25 @@ test.describe('任务管理页', () => {
     await page.getByRole('button', { name: '新增' }).click();
     await expect(page.locator('.ant-modal')).toBeVisible();
 
-    await pickInModal(page, '所属项目', 'AIPM 核心项目');
+    await pickChecked(page, '所属项目', 'AIPM 核心项目');
     // 里程碑候选按所选项目过滤(选的是 AIPM 核心项目 → 只有它的里程碑)
-    await pickInModal(page, '所属里程碑', '需求分析完成');
+    await pickChecked(page, '所属里程碑', '需求分析完成');
 
     await modalFormItem(page, '任务标题').locator('input').fill('E2E 任务');
     await modalFormItem(page, '任务描述')
       .locator('textarea')
       .fill('需求评审通过后交付');
 
-    await pickInModal(page, '类型', '功能');
-    await pickInModal(page, '状态', '进行中');
-    await pickInModal(page, '优先级', '高');
+    await pickChecked(page, '类型', '功能');
+    await pickChecked(page, '状态', '进行中');
+    await pickChecked(page, '优先级', '高');
 
-    // 负责人/报告人:远程搜索下拉,候选来自 listUsers
-    await pickInModal(page, '负责人', '张三');
-    await pickInModal(page, '报告人', '李四');
+    // 负责人:远程搜索下拉,候选来自 listUsers
+    await pickChecked(page, '负责人', '张三');
 
-    // 工时与排序是数字(后端是 Decimal)
+    // 工时是数字(后端是 Decimal);排序不再由人填(见下面的创建载荷断言)
     await modalFormItem(page, '预估工时').locator('input').fill('8');
     await modalFormItem(page, '实际工时').locator('input').fill('4');
-    await modalFormItem(page, '排序').locator('input').fill('2');
 
     // 评审人是逗号分隔的 id 字符串;标签是 JSON 数组字符串(都不是数组)
     await modalFormItem(page, '评审人').locator('input').fill('3,5');
@@ -606,40 +651,104 @@ test.describe('任务管理页', () => {
       estimate_hours: 8,
       actual_hours: 4,
       assignee_id: 1,
-      reporter_id: 2,
       // 评审人是逗号分隔的字符串,标签是 JSON 数组字符串 —— 都不是数组
       reviewers: '3,5',
       labels: '["财务","合规"]',
-      sort_order: 2,
       blocked_reason: '等待三方接口联调',
     });
     // 日期提交为 YYYY-MM-DD 字符串(后端 date 协议),不是时间戳
     expect(String(body.start_date)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(body.start_date).toBe(body.due_date);
-    // 创建方式由后端兜底('web'),人不填
-    expect(body).not.toHaveProperty('created_via_code');
+    // 后端 NOT NULL 的三列:创建人(当前登录用户)/排序/创建方式
+    expect(body).toMatchObject({
+      reporter_id: 1,
+      sort_order: 0,
+      created_via_code: 'manual',
+    });
   });
 
-  test('编辑任务做读-改-写:先 GET 详情,再 PUT 全部必填字段', async ({
+  test('新增任务补齐后端 NOT NULL 的创建人/排序/创建方式', async ({ page }) => {
+    const createRequests: { url: string; method: string; body: unknown }[] = [];
+
+    await setupTaskPage(page);
+
+    await page.route(TASK_CREATE_URL, (route) => {
+      const request = route.request();
+      createRequests.push({
+        url: request.url(),
+        method: request.method(),
+        body: request.postDataJSON(),
+      });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(okResponse),
+      });
+    });
+
+    await gotoModulePage(
+      page,
+      TASK_PAGE_PATH,
+      page.locator('.ant-menu').getByText('任务管理'),
+    );
+
+    await page.getByRole('button', { name: '新增' }).click();
+    await expect(page.locator('.ant-modal')).toBeVisible();
+
+    // 只填必填项:报告人与排序**不由人填**(库里 NOT NULL,前端按固定规则补)
+    await pickChecked(page, '所属项目', 'AIPM 核心项目');
+    await modalFormItem(page, '任务标题').locator('input').fill('E2E 任务');
+    await pickChecked(page, '类型', '功能');
+    await pickChecked(page, '状态', '进行中');
+    await pickChecked(page, '优先级', '高');
+
+    await page.locator('.ant-modal-footer button.ant-btn-primary').click();
+
+    await expect.poll(() => createRequests.length).toBe(1);
+    expect(createRequests[0].method).toBe('POST');
+    expect(createRequests[0].url).toContain('/pm_task/create');
+
+    const body = createRequests[0].body as Record<string, unknown>;
+
+    // 这三列在库里都是 NOT NULL,后端 create 也不兜底 ⇒ 不带就是 INSERT NULL
+    expect(body).toMatchObject({
+      // 创建人 = 当前登录用户(夹具的 current/info 里 id 是 1),
+      // 不是列表行里的那个报告人(行里是 2)
+      reporter_id: 1,
+      // 新建的任务排序一律 0
+      sort_order: 0,
+      // 创建方式用字典里的真值(没有 'web' 这一项)
+      created_via_code: 'manual',
+    });
+  });
+
+  test('编辑任务直接用列表行填表:不发详情请求,PUT 不带创建三列', async ({
     page,
   }) => {
-    const callOrder: string[] = [];
+    const detailRequests: string[] = [];
     const updateRequests: { url: string; method: string; body: unknown }[] = [];
 
     await setupTaskPage(page);
 
+    // 详情接口**不该被调用**:行里的字段已经够填表了。
+    // 这里仍然把它拦下来并记录 —— 实现一旦退回「读-改-写」就会被这条断言抓住。
     await page.route(TASK_DETAIL_URL, (route) => {
-      callOrder.push(`GET ${route.request().url()}`);
+      detailRequests.push(route.request().url());
       return route.fulfill({
-        status: 200,
+        status: 403,
         contentType: 'application/json',
-        body: JSON.stringify(taskDetailResponse),
+        body: JSON.stringify({
+          code: -1,
+          msg: '没有任务详情权限',
+          data: null,
+          status_code: 403,
+          success: false,
+        }),
       });
     });
 
     await page.route(TASK_UPDATE_URL, (route) => {
       const request = route.request();
-      callOrder.push(`${request.method()} ${request.url()}`);
       updateRequests.push({
         url: request.url(),
         method: request.method(),
@@ -664,7 +773,7 @@ test.describe('任务管理页', () => {
       .click();
     await expect(page.locator('.ant-modal')).toBeVisible();
 
-    // 表单是用详情填的(读):标题、字典字段、里程碑都回显
+    // 表单是用**列表行**填的:标题、字典字段、里程碑都回显
     await expect(modalFormItem(page, '任务标题').locator('input')).toHaveValue(
       '输出需求规格说明书',
     );
@@ -678,6 +787,10 @@ test.describe('任务管理页', () => {
       modalFormItem(page, '所属里程碑').locator('.ant-select-content'),
     ).toContainText('需求分析完成');
 
+    // 没有详情请求:后端的详情接口要 `…:detail` 权限,编辑只要 `…:update` ——
+    // 发了详情请求,有 update 没 detail 的角色就会打开一个用不了的弹窗
+    expect(detailRequests).toHaveLength(0);
+
     // 改个标题提交(写)
     await modalFormItem(page, '任务标题')
       .locator('input')
@@ -687,11 +800,6 @@ test.describe('任务管理页', () => {
     await expect.poll(() => updateRequests.length).toBe(1);
     expect(updateRequests[0].method).toBe('PUT');
     expect(updateRequests[0].url).toContain('/pm_task/update/21');
-
-    // 读在写之前:先 GET 详情,再 PUT
-    expect(callOrder).toHaveLength(2);
-    expect(callOrder[0]).toContain('/pm_task/detail/21');
-    expect(callOrder[1]).toContain('/pm_task/update/21');
 
     // 整对象 PUT(后端没有 PATCH):必填字段一个都不能少
     const body = updateRequests[0].body as Record<string, unknown>;
@@ -712,5 +820,10 @@ test.describe('任务管理页', () => {
       start_date: '2026-11-06',
       due_date: '2026-11-15',
     });
+    // 创建三列不是用户可编辑的:更新时**一个都不带** ——
+    // 后端 `model_dump(exclude_unset=True)` 会原样保留库里的值
+    expect(body).not.toHaveProperty('reporter_id');
+    expect(body).not.toHaveProperty('sort_order');
+    expect(body).not.toHaveProperty('created_via_code');
   });
 });

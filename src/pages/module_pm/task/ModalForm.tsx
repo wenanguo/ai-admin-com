@@ -4,17 +4,20 @@ import {
   ProFormDatePicker,
   ProFormDependency,
   ProFormDigit,
-  type ProFormInstance,
   ProFormSelect,
   ProFormText,
   ProFormTextArea,
 } from '@ant-design/pro-components';
+import { useModel } from '@umijs/max';
 import { Alert, Spin } from 'antd';
 import type React from 'react';
-import { useEffect, useRef, useState } from 'react';
 import { DictSelect } from '@/components/pm/DictSelect';
-import type { TaskCreateParams, TaskOut } from '@/services/api/pm/task';
-import { getTaskDetail, listTasks } from '@/services/api/pm/task';
+import type {
+  TaskCreateParams,
+  TaskOut,
+  TaskUpdateParams,
+} from '@/services/api/pm/task';
+import { listTasks } from '@/services/api/pm/task';
 import { listUsers } from '@/services/api/system/user';
 import type { MilestoneOption, ProjectOption } from './useProjectNames';
 
@@ -22,7 +25,13 @@ export type TaskModalProps = {
   open: boolean;
   record?: TaskOut;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (values: TaskCreateParams) => Promise<boolean>;
+  /**
+   * 提交载荷。
+   *
+   * 新增与更新的载荷**形状不同**(见 TaskCreateParams / TaskUpdateParams),
+   * 所以这里是并集:表单自己知道是新增还是编辑。
+   */
+  onSubmit: (values: TaskCreateParams | TaskUpdateParams) => Promise<boolean>;
   /** 侧载的项目选项(列表页已拉过,表单不再发请求) */
   projectOptions: ProjectOption[];
   /** 侧载的里程碑选项(表单里按所选项目过滤) */
@@ -34,10 +43,15 @@ export type TaskModalProps = {
 /**
  * 表单值。
  *
- * 只包含表单里有的字段:`actual_start_date` / `actual_end_date` /
- * `created_via_code` 都不在表单里(创建方式由后端兜底成 'web'),
- * 提交时也不带 —— 后端 update 用 `model_dump(exclude_unset=True)`,
- * 没带的字段原样保留,不会被人抹掉。
+ * 只包含表单里有的字段。**不在表单里**的字段有:
+ *
+ * - `actual_start_date` / `actual_end_date`:后端自己维护(实际起止)
+ * - `reporter_id` / `sort_order` / `created_via_code`:这三列**不是用户可编辑的**
+ *   (报告人是创建人、排序是看板顺序、创建方式是来源),新增时由 payload 构造器
+ *   按固定规则补齐,更新时一个都不带
+ *
+ * 提交时表单外的字段一个都不带 ⇒ 后端 `model_dump(exclude_unset=True)`
+ * 原样保留库里的值,不会被「整对象 PUT」抹掉。
  */
 type TaskFormValues = {
   /** 所属项目(必填) */
@@ -62,8 +76,6 @@ type TaskFormValues = {
   actual_hours?: number;
   /** 负责人 */
   assignee_id?: number;
-  /** 报告人 */
-  reporter_id?: number;
   /** 评审人(逗号分隔的 id 字符串,不是数组) */
   reviewers?: string;
   /** 标签(JSON 数组字符串,不是数组) */
@@ -72,8 +84,6 @@ type TaskFormValues = {
   start_date?: string;
   /** 计划截止日期 */
   due_date?: string;
-  /** 看板拖拽排序 */
-  sort_order?: number;
   /** 阻塞原因 */
   blocked_reason?: string;
 };
@@ -103,10 +113,10 @@ function validateLabels(_: unknown, value: string | undefined): Promise<void> {
 }
 
 /**
- * 用户远程搜索的候选(负责人与报告人共用)。
+ * 用户远程搜索的候选(负责人用)。
  *
  * ⚠️ 这个接口在后端要 module_system:user:query 权限;
- * 没有时表单里只有这两项填不了,其它不受影响。
+ * 没有时表单里只有这一项填不了,其它不受影响。
  */
 async function fetchUserOptions(params: { keyWords?: string }) {
   const keyword = params.keyWords?.trim();
@@ -128,43 +138,43 @@ async function fetchUserOptions(params: { keyWords?: string }) {
 }
 
 /**
- * 详情 → 表单值(只取表单里的字段)。
+ * 列表行 → 表单值(只取表单里的字段)。
  *
- * 编辑是**读-改-写**:后端的 UpdateSchema 继承 CreateSchema,PUT 要带全部
- * 必填字段,所以表单必须拿完整的详情来填,不能只拿列表行。
+ * 编辑**直接用列表行填表**,不再发详情请求:后端的列表返回
+ * `ModulePmTaskOutSchema`(它继承 CreateSchema),行里已经带着表单要的
+ * 每一个字段。再发一次 `/pm_task/detail/` 只会多要一个 `…:detail` 权限 ——
+ * 有 update 没 detail 的角色会打开一个「加载任务详情失败」的废弹窗。
  */
-function toFormValues(detail: TaskOut): Partial<TaskFormValues> {
+function toFormValues(row: TaskOut | undefined): Partial<TaskFormValues> {
   return {
-    project_id: detail.project_id ?? undefined,
-    milestone_id: detail.milestone_id ?? undefined,
-    parent_id: detail.parent_id ?? undefined,
-    title: detail.title ?? undefined,
-    description: detail.description ?? undefined,
-    type_code: detail.type_code ?? undefined,
-    status_code: detail.status_code ?? undefined,
-    priority_code: detail.priority_code ?? undefined,
-    estimate_hours: detail.estimate_hours ?? undefined,
-    actual_hours: detail.actual_hours ?? undefined,
-    assignee_id: detail.assignee_id ?? undefined,
-    reporter_id: detail.reporter_id ?? undefined,
-    reviewers: detail.reviewers ?? undefined,
-    labels: detail.labels ?? undefined,
-    start_date: detail.start_date ?? undefined,
-    due_date: detail.due_date ?? undefined,
-    sort_order: detail.sort_order ?? undefined,
-    blocked_reason: detail.blocked_reason ?? undefined,
+    project_id: row?.project_id ?? undefined,
+    milestone_id: row?.milestone_id ?? undefined,
+    parent_id: row?.parent_id ?? undefined,
+    title: row?.title ?? undefined,
+    description: row?.description ?? undefined,
+    type_code: row?.type_code ?? undefined,
+    status_code: row?.status_code ?? undefined,
+    priority_code: row?.priority_code ?? undefined,
+    estimate_hours: row?.estimate_hours ?? undefined,
+    actual_hours: row?.actual_hours ?? undefined,
+    assignee_id: row?.assignee_id ?? undefined,
+    reviewers: row?.reviewers ?? undefined,
+    labels: row?.labels ?? undefined,
+    start_date: row?.start_date ?? undefined,
+    due_date: row?.due_date ?? undefined,
+    blocked_reason: row?.blocked_reason ?? undefined,
   };
 }
 
 /**
- * 表单值 → 后端入参。
+ * 表单值 → 后端入参(**不含**创建时才补的三列)。
  *
  * 必填字段(project_id / title / type_code / status_code / priority_code)
  * 一个都不能少 —— 后端缺任何一个都 422。
- * 没在表单里的字段(actual_start_date / actual_end_date / created_via_code)
- * 不提交,后端 `exclude_unset=True` ⇒ 原样保留。
+ * 没在表单里的字段(actual_start_date / actual_end_date / reporter_id /
+ * sort_order / created_via_code)不提交,后端 `exclude_unset=True` ⇒ 原样保留。
  */
-function toPayload(values: TaskFormValues): TaskCreateParams {
+function toBasePayload(values: TaskFormValues): TaskUpdateParams {
   return {
     project_id: values.project_id,
     title: values.title,
@@ -177,13 +187,35 @@ function toPayload(values: TaskFormValues): TaskCreateParams {
     estimate_hours: values.estimate_hours ?? null,
     actual_hours: values.actual_hours ?? null,
     assignee_id: values.assignee_id ?? null,
-    reporter_id: values.reporter_id ?? null,
     reviewers: values.reviewers ?? null,
     labels: values.labels ?? null,
     start_date: values.start_date ?? null,
     due_date: values.due_date ?? null,
-    sort_order: values.sort_order ?? null,
     blocked_reason: values.blocked_reason ?? null,
+  };
+}
+
+/**
+ * 新增载荷:补上后端 **NOT NULL** 的三列。
+ *
+ * 这三列在库里都是 NOT NULL(`module_pm_task`),而后端 `create_service`
+ * **不做任何兜底**(直接 `CRUD.create(data=data)`)⇒ 不带就是 INSERT NULL,
+ * 新增必然 500。所以新增时必须由前端按固定规则补齐:
+ *
+ * - `reporter_id`:创建人 = 当前登录用户(拿不到就别提交,见组件里的处理)
+ * - `sort_order`:看板排序,新建的任务一律 0
+ * - `created_via_code`:创建方式 = 字典 `module_pm_task_created_via` 里的
+ *   「手动」(`manual`)—— 字典里没有 'web' 这一项
+ */
+function toCreatePayload(
+  values: TaskFormValues,
+  reporterId: number,
+): TaskCreateParams {
+  return {
+    ...toBasePayload(values),
+    reporter_id: reporterId,
+    sort_order: 0,
+    created_via_code: 'manual',
   };
 }
 
@@ -192,11 +224,15 @@ function toPayload(values: TaskFormValues): TaskCreateParams {
  *
  * 后端的坑:
  * - 更新是**整对象 PUT**(UpdateSchema 继承 CreateSchema,没有 PATCH),
- *   缺必填字段就 422 ⇒ 编辑时先 GET 详情填表,保存时把必填字段一起 PUT
+ *   缺必填字段就 422 ⇒ 编辑时表单必须拿齐全部必填字段
+ * - 编辑**直接用列表行填表**:列表返回的 `ModulePmTaskOutSchema` 继承
+ *   CreateSchema,行里已经带着表单要的每一个字段 —— 不发详情请求,
+ *   于是编辑只要 `…:update` 一个权限(详情接口另要 `…:detail`)
  * - `reviewers` 是逗号分隔的 id 字符串、`labels` 是 JSON 数组字符串 ——
  *   后端存的就是字符串,表单原样提交(不是数组)
- * - `estimate_hours` / `actual_hours` / `sort_order` 是数字(后端是 Decimal)
- * - `created_via_code` 不在表单里:后端为空时自己兜底成 'web'
+ * - `estimate_hours` / `actual_hours` 是数字(后端是 Decimal)
+ * - `reporter_id` / `sort_order` / `created_via_code` 不在表单里:
+ *   新增时按固定规则补齐,更新时一个都不带
  */
 const TaskModalForm: React.FC<TaskModalProps> = ({
   open,
@@ -211,50 +247,17 @@ const TaskModalForm: React.FC<TaskModalProps> = ({
   const taskId = record?.id ?? null;
   const editing = taskId != null;
 
-  // 详情(读-改-写的「读」):异步到达,到了再回填表单
-  const [detail, setDetail] = useState<TaskOut | undefined>(undefined);
-  const [detailId, setDetailId] = useState<number | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailFailed, setDetailFailed] = useState(false);
+  // 当前登录用户:新增任务的创建人(reporter_id)是后端的 NOT NULL 列,
+  // 只能由前端带 —— 拿不到就不能提交(宁可报错也不发一个 null 上去)
+  // ⚠️ useModel('@@initialState') 拿到的是**模型**(initialState / loading / …),
+  // 真正的初始状态在它的 initialState 上(与 plugin-access 的读法一致)
+  const { initialState } = useModel('@@initialState');
+  const currentUserId = initialState?.currentUser?.id ?? null;
 
-  // 表单实例:详情是异步到的,initialValues 只在表单挂载那一刻生效,
-  // 只能拿到实例之后用 setFieldsValue 回填
-  const formRef = useRef<ProFormInstance<TaskFormValues> | undefined>(
-    undefined,
-  );
-
-  useEffect(() => {
-    if (!open || taskId == null) return;
-    let cancelled = false;
-    setDetailLoading(true);
-    setDetailFailed(false);
-    getTaskDetail(taskId)
-      .then((res) => {
-        if (cancelled) return;
-        setDetail(res?.data ?? undefined);
-        setDetailId(taskId);
-        setDetailLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setDetailFailed(true);
-        setDetailLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, taskId]);
-
-  useEffect(() => {
-    // 迟到的旧详情不能污染当前打开的表单
-    if (!detail || detailId !== taskId) return;
-    formRef.current?.setFieldsValue(toFormValues(detail));
-  }, [detail, detailId, taskId]);
-
-  // 详情没到手之前不渲染表单(免得人对着空表单提交);
-  // 侧载还在途时同理 —— 项目/里程碑的下拉这时是空的
-  const formReady =
-    !optionsLoading && (!editing || (!detailLoading && !detailFailed));
+  // 侧载还在途时,项目/里程碑的下拉是空的 —— 先转圈别让人干瞪眼
+  // 新增必须有当前登录用户(编辑不带 reporter_id,不受影响)
+  const reporterMissing = !editing && currentUserId == null;
+  const formReady = !optionsLoading && !reporterMissing;
 
   return (
     <ModalForm<TaskFormValues>
@@ -266,14 +269,19 @@ const TaskModalForm: React.FC<TaskModalProps> = ({
         destroyOnHidden: true,
         okButtonProps: { disabled: !formReady },
       }}
-      // 表单实例在这里拿:onInit 在表单挂载时触发
-      onInit={(_values, form) => {
-        formRef.current = form;
-      }}
+      // 表单值直接来自列表行(编辑)或空(新增)—— 同步就有,不用等详情
+      initialValues={toFormValues(record)}
       onOpenChange={onOpenChange}
       onFinish={async (values) => {
-        // 成功提示由请求层统一弹(后端信封里的 msg),这里返回 true/false 决定是否关闭弹窗
-        return onSubmit(toPayload(values));
+        // 新增要带上后端 NOT NULL 的三列;更新一个都不带
+        // (后端 `exclude_unset=True` ⇒ 库里的值原样保留)
+        if (!editing) {
+          // 拿不到当前登录用户就别提交(弹窗里已经给了错误提示)
+          if (currentUserId == null) return false;
+          // 成功提示由请求层统一弹(后端信封里的 msg),这里返回 true/false 决定是否关闭弹窗
+          return onSubmit(toCreatePayload(values, currentUserId));
+        }
+        return onSubmit(toBasePayload(values));
       }}
     >
       {formReady ? (
@@ -383,15 +391,7 @@ const TaskModalForm: React.FC<TaskModalProps> = ({
             fieldProps={{ placeholder: '输入姓名搜索' }}
             request={fetchUserOptions}
           />
-          <ProFormSelect
-            name="reporter_id"
-            label="报告人"
-            showSearch
-            debounceTime={300}
-            fieldProps={{ placeholder: '输入姓名搜索' }}
-            request={fetchUserOptions}
-          />
-          {/* 工时与排序是数字(后端是 Decimal,不是字符串) */}
+          {/* 工时是数字(后端是 Decimal,不是字符串) */}
           <ProFormDigit
             name="estimate_hours"
             label="预估工时"
@@ -415,12 +415,6 @@ const TaskModalForm: React.FC<TaskModalProps> = ({
             label="计划截止日期"
             fieldProps={{ placeholder: '计划截止日期' }}
           />
-          <ProFormDigit
-            name="sort_order"
-            label="排序"
-            min={0}
-            fieldProps={{ placeholder: '看板拖拽排序' }}
-          />
           <ProFormText
             name="reviewers"
             label="评审人"
@@ -443,17 +437,15 @@ const TaskModalForm: React.FC<TaskModalProps> = ({
         </>
       ) : (
         <div style={{ padding: '24px 0', textAlign: 'center' }}>
-          {detailFailed ? (
+          {reporterMissing ? (
             <Alert
               type="error"
               showIcon
-              message="加载任务详情失败"
-              description="后端的更新是整对象 PUT,没有详情填不了表。请关闭后重试。"
+              message="拿不到当前登录用户"
+              description="新增任务要带上创建人(后端的必填列),请刷新页面后重试。"
             />
           ) : (
-            <Spin
-              tip={editing ? '正在加载任务详情…' : '正在加载项目与里程碑…'}
-            />
+            <Spin tip="正在加载项目与里程碑…" />
           )}
         </div>
       )}
