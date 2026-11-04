@@ -88,12 +88,39 @@ const MAX_COLLECTED_WARNINGS = 100;
 /** 默认收集器留痕的告警。 */
 const collectedWarnings: EnumWarning[] = [];
 
-/** 默认 sink：把告警收进内存（`getEnumWarnings()` 可查）。 */
-const defaultSink: EnumWarningSink = (warning) => {
+/** 记一条告警（留痕：便于事后查最后若干条）。 */
+function recordEnumWarning(warning: EnumWarning): void {
 	collectedWarnings.push(warning);
 	if (collectedWarnings.length > MAX_COLLECTED_WARNINGS) {
 		collectedWarnings.shift();
 	}
+}
+
+/**
+ * 把一条告警打进日志。
+ *
+ * ⚠️ **绝不带凭据**：告警里只有字段名与那个不认识的原始值（枚举码），
+ * 不含 token、口令、连接串。
+ */
+export function logEnumWarning(warning: EnumWarning): void {
+	console.warn(`[adapter] ${warning.message}`);
+}
+
+/**
+ * 标准告警去处 —— **留痕 + 打日志**。
+ *
+ * ⚠️ 为什么要有它：只留痕的话，告警落进一个模块数组就**被丢掉了**
+ * （`getEnumWarnings()` 出了测试没人调）⇒ 「不猜语义」的承诺是**不可观测**的。
+ * 打一条日志，它才真的看得见。
+ */
+export const standardEnumWarningSink: EnumWarningSink = (warning) => {
+	recordEnumWarning(warning);
+	logEnumWarning(warning);
+};
+
+/** 默认 sink：把告警收进内存（`getEnumWarnings()` 可查）。 */
+const defaultSink: EnumWarningSink = (warning) => {
+	recordEnumWarning(warning);
 };
 
 /** 当前生效的全局 sink。 */

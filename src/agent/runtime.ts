@@ -21,10 +21,12 @@
 import { AadminClient } from "../aadmin/client";
 import { AadminDataSource } from "../adapter/datasource";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import { PrismaAuditWriter, type AuditWriter } from "../audit";
 import { env } from "../env";
 import { buildFrame } from "../http/sse";
 import type { TaskCreator } from "../tools/create-task";
 import { buildCommandTools } from "../tools";
+import { setEnumWarningSink, standardEnumWarningSink } from "../adapter/enums";
 import { SSE_EVENTS, type SseEventName, type SsePayload } from "./events";
 import { AgentEventMapper, extractAssistantText, isAssistantMessage } from "./event-mapper";
 import { CurrentUserResolver, type CurrentUser } from "./identity";
@@ -63,6 +65,16 @@ export interface CommandAck {
 	success: boolean;
 }
 
+/**
+ * 每个会话最多记多少个命令 id（超出就淘汰最老的那个）。
+ *
+ * ⚠️ **有上限是必须的**：这是**进程内**的 Map，不淘汰就会被长跑进程吃满内存。
+ */
+const MAX_TRACKED_COMMANDS_PER_CONVERSATION = 64;
+
+/** 最多给多少个会话记命令 id（会话多了也不能把内存吃满）。 */
+const MAX_TRACKED_CONVERSATIONS = 128;
+
 /** 会话状态（`GET /api/agent/:cid/state` 的 data）。 */
 export interface ConversationState {
 	conversationId: string;
@@ -83,6 +95,10 @@ export interface AgentRuntimeOptions {
 	store?: ConversationStore;
 	/** 对外显示的模型标识。 */
 	model?: string;
+	/** 审计去处（生产用 `PrismaAuditWriter`，测试用假实现）。 */
+	audit?: AuditWriter;
+	/** 每个会话最多记多少个命令 id（测试用；生产用默认上限）。 */
+	maxTrackedCommands?: number;
 }
 
 export class AgentRuntime {
@@ -96,11 +112,19 @@ export class AgentRuntime {
 	readonly #userResolver: CurrentUserResolver;
 	/** 每个会话的事件映射器。 */
 	readonly #mappers = new Map<string, AgentEventMapper>();
+	/** 审计去处（每次写操作都留一条 `ai_audit_log`）。 */
+	readonly #audit: AuditWriter;
+	/** 命令 id ⇒ 上次的 ack（**幂等**：同一个 id 不跑两遍）。 */
+	readonly #acks = new Map<string, Map<string, CommandAck>>();
+	/** 每个会话最多记多少个命令 id。 */
+	readonly #maxTrackedCommands: number;
 
 	constructor(options: AgentRuntimeOptions = {}) {
 		this.#store = options.store ?? new ConversationStore();
 		this.#createSession = options.createSession ?? createPiSession;
 		this.#model = options.model ?? env.AI_MODEL;
+		this.#audit = options.audit ?? new PrismaAuditWriter();
+		this.#maxTrackedCommands = options.maxTrackedCommands ?? MAX_TRACKED_COMMANDS_PER_CONVERSATION;
 
 		const client = new AadminClient({ baseUrl: env.AIADMIN_BASE_URL });
 		this.#userResolver = new CurrentUserResolver(client);
@@ -112,7 +136,12 @@ export class AgentRuntime {
 				new AadminDataSource({
 					client: new AadminClient({ baseUrl: env.AIADMIN_BASE_URL }),
 					token,
+					// ⚠️ 告警不许被悄悄丢掉 ⇒ 注入一个会打日志的去处
+					onWarning: standardEnumWarningSink,
 				}));
+
+		// 进程级的告警去处也装上（不只数据源这一条路径）
+		setEnumWarningSink(standardEnumWarningSink);
 	}
 
 	/** 建一个会话。 */
@@ -131,6 +160,12 @@ export class AgentRuntime {
 	 * 提交一条命令（`type: "prompt"`）。
 	 *
 	 * 立即返回「已受理」；真正的执行在后台排队跑，结果走 SSE。
+	 *
+	 * ## 幂等（Idempotency-Key）
+	 *
+	 * **同一个会话 + 同一个 `commandId` 再来一次 ⇒ 回上次那个 ack，不再跑一遍。**
+	 * 本切片唯一的命令是**写** ⇒ 重跑一次就是多建一个任务，而且前端只看到「成功」。
+	 * 客户端重试、双击、代理重发都会撞上这个窗口 ⇒ 去重做在运行时这一层。
 	 *
 	 * @param request.userId 当前用户 id（用来确认这个会话是他的）。
 	 */
@@ -151,6 +186,12 @@ export class AgentRuntime {
 			throw new AgentError("NOT_FOUND", `会话 ${request.conversationId} 不存在`);
 		}
 
+		// ⚠️ 幂等：同一个 commandId 再来一次 ⇒ 回上次那个 ack（**不再跑一遍**）
+		const known = this.#ackOf(request.conversationId, request.commandId);
+		if (known !== undefined) {
+			return known;
+		}
+
 		const channel = this.#registry.ensure(request.conversationId);
 		// token 只在内存里；每次命令都刷新（token 轮换后能用新的那个）
 		channel.token = request.token;
@@ -168,7 +209,9 @@ export class AgentRuntime {
 				this.#publishTurnError(channel, error);
 			});
 
-		return { id: request.commandId, type: "response", success: true };
+		const ack: CommandAck = { id: request.commandId, type: "response", success: true };
+		this.#rememberAck(request.conversationId, request.commandId, ack);
+		return ack;
 	}
 
 	/** 订阅某个会话的事件流；返回退订函数。 */
@@ -223,6 +266,49 @@ export class AgentRuntime {
 
 	/* ------------------------------------------------------------ 内部 */
 
+	/** 取上次这个命令 id 的 ack（没有 ⇒ undefined）。 */
+	#ackOf(conversationId: string, commandId: string): CommandAck | undefined {
+		const acks = this.#acks.get(conversationId);
+		if (acks === undefined) {
+			return undefined;
+		}
+		const ack = acks.get(commandId);
+		if (ack !== undefined) {
+			// 刷新一下位置（最近用过的会话最后被淘汰）
+			acks.delete(commandId);
+			acks.set(commandId, ack);
+		}
+		return ack;
+	}
+
+	/** 记下「这个命令 id 已经受理过」（满了就淘汰最老的）。 */
+	#rememberAck(conversationId: string, commandId: string, ack: CommandAck): void {
+		let acks = this.#acks.get(conversationId);
+		if (acks === undefined) {
+			acks = new Map<string, CommandAck>();
+		}
+		// 先删后插 ⇒ 这条变成「最新的一条」，淘汰时最后被淘汰
+		acks.delete(commandId);
+		acks.set(commandId, ack);
+		while (acks.size > this.#maxTrackedCommands) {
+			const oldest = acks.keys().next();
+			if (oldest.done) {
+				break;
+			}
+			acks.delete(oldest.value);
+		}
+		// 外层也有上限（会话多了不能把内存吃满）
+		this.#acks.delete(conversationId);
+		this.#acks.set(conversationId, acks);
+		while (this.#acks.size > MAX_TRACKED_CONVERSATIONS) {
+			const oldest = this.#acks.keys().next();
+			if (oldest.done) {
+				break;
+			}
+			this.#acks.delete(oldest.value);
+		}
+	}
+
 	/** 跑一轮对话。 */
 	async #runTurn(channel: ConversationChannel, message: string): Promise<void> {
 		const session = await this.#ensureSession(channel);
@@ -239,6 +325,8 @@ export class AgentRuntime {
 			currentToken: () => channel.token,
 			createDataSource: this.#createDataSource,
 			resolveReporterId: async (token: string) => (await this.#resolveUser(token)).id,
+			audit: this.#audit,
+			model: this.#model,
 		});
 		const session = await this.#createSession(tools, PM_AGENT_PROMPT);
 		channel.session = session;

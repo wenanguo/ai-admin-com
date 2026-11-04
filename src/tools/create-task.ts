@@ -17,6 +17,7 @@
 
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
+import type { AuditWriter } from "../audit";
 import type { CreateTaskInput } from "../adapter/datasource";
 import type { UnifiedTask } from "../adapter/model";
 import { AdapterErrorException } from "../aadmin/errors";
@@ -38,6 +39,10 @@ export interface CreateTaskToolDeps {
 	createDataSource: (token: string) => TaskCreator;
 	/** 取当前用户 id（任务要记报告人，后端这列 NOT NULL 且不自动回填）。 */
 	resolveReporterId: (token: string) => Promise<number>;
+	/** 审计去处（**每次写都要留一条 `ai_audit_log`**）。 */
+	audit: AuditWriter;
+	/** 模型标识（写进审计；拿不到就不写）。 */
+	model?: string;
 	/** 命令闸门（默认恒放行）。 */
 	gate?: CommandGate;
 }
@@ -156,6 +161,34 @@ function failure(message: string, errorKind?: string): AgentToolResult<CreateTas
 }
 
 /**
+ * 审计里**绝不能**出现的字段名（凭据类）。
+ *
+ * ⚠️ 脱敏不能靠「参数里不会出现 token」—— 参数是模型给的、运行时来的，
+ * 谁也不能保证它不夹带私货 ⇒ 按**键名**一票否决。
+ */
+const SENSITIVE_ARG_KEYS = new Set([
+	"token",
+	"access_token",
+	"refresh_token",
+	"authorization",
+	"password",
+	"passwd",
+	"pwd",
+	"secret",
+	"api_key",
+	"apikey",
+]);
+
+/** 脱敏：凭据类字段的值换成「[已脱敏]」（键保留，形状不变）。 */
+function redactAuditArgs(args: Record<string, unknown>): Record<string, unknown> {
+	const redacted: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(args)) {
+		redacted[key] = SENSITIVE_ARG_KEYS.has(key.trim().toLowerCase()) ? "[已脱敏]" : value;
+	}
+	return redacted;
+}
+
+/**
  * 造 `create_task` 工具。
  *
  * @param deps 运行时的依赖（token、数据源、当前用户、闸门）。
@@ -214,6 +247,9 @@ export function createCreateTaskTool(deps: CreateTaskToolDeps): CommandTool<
 					estimate_hours: params.estimate_hours,
 				});
 
+				// ⚠️ 审计：**先记账，再回成功**（记账失败也不能把任务弄丢，见 writeAudit）
+				await writeAudit(deps, task, args, reporterId);
+
 				const summary = `已创建任务 ${task.key}「${task.title}」（项目 ${task.project_key}，类型 ${task.type}，状态 ${task.status}，优先级 ${task.priority}）`;
 				const details: CreateTaskDetails = {
 					summary,
@@ -238,4 +274,33 @@ export function createCreateTaskTool(deps: CreateTaskToolDeps): CommandTool<
 			}
 		},
 	};
+}
+
+/**
+ * 写一条审计（`ai_audit_log`）。
+ *
+ * ⚠️ **失败只记日志，不把已经建好的任务弄丢**：
+ * 任务已经落在 AiAdmin 那边了 ⇒ 这里报失败只会诱使模型**重试** ⇒ 又建一个。
+ * 所以错误必须**看得见**（console.error），但结果照常算成功。
+ */
+async function writeAudit(
+	deps: CreateTaskToolDeps,
+	task: UnifiedTask,
+	args: Record<string, unknown>,
+	reporterId: number,
+): Promise<void> {
+	try {
+		await deps.audit.write({
+			actorType: "AI",
+			command: CREATE_TASK_TOOL_NAME,
+			args: redactAuditArgs(args),
+			// 快照：新建 ⇒ before 为 null（此前不存在），after 是落库后的实体
+			before: task.snapshot?.before ?? null,
+			after: task.snapshot?.after ?? task,
+			userId: String(reporterId),
+			model: deps.model,
+		});
+	} catch (error) {
+		console.error("[audit] 写 ai_audit_log 失败（任务已创建，不要重试）", error);
+	}
 }

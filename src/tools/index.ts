@@ -11,6 +11,7 @@
  * （`noTools: "builtin"`）—— 它们能在服务器上乱跑。
  */
 
+import type { AuditWriter } from "../audit";
 import { createCreateTaskTool, CREATE_TASK_TOOL_NAME, type TaskCreator } from "./create-task";
 import type { CommandGate, CommandTool } from "./types";
 
@@ -22,6 +23,10 @@ export interface CommandContext {
 	createDataSource: (token: string) => TaskCreator;
 	/** 取当前用户 id（任务要记报告人）。 */
 	resolveReporterId: (token: string) => Promise<number>;
+	/** 审计去处（**每次写都要留一条 `ai_audit_log`**）。 */
+	audit: AuditWriter;
+	/** 模型标识（写进审计）。 */
+	model?: string;
 	/** 命令闸门（默认恒放行）。 */
 	gate?: CommandGate;
 }
@@ -50,6 +55,8 @@ export const COMMAND_CATALOG: readonly CommandDefinition[] = [
 				currentToken: context.currentToken,
 				createDataSource: context.createDataSource,
 				resolveReporterId: context.resolveReporterId,
+				audit: context.audit,
+				model: context.model,
 				gate: context.gate,
 			}),
 	},
