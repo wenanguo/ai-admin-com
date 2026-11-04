@@ -161,6 +161,14 @@ export default [
         icon: 'checkSquare',
         component: './module_pm/task',
       },
+      {
+        // 任务看板页:六列(待规划/待办/进行中/阻塞/评审/已完成),
+        // 拖拽只改 status_code 一个维度
+        path: '/pm/task/board',
+        name: 'taskBoard',
+        icon: 'appstore',
+        component: './module_pm/task/board',
+      },
     ],
   },
   {
