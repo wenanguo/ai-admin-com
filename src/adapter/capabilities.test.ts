@@ -18,6 +18,7 @@ describe("能力位", () => {
 	it("整体被钉死（一次改动就要改测试）", () => {
 		expect(CAPABILITIES).toEqual({
 			supportsDelete: true,
+			deleteMode: "SOFT",
 			supportsBatchUpdate: false,
 			supportsHistory: false,
 			supportsCustomFields: true,
@@ -31,6 +32,10 @@ describe("能力位", () => {
 	it("逐项断言（每条附实测依据）", () => {
 		// 有删除端点：DELETE /pm_project/pm_task/delete（请求体是裸数组）
 		expect(CAPABILITIES.supportsDelete).toBe(true);
+		// ⚠️ 删除是**软删除**（不是物理删除）：`BaseCRUD.delete` 只置 is_deleted / deleted_time / deleted_id，
+		// 行仍在表里 ⇒ 一条 UPDATE … SET is_deleted = 0 就能恢复。
+		// （后端 controller 自己的 docstring 写着「物理删除」—— 那是错的，以 base_crud.py 的实现为准。）
+		expect(CAPABILITIES.deleteMode).toBe("SOFT");
 		// 没有「多字段批量更新」：只有 PATCH .../status/batch，且它写的是框架的 status 列（0/1）
 		expect(CAPABILITIES.supportsBatchUpdate).toBe(false);
 		// 没有字段级历史表 ⇒ 撤销只能是补偿式

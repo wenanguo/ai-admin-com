@@ -9,15 +9,32 @@
  * - `D:/project/AiAdmin/backend/app/plugin/module_pm_project/**`
  * - `D:/project/AiAdmin/backend/app/plugin/module_pm_risk/**`
  * - `D:/project/AiAdmin/backend/app/plugin/module_pm_comment/**`
+ * - `D:/project/AiAdmin/backend/app/core/base_crud.py`（**删除是软删还是物理删**）
  * - `D:/project/AiAdmin/backend/app/core/base_params.py`
+ * - `D:/project/AiAdmin/backend/app/core/base_schema.py`
  * - `D:/project/AiAdmin/backend/app/init_app.py`
  * - `D:/project/AiAdmin/backend/sql/mysql/pm_v2_schema_v1.sql`
+ *
+ * ⚠️ **注释里的事实必须与代码一致**：后端自己的 docstring 也可能写错
+ * （例：`pm_task/controller.py` 写着「物理删除」，而 `base_crud.py` 的实现是软删除）
+ * ⇒ 以**实现**为准。
  */
 
 /** 能力位的形状。 */
 export interface Capabilities {
-	/** 能否删除（物理删除，不可恢复）。 */
+	/** 能否删除。 */
 	supportsDelete: boolean;
+	/**
+	 * 删除是**软删除**还是**物理删除**。
+	 *
+	 * - `"SOFT"` ⇒ 行仍在表里（`is_deleted=1`），一条
+	 *   `UPDATE … SET is_deleted = 0` 就能恢复 ⇒ **可补偿**；
+	 * - `"HARD"` ⇒ 行真的没了 ⇒ 不可恢复（撤销只能重新建一个）。
+	 *
+	 * ⚠️ 后端 controller 自己的 docstring 写着「物理删除」—— **那是错的**，
+	 * 以 `app/core/base_crud.py` 的实现为准（见下面 `CAPABILITIES` 的注释）。
+	 */
+	deleteMode: "SOFT" | "HARD";
 	/** 能否「一次改多个字段 × 多条记录」。 */
 	supportsBatchUpdate: boolean;
 	/** 能否取到字段级历史（改动前的旧值）。 */
@@ -47,9 +64,27 @@ export const CAPABILITIES: Capabilities = {
 	 * ✅ 能删。
 	 * 依据：`pm_task/controller.py` 的 `delete_obj_controller` ——
 	 * `DELETE /pm_project/pm_task/delete`，请求体是**裸数组** `[1, 2]`（不是 `{ids:[]}`）。
-	 * ⚠️ 是物理删除，不可恢复。
+	 *
+	 * ⚠️ **是软删除（可恢复），不是物理删除**：
+	 * `BaseCRUD.delete`（`app/core/base_crud.py`）走的是 `_supports_soft_delete` 分支 ——
+	 * 只 `UPDATE` 置 `is_deleted=True`、`deleted_time=now()`、`deleted_id=<操作人>`，
+	 * **行仍在表里** ⇒ 一条 `UPDATE … SET is_deleted = 0` 就能恢复
+	 * （框架自己也有 `CRUDBase.restore` 做同一件事）。
+	 * `ModulePmTaskModel` 继承了 `ModelMixin`/`UserMixin` ⇒ 三个软删列都有
+	 * ⇒ `_supports_soft_delete` 为真。
+	 *
+	 * ⚠️ **后端 controller 的 docstring 写着「物理删除」—— 那是错的**
+	 * （`pm_task/service.py` 的 `delete_service` 只是调 `CRUD.delete`）。
+	 * 实测：本服务自己建的测试任务删掉后仍在表里、`is_deleted = 1`。
 	 */
 	supportsDelete: true,
+
+	/**
+	 * 🧹 删除是**软删除**（行还在，可人工恢复）。
+	 * 依据：同上的 `BaseCRUD.delete` 实现（`is_deleted` / `deleted_time` / `deleted_id`）。
+	 * ⇒ 补偿/撤销层可以把它当**可恢复**的：人工 `UPDATE … SET is_deleted = 0` 即可。
+	 */
+	deleteMode: "SOFT",
 
 	/**
 	 * ❌ 不能批量改字段。
