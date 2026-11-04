@@ -434,7 +434,9 @@ EOF
     **`cancelled` 不进看板**（已取消的任务退出工作流）。
   - 卡片：标题 + 优先级标签 + 负责人 `Avatar` + 估时 + 截止日（逾期标红）。
   - 拖拽**只改 `status_code` 一个维度**（不跨里程碑/负责人）。
-  - 拖拽写的是**整对象 PUT**：先 GET 该任务 → 合并新 status → PUT 全部必填字段。
+  - 拖拽写的是**整对象 PUT**：用**卡片自带**的任务对象拼出全部必填字段（**不发详情请求** ——
+    列表/看板返回的 `ModulePmTaskOutSchema` 继承创建 schema，字段已齐；也少一个 `:detail` 依赖）。
+    `reporter_id` / `sort_order` / `created_via_code` 不提交（后端 `exclude_unset` 保留原值）。
   - **失败回滚**：把卡片放回原列并提示（`message.error` 由请求层统一弹，这里只管位置）。
 
 - [ ] **Step 4: 跑测试确认通过** —— Run: `npx playwright test e2e/pm-task-board.spec.ts` → Expected: PASS

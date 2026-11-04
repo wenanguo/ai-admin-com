@@ -502,7 +502,12 @@ GET  /api/agent/conversations?limit=50  → [{ conversationId, title, updatedAt 
 
 - 卡片：标题 + 优先级标签 + 负责人 `Avatar` + 估时 + 截止日（逾期标红）。
 - **拖拽改状态**：后端的任务更新是**整对象 PUT**（`ModulePmTaskUpdateSchema` 继承
-  CreateSchema，全部必填）⇒ 拖拽必须**先 GET 再合并再 PUT**，不能只传 status。
+  CreateSchema，全部必填）⇒ 拖拽要拼出**全部必填字段**。
+  > **实施时修订（Task 6/7 的复审裁决）**：**不额外 GET 详情** —— 列表/看板返回的
+  > `ModulePmTaskOutSchema` 继承创建 schema，**行/卡片本身就带齐了 PUT 需要的字段**。
+  > 少一次请求，也少一个 `…:detail` 权限依赖。
+  > `reporter_id` / `sort_order` / `created_via_code` 三列是后端 NOT NULL 且**不可由人填**，
+  > 拖拽的 PUT **不提交**它们（后端 `exclude_unset` ⇒ 原值保留）。
   > 这条在 v0.2.0 的工单页已经踩过类似的坑（创建/更新入参要对齐后端的两个 schema）。
 - **拖拽是否需要确认？** 人工操作**不走 AI 的确认门槛**（那是 AI 命令的规则）。
   拖拽改状态是人工直接操作，但**必须写审计**（AIPM 00 §5 第 7 条「人工与 AI 同路径」）。
@@ -687,7 +692,7 @@ src/
 | U9.1 | 风险表单提交体里的 `score` = 概率 × 影响（后端不计算，必填） | e2e 钉死提交体 |
 | U9.2 | 风险表单提交 `created_via_code: 'manual'`、`owner_id`、`status_code`（后端必填） | e2e 钉死提交体 |
 | U10 | 里程碑表单里**没有** `at_risk` / `missed` 选项 | 单测 |
-| U11 | 看板拖拽改状态走整对象 PUT，且失败时卡片**回滚原位** | e2e |
+| U11 | 看板拖拽改状态走整对象 PUT（用卡片自带字段拼，不发详情请求），且失败时卡片**回滚原位** | e2e |
 | U11.1 | 看板 6 列，`cancelled` 不在看板；拖到第 6 列写 `done` | e2e |
 | U12 | 现有 279 单测 + 80 e2e **零回归** | 门禁 |
 
