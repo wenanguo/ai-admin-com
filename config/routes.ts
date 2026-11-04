@@ -188,7 +188,7 @@ export default [
       (`module_pm_project/pm_project` 这种,后端按插件目录自动生成),
       不是前端的 /pm/*。前端菜单适配器只保留「已在前端路由表注册过」的菜单路径
       ⇒ 这四条路径不注册,整块 PM 菜单就会被跳过(控制台打印
-      `[menu] 前端缺少路由: <path>`)。注册成重定向路由,侧边栏点「项目列表」
+      `[menu] 前端缺少路由: <path>`)。注册成重定向路由,侧边栏点「项目清单」
       就落到 /pm/project。
 
       为什么挂在**顶层**而不是 /pm 目录下面:React Router 要求子路由的绝对路径
@@ -206,7 +206,7 @@ export default [
     path: '/module_pm_project',
     routes: [
       {
-        // 目录「项目管理」与菜单「项目列表」共用这一条路径(后端就是这么种的)
+        // 目录「项目管理」与菜单「项目清单」共用这一条路径(后端就是这么种的)
         path: '/module_pm_project/pm_project',
         icon: 'project',
         redirect: '/pm/project',
