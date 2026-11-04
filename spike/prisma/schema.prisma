@@ -1,0 +1,17 @@
+// 尖峰 ③ 的一次性 schema：只有一张用完即删的探针表。
+// Task 2 会用真正的 ai_* 模型替换本文件。
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+/// 一次性探针表：用完即删。
+model SpikeProbe {
+  id        Int      @id @default(autoincrement())
+  label     String   @db.VarChar(64)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+}

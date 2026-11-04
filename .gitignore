@@ -4,11 +4,20 @@ out/
 dist/
 coverage/
 *.log
+*.tsbuildinfo
 
 # 本地环境变量（含模型 key 与数据库密码）—— 不入库
 .env
 .env.local
 .env.*.local
+
+# 尖峰的临时产物（auth 文件 / 数据库连接串），不入库
+spike/.spike-auth.json
+spike/.spike-agent-dir/
+spike/.scratch-db-url
+
+# superpowers 的工作区（ledger / brief 等 scratch）
+.superpowers/
 
 .DS_Store
 .vscode/
