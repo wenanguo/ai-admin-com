@@ -337,6 +337,62 @@ describe("AadminClient · 重试策略", () => {
 	});
 });
 
+describe("AadminClient · 可重试性按读写区分", () => {
+	it("读操作遇 5xx → UPSTREAM 且 retryable 为 true", async () => {
+		const { client } = makeClient([
+			jsonResponse({ code: 500, msg: "服务器内部错误", data: null }, { status: 500 }),
+			jsonResponse({ code: 500, msg: "服务器内部错误", data: null }, { status: 500 }),
+		]);
+
+		const err = await captureError(client.get(PM_PATHS.task.list, TOKEN));
+
+		expect(err.kind).toBe("UPSTREAM");
+		expect(err.retryable).toBe(true);
+		expect(err.details.retryable).toBe(true);
+		expect(isRetryable(err)).toBe(true);
+	});
+
+	it("写操作遇 5xx → UPSTREAM 但 retryable 为 false（写请求可能已生效，不能重放）", async () => {
+		const { client } = makeClient([
+			jsonResponse({ code: 500, msg: "服务器内部错误", data: null }, { status: 500 }),
+		]);
+
+		const err = await captureError(client.post(PM_PATHS.task.create, TOKEN, { title: "x" }));
+
+		expect(err.kind).toBe("UPSTREAM");
+		expect(err.retryable).toBe(false);
+		expect(err.details.retryable).toBe(false);
+		expect(isRetryable(err)).toBe(false);
+	});
+
+	it("写操作遇 5xx（HTTP 200 + 业务码 500）→ 同样不可重试", async () => {
+		const { client } = makeClient([jsonResponse({ code: 500, msg: "服务器内部错误", data: null })]);
+
+		const err = await captureError(client.put(PM_PATHS.task.update(3), TOKEN, { title: "x" }));
+
+		expect(err.kind).toBe("UPSTREAM");
+		expect(err.retryable).toBe(false);
+		expect(isRetryable(err)).toBe(false);
+	});
+
+	it("写操作遇 2xx 但不是合法信封 → 不可重试（写可能已经生效）", async () => {
+		const { client } = makeClient([new Response("不是 JSON", { status: 200 })]);
+
+		const err = await captureError(client.delete(PM_PATHS.task.remove, TOKEN, [1]));
+
+		expect(err.kind).toBe("UPSTREAM");
+		expect(err.retryable).toBe(false);
+		expect(isRetryable(err)).toBe(false);
+	});
+
+	it("isRetryable 与错误自带的 details.retryable 一致（details 说 false 就不算可重试）", () => {
+		const err = new AdapterErrorException("UPSTREAM", "上游炸了", { retryable: false });
+
+		expect(err.details.retryable).toBe(false);
+		expect(isRetryable(err)).toBe(false);
+	});
+});
+
 describe("AadminClient · token 不外泄", () => {
 	it("错误消息里没有 token", async () => {
 		const { client } = makeClient([

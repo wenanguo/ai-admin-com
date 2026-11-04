@@ -221,9 +221,10 @@ function describeFacts(facts: ResponseFacts, spec: RequestSpec): string {
  *    （后端「认证已失效」用的就是 10401，见 `backend/app/core/dependencies.py`）
  * 2. HTTP 状态定性：404 → NOT_FOUND、409 → CONFLICT、429 → RATE_LIMIT、
  *    400/422 → VALIDATION
- * 3. 业务码不是成功码 → VALIDATION（HTTP 200 也可能是业务失败）
- * 4. 5xx → UPSTREAM（可重试）；其余 4xx → VALIDATION
- * 5. 2xx 但不是合法信封 → UPSTREAM（协议不对）
+ * 3. 业务码不是成功码 → 业务码归类（`code=-1` 与 4000+ 归 VALIDATION；
+ *    400~600 的业务码按 HTTP 语义归一，偏差说明见 `classifyByCode`）
+ * 4. 5xx → UPSTREAM（读可重试 / 写不可重试）；其余 4xx → VALIDATION
+ * 5. 2xx 但不是合法信封 → UPSTREAM（读可重试 / 写不可重试）
  */
 function classify(
 	response: Response,
@@ -271,40 +272,60 @@ function classify(
 		}
 		// 5xx 上的其它业务码（如后端未捕获异常的 code=1）按上游抖动处理
 		if (facts.httpStatus >= 500) {
-			return new AdapterErrorException("UPSTREAM", `AiAdmin 服务异常（${where}）${detail}`, {
-				retryable: true,
-			});
+			return upstreamError(`AiAdmin 服务异常（${where}）${detail}`, spec);
 		}
 		// 业务码本身落在 HTTP 语义区间（400~600）时，按 HTTP 语义解释
+		// （与派单表的偏差见 `classifyByCode` 的注释）
 		if (facts.code >= 400 && facts.code <= 600) {
-			return classifyByCode(facts.code, where, detail, facts.data, facts.retryAfterMs);
+			return classifyByCode(facts.code, facts, where, detail, spec);
 		}
 		// 其余自定义业务码（4000+）
 		return validationError(where, detail, facts.data);
 	}
 
 	if (facts.httpStatus >= 500) {
-		return new AdapterErrorException("UPSTREAM", `AiAdmin 服务异常（${where}）${detail}`, {
-			retryable: true,
-		});
+		return upstreamError(`AiAdmin 服务异常（${where}）${detail}`, spec);
 	}
 
 	if (facts.httpStatus >= 400) {
 		return validationError(where, detail, facts.data);
 	}
 
-	return new AdapterErrorException("UPSTREAM", `AiAdmin 响应不是合法的业务信封（${where}）`, {
-		retryable: true,
-	});
+	return upstreamError(`AiAdmin 响应不是合法的业务信封（${where}）`, spec);
 }
 
-/** 业务码落在 HTTP 语义区间（400~600）时，按 HTTP 状态那样归一。 */
+/**
+ * UPSTREAM 错误：**读**的上游故障可以重试，**写**的一律不可重试。
+ *
+ * 写请求可能已经在后端生效了（后端提交了、响应没回来），
+ * 这时候重放就变成「建了两条任务」—— 所以写路径必须标成不可重试，
+ * 由调用方（适配层）自己决定要不要人工重试。
+ */
+function upstreamError(message: string, spec: RequestSpec): AdapterErrorException {
+	return new AdapterErrorException("UPSTREAM", message, { retryable: spec.isRead });
+}
+
+/**
+ * 业务码落在 HTTP 语义区间（400~600）时，按 HTTP 状态那样归一。
+ *
+ * ⚠️ **与派单表的已声明偏差**：派单表写的是「业务码非 0 → VALIDATION」，
+ * 但本实现对 400~600 的业务码按 HTTP 语义归一：
+ * - 409 → CONFLICT（而不是 VALIDATION）—— 冲突不是「参数没校验过」，
+ *   把它归成 VALIDATION 会让上层提示用户「改改参数」，而实际该提示「换个名字」；
+ * - 404 → NOT_FOUND、429 → RATE_LIMIT、401/403 → AUTH_EXPIRED；
+ * - 500+ → UPSTREAM（读可重试 / 写不可重试）。
+ *
+ * 理由：后端 `RET` 枚举里 400~600 本就是 HTTP 标准错误码
+ * （`backend/app/common/constant.py`），按 HTTP 语义解释才能把
+ * 「重复键」「找不到」这类确定性错误讲清楚。4000+ 的自定义业务码
+ * 与后端 `CustomException` 的 `code=-1` 仍归 VALIDATION。
+ */
 function classifyByCode(
 	code: number,
+	facts: ResponseFacts,
 	where: string,
 	detail: string,
-	data: unknown,
-	retryAfterMs: number | undefined,
+	spec: RequestSpec,
 ): AdapterErrorException {
 	if (code === 401 || code === 403) {
 		return new AdapterErrorException("AUTH_EXPIRED", `AiAdmin 凭证已失效（${where}）${detail}`);
@@ -317,15 +338,13 @@ function classifyByCode(
 	}
 	if (code === 429) {
 		return new AdapterErrorException("RATE_LIMIT", `AiAdmin 触发了限流（${where}）${detail}`, {
-			retryAfterMs,
+			retryAfterMs: facts.retryAfterMs,
 		});
 	}
 	if (code >= 500) {
-		return new AdapterErrorException("UPSTREAM", `AiAdmin 服务异常（${where}）${detail}`, {
-			retryable: true,
-		});
+		return upstreamError(`AiAdmin 服务异常（${where}）${detail}`, spec);
 	}
-	return validationError(where, detail, data);
+	return validationError(where, detail, facts.data);
 }
 
 /** 校验类错误：把 `data` 里的字段级说明带出来（形状不匹配就不带）。 */
@@ -370,12 +389,8 @@ function fieldMessage(value: unknown): string | undefined {
 /** 网络层故障（fetch 抛错）。读操作可重试，写操作不可重试。 */
 function networkError(err: unknown, spec: RequestSpec): AdapterErrorException {
 	const detail = err instanceof Error ? err.message : String(err);
-	return new AdapterErrorException(
-		"UPSTREAM",
-		`请求 ${spec.method} ${spec.path} 失败（网络层）：${detail}`,
-		// 网络层故障对读操作可以重试；写操作可能已经在后端生效了，不能重放
-		{ retryable: spec.isRead },
-	);
+	// 网络层故障对读操作可以重试；写操作可能已经在后端生效了，不能重放
+	return upstreamError(`请求 ${spec.method} ${spec.path} 失败（网络层）：${detail}`, spec);
 }
 
 /** `Retry-After` 头 → 建议等待的毫秒数（秒数或 HTTP 日期都能认）。 */

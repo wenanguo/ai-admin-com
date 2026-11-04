@@ -32,7 +32,14 @@ export interface AdapterErrorDetails {
 	retryAfterMs?: number;
 	/** UNSUPPORTED 的能力名。 */
 	capability?: string;
-	/** UPSTREAM：这类错误重试是否安全（写操作一律 false）。 */
+	/**
+	 * UPSTREAM：这类错误重试是否安全。
+	 *
+	 * 规则（客户端保证，`isRetryable` 也只认这一个来源）：
+	 * - **读**操作的上游故障（5xx、网络层）→ `true`；
+	 * - **写**操作一律 `false` —— 写请求可能已经在后端生效了（提交了、响应没回来），
+	 *   这时重放就变成「建了两条任务」，所以写路径绝不重试。
+	 */
 	retryable?: boolean;
 }
 
@@ -56,19 +63,22 @@ const DEFAULT_MESSAGES: Record<AdapterErrorKind, string> = {
 export class AdapterErrorException extends Error {
 	/** 归一后的错误种类。 */
 	readonly kind: AdapterErrorKind;
+	/** 归一时附带的原始细节（`fields` / `retryAfterMs` / `capability` / `retryable`）。 */
+	readonly details: AdapterErrorDetails;
 	/** VALIDATION 的字段级错误。 */
 	readonly fields?: Record<string, string>;
 	/** RATE_LIMIT 的建议等待毫秒数。 */
 	readonly retryAfterMs?: number;
 	/** UNSUPPORTED 的能力名。 */
 	readonly capability?: string;
-	/** 这类错误重试是否安全。 */
+	/** 这类错误重试是否安全（= `details.retryable`，缺省 false）。 */
 	readonly retryable: boolean;
 
 	constructor(kind: AdapterErrorKind, message?: string, details: AdapterErrorDetails = {}) {
 		super(message ?? DEFAULT_MESSAGES[kind]);
 		this.name = "AdapterErrorException";
 		this.kind = kind;
+		this.details = details;
 		this.fields = details.fields;
 		this.retryAfterMs = details.retryAfterMs;
 		this.capability = details.capability;
@@ -103,10 +113,17 @@ export class AdapterErrorException extends Error {
 /**
  * 这个错误值不值得再试一次。
  *
- * 只有「上游抖动」类的 `UPSTREAM` 才算：网络层故障与 5xx。
+ * 判定**只有一个来源**：错误自带的 `details.retryable`。
+ * `kind` 只是「这一类允许重试」的前提条件，绝不会把 `details` 说 `false` 的错误
+ * 判成可重试 —— 两者必须一致，否则调用方会重放一个可能已经提交的写请求。
+ *
+ * 只有「上游抖动」类的 `UPSTREAM` 才算：网络层故障与 5xx（且发生在**读**操作上）。
  * 限流（RATE_LIMIT）**不算** —— 它带的是 `retryAfterMs`，要不要退避由调用方决定，
  * 客户端不替调用方 sleep。
  */
 export function isRetryable(error: AdapterErrorException): boolean {
-	return error.kind === "UPSTREAM" && error.retryable;
+	if (error.kind !== "UPSTREAM") {
+		return false;
+	}
+	return error.details.retryable === true;
 }
