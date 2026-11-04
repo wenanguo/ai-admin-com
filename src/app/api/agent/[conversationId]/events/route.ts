@@ -15,8 +15,12 @@
  * | `tool_result` | `{ toolName, status, summary, details }` |
  * | `agent_settled` | — |
  *
- * 心跳：每 15 秒一个 SSE 注释行（客户端的 EventSource 会忽略它，
+ * 心跳：每 15 秒一个 SSE 注释行（标准的 SSE 客户端会忽略它，
  * 但它能证明连接还活着，也能防代理把连接判成空闲超时）。
+ *
+ * ⚠️ **前端不能用浏览器的原生 `EventSource`**：它不能自定义请求头，
+ * 而这个端点必须要 `Authorization: Bearer <token>`（缺了就 401）
+ * ⇒ 前端要用 `fetch` + `ReadableStream`（读 `response.body`）自己解析 SSE 帧。
  */
 
 import { agentRuntime } from "../../../../../agent/runtime";
