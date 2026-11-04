@@ -223,6 +223,11 @@ export class AadminDataSource {
 
 	/** 列项目（返回统一模型）。 */
 	async listProjects(query: ListProjectsQuery = {}): Promise<UnifiedProject[]> {
+		// 先校状态（不认识的 ⇒ 直接失败，别白发请求）
+		const statusCode =
+			query.status === undefined
+				? undefined
+				: this.#statusFilter(query.status, PROJECT_STATUS_MAPPING, "项目状态");
 		const page = await this.#client.get<AadminPageResult<PmProjectOut>>(
 			PM_PATHS.project.list,
 			this.#token,
@@ -230,13 +235,16 @@ export class AadminDataSource {
 				page_no: query.page_no ?? 1,
 				page_size: query.page_size ?? 100,
 				code: query.code,
-				status_code:
-					query.status === undefined
-						? undefined
-						: this.#statusFilter(query.status, PROJECT_STATUS_MAPPING, "项目状态"),
+				status_code: statusCode,
 			},
 		);
-		return page.items.map((item) => toUnifiedProject(item, this.#onWarning));
+		// ⚠️ 后端的 status_code 过滤是 **like**（`pm_project/schema.py` 的 `__post_init__`）
+		// ⇒ 拉回来的结果里可能混着「状态码里包含这个字样」的行 ⇒ 必须再**精确比对**一遍。
+		const items =
+			statusCode === undefined
+				? page.items
+				: page.items.filter((item) => item.status_code === statusCode);
+		return items.map((item) => toUnifiedProject(item, this.#onWarning));
 	}
 
 	/** 列任务（返回统一模型；分页参数原样透传给后端）。 */
@@ -260,7 +268,14 @@ export class AadminDataSource {
 				status_code: statusCode,
 			},
 		);
-		return page.items.map((item) => toUnifiedTask(item, this.#onWarning));
+		// ⚠️ 后端的 status_code 过滤是 **like**（`pm_task/schema.py` 的 `__post_init__`）
+		// ⇒ 拉回来的结果里可能混着「状态码里包含这个字样」的行 ⇒ 必须再**精确比对**一遍
+		// （与项目编码那条路一样的做法）。
+		const items =
+			statusCode === undefined
+				? page.items
+				: page.items.filter((item) => item.status_code === statusCode);
+		return items.map((item) => toUnifiedTask(item, this.#onWarning));
 	}
 
 	/** 按 key 取一条任务；找不到返回 null（不抛）。 */
@@ -319,9 +334,10 @@ export class AadminDataSource {
 			actual_start_date: null,
 			actual_end_date: null,
 			sort_order: "0",
-			// ⚠️ 字典 module_pm_task_created_via 里**没有 'web'**（schema 注释说的 'web' 兜底
-			// 既不在字典里、service 里也没实现）⇒ 只能给字典里真实存在的 'manual'
-			created_via_code: "manual",
+			// ⚠️ 字典 module_pm_task_created_via 里真实存在的值：manual / nl_chat / import / api
+			//（schema 注释说的 'web' 兜底既不在字典里、service 里也没实现 ⇒ 不能用）
+			// 'nl_chat' = 「自然语言对话建的」—— 这就是本服务建的任务的真相。
+			created_via_code: "nl_chat",
 			blocked_reason: null,
 		};
 

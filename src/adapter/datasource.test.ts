@@ -255,7 +255,8 @@ describe("AadminDataSource · createTask 的请求体", () => {
 		expect(body["reporter_id"]).toBe(7);
 		expect(body["sort_order"]).toBe("0");
 		expect(Number(body["sort_order"])).toBe(0);
-		expect(body["created_via_code"]).toBe("manual");
+		// 创建来源：字典 module_pm_task_created_via 里真实存在的 'nl_chat'（自然语言对话建的）
+		expect(body["created_via_code"]).toBe("nl_chat");
 	});
 
 	it("没给类型/状态/优先级时用后端字典的默认值", async () => {
@@ -543,6 +544,56 @@ describe("AadminDataSource · 读", () => {
 
 		const url = new URL(calls[0].url);
 		expect(url.searchParams.get("status_code")).toBe("in_progress");
+	});
+
+	it("listTasks 的状态过滤会**精确比对**（后端的 status_code 过滤是 like）", async () => {
+		// 后端的过滤是 like ⇒ 'in_progress' 会把 'in_progress_x' 也捞回来
+		const { source } = makeSource([
+			jsonResponse({
+				code: 0,
+				msg: "成功",
+				data: {
+					page_no: 1,
+					page_size: 10,
+					total: 2,
+					has_next: false,
+					items: [
+						taskOut({ id: 1, status_code: "in_progress" }),
+						taskOut({ id: 2, status_code: "in_progress_x" }),
+					],
+				},
+			}),
+		]);
+
+		const tasks = await source.listTasks({ status: "IN_PROGRESS" });
+
+		// 只留**真的**是 in_progress 的那一条
+		expect(tasks).toHaveLength(1);
+		expect(tasks[0]?.key).toBe("task:1");
+	});
+
+	it("listProjects 的状态过滤也会精确比对（后端的 status_code 过滤是 like）", async () => {
+		const { source } = makeSource([
+			jsonResponse({
+				code: 0,
+				msg: "成功",
+				data: {
+					page_no: 1,
+					page_size: 100,
+					total: 2,
+					has_next: false,
+					items: [
+						projectOut({ id: 45, status_code: "active" }),
+						projectOut({ id: 46, status_code: "active_x" }),
+					],
+				},
+			}),
+		]);
+
+		const projects = await source.listProjects({ status: "ACTIVE" });
+
+		expect(projects).toHaveLength(1);
+		expect(projects[0]?.key).toBe("project:45");
 	});
 
 	it("getTask 用 task:123 去查详情", async () => {
