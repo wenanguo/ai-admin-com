@@ -16,7 +16,7 @@ import type { ApiResponse, PageQuery, PageResult } from '@/services/types';
  *   负责人姓名直接读它,不用再查用户表
  */
 
-/** 后端 ModulePmRiskOutSchema.owner_by —— 负责人信息 {id, name, username} */
+/** 负责人信息 {id, name, username} —— 后端 schema 里**没有**这个字段,是 service 逐行补上的 */
 export interface RiskOwnerBy {
   id?: number | null;
   name?: string | null;
@@ -44,7 +44,7 @@ export interface RiskOut {
   status_code?: string | null;
   /** 风险负责人 ID(sys_user.id) */
   owner_id?: number | null;
-  /** 负责人信息 {id, name, username}(后端 service 随行补上) */
+  /** 负责人信息 {id, name, username}(后端 service 随行补上,schema 里没有) */
   owner_by?: RiskOwnerBy | null;
   /** 缓解措施 */
   mitigation_plan?: string | null;

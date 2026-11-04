@@ -124,7 +124,7 @@ AiAdmin 后端  D:/project/AiAdmin/backend/app/plugin/
 | 已有**自动操作日志** | `app/core/router_class.py` 的 `OperationLogRoute`，PM 路由都挂了 `route_class=OperationLogRoute` | 人工写操作**已经有**审计记录 |
 | 但操作日志**不是字段级前后快照** | 只记 request/response payload，且是 `BackgroundTask` 异步、**独立事务** | 撤销仍需 AIPM 的**写前快照**（多一次 GET） |
 | **没有服务账号 / API Key 机制** | `app/api/v1/module_system/auth/` 只有密码登录 + OAuth | AI 服务不能用一个固定服务账号 ⇒ 见 §6.4 的**用户身份透传**裁决 |
-| **PM 菜单没有种子** | `sql/mysql/pm_v2_seed_v1.sql` 有表与字典数据，无 `sys_menu` 插入 | PM 页面不会被菜单下发，需要补种子 |
+| **PM 菜单没有种子** | `sql/mysql/pm_v2_seed_v1.sql` 有表与字典数据，无 `platform_menu` 插入 | PM 页面不会被菜单下发，需要补种子 |
 | 状态是**字典码**不是枚举 | `ModulePmTaskCreateSchema.status_code: str`（字典 `module_pm_task_status`） | 枚举映射表要按字典实际值写 |
 
 ### 3.3 枚举映射（实测值 ↔ AIPM 02 §2 统一模型）
@@ -361,7 +361,7 @@ ai_derived_state  id, entity_ref, kind(MILESTONE_HEALTH|ETA|RISK_SUGGESTION), pa
 
 | # | 后端改动 | 为什么必须 | 规模 |
 |---|---|---|---|
-| B1 | 补 `sys_menu` 种子：PM 5 个菜单节点 + 对应按钮权限码 | 后端决定菜单显示什么、前端决定路由能不能落地。没有种子，PM 页面永远不会被菜单下发 | 一份 SQL · **归属：后端**（已裁决） |
+| B1 | 补 `platform_menu` 种子：PM 5 个菜单节点 + 对应按钮权限码 | 后端决定菜单显示什么、前端决定路由能不能落地。没有种子，PM 页面永远不会被菜单下发 | 一份 SQL · **归属：后端**（已裁决） |
 | B2 | 补 `module_pm_task` 的 `blocked_since` 字段 | AIPM 02 §5.1 的健康度规则要算「阻塞时长」，当前 `blocked_reason` 只有原因没有起始时间 | 一条 migration + 一个字段 |
 
 **特别说明**：这次不做 AIPM 07 Q2 问的「外部 API 能力位」相关改造 —— 那些能力**本来就有**
@@ -588,7 +588,7 @@ AI 服务自己的 `lint/test/build`。
 | INV-11 所有写操作经适配层 | **只对 AI 写成立**。人工写走 AiAdmin 自己的路径；外部 agent 走 `module_mcp`（既有第三条路径，本设计不动它） | 人工写的审计是 AiAdmin 的操作日志（路径/载荷级，不是字段级快照） | 「人工与 AI 同路径」的验收标准按 **G2** 重新定义：AI 侧 `ai_audit_log` 是权威审计（字段级 before/after），操作日志是**不可关联**的旁证（§6.8 已说明为什么无法关联） |
 | INV-13 里程碑 AT_RISK/MISSED 只由规则写入 | 规则引擎在 **AI 服务**侧，但它要写回 AiAdmin ⇒ 规则引擎必须能写 PM API | 规则写回需要一个后端权限（超管或专用权限码） | 用**用户 token** 写回 ⇒ 写回者的身份是发起对话的用户；规则标记需要该用户有里程碑更新权限。若无 ⇒ 降级为「只提示不自动写」 |
 | 每日 cron 派生计算 | AI 服务无长期服务账号（§6.4） | 无法无人值守跑 cron | 降级为**用户触发**：打开项目页时按需计算并缓存；或 AI 服务增加一个受限的服务凭据（记入 backlog） |
-| 项目成员 5 角色（A14） | **不做** | PM 权限只有 AiAdmin 的菜单/按钮级权限码 | 依赖后端补 `sys_menu` 种子时一并规划 PM 的权限码粒度 |
+| 项目成员 5 角色（A14） | **不做** | PM 权限只有 AiAdmin 的菜单/按钮级权限码 | 依赖后端补 `platform_menu` 种子时一并规划 PM 的权限码粒度 |
 
 ### 9.3 AiAdmin 里已存在的另两套 AI 能力（核实后记录）
 

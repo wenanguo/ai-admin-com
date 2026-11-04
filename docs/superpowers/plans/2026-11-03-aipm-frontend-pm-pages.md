@@ -51,7 +51,7 @@
 
 | 依赖 | 归属 | 卡住什么 |
 |---|---|---|
-| **B1 PM 菜单种子**（`sys_menu` 里 PM 的菜单节点 + 按钮权限码） | **后端** | 没有种子，这 5 个页面**不会被菜单下发** ⇒ 页面路由注册了也进不去。Task 9 里要加一条检查 |
+| **B1 PM 菜单种子**（`platform_menu` 里 PM 的菜单节点 + 按钮权限码） | **后端** | 没有种子，这 5 个页面**不会被菜单下发** ⇒ 页面路由注册了也进不去。Task 9 里要加一条检查 |
 | PM 表单字典的 `list_class` 已种 | 后端 | 已有（`pm_v2_seed_v1.sql`），但若后端改动要回归 |
 
 ---
@@ -506,47 +506,51 @@ EOF
 
 ---
 
-### Task 9: 路由注册与菜单接入
+### Task 9: 路由核对 · README · 收尾清理
+
+> **裁决（路由注册随页面走）**：六个 PM 路由由 Task 3–8 各自的页面任务在提交自己页面时
+> 同时注册（Task 3 → `/pm/project`；Task 4 → `/pm/project/:id`；Task 5 → `/pm/milestone`；
+> Task 6 → `/pm/task`；Task 7 → `/pm/task/board`；Task 8 → `/pm/risk`）。
+> **本任务不再注册路由**，只做**核对**；六个路由的 e2e 覆盖也归各页自己的 spec ——
+> **不新建 `e2e/pm-routes.spec.ts`**（另写一份「打开六个路由」的用例与现有用例重复）。
 
 **Files:**
-- Modify: `config/routes.ts`
-- Test: `e2e/pm-routes.spec.ts`
+- Modify: `README.md`（B1 菜单种子的说明）
+- Verify（只读）：`config/routes.ts` 里 `/pm` 目录下的六个路由
+- 路由覆盖在（不新建）：`e2e/pm-project.spec.ts`（`/pm/project` + `/pm/project/:id`）、
+  `e2e/pm-milestone.spec.ts`、`e2e/pm-task.spec.ts`、`e2e/pm-task-board.spec.ts`、
+  `e2e/pm-risk.spec.ts`
 
 **Interfaces:**
 - Consumes: Task 3–8 的页面
-- Produces: `/pm/project` `/pm/project/:id` `/pm/milestone` `/pm/task` `/pm/task/board` `/pm/risk`
+- Produces: 六个 PM 路由的**核对结论**（不新增代码）
 
-- [ ] **Step 1: 写失败的测试** —— `e2e/pm-routes.spec.ts`：
-  - `六个 PM 路由都能打开且不落到错误页`
-  - `PM 菜单项来自后端` —— mock `/system/user/current/info` 返回含 PM 菜单，
-    断言侧边栏出现「项目管理」等入口
+- [ ] **Step 1: 核对六个路由齐全** —— `config/routes.ts` 的 `/pm` 目录下应当有
+  `/pm/project`、`/pm/project/:id`、`/pm/milestone`、`/pm/task`、`/pm/task/board`、`/pm/risk`；
+  缺哪个就在**对应页面任务**里补，不在本任务里加。
 
-- [ ] **Step 2: 跑测试确认失败** —— Run: `npx playwright test e2e/pm-routes.spec.ts`
-  Expected: FAIL
+- [ ] **Step 2: 核对路由的 e2e 覆盖** —— 五个页面 spec 各自访问自己的路由
+  （`pm-project.spec.ts` 同时覆盖 `/pm/project` 与 `/pm/project/:id`）
+  ⇒ 六个路由都有用例能打开，不必另起一份路由 spec。
 
-- [ ] **Step 3: 实现**
-  - 在 `config/routes.ts` 里加一组 `/pm` 的路由，图标用 `@ant-design/icons` 里的
-    `ProjectOutlined` / `FlagOutlined` / `CheckSquareOutlined` / `AlertOutlined`。
+- [ ] **Step 3: README 写清 B1 的依赖**
   - **菜单由后端下发**（既有机制：`src/menu/adapter.ts`）⇒ 前端**只注册路由**，
     不在前端写菜单数据。
   - **⚠️ 外部依赖检查**：本任务**无法**验证 B1 是否已交付（后端写）。
     ⇒ 在 `README.md` 里加一段「PM 页面依赖后端菜单种子 B1，未下发时页面路由可用但菜单里看不到入口」，
-    并在 PR 描述里点名这个依赖。
+    并列出后端要种下的菜单节点与按钮权限码。
 
-- [ ] **Step 4: 跑测试确认通过** —— Run: `npx playwright test e2e/pm-routes.spec.ts` → Expected: PASS
-
-- [ ] **Step 5: 全量门禁** —— Run: `npm run lint && npm test && npm run build && npm run e2e`
+- [ ] **Step 4: 全量门禁** —— Run: `npm run lint && npm test && npm run build && npm run e2e`
   Expected: 全绿；**既有的 279 单测 + 80 e2e 零回归**
 
-- [ ] **Step 6: 提交**
+- [ ] **Step 5: 提交**
 
 ```bash
-git add config/routes.ts e2e/pm-routes.spec.ts README.md && git commit -F - <<'EOF'
-feat(pm): 注册 PM 路由并接入后端菜单
+git add README.md && git commit -F - <<'EOF'
+docs(pm): 核对六个 PM 路由并记下菜单种子依赖
 
-- 六个 PM 路由注册到 config/routes.ts
-- 菜单仍由后端下发,前端只注册路由(沿用既有机制)
-- README 记下 PM 页面依赖后端菜单种子 B1,未下发时菜单里看不到入口
+- 六个 PM 路由由各页面任务注册，本任务只核对齐全
+- README 记下 PM 页面依赖后端菜单种子 B1，未下发时菜单里看不到入口
 EOF
 ```
 
