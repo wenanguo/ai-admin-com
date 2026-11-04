@@ -153,6 +153,14 @@ export default [
         icon: 'flag',
         component: './module_pm/milestone',
       },
+      {
+        // 任务管理页:任务响应里没有 project_by/milestone_by,
+        // 项目名与里程碑名靠侧载列表在户端映射
+        path: '/pm/task',
+        name: 'task',
+        icon: 'checkSquare',
+        component: './module_pm/task',
+      },
     ],
   },
   {

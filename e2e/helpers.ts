@@ -350,17 +350,27 @@ export function modalFormItem(page: Page, label: string) {
  *
  * 选项来自接口(字典或远程搜索),点开后等选项出现即可 ——
  * Playwright 的点击会自动等元素可见。
+ *
+ * ⚠️ 选项按**整段文本精确匹配**,不是子串:
+ * 子串匹配会让「AIPM 核心项目」同时命中「AIPM 核心项目二期」,
+ * Playwright 的严格模式直接报 strict-mode violation(定位到多个元素)。
+ * 正则的元字符要先转义,否则「(」「+」这类文案会被当成语法。
  */
 export async function pickInModal(
   page: Page,
   label: string,
   optionText: string,
 ): Promise<void> {
+  // 上一个下拉可能还在关闭动画里(仍 display:block):先等它关完。
+  // 否则两个下拉同时「可见」,选项会点到马上要消失的那一个
+  // (antd 的下拉是 portal,两个下拉同时可见时 Playwright 会报 strict-mode violation)
+  await expect(page.locator('.ant-select-dropdown:visible')).toHaveCount(0);
   await modalFormItem(page, label).locator('input[role="combobox"]').click();
+  const escaped = optionText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   await page
-    .locator('.ant-select-dropdown:visible .ant-select-item-option', {
-      hasText: optionText,
-    })
+    .locator('.ant-select-dropdown:visible .ant-select-item-option')
+    .filter({ hasText: new RegExp(`^\\s*${escaped}\\s*$`) })
+    .first()
     .click();
 }
 
