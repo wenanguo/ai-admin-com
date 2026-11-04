@@ -31,9 +31,10 @@ npm run dev               # http://localhost:3100
 - `src/env.ts` 用 zod 校验，**缺哪个变量就在启动时报哪个**（不等到第一个请求打进来才炸）。
 - 校验发生在 **import 时**（`env.ts` 模块级就执行 `parseEnv`）。`next build` 也会加载路由模块，
   所以一旦路由（或路由引用到的模块）import 了 `env.ts`，**构建机上也得有 `.env`** ——
-  Next 在 build 时同样会加载 `.env`。目前仓里只有 spike 路由、还没人 import `env.ts`，
-  后续任务把 `env.ts` 接进路由时要记得这条；真要把校验推迟到运行时，得改用
-  `instrumentation.ts`（本仓不这么做）。
+  Next 在 build 时同样会加载 `.env`。
+  ⚠️ **本仓现在就是这样**：`/api/agent/**` 的路由 import 了 `agent/runtime.ts`，
+  而运行时 import 了 `env.ts` ⇒ **`npm run build` 也需要 `.env`**（构建机上没有就会失败）。
+  真要把校验推迟到运行时，得改用 `instrumentation.ts`（本仓不这么做）。
 - 端口**不走环境变量**：钉在 `package.json` 的脚本里（`next dev -p 3100` /
   `next start -p 3100`），要换端口改 scripts。
 
@@ -82,6 +83,12 @@ npm run dev               # http://localhost:3100
 
 ### SSE 事件
 
+> ⚠️ **前端不能用浏览器的原生 `EventSource`**：它**不能自定义请求头**，
+> 而 `/api/agent/:cid/events` 必须要 `Authorization: Bearer <token>`（缺了就 401）。
+> ⇒ 前端要用 **`fetch` + `ReadableStream`**（读 `response.body` 的流）自己解析 SSE 帧：
+> `fetch(url, { headers: { Authorization: \`Bearer ${token}\` } })`，
+> 然后按 `\n\n` 切帧、按 `event:` / `data:` 取内容。前端设计已经定了这个方案。
+
 | 事件 | 载荷 |
 | --- | --- |
 | `connected` | `{conversationId, isStreaming}` |
@@ -91,7 +98,7 @@ npm run dev               # http://localhost:3100
 | `agent_settled` | 一轮结束 |
 
 - 首帧是 `connected`，接着回放这个会话**之前**发生过的帧，再接增量；
-- 每 15 秒一个心跳（`: heartbeat` 注释行，EventSource 会忽略它）；
+- 每 15 秒一个心跳（`: heartbeat` 注释行，标准的 SSE 客户端会忽略它）；
 - 回放窗口上限 16 MB，超了**先丢 `text_delta`**（可从 `state` 快照重建），保留结构帧；
 - **`state` 才是真相**：SSE 是增量的，断线/刷新后用 `GET /api/agent/:cid/state` 重建界面。
 
@@ -218,7 +225,7 @@ src/adapter/                      适配层（enums 枚举归一 / capabilities 
 src/agent/                        agent 运行时（runtime 会话与命令 / session-registry 通道与订阅 / startup-lock 同会话串行 / event-mapper 事件映射 / frame-buffer 回放窗口 / identity 当前用户 / pi-session SDK 接线 / prompt 系统提示词 / store 落库）
 src/tools/                        命令目录（create_task 一个命令 + 闸门形状）
 src/http/                         HTTP 通用件（cors / respond 信封 / auth 取 token / sse 帧格式 / errors 错误映射）
-src/app/                          Route Handler（/api/agent/** 与 spike 路由）
+src/app/                          Route Handler（只有 /api/agent/**；尖峰路由已删）
 spike/                            Task 1 的风险尖峰（一次性，结论在 spike/FINDINGS.md）
 ```
 
