@@ -219,6 +219,14 @@ PM 的 6 个路由已经在 `config/routes.ts` 注册,直接输地址就能打�
 | `npm run biome`       | 自动修复格式                                                  |
 | `npx antd lint ./src` | antd 专有检查(废弃用法等)                                     |
 
+> **内存吃紧的机器上跑 e2e 要降并发**:`npm run e2e -- --workers=3`。
+> Playwright 的默认 worker 数是**逻辑核数的一半**(12 核 ⇒ 6 个),
+> 每个 worker 一个 Chromium —— 在本机上 6 个 worker 会把可用内存从
+> 4.2 GB 压到 1.8 GB,内存再紧一点浏览器就会被系统杀掉(用例随机失败)。
+> `playwright.config.ts` 里**故意不写死** `workers`:CI 机器内存更多,
+> 6 个并发更快(实测 1.5 分钟 vs 3 个 worker 的 1.8 分钟),
+> 把本地这个坑写进配置会让 CI 一起变慢。
+
 ## 相关文档
 
 - 设计规格:`docs/superpowers/specs/2026-10-30-ai-admin-frontend-template-design.md`
