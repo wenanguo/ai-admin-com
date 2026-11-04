@@ -27,7 +27,7 @@ describe('pm task service', () => {
   it('lists tasks with pagination params', async () => {
     await listTasks({ page_no: 1, page_size: 10, project_id: 3 });
 
-    expect(request).toHaveBeenCalledWith('/pm_task/list', {
+    expect(request).toHaveBeenCalledWith('/pm_project/pm_task/list', {
       method: 'GET',
       params: { page_no: 1, page_size: 10, project_id: 3 },
     });
@@ -36,7 +36,7 @@ describe('pm task service', () => {
   it('gets a task detail by id', async () => {
     await getTaskDetail(7);
 
-    expect(request).toHaveBeenCalledWith('/pm_task/detail/7', {
+    expect(request).toHaveBeenCalledWith('/pm_project/pm_task/detail/7', {
       method: 'GET',
     });
   });
@@ -50,7 +50,7 @@ describe('pm task service', () => {
       priority_code: 'P2',
     });
 
-    expect(request).toHaveBeenCalledWith('/pm_task/create', {
+    expect(request).toHaveBeenCalledWith('/pm_project/pm_task/create', {
       method: 'POST',
       data: {
         project_id: 3,
@@ -71,7 +71,7 @@ describe('pm task service', () => {
       priority_code: 'P2',
     });
 
-    expect(request).toHaveBeenCalledWith('/pm_task/update/7', {
+    expect(request).toHaveBeenCalledWith('/pm_project/pm_task/update/7', {
       method: 'PUT',
       data: {
         project_id: 3,
@@ -86,7 +86,7 @@ describe('pm task service', () => {
   it('deletes tasks by a bare id array', async () => {
     await deleteTasks([1, 2]);
 
-    expect(request).toHaveBeenCalledWith('/pm_task/delete', {
+    expect(request).toHaveBeenCalledWith('/pm_project/pm_task/delete', {
       method: 'DELETE',
       data: [1, 2],
     });

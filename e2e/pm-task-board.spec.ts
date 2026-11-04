@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { PM_TASK_PREFIX } from '../src/services/api/pm/paths';
 import { businessErrorBody, gotoModulePage, setupModulePage } from './helpers';
 
 /**
@@ -21,9 +22,9 @@ import { businessErrorBody, gotoModulePage, setupModulePage } from './helpers';
  */
 
 const BOARD_PAGE_PATH = '/pm/task/board';
-const TASK_LIST_URL = '**/api/v1/pm_task/list**';
-const TASK_DETAIL_URL = '**/api/v1/pm_task/detail/**';
-const TASK_UPDATE_URL = '**/api/v1/pm_task/update/**';
+const TASK_LIST_URL = `**/api/v1${PM_TASK_PREFIX}/list**`;
+const TASK_DETAIL_URL = `**/api/v1${PM_TASK_PREFIX}/detail/**`;
+const TASK_UPDATE_URL = `**/api/v1${PM_TASK_PREFIX}/update/**`;
 /** 字典选项接口(列标题的任务状态 + 卡片上的优先级标签) */
 const dictDataUrl = (dictType: string) =>
   `**/api/v1/system/dict/data/info/${dictType}**`;
@@ -431,7 +432,7 @@ test.describe('任务看板页', () => {
 
     await expect.poll(() => updateRequests.length).toBe(1);
     expect(updateRequests[0].method).toBe('PUT');
-    expect(updateRequests[0].url).toContain('/pm_task/update/23');
+    expect(updateRequests[0].url).toContain(`${PM_TASK_PREFIX}/update/23`);
 
     // 没有详情请求:拖拽只要 update 权限,不能再多要一个 detail 权限
     expect(detailRequests).toHaveLength(0);

@@ -1,6 +1,12 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import {
+  PM_MILESTONE_PREFIX,
+  PM_PROJECT_PREFIX,
+  PM_RISK_PREFIX,
+  PM_TASK_PREFIX,
+} from '../src/services/api/pm/paths';
+import {
   gotoModulePage,
   modalFormItem,
   pickInModal,
@@ -29,17 +35,17 @@ import {
 
 const PROJECT_PAGE_PATH = '/pm/project';
 const CURRENT_INFO_URL = '**/api/v1/system/user/current/info';
-const PROJECT_LIST_URL = '**/api/v1/pm_project/list**';
-const PROJECT_CREATE_URL = '**/api/v1/pm_project/create**';
-const PROJECT_UPDATE_URL = '**/api/v1/pm_project/update/**';
-const PROJECT_DELETE_URL = '**/api/v1/pm_project/delete**';
+const PROJECT_LIST_URL = `**/api/v1${PM_PROJECT_PREFIX}/list**`;
+const PROJECT_CREATE_URL = `**/api/v1${PM_PROJECT_PREFIX}/create**`;
+const PROJECT_UPDATE_URL = `**/api/v1${PM_PROJECT_PREFIX}/update/**`;
+const PROJECT_DELETE_URL = `**/api/v1${PM_PROJECT_PREFIX}/delete**`;
 const USER_LIST_URL = '**/api/v1/system/user/list**';
 /** 详情页:项目详情与成员接口(项目 id 在路径上)+ 三个子列表接口 */
-const PROJECT_DETAIL_URL = '**/api/v1/pm_project/detail/1';
-const PROJECT_MEMBERS_URL = '**/api/v1/pm_project/members/1';
-const MILESTONE_LIST_URL = '**/api/v1/pm_milestone/list**';
-const TASK_LIST_URL = '**/api/v1/pm_task/list**';
-const RISK_LIST_URL = '**/api/v1/pm_risk/list**';
+const PROJECT_DETAIL_URL = `**/api/v1${PM_PROJECT_PREFIX}/detail/1`;
+const PROJECT_MEMBERS_URL = `**/api/v1${PM_PROJECT_PREFIX}/members/1`;
+const MILESTONE_LIST_URL = `**/api/v1${PM_MILESTONE_PREFIX}/list**`;
+const TASK_LIST_URL = `**/api/v1${PM_TASK_PREFIX}/list**`;
+const RISK_LIST_URL = `**/api/v1${PM_RISK_PREFIX}/list**`;
 /** 字典选项接口(状态/优先级/可见性三个下拉与标签共用) */
 const dictDataUrl = (dictType: string) =>
   `**/api/v1/system/dict/data/info/${dictType}**`;
@@ -838,9 +844,9 @@ test.describe('项目详情页', () => {
     // joined_at 是 ISO 字符串，展示时把 T 换成空格
     await expect(rows.first()).toContainText('2026-11-01 09:00:00');
 
-    // members 是路径参数接口(/pm_project/members/{id})，返回数组不是分页信封
+    // members 是路径参数接口(/pm_project/pm_project/members/{id})，返回数组不是分页信封
     await expect.poll(() => requests.members.length).toBeGreaterThan(0);
-    expect(requests.members[0]).toContain('/pm_project/members/1');
+    expect(requests.members[0]).toContain(`${PM_PROJECT_PREFIX}/members/1`);
   });
 });
 
@@ -933,7 +939,7 @@ test.describe('项目管理列表页', () => {
 
     await expect.poll(() => createRequests.length).toBe(1);
     expect(createRequests[0].method).toBe('POST');
-    expect(createRequests[0].url).toContain('/pm_project/create');
+    expect(createRequests[0].url).toContain(`${PM_PROJECT_PREFIX}/create`);
 
     // 提交的是线上码(dict_value),不是中文标签
     const body = createRequests[0].body as Record<string, unknown>;
@@ -1028,7 +1034,7 @@ test.describe('项目管理列表页', () => {
 
     await expect.poll(() => updateRequests.length).toBe(1);
     expect(updateRequests[0].method).toBe('PUT');
-    expect(updateRequests[0].url).toContain('/pm_project/update/1');
+    expect(updateRequests[0].url).toContain(`${PM_PROJECT_PREFIX}/update/1`);
 
     // 后端必填的 owner_id 提交的是用户 id;更新是整对象 PUT,其余必填字段都在
     const body = updateRequests[0].body as Record<string, unknown>;
@@ -1132,7 +1138,7 @@ test.describe('项目管理列表页', () => {
 
     await expect.poll(() => deleteRequests.length).toBe(1);
     expect(deleteRequests[0].method).toBe('DELETE');
-    expect(deleteRequests[0].url).toContain('/pm_project/delete');
+    expect(deleteRequests[0].url).toContain(`${PM_PROJECT_PREFIX}/delete`);
     // 裸数组,不是 { ids: [...] } 的包裹形态
     expect(deleteRequests[0].body).toEqual([1]);
   });

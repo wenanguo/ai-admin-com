@@ -1,11 +1,14 @@
 import { request } from '@umijs/max';
 import type { ApiResponse, PageQuery, PageResult } from '@/services/types';
+import { PM_RISK_PREFIX } from './paths';
 
 /**
  * 风险 service。
  *
  * 后端的坑:
- * - 更新是 `PUT /pm_risk/update/{id}` 且要传**整对象** —— 后端
+ * - 路由前缀是**两段**的 `/pm_risk/pm_risk`(后端容器前缀与 controller
+ *   自己的 prefix 拼接而成,成因见 ./paths.ts)—— 路径一律由 PM_RISK_PREFIX 拼出
+ * - 更新是 `PUT /pm_risk/pm_risk/update/{id}` 且要传**整对象** —— 后端
  *   `ModulePmRiskUpdateSchema` 继承 CreateSchema,没有 PATCH
  * - 删除的请求体是**裸数组**(不是 `{ ids }`)
  * - `score` 后端**必填且不负责计算** —— 由调用方按 `probability × impact` 算好传入,
@@ -122,7 +125,7 @@ export type RiskUpdateParams = RiskCreateParams;
 export async function listRisks(
   params: RiskListParams,
 ): Promise<ApiResponse<PageResult<RiskOut>>> {
-  return request<ApiResponse<PageResult<RiskOut>>>('/pm_risk/list', {
+  return request<ApiResponse<PageResult<RiskOut>>>(`${PM_RISK_PREFIX}/list`, {
     method: 'GET',
     params,
   });
@@ -130,7 +133,7 @@ export async function listRisks(
 
 /** 风险详情 */
 export async function getRiskDetail(id: number): Promise<ApiResponse<RiskOut>> {
-  return request<ApiResponse<RiskOut>>(`/pm_risk/detail/${id}`, {
+  return request<ApiResponse<RiskOut>>(`${PM_RISK_PREFIX}/detail/${id}`, {
     method: 'GET',
   });
 }
@@ -139,7 +142,7 @@ export async function getRiskDetail(id: number): Promise<ApiResponse<RiskOut>> {
 export async function createRisk(
   params: RiskCreateParams,
 ): Promise<ApiResponse<RiskOut>> {
-  return request<ApiResponse<RiskOut>>('/pm_risk/create', {
+  return request<ApiResponse<RiskOut>>(`${PM_RISK_PREFIX}/create`, {
     method: 'POST',
     data: params,
   });
@@ -150,7 +153,7 @@ export async function updateRisk(
   id: number,
   params: RiskUpdateParams,
 ): Promise<ApiResponse<RiskOut>> {
-  return request<ApiResponse<RiskOut>>(`/pm_risk/update/${id}`, {
+  return request<ApiResponse<RiskOut>>(`${PM_RISK_PREFIX}/update/${id}`, {
     method: 'PUT',
     data: params,
   });
@@ -158,7 +161,7 @@ export async function updateRisk(
 
 /** 删除风险(后端请求体是裸数组,不是 { ids }) */
 export async function deleteRisks(ids: number[]): Promise<ApiResponse<null>> {
-  return request<ApiResponse<null>>('/pm_risk/delete', {
+  return request<ApiResponse<null>>(`${PM_RISK_PREFIX}/delete`, {
     method: 'DELETE',
     data: ids,
   });

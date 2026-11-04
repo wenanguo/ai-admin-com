@@ -27,7 +27,7 @@ describe('pm risk service', () => {
   it('lists risks with pagination params', async () => {
     await listRisks({ page_no: 1, page_size: 10, project_id: 3 });
 
-    expect(request).toHaveBeenCalledWith('/pm_risk/list', {
+    expect(request).toHaveBeenCalledWith('/pm_risk/pm_risk/list', {
       method: 'GET',
       params: { page_no: 1, page_size: 10, project_id: 3 },
     });
@@ -36,7 +36,7 @@ describe('pm risk service', () => {
   it('gets a risk detail by id', async () => {
     await getRiskDetail(7);
 
-    expect(request).toHaveBeenCalledWith('/pm_risk/detail/7', {
+    expect(request).toHaveBeenCalledWith('/pm_risk/pm_risk/detail/7', {
       method: 'GET',
     });
   });
@@ -54,7 +54,7 @@ describe('pm risk service', () => {
       created_via_code: 'manual',
     });
 
-    expect(request).toHaveBeenCalledWith('/pm_risk/create', {
+    expect(request).toHaveBeenCalledWith('/pm_risk/pm_risk/create', {
       method: 'POST',
       data: {
         project_id: 3,
@@ -83,7 +83,7 @@ describe('pm risk service', () => {
       created_via_code: 'manual',
     });
 
-    expect(request).toHaveBeenCalledWith('/pm_risk/update/7', {
+    expect(request).toHaveBeenCalledWith('/pm_risk/pm_risk/update/7', {
       method: 'PUT',
       data: {
         project_id: 3,
@@ -102,7 +102,7 @@ describe('pm risk service', () => {
   it('deletes risks by a bare id array', async () => {
     await deleteRisks([1, 2]);
 
-    expect(request).toHaveBeenCalledWith('/pm_risk/delete', {
+    expect(request).toHaveBeenCalledWith('/pm_risk/pm_risk/delete', {
       method: 'DELETE',
       data: [1, 2],
     });

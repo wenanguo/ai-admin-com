@@ -1,6 +1,10 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import {
+  PM_PROJECT_PREFIX,
+  PM_RISK_PREFIX,
+} from '../src/services/api/pm/paths';
+import {
   gotoModulePage,
   modalFormItem,
   pickInModal,
@@ -28,12 +32,12 @@ import {
  */
 
 const RISK_PAGE_PATH = '/pm/risk';
-const RISK_LIST_URL = '**/api/v1/pm_risk/list**';
-const RISK_DETAIL_URL = '**/api/v1/pm_risk/detail/**';
-const RISK_CREATE_URL = '**/api/v1/pm_risk/create**';
-const RISK_UPDATE_URL = '**/api/v1/pm_risk/update/**';
+const RISK_LIST_URL = `**/api/v1${PM_RISK_PREFIX}/list**`;
+const RISK_DETAIL_URL = `**/api/v1${PM_RISK_PREFIX}/detail/**`;
+const RISK_CREATE_URL = `**/api/v1${PM_RISK_PREFIX}/create**`;
+const RISK_UPDATE_URL = `**/api/v1${PM_RISK_PREFIX}/update/**`;
 /** 侧载的项目列表(风险响应里没有 project_by,名字从这里来) */
-const PROJECT_LIST_URL = '**/api/v1/pm_project/list**';
+const PROJECT_LIST_URL = `**/api/v1${PM_PROJECT_PREFIX}/list**`;
 /** 用户列表(负责人的远程搜索候选) */
 const USER_LIST_URL = '**/api/v1/system/user/list**';
 /** 字典选项接口(分类/状态的下拉与标签共用) */
@@ -285,7 +289,7 @@ async function setupRiskPage(page: Page): Promise<{ listRequests: string[] }> {
     menus: [riskMenu],
     parent: { routePath: '/pm', title: '项目管理' },
     // 列表路由在下面自己注册(响应随查询参数变),这里给一个不匹配的 glob
-    listUrl: '**/api/v1/pm_risk/__not_used__**',
+    listUrl: `**/api/v1${PM_RISK_PREFIX}/__not_used__**`,
     listBody: riskListResponse,
   });
 
@@ -558,7 +562,7 @@ test.describe('风险登记册页', () => {
 
     await expect.poll(() => createRequests.length).toBe(1);
     expect(createRequests[0].method).toBe('POST');
-    expect(createRequests[0].url).toContain('/pm_risk/create');
+    expect(createRequests[0].url).toContain(`${PM_RISK_PREFIX}/create`);
 
     const body = createRequests[0].body as Record<string, unknown>;
     // 分数由前端算好送进去(后端只存不算,少这一列就 422)
@@ -814,7 +818,7 @@ test.describe('风险登记册页', () => {
 
     await expect.poll(() => updateRequests.length).toBe(1);
     expect(updateRequests[0].method).toBe('PUT');
-    expect(updateRequests[0].url).toContain('/pm_risk/update/32');
+    expect(updateRequests[0].url).toContain(`${PM_RISK_PREFIX}/update/32`);
 
     const body = updateRequests[0].body as Record<string, unknown>;
 

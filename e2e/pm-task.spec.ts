@@ -1,6 +1,11 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import {
+  PM_MILESTONE_PREFIX,
+  PM_PROJECT_PREFIX,
+  PM_TASK_PREFIX,
+} from '../src/services/api/pm/paths';
+import {
   gotoModulePage,
   modalFormItem,
   pickInModal,
@@ -27,13 +32,13 @@ import {
  */
 
 const TASK_PAGE_PATH = '/pm/task';
-const TASK_LIST_URL = '**/api/v1/pm_task/list**';
-const TASK_DETAIL_URL = '**/api/v1/pm_task/detail/**';
-const TASK_CREATE_URL = '**/api/v1/pm_task/create**';
-const TASK_UPDATE_URL = '**/api/v1/pm_task/update/**';
+const TASK_LIST_URL = `**/api/v1${PM_TASK_PREFIX}/list**`;
+const TASK_DETAIL_URL = `**/api/v1${PM_TASK_PREFIX}/detail/**`;
+const TASK_CREATE_URL = `**/api/v1${PM_TASK_PREFIX}/create**`;
+const TASK_UPDATE_URL = `**/api/v1${PM_TASK_PREFIX}/update/**`;
 /** 侧载的项目/里程碑列表(任务响应里没有名字,只能另外拉) */
-const PROJECT_LIST_URL = '**/api/v1/pm_project/list**';
-const MILESTONE_LIST_URL = '**/api/v1/pm_milestone/list**';
+const PROJECT_LIST_URL = `**/api/v1${PM_PROJECT_PREFIX}/list**`;
+const MILESTONE_LIST_URL = `**/api/v1${PM_MILESTONE_PREFIX}/list**`;
 /** 用户列表(负责人/报告人的远程搜索候选) */
 const USER_LIST_URL = '**/api/v1/system/user/list**';
 /** 字典选项接口(状态/类型/优先级的下拉与标签共用) */
@@ -673,7 +678,7 @@ test.describe('任务管理页', () => {
 
     await expect.poll(() => createRequests.length).toBe(1);
     expect(createRequests[0].method).toBe('POST');
-    expect(createRequests[0].url).toContain('/pm_task/create');
+    expect(createRequests[0].url).toContain(`${PM_TASK_PREFIX}/create`);
 
     const body = createRequests[0].body as Record<string, unknown>;
     expect(body).toMatchObject({
@@ -839,7 +844,7 @@ test.describe('任务管理页', () => {
 
     await expect.poll(() => createRequests.length).toBe(1);
     expect(createRequests[0].method).toBe('POST');
-    expect(createRequests[0].url).toContain('/pm_task/create');
+    expect(createRequests[0].url).toContain(`${PM_TASK_PREFIX}/create`);
 
     const body = createRequests[0].body as Record<string, unknown>;
 
@@ -932,7 +937,7 @@ test.describe('任务管理页', () => {
 
     await expect.poll(() => updateRequests.length).toBe(1);
     expect(updateRequests[0].method).toBe('PUT');
-    expect(updateRequests[0].url).toContain('/pm_task/update/21');
+    expect(updateRequests[0].url).toContain(`${PM_TASK_PREFIX}/update/21`);
 
     // 整对象 PUT(后端没有 PATCH):必填字段一个都不能少
     const body = updateRequests[0].body as Record<string, unknown>;

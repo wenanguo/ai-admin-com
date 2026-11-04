@@ -27,7 +27,7 @@ describe('pm milestone service', () => {
   it('lists milestones with pagination params', async () => {
     await listMilestones({ page_no: 1, page_size: 10, project_id: 3 });
 
-    expect(request).toHaveBeenCalledWith('/pm_milestone/list', {
+    expect(request).toHaveBeenCalledWith('/pm_project/pm_milestone/list', {
       method: 'GET',
       params: { page_no: 1, page_size: 10, project_id: 3 },
     });
@@ -36,7 +36,7 @@ describe('pm milestone service', () => {
   it('gets a milestone detail by id', async () => {
     await getMilestoneDetail(7);
 
-    expect(request).toHaveBeenCalledWith('/pm_milestone/detail/7', {
+    expect(request).toHaveBeenCalledWith('/pm_project/pm_milestone/detail/7', {
       method: 'GET',
     });
   });
@@ -51,7 +51,7 @@ describe('pm milestone service', () => {
       sort_order: 1,
     });
 
-    expect(request).toHaveBeenCalledWith('/pm_milestone/create', {
+    expect(request).toHaveBeenCalledWith('/pm_project/pm_milestone/create', {
       method: 'POST',
       data: {
         project_id: 3,
@@ -74,7 +74,7 @@ describe('pm milestone service', () => {
       sort_order: 1,
     });
 
-    expect(request).toHaveBeenCalledWith('/pm_milestone/update/7', {
+    expect(request).toHaveBeenCalledWith('/pm_project/pm_milestone/update/7', {
       method: 'PUT',
       data: {
         project_id: 3,
@@ -90,7 +90,7 @@ describe('pm milestone service', () => {
   it('deletes milestones by a bare id array', async () => {
     await deleteMilestones([1, 2]);
 
-    expect(request).toHaveBeenCalledWith('/pm_milestone/delete', {
+    expect(request).toHaveBeenCalledWith('/pm_project/pm_milestone/delete', {
       method: 'DELETE',
       data: [1, 2],
     });

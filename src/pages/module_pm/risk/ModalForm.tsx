@@ -147,7 +147,7 @@ async function fetchUserOptions(
  *
  * 编辑**直接用列表行填表**,不再发详情请求:后端的列表返回
  * `ModulePmRiskOutSchema`(它继承 CreateSchema),行里已经带着表单要的
- * 每一个字段。再发一次 `/pm_risk/detail/` 只会多要一个 `…:detail` 权限 ——
+ * 每一个字段。再发一次 `/pm_risk/pm_risk/detail/` 只会多要一个 `…:detail` 权限 ——
  * 有 update 没 detail 的角色会打开一个「加载风险详情失败」的废弹窗。
  */
 function toFormValues(row: RiskOut | undefined): Partial<RiskFormValues> {

@@ -1,11 +1,14 @@
 import { request } from '@umijs/max';
 import type { ApiResponse, PageQuery, PageResult } from '@/services/types';
+import { PM_TASK_PREFIX } from './paths';
 
 /**
  * 任务 service。
  *
  * 后端的坑:
- * - 更新是 `PUT /pm_task/update/{id}` 且要传**整对象** —— 后端
+ * - 路由前缀是**两段**的 `/pm_project/pm_task`(后端容器前缀与 controller
+ *   自己的 prefix 拼接而成,成因见 ./paths.ts)—— 路径一律由 PM_TASK_PREFIX 拼出
+ * - 更新是 `PUT /pm_project/pm_task/update/{id}` 且要传**整对象** —— 后端
  *   `ModulePmTaskUpdateSchema` 继承 CreateSchema,没有 PATCH
  * - 删除的请求体是**裸数组**(不是 `{ ids }`),支持批量
  * - `reviewers` / `labels` 语义是数组和标签,但后端存的是**字符串** ——
@@ -165,7 +168,7 @@ export type TaskUpdateParams = Omit<
 export async function listTasks(
   params: TaskListParams,
 ): Promise<ApiResponse<PageResult<TaskOut>>> {
-  return request<ApiResponse<PageResult<TaskOut>>>('/pm_task/list', {
+  return request<ApiResponse<PageResult<TaskOut>>>(`${PM_TASK_PREFIX}/list`, {
     method: 'GET',
     params,
   });
@@ -173,7 +176,7 @@ export async function listTasks(
 
 /** 任务详情 */
 export async function getTaskDetail(id: number): Promise<ApiResponse<TaskOut>> {
-  return request<ApiResponse<TaskOut>>(`/pm_task/detail/${id}`, {
+  return request<ApiResponse<TaskOut>>(`${PM_TASK_PREFIX}/detail/${id}`, {
     method: 'GET',
   });
 }
@@ -182,7 +185,7 @@ export async function getTaskDetail(id: number): Promise<ApiResponse<TaskOut>> {
 export async function createTask(
   params: TaskCreateParams,
 ): Promise<ApiResponse<TaskOut>> {
-  return request<ApiResponse<TaskOut>>('/pm_task/create', {
+  return request<ApiResponse<TaskOut>>(`${PM_TASK_PREFIX}/create`, {
     method: 'POST',
     data: params,
   });
@@ -193,7 +196,7 @@ export async function updateTask(
   id: number,
   params: TaskUpdateParams,
 ): Promise<ApiResponse<TaskOut>> {
-  return request<ApiResponse<TaskOut>>(`/pm_task/update/${id}`, {
+  return request<ApiResponse<TaskOut>>(`${PM_TASK_PREFIX}/update/${id}`, {
     method: 'PUT',
     data: params,
   });
@@ -201,7 +204,7 @@ export async function updateTask(
 
 /** 删除任务(支持批量;后端请求体是裸数组,不是 { ids }) */
 export async function deleteTasks(ids: number[]): Promise<ApiResponse<null>> {
-  return request<ApiResponse<null>>('/pm_task/delete', {
+  return request<ApiResponse<null>>(`${PM_TASK_PREFIX}/delete`, {
     method: 'DELETE',
     data: ids,
   });

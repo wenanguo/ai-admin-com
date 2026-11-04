@@ -1,6 +1,10 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import {
+  PM_MILESTONE_PREFIX,
+  PM_PROJECT_PREFIX,
+} from '../src/services/api/pm/paths';
+import {
   gotoModulePage,
   modalFormItem,
   pickInModal,
@@ -30,11 +34,11 @@ import {
  */
 
 const MILESTONE_PAGE_PATH = '/pm/milestone';
-const MILESTONE_LIST_URL = '**/api/v1/pm_milestone/list**';
-const MILESTONE_CREATE_URL = '**/api/v1/pm_milestone/create**';
-const MILESTONE_UPDATE_URL = '**/api/v1/pm_milestone/update/**';
+const MILESTONE_LIST_URL = `**/api/v1${PM_MILESTONE_PREFIX}/list**`;
+const MILESTONE_CREATE_URL = `**/api/v1${PM_MILESTONE_PREFIX}/create**`;
+const MILESTONE_UPDATE_URL = `**/api/v1${PM_MILESTONE_PREFIX}/update/**`;
 /** 表单的「所属项目」下拉:远程搜项目(候选来自 listProjects) */
-const PROJECT_LIST_URL = '**/api/v1/pm_project/list**';
+const PROJECT_LIST_URL = `**/api/v1${PM_PROJECT_PREFIX}/list**`;
 /** 字典选项接口(状态下拉与状态标签共用) */
 const dictDataUrl = (dictType: string) =>
   `**/api/v1/system/dict/data/info/${dictType}**`;
@@ -403,7 +407,7 @@ test.describe('里程碑管理页', () => {
 
     await expect.poll(() => createRequests.length).toBe(1);
     expect(createRequests[0].method).toBe('POST');
-    expect(createRequests[0].url).toContain('/pm_milestone/create');
+    expect(createRequests[0].url).toContain(`${PM_MILESTONE_PREFIX}/create`);
 
     // 提交的是线上码(dict_value),不是中文标签
     const body = createRequests[0].body as Record<string, unknown>;
@@ -470,7 +474,7 @@ test.describe('里程碑管理页', () => {
 
     await expect.poll(() => updateRequests.length).toBe(1);
     expect(updateRequests[0].method).toBe('PUT');
-    expect(updateRequests[0].url).toContain('/pm_milestone/update/11');
+    expect(updateRequests[0].url).toContain(`${PM_MILESTONE_PREFIX}/update/11`);
 
     // 更新是整对象 PUT:后端必填的字段都在,交付物还原成对象
     const body = updateRequests[0].body as Record<string, unknown>;
@@ -538,7 +542,7 @@ test.describe('里程碑管理页', () => {
 
     await expect.poll(() => updateRequests.length).toBe(1);
     expect(updateRequests[0].method).toBe('PUT');
-    expect(updateRequests[0].url).toContain('/pm_milestone/update/12');
+    expect(updateRequests[0].url).toContain(`${PM_MILESTONE_PREFIX}/update/12`);
 
     const body = updateRequests[0].body as Record<string, unknown>;
     expect(body.name).toBe('联调准备(改名)');

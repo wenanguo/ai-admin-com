@@ -1,11 +1,14 @@
 import { request } from '@umijs/max';
 import type { ApiResponse, PageQuery, PageResult } from '@/services/types';
+import { PM_MILESTONE_PREFIX } from './paths';
 
 /**
  * 里程碑 service。
  *
  * 后端的坑:
- * - 更新是 `PUT /pm_milestone/update/{id}` 且要传**整对象** —— 后端
+ * - 路由前缀是**两段**的 `/pm_project/pm_milestone`(后端容器前缀与 controller
+ *   自己的 prefix 拼接而成,成因见 ./paths.ts)—— 路径一律由 PM_MILESTONE_PREFIX 拼出
+ * - 更新是 `PUT /pm_project/pm_milestone/update/{id}` 且要传**整对象** —— 后端
  *   `ModulePmMilestoneUpdateSchema` 继承 CreateSchema,没有 PATCH
  * - 删除的请求体是**裸数组**(不是 `{ ids }`)
  * - `progress` 是后端缓存的**派生字段**(任务状态变更触发
@@ -103,26 +106,32 @@ export type MilestoneUpdateParams = MilestoneCreateParams;
 export async function listMilestones(
   params: MilestoneListParams,
 ): Promise<ApiResponse<PageResult<MilestoneOut>>> {
-  return request<ApiResponse<PageResult<MilestoneOut>>>('/pm_milestone/list', {
-    method: 'GET',
-    params,
-  });
+  return request<ApiResponse<PageResult<MilestoneOut>>>(
+    `${PM_MILESTONE_PREFIX}/list`,
+    {
+      method: 'GET',
+      params,
+    },
+  );
 }
 
 /** 里程碑详情 */
 export async function getMilestoneDetail(
   id: number,
 ): Promise<ApiResponse<MilestoneOut>> {
-  return request<ApiResponse<MilestoneOut>>(`/pm_milestone/detail/${id}`, {
-    method: 'GET',
-  });
+  return request<ApiResponse<MilestoneOut>>(
+    `${PM_MILESTONE_PREFIX}/detail/${id}`,
+    {
+      method: 'GET',
+    },
+  );
 }
 
 /** 创建里程碑(progress 是后端派生字段,不进请求体) */
 export async function createMilestone(
   params: MilestoneCreateParams,
 ): Promise<ApiResponse<MilestoneOut>> {
-  return request<ApiResponse<MilestoneOut>>('/pm_milestone/create', {
+  return request<ApiResponse<MilestoneOut>>(`${PM_MILESTONE_PREFIX}/create`, {
     method: 'POST',
     data: params,
   });
@@ -133,17 +142,20 @@ export async function updateMilestone(
   id: number,
   params: MilestoneUpdateParams,
 ): Promise<ApiResponse<MilestoneOut>> {
-  return request<ApiResponse<MilestoneOut>>(`/pm_milestone/update/${id}`, {
-    method: 'PUT',
-    data: params,
-  });
+  return request<ApiResponse<MilestoneOut>>(
+    `${PM_MILESTONE_PREFIX}/update/${id}`,
+    {
+      method: 'PUT',
+      data: params,
+    },
+  );
 }
 
 /** 删除里程碑(后端请求体是裸数组,不是 { ids }) */
 export async function deleteMilestones(
   ids: number[],
 ): Promise<ApiResponse<null>> {
-  return request<ApiResponse<null>>('/pm_milestone/delete', {
+  return request<ApiResponse<null>>(`${PM_MILESTONE_PREFIX}/delete`, {
     method: 'DELETE',
     data: ids,
   });

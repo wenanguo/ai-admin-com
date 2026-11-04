@@ -335,7 +335,7 @@ function RisksTab({ projectId }: { projectId: number }) {
 }
 
 /**
- * 成员 tab:members 是路径参数接口(/pm_project/members/{id}),返回的
+ * 成员 tab:members 是路径参数接口(/pm_project/pm_project/members/{id}),返回的
  * 是数组(带 user_info 冗余)不是分页信封;姓名直接读 user_info
  */
 function MembersTab({ projectId }: { projectId: number }) {

@@ -28,7 +28,7 @@ describe('pm project service', () => {
   it('lists projects with pagination params', async () => {
     await listProjects({ page_no: 1, page_size: 10, name: '管理后台' });
 
-    expect(request).toHaveBeenCalledWith('/pm_project/list', {
+    expect(request).toHaveBeenCalledWith('/pm_project/pm_project/list', {
       method: 'GET',
       params: { page_no: 1, page_size: 10, name: '管理后台' },
     });
@@ -37,7 +37,7 @@ describe('pm project service', () => {
   it('gets a project detail by id', async () => {
     await getProjectDetail(7);
 
-    expect(request).toHaveBeenCalledWith('/pm_project/detail/7', {
+    expect(request).toHaveBeenCalledWith('/pm_project/pm_project/detail/7', {
       method: 'GET',
     });
   });
@@ -63,7 +63,7 @@ describe('pm project service', () => {
     const res = await getProjectMembers(7);
 
     // 路径参数接口：项目 id 在路径上，不在查询串里
-    expect(request).toHaveBeenCalledWith('/pm_project/members/7', {
+    expect(request).toHaveBeenCalledWith('/pm_project/pm_project/members/7', {
       method: 'GET',
     });
     // 响应是数组信封：data 直接是成员列表，没有 items/total 的分页包裹
@@ -91,7 +91,7 @@ describe('pm project service', () => {
       visibility_code: 'private',
     });
 
-    expect(request).toHaveBeenCalledWith('/pm_project/create', {
+    expect(request).toHaveBeenCalledWith('/pm_project/pm_project/create', {
       method: 'POST',
       data: {
         code: 'APP_REWORK',
@@ -118,7 +118,7 @@ describe('pm project service', () => {
       visibility_code: 'private',
     });
 
-    expect(request).toHaveBeenCalledWith('/pm_project/update/7', {
+    expect(request).toHaveBeenCalledWith('/pm_project/pm_project/update/7', {
       method: 'PUT',
       data: {
         code: 'APP_REWORK',
@@ -136,7 +136,7 @@ describe('pm project service', () => {
   it('deletes projects by a bare id array', async () => {
     await deleteProjects([1, 2]);
 
-    expect(request).toHaveBeenCalledWith('/pm_project/delete', {
+    expect(request).toHaveBeenCalledWith('/pm_project/pm_project/delete', {
       method: 'DELETE',
       data: [1, 2],
     });

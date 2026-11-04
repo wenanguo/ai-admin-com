@@ -1,11 +1,14 @@
 import { request } from '@umijs/max';
 import type { ApiResponse, PageQuery, PageResult } from '@/services/types';
+import { PM_PROJECT_PREFIX } from './paths';
 
 /**
  * 项目管理 service。
  *
  * 后端的坑:
- * - 更新是 `PUT /pm_project/update/{id}` 且要传**整对象** —— 后端
+ * - 路由前缀是**两段**的 `/pm_project/pm_project`(后端容器前缀与 controller
+ *   自己的 prefix 拼接而成,成因见 ./paths.ts)—— 路径一律由 PM_PROJECT_PREFIX 拼出
+ * - 更新是 `PUT /pm_project/pm_project/update/{id}` 且要传**整对象** —— 后端
  *   `ModulePmProjectUpdateSchema` 继承 CreateSchema,没有 PATCH,少一个必填字段就是 422
  * - 删除的请求体是**裸数组**(不是 `{ ids }`)
  * - `tags` / `extra_fields` 语义是数组和对象,但后端存的是 **JSON 字符串** ——
@@ -102,17 +105,20 @@ export type ProjectUpdateParams = ProjectCreateParams;
 export async function listProjects(
   params: ProjectListParams,
 ): Promise<ApiResponse<PageResult<ProjectOut>>> {
-  return request<ApiResponse<PageResult<ProjectOut>>>('/pm_project/list', {
-    method: 'GET',
-    params,
-  });
+  return request<ApiResponse<PageResult<ProjectOut>>>(
+    `${PM_PROJECT_PREFIX}/list`,
+    {
+      method: 'GET',
+      params,
+    },
+  );
 }
 
 /** 项目详情 */
 export async function getProjectDetail(
   id: number,
 ): Promise<ApiResponse<ProjectOut>> {
-  return request<ApiResponse<ProjectOut>>(`/pm_project/detail/${id}`, {
+  return request<ApiResponse<ProjectOut>>(`${PM_PROJECT_PREFIX}/detail/${id}`, {
     method: 'GET',
   });
 }
@@ -139,23 +145,26 @@ export interface ProjectMemberOut {
 /**
  * 项目成员列表。
  *
- * 注意与其它子列表不一样:这是路径参数接口(/pm_project/members/{id}),
+ * 注意与其它子列表不一样:这是路径参数接口(/pm_project/pm_project/members/{id}),
  * 返回的是**数组**而不是分页信封 —— data 直接就是成员列表,
  * 没有 items/total 包裹
  */
 export async function getProjectMembers(
   id: number,
 ): Promise<ApiResponse<ProjectMemberOut[]>> {
-  return request<ApiResponse<ProjectMemberOut[]>>(`/pm_project/members/${id}`, {
-    method: 'GET',
-  });
+  return request<ApiResponse<ProjectMemberOut[]>>(
+    `${PM_PROJECT_PREFIX}/members/${id}`,
+    {
+      method: 'GET',
+    },
+  );
 }
 
 /** 创建项目 */
 export async function createProject(
   params: ProjectCreateParams,
 ): Promise<ApiResponse<ProjectOut>> {
-  return request<ApiResponse<ProjectOut>>('/pm_project/create', {
+  return request<ApiResponse<ProjectOut>>(`${PM_PROJECT_PREFIX}/create`, {
     method: 'POST',
     data: params,
   });
@@ -166,7 +175,7 @@ export async function updateProject(
   id: number,
   params: ProjectUpdateParams,
 ): Promise<ApiResponse<ProjectOut>> {
-  return request<ApiResponse<ProjectOut>>(`/pm_project/update/${id}`, {
+  return request<ApiResponse<ProjectOut>>(`${PM_PROJECT_PREFIX}/update/${id}`, {
     method: 'PUT',
     data: params,
   });
@@ -176,7 +185,7 @@ export async function updateProject(
 export async function deleteProjects(
   ids: number[],
 ): Promise<ApiResponse<null>> {
-  return request<ApiResponse<null>>('/pm_project/delete', {
+  return request<ApiResponse<null>>(`${PM_PROJECT_PREFIX}/delete`, {
     method: 'DELETE',
     data: ids,
   });
