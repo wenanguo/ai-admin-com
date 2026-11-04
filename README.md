@@ -69,16 +69,77 @@ build / preview 这一对命令统一用 `UMI_OUTPUT_PATH=dist` 显式约定,
 
 三者的出口都在 `src/components/index.ts`。
 
+PM(项目管理)侧共 6 个路由,同样全部对接真实后端:
+
+| 模块       | 路由              | 页面目录                                 |
+| ---------- | ----------------- | ---------------------------------------- |
+| 项目列表   | `/pm/project`     | `src/pages/module_pm/project/`           |
+| 项目详情   | `/pm/project/:id` | `src/pages/module_pm/project/detail.tsx` |
+| 里程碑     | `/pm/milestone`   | `src/pages/module_pm/milestone/`         |
+| 任务列表   | `/pm/task`        | `src/pages/module_pm/task/`              |
+| 任务看板   | `/pm/task/board`  | `src/pages/module_pm/task/board.tsx`     |
+| 风险登记册 | `/pm/risk`        | `src/pages/module_pm/risk/`              |
+
+> 项目详情**只在路由里注册**,菜单里没有这一项(列表页也没有详情入口)——
+> 按 URL `/pm/project/<id>` 进。看板与风险是各自独立的页面,不是列表页的 tab。
+
+PM 的 6 个页面另有两组共享件:
+
+| 共享件               | 路径                   |
+| -------------------- | ---------------------- |
+| 字典驱动的共享组件   | `src/components/pm/`   |
+| PM 模块的 service 层 | `src/services/api/pm/` |
+
+`src/components/pm/` 里是:
+
+- `DictSelect` / `DictTag` / `useDictOptions` —— 字典驱动的选择器与标签
+  (选项有模块级缓存,同一个字典只发一次请求)
+- `toValueEnum` —— 字典选项 → ProTable 的 `valueEnum`
+- `JsonTags` —— JSON 标签串 → Tag
+- `riskLevel` —— 风险等级(后端只有 `score`,等级是派生量,阈值集中在这)
+
+`src/services/api/pm/` 里是 `project` / `milestone` / `task` / `risk`
+四个模块的接口与类型(字段逐条对齐后端 schema)。
+
+## PM 页面的后端依赖(菜单种子)
+
+PM 的 6 个路由已经在 `config/routes.ts` 注册,直接输地址就能打开。
+但**侧边栏里看不到入口** —— 菜单由后端下发(见「菜单约定」),
+后端要在 `sys_menu` 表里补上 PM 的菜单节点与按钮权限码。
+
+**这个种子是后端团队的交付物,不在本仓库里。** 在它落地之前:
+路由能用,侧边栏里没有入口。
+(种子到了但 `route_path` 与前端路由对不上时,菜单项会被跳过,
+控制台打印 `[menu] 前端缺少路由: <path>` —— 详见「菜单约定」。)
+
+前端用到的权限码是**三段式**(`模块:实体:动作`,与后端 controller 里
+`AuthPermission([...])` 写的一致,也与 `sys_menu.permission` 列的注释一致),
+后端要种下这些码:
+
+| 实体                  | 权限码前缀                       | 动作                                                                                                         |
+| --------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 项目 `pm_project`     | `module_pm_project:pm_project`   | `query` `detail` `create` `update` `delete` `patch` `export` `import` `download` `transition` `member:write` |
+| 里程碑 `pm_milestone` | `module_pm_project:pm_milestone` | `query` `detail` `create` `update` `delete` `patch` `export` `import` `download`                             |
+| 任务 `pm_task`        | `module_pm_project:pm_task`      | `query` `detail` `create` `update` `delete` `patch` `export` `import` `download`                             |
+| 风险 `pm_risk`        | `module_pm_risk:pm_risk`         | `query` `detail` `create` `update` `delete` `patch` `export` `import` `download`                             |
+
+> **第一段是菜单目录**:里程碑与任务挂在 `module_pm_project` 目录下,风险挂在
+> `module_pm_risk` 目录下;第二段是实体,第三段是动作 —— 别种成两段。
+> 任务看板拖拽写的是 `…:update`(不是 `…:patch`),两种码都要给。
+
 ## 当前状态与已知限制
 
 - **系统管理侧已经打通**:9 个页面全部走真实后端,列表 / 搜索 / 分页 / 新增 / 编辑 /
   删除 / 批量启停都经 `src/services/api/**`,按钮按后端权限码判定
+- **PM 侧页面已经打通**:6 个路由全部走真实后端,但**侧边栏里看不到入口** ——
+  后端还没种下 PM 的菜单种子与按钮权限码,详见上面「PM 页面的后端依赖」
 - **平台侧与其它侧还没做**:后端菜单种子会下发 `/platform`(平台管理)、`/monitor`(监控管理)、
   `/generator`(代码管理)、`/ai`(AI 管理)、`/task`(任务管理)、`/example`(案例管理)这些目录,
   但前端没有注册对应的路由,`src/menu/adapter.ts` 会把它们跳过,控制台打印
   `[menu] 前端缺少路由: <path>` —— **这是既定行为,不是 bug**。
   将来补页面时只要在 `config/routes.ts` 注册同名路由,菜单就会自动出现,不用改后端
-- **导出功能本轮没做**:后端有 `*:export` 权限码,但这 9 个页面都没有导出按钮
+- **导出功能本轮没做**:后端有 `*:export` 权限码,但这 9 个系统管理页面与 6 个 PM 页面
+  都没有导出按钮
 - **公告是纯文本**:公告正文用普通多行文本框录入,不是富文本编辑器
 
 ## 登录与登录态
@@ -97,12 +158,13 @@ build / preview 这一对命令统一用 `UMI_OUTPUT_PATH=dist` 显式约定,
 
 | 目录                                       | 说明                                                                                                  |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `src/services/api/**`                      | **唯一**访问真实后端的地方,按后端模块分目录                                                           |
+| `src/services/api/**`                      | **唯一**访问真实后端的地方,按后端模块分目录(`pm/` 下是项目 / 里程碑 / 任务 / 风险)                    |
 | `src/services/demo/**`                     | antd-pro 演示页专用的 mock 数据访问(已非自动生成)                                                     |
 | `src/menu/adapter.ts`                      | 后端菜单树 → ProLayout 菜单的唯一转换处                                                               |
 | `src/auth/**`                              | token 存取与会话操作                                                                                  |
 | `src/pages/module_*/**`                    | 业务页面,目录名与后端菜单 `component_path` 对齐                                                       |
 | `src/components/**`                        | 共用组件(部门树选择器、菜单权限树、CRUD 脚手架),统一出口是 `src/components/index.ts`                  |
+| `src/components/pm/**`                     | PM 侧专用共享件(字典选择器 / 标签、JSON 标签、风险等级),只被 PM 页面用                                |
 | `.claude/skills/**` 与 `.agents/skills/**` | **两份副本,不是符号链接**:改了一处要同步另一处,否则会漂移(Windows 建符号链接要开发者模式或管理员权限) |
 
 > `skills-lock.json` 里的 `computedHash` 是**上游源文件**的摘要 ——
@@ -163,6 +225,8 @@ build / preview 这一对命令统一用 `UMI_OUTPUT_PATH=dist` 显式约定,
 - 实现计划:`docs/superpowers/plans/2026-10-30-ai-admin-frontend-template.md`
 - 系统管理补齐的设计规格:`docs/superpowers/specs/2026-11-02-ai-admin-system-modules-design.md`
 - 系统管理补齐的实现计划:`docs/superpowers/plans/2026-11-02-ai-admin-system-modules.md`
+- PM 页面的设计规格:`docs/superpowers/specs/2026-11-03-aipm-frontend-design.md`
+- PM 页面的实现计划:`docs/superpowers/plans/2026-11-03-aipm-frontend-pm-pages.md`
 - 修复记录:`docs/superpowers/plans/2026-10-31-ai-admin-frontend-template-fix-wave.md`、
   `docs/superpowers/plans/2026-10-31-ai-admin-frontend-template-review-round.md`
 - 上游说明:`README.ant-design-pro.md`
