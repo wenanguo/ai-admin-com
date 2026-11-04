@@ -147,6 +147,7 @@ src/env.ts                        环境变量校验（zod；缺变量启动即�
 src/db.ts                         PrismaClient 单例（globalThis 缓存，dev 热重载不漏连接）
 src/types/api.ts                  AiAdmin 响应信封（ApiResponse / SUCCESS_CODES / isSuccess）
 src/aadmin/                       AiAdmin HTTP 客户端（client / errors / types：路径、字段逐字对齐后端）
+src/adapter/                      适配层（enums 枚举归一 / capabilities 能力位 / keys 统一 key / model 统一模型 / datasource 读写）
 src/app/                          Route Handler
 spike/                            Task 1 的风险尖峰（一次性，结论在 spike/FINDINGS.md）
 ```
