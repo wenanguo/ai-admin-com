@@ -39,7 +39,6 @@ describe("parseEnv", () => {
 		expect(parsed.AI_MODEL).toBe("minimax-cn/MiniMax-M3.1-Flash");
 		expect(parsed.AIADMIN_BASE_URL).toBe("http://aiadmin.test/api/v1");
 		expect(parsed.DATABASE_URL).toBe("mysql://test@127.0.0.1:3306/aipm");
-		expect(parsed.PORT).toBe(3100);
 	});
 
 	it("ALLOWED_ORIGINS 被切成数组", () => {
@@ -55,17 +54,19 @@ describe("parseEnv", () => {
 		expect(catchMessage(() => parseEnv({ ...FULL, ALLOWED_ORIGINS: "" }))).toContain(
 			"ALLOWED_ORIGINS",
 		);
-	});
-
-	it("PORT 缺省用默认端口，给错则报错", () => {
-		expect(parseEnv({ ...FULL, PORT: "8080" }).PORT).toBe(8080);
-		expect(catchMessage(() => parseEnv({ ...FULL, PORT: "abc" }))).toContain("PORT");
+		// 纯空白也一样：切完一个源都不剩，等于没配 —— 必须启动即失败，且要点名变量、说清要求
+		const blankMessage = catchMessage(() => parseEnv({ ...FULL, ALLOWED_ORIGINS: " " }));
+		expect(blankMessage).toContain("ALLOWED_ORIGINS");
+		expect(blankMessage).toContain("至少要有一个源");
+		// 只有空段（逗号 + 空白）同理
+		expect(catchMessage(() => parseEnv({ ...FULL, ALLOWED_ORIGINS: " , , " }))).toContain(
+			"ALLOWED_ORIGINS",
+		);
 	});
 });
 
 describe("env", () => {
 	it("模块级 env 来自进程环境变量", () => {
-		expect(env.PORT).toBe(3100);
 		expect(env.ALLOWED_ORIGINS).toEqual([
 			"http://localhost:8000",
 			"http://127.0.0.1:8000",

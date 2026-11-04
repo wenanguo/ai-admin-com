@@ -25,11 +25,17 @@ npm run dev               # http://localhost:3100
 | `AI_MODEL` | 模型标识，如 `minimax-cn/MiniMax-M3.1-Flash` | 是 |
 | `AIADMIN_BASE_URL` | AiAdmin 后端地址，base 里已含 `/api/v1` | 是 |
 | `DATABASE_URL` | AiAdmin 的 MySQL 连接串（`ai_*` 元数据表与业务表**同库**） | 是 |
-| `PORT` | 本服务监听端口，缺省 3100 | 否 |
 | `ALLOWED_ORIGINS` | 允许跨域的前端源，逗号分隔（回具体的源，不用 `*`） | 是 |
 
 - `.env` **不入库**（里面有模型 key 与数据库口令），仓库里只有 `.env.example`。
 - `src/env.ts` 用 zod 校验，**缺哪个变量就在启动时报哪个**（不等到第一个请求打进来才炸）。
+- 校验发生在 **import 时**（`env.ts` 模块级就执行 `parseEnv`）。`next build` 也会加载路由模块，
+  所以一旦路由（或路由引用到的模块）import 了 `env.ts`，**构建机上也得有 `.env`** ——
+  Next 在 build 时同样会加载 `.env`。目前仓里只有 spike 路由、还没人 import `env.ts`，
+  后续任务把 `env.ts` 接进路由时要记得这条；真要把校验推迟到运行时，得改用
+  `instrumentation.ts`（本仓不这么做）。
+- 端口**不走环境变量**：钉在 `package.json` 的脚本里（`next dev -p 3100` /
+  `next start -p 3100`），要换端口改 scripts。
 
 ## 命令
 
@@ -76,18 +82,37 @@ npx prisma migrate resolve --applied 0_init_ai_tables
 
 ### 之后的迁移
 
+**顺序铁律：先生成迁移、人工审、`deploy`，最后才提交 schema 改动。** 基线必须是
+「最后一次已应用迁移那会儿的 schema」，**不是工作树的 `HEAD`** —— 若先把 schema 改动
+commit 了再拿 `HEAD` 当基线，diff 会是空的；空迁移 `deploy` 到共享库是个**静默 no-op**，
+不报任何错，改动就这么悄悄丢了。
+
 ```bash
-# 1) 改了 prisma/schema.prisma 之后，先离线算出「上一版 → 下一版」的差量
+# 1) 取基线：引入「最新一条迁移文件」的那个提交里的 schema。
+#    惯例是迁移和 schema 一起提交，所以那个提交的 schema 正是上次部署后的状态；
+#    而且它不随你本次是否提前 commit 了 schema 而漂移 —— 这正是不能拿 HEAD 当基线的原因。
+git log -1 --diff-filter=A --format=%H -- prisma/migrations   # 输出 <base_sha>
+git show <base_sha>:prisma/schema.prisma > /tmp/schema_before.prisma
+
+# 2) 离线算「上一版 → 下一版」的差量
 #    （离线 = 不连库、不做 drift 检查，绝不会把别人的表算成 DROP）
-git show HEAD:prisma/schema.prisma > /tmp/schema_before.prisma
 mkdir -p prisma/migrations/<时间戳>_<名字>
 npx prisma migrate diff \
   --from-schema-datamodel /tmp/schema_before.prisma \
   --to-schema-datamodel prisma/schema.prisma \
   --script > prisma/migrations/<时间戳>_<名字>/migration.sql
 
-# 2) 人工审一遍这份差量，再执行
+# 3) 人工审这份差量：只该含本次的改动；出现任何别的表（尤其 DROP TABLE）→ 停下报告。
+#    ⚠️ 空 SQL = 红灯，立刻停，别 deploy：
+[ -s prisma/migrations/<时间戳>_<名字>/migration.sql ] || echo "⚠️ 迁移是空的 —— 基线取错了，或这条迁移早已做完并提交；回第 1 步重取基线再生成"
+#    （空迁移上了共享库，就把「没生成出来」伪装成「已上线」，问题被藏起来。）
+
+# 4) 确认无误才执行
 npx prisma migrate deploy --schema prisma/schema.prisma
+
+# 5) 到这一步才提交：schema 与新迁移目录一起
+#    （维持「迁移提交里的 schema = 部署后状态」的惯例，第 1 步靠它取基线）
+git add prisma/schema.prisma prisma/migrations/<时间戳>_<名字>/
 ```
 
 `migrate deploy` 不做 drift 检查、只认本仓的迁移历史，不会碰别人的表。

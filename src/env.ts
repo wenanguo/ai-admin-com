@@ -10,9 +10,7 @@ export interface Env {
 	AIADMIN_BASE_URL: string;
 	/** AiAdmin 的 MySQL 连接串（`ai_*` 元数据表与业务表同库）。 */
 	DATABASE_URL: string;
-	/** 本服务监听端口。 */
-	PORT: number;
-	/** 允许跨域的前端源，回具体的源，不用 `*`。 */
+	/** 允许跨域的前端源（至少一个），回具体的源，不用 `*`。 */
 	ALLOWED_ORIGINS: string[];
 }
 
@@ -32,8 +30,12 @@ const envSchema = z.object({
 		.min(1, "不能为空")
 		.refine((value) => /^https?:\/\/\S+$/.test(value), "必须是 http(s) 开头的 URL"),
 	DATABASE_URL: z.string().min(1, "不能为空"),
-	PORT: z.coerce.number().int("必须是整数").positive("必须是正整数").default(3100),
-	ALLOWED_ORIGINS: z.string().min(1, "不能为空").transform(splitOrigins),
+	// 校验放在「切完之后」：空串、纯空白、只有空段，切完都是 [] —— 全算没配，启动即失败，
+	// 不能只挡空串（一个空格能过 min(1)，却会静默变成空的白名单）
+	ALLOWED_ORIGINS: z
+		.string()
+		.transform(splitOrigins)
+		.pipe(z.array(z.string()).min(1, "至少要有一个源")),
 });
 
 /** 环境变量来源。用 `Record` 而不是 `NodeJS.ProcessEnv`：后者被 Next.js 的全局类型加上了必填的 `NODE_ENV`，测试里造假环境变量会碍事。 */
