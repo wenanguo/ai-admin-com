@@ -11,7 +11,17 @@ import type { ApiResponse, PageQuery, PageResult } from '@/services/types';
  * - `score` 后端**必填且不负责计算** —— 由调用方按 `probability × impact` 算好传入,
  *   少了就是 422
  * - `ai_suggestion` 语义是对象,但创建/更新走 dict;查询参数里它却是 **JSON 字符串**
+ * - `owner_by` 不在 schema 里,但后端 service 会给 list / detail 的每一行补上
+ *   (app/plugin/module_pm_risk/pm_risk/service.py 的 _fill_owner_by)——
+ *   负责人姓名直接读它,不用再查用户表
  */
+
+/** 后端 ModulePmRiskOutSchema.owner_by —— 负责人信息 {id, name, username} */
+export interface RiskOwnerBy {
+  id?: number | null;
+  name?: string | null;
+  username?: string | null;
+}
 
 /** 后端 ModulePmRiskOutSchema */
 export interface RiskOut {
@@ -34,6 +44,8 @@ export interface RiskOut {
   status_code?: string | null;
   /** 风险负责人 ID(sys_user.id) */
   owner_id?: number | null;
+  /** 负责人信息 {id, name, username}(后端 service 随行补上) */
+  owner_by?: RiskOwnerBy | null;
   /** 缓解措施 */
   mitigation_plan?: string | null;
   /** 应急计划 */

@@ -107,4 +107,35 @@ describe('pm risk service', () => {
       data: [1, 2],
     });
   });
+
+  it('exposes the owner_by redundancy the backend fills in per row', async () => {
+    vi.mocked(request).mockResolvedValueOnce({
+      code: 0,
+      msg: 'ok',
+      data: {
+        items: [
+          {
+            id: 31,
+            owner_id: 1,
+            owner_by: { id: 1, name: '张三', username: 'zhangsan' },
+          },
+        ],
+        total: 1,
+        page_no: 1,
+        page_size: 10,
+        has_next: false,
+      },
+      status_code: 200,
+      success: true,
+    });
+
+    const res = await listRisks({ page_no: 1, page_size: 10 });
+
+    // 后端 service 会给每一行补 owner_by(负责人姓名直接读它,不用再查用户表)
+    expect(res?.data?.items?.[0]?.owner_by).toEqual({
+      id: 1,
+      name: '张三',
+      username: 'zhangsan',
+    });
+  });
 });

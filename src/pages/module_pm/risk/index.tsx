@@ -32,24 +32,6 @@ import RiskModalForm from './ModalForm';
 
 const requestRisks = toProTableRequest<RiskOut>(listRisks);
 
-/**
- * 列表行:后端随行返回 `owner_by`(冗余的负责人信息 {id, name, username})。
- *
- * ⚠️ service 层的 RiskOut 里**没有**这个字段(只有 owner_id),而后端
- * pm_risk 的 service 会给列表/详情结果补 owner_by
- * (app/plugin/module_pm_risk/pm_risk/service.py 的 _fill_owner_by)——
- * 前端在这里把响应形状补齐(**不改动** service 层)。
- *
- * 项目名没有这个便利:风险响应里**没有** project_by,只能侧载项目表映射。
- */
-type RiskRow = RiskOut & {
-  owner_by?: {
-    id?: number | null;
-    name?: string | null;
-    username?: string | null;
-  } | null;
-};
-
 /** 侧载一次的上限:后端 page_size 最大 100(同 CRUD_PAGINATION) */
 const SIDE_LOAD_PARAMS = { page_no: 1, page_size: 100 } as const;
 
@@ -131,7 +113,7 @@ function lookupProjectName(
 const RiskRegister: React.FC = () => {
   const access = useAccess();
 
-  const crud = useCrudTable<RiskRow, RiskCreateParams>({
+  const crud = useCrudTable<RiskOut, RiskCreateParams>({
     create: createRisk,
     update: updateRisk,
     remove: deleteRisks,
@@ -186,7 +168,7 @@ const RiskRegister: React.FC = () => {
     setCell(next);
   }, []);
 
-  const columns: ProColumns<RiskRow>[] = [
+  const columns: ProColumns<RiskOut>[] = [
     { title: 'ID', dataIndex: 'id', width: 80, search: false },
     {
       title: '风险标题',
@@ -321,7 +303,7 @@ const RiskRegister: React.FC = () => {
     },
   ];
 
-  const operationColumns = useCrudColumns<RiskRow>({
+  const operationColumns = useCrudColumns<RiskOut>({
     onEdit: crud.openEdit,
     onDelete: async (record) => {
       await crud.handleDelete(record);
@@ -347,7 +329,7 @@ const RiskRegister: React.FC = () => {
           title={`热力图最多统计前 ${allRisks.length} 条风险(共 ${allTotal} 条),其余请到下面的列表里翻页查看`}
         />
       ) : null}
-      <ProTable<RiskRow>
+      <ProTable<RiskOut>
         headerTitle="风险登记册"
         rowKey="id"
         actionRef={crud.actionRef}
