@@ -350,13 +350,15 @@ const RiskRegister: React.FC = () => {
       {/*
         项目名的侧载也有上限:后端 page_size 最大 100,这里取的是最新的 100 个
         项目 ⇒ 更早的项目在表格里显示为 id。这条上限不静默,给一条提示。
+        标题说**上限**(后端一次最多给 100 个),描述说**实际拿到几个** ——
+        两句分开说才不互相打架。
       */}
       {projectTotal > projectOptions.length ? (
         <Alert
           type="info"
           showIcon
-          title="项目名来自侧载列表,只覆盖最新的 100 个项目"
-          description={`后端一共 ${projectTotal} 个项目,侧载到的只是最新的 100 个,更早的项目在表格里显示为项目 id。`}
+          title="项目名来自侧载列表,后端一次最多给 100 个"
+          description={`后端一共 ${projectTotal} 个项目,侧载只拿到最新的 ${projectOptions.length} 个,更早的项目在表格里显示为项目 id。`}
         />
       ) : null}
       <ProTable<RiskOut>

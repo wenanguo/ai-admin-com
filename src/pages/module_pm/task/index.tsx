@@ -255,11 +255,23 @@ const TaskManagement: React.FC = () => {
     侧载有上限(后端 page_size 最大 100):项目与里程碑都会越攒越多,
     侧载到的是最新的 100 条 ⇒ 更早的实体在表格里查不到名字(显示为 -)。
     这条上限**不静默**:侧载被截断时给一条提示(与看板页、风险页同款)。
+
+    ⚠️ 提示只说**真的被截断的那一个**:项目多、里程碑少是常态,把没被截断的
+    也写进去等于夸大。侧载到的条数与后端的总数都比一比才知道截没截。
   */
-  const sideLoadTruncated =
-    projectTotal > 0 &&
-    (projectTotal > projectOptions.length ||
-      milestoneTotal > milestoneOptions.length);
+  const projectTruncated = projectTotal > projectOptions.length;
+  const milestoneTruncated = milestoneTotal > milestoneOptions.length;
+  const sideLoadTruncated = projectTruncated || milestoneTruncated;
+  const truncatedText = [
+    projectTruncated
+      ? `一共 ${projectTotal} 个项目,侧载只拿到最新的 ${projectOptions.length} 个,更早的在表格里显示为 -`
+      : null,
+    milestoneTruncated
+      ? `一共 ${milestoneTotal} 个里程碑,侧载只拿到最新的 ${milestoneOptions.length} 个,更早的在表格里显示为 -`
+      : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(';');
 
   return (
     <>
@@ -267,8 +279,8 @@ const TaskManagement: React.FC = () => {
         <Alert
           type="info"
           showIcon
-          title="项目名与里程碑名来自侧载列表,只覆盖最新的 100 条"
-          description={`后端分页上限是 100 条:一共 ${projectTotal} 个项目、${milestoneTotal} 个里程碑,侧载到的只是最新的 100 条,更早的在表格里显示为 -。表单的「所属里程碑」下拉按所选项目单独拉取,不受这条限制。`}
+          title="项目名/里程碑名来自侧载列表,后端一次最多给 100 条"
+          description={`${truncatedText}。表单的「所属里程碑」下拉按所选项目单独拉取,不受这条限制。`}
         />
       ) : null}
       <ProTable<TaskOut>

@@ -521,8 +521,13 @@ test.describe('任务管理页', () => {
     // 上限**不静默**:页面上有一条提示说清侧载盖了什么
     const alert = page.locator('.ant-alert');
     await expect(alert).toHaveCount(1);
-    await expect(alert).toContainText('只覆盖最新的 100 条');
+    await expect(alert).toContainText('后端一次最多给 100 条');
     await expect(alert).toContainText('250 个项目');
+    // 描述说的是**实际拿到几个**,不是把上限当成实际值
+    await expect(alert).toContainText('侧载只拿到最新的 2 个');
+    // 里程碑没被截断(夹具里只有 2 个)⇒ 提示里**不**说里程碑被截断了,
+    // 说了就是夸大(「所属里程碑」那句是例外说明,不是截断)
+    await expect(alert).not.toContainText('个里程碑');
   });
 
   test('里程碑下拉按所选项目单独拉,不是全局侧载的那 100 条', async ({

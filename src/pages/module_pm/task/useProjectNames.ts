@@ -33,16 +33,10 @@ const SIDE_LOAD_PARAMS = {
   order_by: JSON.stringify([{ id: 'desc' }]),
 } as const;
 
-/** 项目下拉选项(label 给人看,value 是项目 id) */
+/** 下拉选项(label 给人看,value 是实体 id) */
 export interface ProjectOption {
   label: string;
   value: number;
-}
-
-/** 里程碑下拉选项(多带 projectId:表单里按所属项目过滤) */
-export interface MilestoneOption extends ProjectOption {
-  /** 所属项目 id(后端里程碑的 project_id) */
-  projectId: number | null;
 }
 
 /** useProjectNames 的返回值 */
@@ -53,8 +47,14 @@ export interface ProjectNames {
   milestoneNames: Map<number, string>;
   /** 项目下拉选项(表单与搜索栏共用,不再发请求) */
   projectOptions: ProjectOption[];
-  /** 里程碑下拉选项(表单里按所属项目过滤) */
-  milestoneOptions: MilestoneOption[];
+  /**
+   * 里程碑选项(与项目选项同形)。
+   *
+   * ⚠️ **表单不再用这一份**:表单的「所属里程碑」是**按所选项目单独拉**的
+   * (见 task/ModalForm.tsx)—— 全局侧载只覆盖最新的 100 条,跨项目一多就漏。
+   * 这里留着是为了表格里把 milestone_id 映射成名字,以及判断侧载有没有被截断。
+   */
+  milestoneOptions: ProjectOption[];
   /** 侧载是否还在途 */
   loading: boolean;
   /** 后端一共多少个项目(侧载只拿到其中 100 条,差值用来提示) */
@@ -63,35 +63,14 @@ export interface ProjectNames {
   milestoneTotal: number;
 }
 
-/** 项目列表 → 下拉选项(没有 id 的行没法当候选项,丢掉) */
-function toProjectOptions(
+/** 项目/里程碑列表 → 下拉选项(没有 id 的行没法当候选项,丢掉) */
+function toOptions(
   items: { id?: number | null; name?: string | null }[],
 ): ProjectOption[] {
-  return items.flatMap((project) =>
-    project.id == null
+  return items.flatMap((item) =>
+    item.id == null
       ? []
-      : [{ label: project.name ?? String(project.id), value: project.id }],
-  );
-}
-
-/** 里程碑列表 → 下拉选项(带上所属项目,表单里按项目过滤) */
-function toMilestoneOptions(
-  items: {
-    id?: number | null;
-    name?: string | null;
-    project_id?: number | null;
-  }[],
-): MilestoneOption[] {
-  return items.flatMap((milestone) =>
-    milestone.id == null
-      ? []
-      : [
-          {
-            label: milestone.name ?? String(milestone.id),
-            value: milestone.id,
-            projectId: milestone.project_id ?? null,
-          },
-        ],
+      : [{ label: item.name ?? String(item.id), value: item.id }],
   );
 }
 
@@ -100,12 +79,11 @@ function toMilestoneOptions(
  *
  * 页面与表单共用这一份:表单的项目下拉直接用返回的选项,
  * 不再单独发请求(里程碑页的「所属项目」是远程搜索,这里是侧载复用)。
+ * 表单的「所属里程碑」**不**用这里的选项 —— 它按所选项目单独拉,见上面的说明。
  */
 export function useProjectNames(): ProjectNames {
   const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
-  const [milestoneOptions, setMilestoneOptions] = useState<MilestoneOption[]>(
-    [],
-  );
+  const [milestoneOptions, setMilestoneOptions] = useState<ProjectOption[]>([]);
   const [projectTotal, setProjectTotal] = useState(0);
   const [milestoneTotal, setMilestoneTotal] = useState(0);
   const [projectsLoading, setProjectsLoading] = useState(true);
@@ -116,7 +94,7 @@ export function useProjectNames(): ProjectNames {
     listProjects(SIDE_LOAD_PARAMS)
       .then((res) => {
         if (cancelled) return;
-        setProjectOptions(toProjectOptions(res?.data?.items ?? []));
+        setProjectOptions(toOptions(res?.data?.items ?? []));
         setProjectTotal(res?.data?.total ?? 0);
       })
       .catch(() => {
@@ -135,7 +113,7 @@ export function useProjectNames(): ProjectNames {
     listMilestones(SIDE_LOAD_PARAMS)
       .then((res) => {
         if (cancelled) return;
-        setMilestoneOptions(toMilestoneOptions(res?.data?.items ?? []));
+        setMilestoneOptions(toOptions(res?.data?.items ?? []));
         setMilestoneTotal(res?.data?.total ?? 0);
       })
       .catch(() => {

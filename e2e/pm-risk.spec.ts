@@ -469,8 +469,10 @@ test.describe('风险登记册页', () => {
     // (热力图那一条不在 —— 风险没截断)
     const alerts = page.locator('.ant-alert');
     await expect(alerts).toHaveCount(1);
-    await expect(alerts.first()).toContainText('只覆盖最新的 100 个项目');
+    await expect(alerts.first()).toContainText('后端一次最多给 100 个');
     await expect(alerts.first()).toContainText('250 个项目');
+    // 描述说的是**实际拿到几个**,不是把上限当成实际值
+    await expect(alerts.first()).toContainText('侧载只拿到最新的 2 个');
   });
 
   test('编辑时负责人显示名字,不是裸 id', async ({ page }) => {
