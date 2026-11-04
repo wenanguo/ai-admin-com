@@ -280,7 +280,7 @@ const TaskManagement: React.FC = () => {
           type="info"
           showIcon
           title="项目名/里程碑名来自侧载列表,后端一次最多给 100 条"
-          description={`${truncatedText}。表单的「所属里程碑」下拉按所选项目单独拉取,不受这条限制。`}
+          description={`${truncatedText}。表单的「所属里程碑」下拉按所选项目单独拉取(只含所选项目的里程碑),但它自己也受后端 100 条的上限约束 —— 所选项目的里程碑超过 100 个时,下拉里只有最新的 100 个。`}
         />
       ) : null}
       <ProTable<TaskOut>
