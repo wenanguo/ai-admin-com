@@ -333,7 +333,7 @@ const taskRow = {
   actual_start_date: '2026-11-06',
   actual_end_date: null,
   sort_order: 0,
-  created_via_code: 'web',
+  created_via_code: 'manual',
   blocked_reason: null,
   assignee_by: { id: 1, name: '张三', username: 'zhangsan' },
   reporter_by: { id: 1, name: '张三', username: 'zhangsan' },
