@@ -550,7 +550,8 @@ GET  /api/agent/conversations?limit=50  → [{ conversationId, title, updatedAt 
 `probability`（必填，1–5）、`impact`（必填，1–5）、**`score`（必填，前端算 = 概率 × 影响）**、
 `status_code`（字典，必填）、`owner_id`（必填 —— 后端 schema 里 `owner_id: int` 非可空）、
 `mitigation_plan`、`contingency_plan`、`due_date`、`trigger_date`、
-`created_via_code`（必填；人工写固定传 `manual`）。
+`created_via_code`（必填；**新增**固定传 `manual`，**编辑原样回传行里的值** ——
+后端 `ModulePmRiskUpdateSchema` 继承 CreateSchema，这一列必填，不带就 422）。
 
 > `ai_suggestion` **不在表单里**（那是 AI 写路径的字段）。
 > `score` 与 `created_via_code` 是后端必填但用户不该看见的字段 ——

@@ -483,7 +483,9 @@ EOF
   - 表单：`project_id`(必填)、`title`(必填)、`description`、`category_code`(必填)、
     `probability`(必填 1–5)、`impact`(必填 1–5)、`status_code`(必填)、`owner_id`(必填)、
     `mitigation_plan`、`contingency_plan`、`due_date`、`trigger_date`。
-    **提交时自动补**：`score = probability * impact`、`created_via_code: 'manual'`。
+    **提交时自动补**：`score = probability * impact`；`created_via_code` 新增固定 `'manual'`、
+    编辑**原样回传行里的值**（后端 `ModulePmRiskUpdateSchema` 继承 CreateSchema，
+    这一列必填，不带就 422）。
   - `Heatmap.tsx`：5×5 网格（纵=概率，横=影响），每格显示落入该格的**风险数**，
     颜色按该格**最高 score** 的等级；点格子过滤下面的列表。**只读，不做拖拽建风险。**
 
