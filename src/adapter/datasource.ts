@@ -11,6 +11,7 @@
  * ⚠️ 路径一律取自 `PM_PATHS`（两段插件前缀），**不要在这里手写路径字符串**。
  */
 
+import { createHash } from "node:crypto";
 import type { AadminClient } from "../aadmin/client";
 import { AdapterErrorException } from "../aadmin/errors";
 import {
@@ -23,13 +24,15 @@ import {
 import {
 	priorityFromUnified,
 	priorityToUnified,
-	projectStatusFromUnified,
+	PROJECT_STATUS_MAPPING,
 	projectStatusToUnified,
+	TASK_STATUS_MAPPING,
 	taskSourceToUnified,
 	taskStatusFromUnified,
 	taskStatusToUnified,
 	taskTypeFromUnified,
 	taskTypeToUnified,
+	type EnumMapping,
 	type EnumWarningSink,
 } from "./enums";
 import { entityKey, parseEntityKey, tryParseEntityKey, tryParseNumericId } from "./keys";
@@ -122,31 +125,70 @@ export interface ListTasksQuery {
 /** 项目 code → id 的缓存存活时间（毫秒）。 */
 const PROJECT_ID_CACHE_TTL_MS = 30_000;
 
+/** 缓存里最多保留多少条（防止长跑进程把内存吃满）。 */
+const PROJECT_ID_CACHE_MAX_ENTRIES = 512;
+
+/** 缓存里的一条：项目 id + 写入时间。 */
+interface ProjectIdCacheEntry {
+	/** 项目 id（后端的主键）。 */
+	id: number;
+	/** 写入时间（毫秒；用来算 TTL）。 */
+	at: number;
+}
+
 /**
- * 项目 code → id 的缓存（**进程级**）。
+ * 项目 code → id 的缓存（**进程级**，但**按身份隔离**）。
  *
- * 为什么是进程级而不是每个数据源一份：数据源是**按请求**建的（token 按请求透传），
- * 放在实例里等于每次都重新查 —— 而「建任务」是高频动作，不能每次都拉一遍项目。
- * code → id 是全局稳定的映射（项目编码租户内唯一、不可改），缓存它没有一致性风险。
+ * ⚠️ **为什么必须按身份隔离**：项目编码只保证**租户内**唯一 ——
+ * 两个租户可以有同名编码。若只用「编码」做 key，A 租户查到的 id 会被
+ * 发给 B 租户 ⇒ **任务建到别人的项目里**（跨租户污染）。
+ * 所以 key 是 `<身份指纹>:<项目编码大写>`：只有在**同一个身份**下，
+ * code → id 这个映射才成立。
+ *
+ * 为什么作用域用 token 的**指纹**（sha256）而不是 token 本身：
+ * 缓存是进程级的 ⇒ 用明文 token 做 key 等于把凭据长期留在内存里。
+ * 指纹稳定、不可逆，且不泄露凭据。
+ *
+ * 为什么还是进程级而不是每个数据源一份：数据源是**按请求**建的
+ * （token 按请求透传），放实例里等于每次都重新查 —— 而「建任务」是高频动作。
  */
-const projectIdCache = new Map<string, { id: number; at: number }>();
+const projectIdCache = new Map<string, ProjectIdCacheEntry>();
+
+/** 身份的缓存作用域键（token 的 sha256 指纹；不落明文凭据）。 */
+function identityScope(token: string): string {
+	return createHash("sha256").update(token).digest("hex");
+}
 
 /** 清空项目 id 缓存（测试用；项目编码被改时也该调）。 */
 export function clearProjectIdCache(): void {
 	projectIdCache.clear();
 }
 
-/** 缓存里命中且没过期 ⇒ 返回 id（key 统一大写 —— 项目编码的约定是大写）。 */
-function cachedProjectId(code: string): number | undefined {
-	const hit = projectIdCache.get(code.toUpperCase());
+/** 缓存里命中且没过期 ⇒ 返回 id。 */
+function cachedProjectId(cacheKey: string): number | undefined {
+	const hit = projectIdCache.get(cacheKey);
 	if (hit === undefined) {
 		return undefined;
 	}
 	if (Date.now() - hit.at > PROJECT_ID_CACHE_TTL_MS) {
-		projectIdCache.delete(code.toUpperCase());
+		projectIdCache.delete(cacheKey);
 		return undefined;
 	}
 	return hit.id;
+}
+
+/** 写缓存（顺手淘汰最老的一条 ⇒ 缓存有上限，不会把内存吃满）。 */
+function storeProjectId(cacheKey: string, id: number): void {
+	// 先删后插 ⇒ 这条变成「最新的一条」，淘汰时最后被淘汰
+	projectIdCache.delete(cacheKey);
+	projectIdCache.set(cacheKey, { id, at: Date.now() });
+	while (projectIdCache.size > PROJECT_ID_CACHE_MAX_ENTRIES) {
+		const oldest = projectIdCache.keys().next();
+		if (oldest.done) {
+			break;
+		}
+		projectIdCache.delete(oldest.value);
+	}
 }
 
 /* ------------------------------------------------------------ 默认值 */
@@ -169,11 +211,14 @@ export class AadminDataSource {
 	readonly #client: AadminClient;
 	readonly #token: string;
 	readonly #onWarning: EnumWarningSink | undefined;
+	/** 缓存作用域（token 的指纹）—— 项目 id 缓存按身份隔离，见上面的说明。 */
+	readonly #scope: string;
 
 	constructor(options: AadminDataSourceOptions) {
 		this.#client = options.client;
 		this.#token = options.token;
 		this.#onWarning = options.onWarning;
+		this.#scope = identityScope(options.token);
 	}
 
 	/** 列项目（返回统一模型）。 */
@@ -188,10 +233,7 @@ export class AadminDataSource {
 				status_code:
 					query.status === undefined
 						? undefined
-						: projectStatusFromUnified(
-								projectStatusToUnified(query.status, this.#onWarning),
-								this.#onWarning,
-							),
+						: this.#statusFilter(query.status, PROJECT_STATUS_MAPPING, "项目状态"),
 			},
 		);
 		return page.items.map((item) => toUnifiedProject(item, this.#onWarning));
@@ -199,6 +241,11 @@ export class AadminDataSource {
 
 	/** 列任务（返回统一模型；分页参数原样透传给后端）。 */
 	async listTasks(query: ListTasksQuery = {}): Promise<UnifiedTask[]> {
+		// 先校状态（不认识的 ⇒ 直接失败，别白发请求）
+		const statusCode =
+			query.status === undefined
+				? undefined
+				: this.#statusFilter(query.status, TASK_STATUS_MAPPING, "任务状态");
 		const projectId =
 			query.project_key === undefined
 				? query.project_id
@@ -210,13 +257,7 @@ export class AadminDataSource {
 				page_no: query.page_no ?? 1,
 				page_size: query.page_size ?? 20,
 				project_id: projectId,
-				status_code:
-					query.status === undefined
-						? undefined
-						: taskStatusFromUnified(
-								taskStatusToUnified(query.status, this.#onWarning),
-								this.#onWarning,
-							),
+				status_code: statusCode,
 			},
 		);
 		return page.items.map((item) => toUnifiedTask(item, this.#onWarning));
@@ -293,6 +334,29 @@ export class AadminDataSource {
 	/* ------------------------------------------------------------ 内部 */
 
 	/**
+	 * 查询过滤用的状态：认识就转成**线上码**，不认识就抛 `VALIDATION`。
+	 *
+	 * ⚠️ **为什么这里不按「未命中 ⇒ 归一为默认值 + 告警」处理**：
+	 * 那条规则是为**落库的值**准备的 —— 写路径必须给后端一个合法的码，
+	 * 默认值是安全的兜底（顶多写错一个状态，能看出来、能改）。
+	 * 但**查询过滤**是一次**筛选**：把「ARCHIVED」悄悄换成「backlog」，
+	 * 调用方（尤其是 LLM）拿到的是一份**看起来对、其实答非所问**的结果 ——
+	 * 它会把 backlog 的任务当成「已归档」报出去，而且**看上去很权威**。
+	 * ⇒ 这里的规则是：**不认识 ⇒ 抛 VALIDATION**，错误里带上全部合法值，
+	 * 让调用方（或 LLM）拿正确的状态重试。宁可直接失败，也不给假答案。
+	 */
+	#statusFilter(value: string, mapping: EnumMapping, label: string): string {
+		if (!mapping.recognizes(value)) {
+			const valid = [...mapping.toWire.keys()].join(" / ");
+			throw new AdapterErrorException(
+				"VALIDATION",
+				`未知的${label}「${value}」；可用值：${valid}`,
+			);
+		}
+		return mapping.fromUnified(mapping.toUnified(value, this.#onWarning), this.#onWarning);
+	}
+
+	/**
 	 * 把 `project_key` 解成后端的项目 id。
 	 *
 	 * - `project:45` / `45` ⇒ 直接用 id，**不发请求**；
@@ -317,9 +381,11 @@ export class AadminDataSource {
 		return this.#projectIdByCode(trimmed);
 	}
 
-	/** 按项目编码查 id（先查缓存）。 */
+	/** 按项目编码查 id（先查缓存；缓存**按身份隔离** ⇒ 不会串租户）。 */
 	async #projectIdByCode(code: string): Promise<number> {
-		const cached = cachedProjectId(code);
+		// 缓存 key 带身份作用域 ⇒ 同一个编码在另一个身份下不会被命中
+		const cacheKey = `${this.#scope}:${code.toUpperCase()}`;
+		const cached = cachedProjectId(cacheKey);
 		if (cached !== undefined) {
 			return cached;
 		}
@@ -330,7 +396,7 @@ export class AadminDataSource {
 				`AiAdmin 里找不到项目「${code}」（既不是 project:<id>，也没有这个项目编码）`,
 			);
 		}
-		projectIdCache.set(code.toUpperCase(), { id, at: Date.now() });
+		storeProjectId(cacheKey, id);
 		return id;
 	}
 

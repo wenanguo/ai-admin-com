@@ -81,6 +81,14 @@ describe("枚举归一 · 每一对都能来回", () => {
 		expect(priorityToUnified("P1")).toBe("P1");
 		expect(priorityToUnified("p1")).toBe("P1");
 	});
+
+	it("recognizes 认统一名与线上码（忽略大小写），不认识的一律 false", () => {
+		expect(TASK_STATUS_MAPPING.recognizes("IN_PROGRESS")).toBe(true);
+		expect(TASK_STATUS_MAPPING.recognizes("in_progress")).toBe(true);
+		expect(TASK_STATUS_MAPPING.recognizes("  done  ")).toBe(true);
+		expect(TASK_STATUS_MAPPING.recognizes("ARCHIVED")).toBe(false);
+		expect(TASK_STATUS_MAPPING.recognizes("")).toBe(false);
+	});
 });
 
 describe("枚举归一 · 任务", () => {

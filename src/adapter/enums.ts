@@ -137,6 +137,15 @@ export interface EnumMapping<Unified extends string = string> {
 	readonly toUnified: (value: string, sink?: EnumWarningSink) => Unified;
 	/** 统一名 → 线上码（取标准码）；不认识 ⇒ 退回 `fallback` 的标准码并告警。 */
 	readonly fromUnified: (value: string, sink?: EnumWarningSink) => string;
+	/**
+	 * 这个值**认识吗**（统一名与线上码都认，忽略大小写）？
+	 *
+	 * 给「查询过滤」用：**过滤**与**落库**的规则不一样 ——
+	 * 落库时不认识的值可以退回默认值（必须有值可写），但过滤时退回默认值
+	 * 会返回一份**看起来对、其实答非所问**的结果（把 backlog 的结果当成
+	 * 「已归档」报出去）⇒ 过滤前先用它判一下。
+	 */
+	readonly recognizes: (value: string) => boolean;
 }
 
 /**
@@ -193,6 +202,10 @@ function buildMapping<Unified extends string>(
 			}
 			report(field, label, raw, fallback, sink);
 			return fallbackCode;
+		},
+		recognizes: (value) => {
+			const raw = typeof value === "string" ? value : String(value);
+			return reverse.has(raw.trim().toLowerCase());
 		},
 	};
 }

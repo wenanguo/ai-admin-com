@@ -143,6 +143,39 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * 造一个**按 token 分租户**的假 fetch：同一个项目编码在两个 token 下是两个不同的项目。
+ *
+ * 这正是线上的样子 —— 项目编码只在**租户内**唯一 ⇒ 缓存若跨身份复用，
+ * 就会把 A 租户的项目 id 发给 B 租户（任务建到别人的项目里）。
+ */
+function makeTenantClient(): { client: AadminClient; calls: FetchCall[] } {
+	const calls: FetchCall[] = [];
+
+	const fetchImpl: typeof fetch = async (input, init) => {
+		calls.push({ url: String(input), init: init ?? {} });
+		const headers = new Headers(init?.headers);
+		const projectId = headers.get("Authorization")?.includes("tenant-a") ? 45 : 99;
+		const url = new URL(String(input));
+		if (url.pathname.endsWith("/pm_task/create")) {
+			return jsonResponse({ code: 0, msg: "成功", data: taskOut({ project_id: projectId }) });
+		}
+		return jsonResponse({
+			code: 0,
+			msg: "成功",
+			data: {
+				page_no: 1,
+				page_size: 100,
+				total: 1,
+				has_next: false,
+				items: [projectOut({ id: projectId, code: "PRJ-2026-Q3-001" })],
+			},
+		});
+	};
+
+	return { client: new AadminClient({ baseUrl: BASE_URL, fetchImpl }), calls };
+}
+
 /** 造一个数据源（假 client + 假 token）。 */
 function makeSource(
 	responses: Array<Response | Error>,
@@ -159,6 +192,21 @@ function makeSource(
 		onWarning: (warning) => void warnings.push(warning),
 	});
 	return { source, calls, warnings };
+}
+
+/**
+ * 取一次调用的失败（类型守卫，不用 `as`）；没失败就抛错（测试据此失败）。
+ */
+async function rejectionOf(promise: Promise<unknown>): Promise<AdapterErrorException> {
+	try {
+		await promise;
+	} catch (error) {
+		if (error instanceof AdapterErrorException) {
+			return error;
+		}
+		throw error;
+	}
+	throw new Error("这次调用没有抛错（期望它失败）");
 }
 
 afterEach(() => {
@@ -380,6 +428,49 @@ describe("AadminDataSource · project_key 的解析", () => {
 		).rejects.toBeInstanceOf(AdapterErrorException);
 	});
 
+	it("同一个编码在两个 token 下必须解析成不同的项目 id（缓存按身份隔离）", async () => {
+		const { client, calls } = makeTenantClient();
+
+		const sourceA = new AadminDataSource({ client, token: "token-tenant-a" });
+		const sourceB = new AadminDataSource({ client, token: "token-tenant-b" });
+
+		await sourceA.createTask({
+			project_key: "PRJ-2026-Q3-001",
+			title: "写文档",
+			reporter_id: 7,
+		});
+		await sourceB.createTask({
+			project_key: "PRJ-2026-Q3-001",
+			title: "写文档",
+			reporter_id: 7,
+		});
+
+		// 两个身份各自查了一次项目（没有共用缓存）
+		expect(calls).toHaveLength(4);
+		expect(bodyOf(calls[1])["project_id"]).toBe(45);
+		expect(bodyOf(calls[3])["project_id"]).toBe(99);
+	});
+
+	it("同一个 token 下重复用编码仍然命中缓存（隔离不该把缓存也一起废掉）", async () => {
+		const { client, calls } = makeTenantClient();
+		const source = new AadminDataSource({ client, token: "token-tenant-a" });
+
+		await source.createTask({
+			project_key: "PRJ-2026-Q3-001",
+			title: "写文档",
+			reporter_id: 7,
+		});
+		await source.createTask({
+			project_key: "PRJ-2026-Q3-001",
+			title: "再写一份",
+			reporter_id: 7,
+		});
+
+		// 第一次查项目 + 建任务；第二次直接用缓存 ⇒ 不再查项目
+		expect(calls).toHaveLength(3);
+		expect(bodyOf(calls[2])["project_id"]).toBe(45);
+	});
+
 	it("编码大小写不同也能命中（项目编码的约定是大写）", async () => {
 		const { source, calls } = makeSource([
 			jsonResponse({
@@ -494,6 +585,82 @@ describe("AadminDataSource · 读", () => {
 		expect(projects[0]?.code).toBe("PRJ-2026-Q3-001");
 		expect(projects[0]?.status).toBe("ACTIVE");
 		expect(projects[0]?.priority).toBe("P1");
+	});
+
+	it("listTasks 遇到未知的状态 ⇒ 抛 VALIDATION（不按默认状态过滤）", async () => {
+		const { source, calls } = makeSource([
+			jsonResponse({
+				code: 0,
+				msg: "成功",
+				data: { page_no: 1, page_size: 10, total: 0, has_next: false, items: [] },
+			}),
+		]);
+
+		const error = await rejectionOf(source.listTasks({ status: "ARCHIVED" }));
+
+		expect(error.kind).toBe("VALIDATION");
+		expect(error.message).toContain("ARCHIVED");
+		// 没有发出任何请求 —— 更没有偷偷按 backlog 过滤
+		expect(calls).toHaveLength(0);
+	});
+
+	it("listTasks 遇到未知的线上码状态 ⇒ 同样抛 VALIDATION", async () => {
+		const { source, calls } = makeSource([
+			jsonResponse({
+				code: 0,
+				msg: "成功",
+				data: { page_no: 1, page_size: 10, total: 0, has_next: false, items: [] },
+			}),
+		]);
+
+		const error = await rejectionOf(source.listTasks({ status: "瞎写的状态" }));
+
+		expect(error.kind).toBe("VALIDATION");
+		expect(calls).toHaveLength(0);
+	});
+
+	it("状态不认识时连项目都不用查（先校验后发请求）", async () => {
+		const { source, calls } = makeSource([
+			jsonResponse({
+				code: 0,
+				msg: "成功",
+				data: {
+					page_no: 1,
+					page_size: 100,
+					total: 1,
+					has_next: false,
+					items: [projectOut()],
+				},
+			}),
+			jsonResponse({
+				code: 0,
+				msg: "成功",
+				data: { page_no: 1, page_size: 10, total: 0, has_next: false, items: [] },
+			}),
+		]);
+
+		const error = await rejectionOf(
+			source.listTasks({ project_key: "PRJ-2026-Q3-001", status: "ARCHIVED" }),
+		);
+
+		expect(error.kind).toBe("VALIDATION");
+		expect(calls).toHaveLength(0);
+	});
+
+	it("listProjects 遇到未知的状态 ⇒ 抛 VALIDATION（不按默认状态过滤）", async () => {
+		const { source, calls } = makeSource([
+			jsonResponse({
+				code: 0,
+				msg: "成功",
+				data: { page_no: 1, page_size: 100, total: 0, has_next: false, items: [] },
+			}),
+		]);
+
+		const error = await rejectionOf(source.listProjects({ status: "瞎写的状态" }));
+
+		expect(error.kind).toBe("VALIDATION");
+		expect(error.message).toContain("瞎写的状态");
+		expect(calls).toHaveLength(0);
 	});
 
 	it("listProjects 的状态过滤用线上码", async () => {
