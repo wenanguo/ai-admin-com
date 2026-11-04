@@ -169,6 +169,14 @@ export default [
         icon: 'appstore',
         component: './module_pm/task/board',
       },
+      {
+        // 风险登记册页:上面是 5×5 热力图(横轴影响、纵轴概率,点格子过滤),
+        // 下面是风险列表;等级是派生量(后端只有 score)
+        path: '/pm/risk',
+        name: 'risk',
+        icon: 'alert',
+        component: './module_pm/risk',
+      },
     ],
   },
   {
