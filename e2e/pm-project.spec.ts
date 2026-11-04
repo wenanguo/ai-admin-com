@@ -311,6 +311,16 @@ const milestoneRow = {
   updated_time: '2026-11-10 09:00:00',
 };
 
+/**
+ * 一屏拉不满的里程碑:后端一共 250 个,但只回了**最新的 100 个**
+ * (后端 page_size 上限就是 100 —— 详情页的子列表一次只拉一页,不翻页)
+ */
+const truncatedMilestoneRows = Array.from({ length: 100 }, (_, index) => ({
+  ...milestoneRow,
+  id: 1000 + index,
+  name: `里程碑 ${index + 1}`,
+}));
+
 /** 任务 tab 的那一行(形状对齐 TaskOut;负责人读 assignee_by 冗余字段) */
 const taskRow = {
   id: 21,
@@ -399,14 +409,19 @@ const memberRow = {
   user_info: { id: 1, username: 'zhangsan', name: '张三' },
 };
 
-/** 详情页子列表的分页信封(详情页不翻页,一次拉满 page_size=100) */
-function pagedListResponse(items: unknown[]) {
+/**
+ * 详情页子列表的分页信封(详情页不翻页,一次拉满 page_size=100)。
+ *
+ * total 默认等于 items 的条数;单独传 total 用来造「后端一共 N 条、
+ * 只回了 M 条」的截断夹具(后端 page_size 上限就是 100)
+ */
+function pagedListResponse(items: unknown[], total = items.length) {
   return {
     code: 0,
     msg: '查询成功',
     data: {
       items,
-      total: items.length,
+      total,
       page_no: 1,
       page_size: 100,
       has_next: false,
@@ -513,6 +528,15 @@ type DetailTabFixture = {
   tasks?: unknown[];
   risks?: unknown[];
   members?: unknown[];
+  /**
+   * 子列表信封里的 total(默认等于 items 的条数)。
+   * 用来造「后端一共 N 条、只回了 M 条」的截断夹具
+   */
+  totals?: {
+    milestones?: number;
+    tasks?: number;
+    risks?: number;
+  };
 };
 
 /**
@@ -573,17 +597,20 @@ async function setupProjectDetailPage(
   const subListIntercepts: { url: string; body: unknown; sink: string[] }[] = [
     {
       url: MILESTONE_LIST_URL,
-      body: pagedListResponse(fixture.milestones ?? []),
+      body: pagedListResponse(
+        fixture.milestones ?? [],
+        fixture.totals?.milestones,
+      ),
       sink: requests.milestones,
     },
     {
       url: TASK_LIST_URL,
-      body: pagedListResponse(fixture.tasks ?? []),
+      body: pagedListResponse(fixture.tasks ?? [], fixture.totals?.tasks),
       sink: requests.tasks,
     },
     {
       url: RISK_LIST_URL,
-      body: pagedListResponse(fixture.risks ?? []),
+      body: pagedListResponse(fixture.risks ?? [], fixture.totals?.risks),
       sink: requests.risks,
     },
     {
@@ -685,6 +712,46 @@ test.describe('项目详情页', () => {
     // 子列表请求带 project_id 过滤
     await expect.poll(() => requests.milestones.length).toBeGreaterThan(0);
     expect(requests.milestones[0]).toContain('project_id=1');
+  });
+
+  test('子列表超过后端 100 条上限时在对应的 tab 里提示,没超的不提示', async ({
+    page,
+  }) => {
+    // 里程碑:后端一共 250 个,只回了最新的 100 个 ⇒ 被截断了
+    // 任务与风险都在上限内 ⇒ 不该有提示
+    const requests = await setupProjectDetailPage(page, {
+      milestones: truncatedMilestoneRows,
+      tasks: [taskRow],
+      risks: riskRows,
+      totals: { milestones: 250 },
+    });
+
+    await gotoModulePage(
+      page,
+      DETAIL_PAGE_PATH,
+      page.getByText('AIPM 核心项目'),
+    );
+
+    // 里程碑 tab:上限**不静默** —— 提示说清一共多少、加载了多少、其余没显示
+    await page.getByRole('tab', { name: '里程碑' }).click();
+    const milestonePanel = activePanel(page);
+    const alert = milestonePanel.locator('.ant-alert');
+    await expect(alert).toHaveCount(1);
+    await expect(alert).toContainText('250 个里程碑');
+    await expect(alert).toContainText('只加载了最新的 100 个');
+    await expect(alert).toContainText('其余 150 个未显示');
+    // 提示是 **tab 级**的(不是页面顶上的一条全局提示)
+    await expect(page.locator('.ant-alert')).toHaveCount(1);
+
+    // 任务 tab:条数没超 ⇒ 不提示
+    await page.getByRole('tab', { name: '任务' }).click();
+    await expect(activePanel(page).locator('.ant-alert')).toHaveCount(0);
+
+    // 风险 tab:同样没超 ⇒ 不提示
+    await page.getByRole('tab', { name: '风险' }).click();
+    await expect(activePanel(page).locator('.ant-alert')).toHaveCount(0);
+
+    await expect.poll(() => requests.milestones.length).toBeGreaterThan(0);
   });
 
   test('任务 tab 显示精简表格，请求带 project_id 过滤', async ({ page }) => {

@@ -1,5 +1,6 @@
 import { useParams } from '@umijs/max';
 import {
+  Alert,
   Card,
   Descriptions,
   type DescriptionsProps,
@@ -37,6 +38,33 @@ import { listTasks, type TaskOut } from '@/services/api/pm/task';
  * 上限(100,同 CRUD_PAGINATION)就不再翻页了
  */
 const SUB_LIST_PARAMS = { page_no: 1, page_size: 100 } as const;
+
+/**
+ * 子列表被截断时的提示(与任务页/风险页同款:type=info,标题说上限,
+ * 描述说实情)。
+ *
+ * 详情页各 tab 一次只拉后端上限(100 条)那一页,**不翻页** ⇒ 超过 100 条的
+ * 子列表只显示最新的一段。上限**不静默**:总数与实际加载数都摆出来。
+ *
+ * ⚠️ 只在**真的被截断**的那个 tab 里提示 —— 项目多、里程碑少是常态,
+ * 把没被截断的也写进去等于夸大。截断是**按子列表**判定的,所以提示是
+ * tab 级的:切到哪个 tab 就看哪个 tab 的提示,而不是页面顶上的一条。
+ */
+function truncationAlert(
+  label: string,
+  total: number,
+  loaded: number,
+): React.ReactElement | null {
+  if (total <= loaded) return null;
+  return (
+    <Alert
+      type="info"
+      showIcon
+      title={`${label}列表后端一次最多给 100 个`}
+      description={`后端一共 ${total} 个${label},这里只加载了最新的 ${loaded} 个,其余 ${total - loaded} 个未显示。`}
+    />
+  );
+}
 
 /** 日期区间的展示:两个日期中缀一个 ~,空值用占位符 */
 function dateRange(start?: string | null, end?: string | null): string {
@@ -118,13 +146,17 @@ function OverviewTab({ project }: { project: ProjectOut }) {
  */
 function MilestonesTab({ projectId }: { projectId: number }) {
   const [milestones, setMilestones] = useState<MilestoneOut[]>([]);
+  // 后端一共多少个里程碑(与实际加载的条数比一比才知道截没截)
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     // 失败提示由请求层统一弹,这里落地成空态
     listMilestones({ project_id: projectId, ...SUB_LIST_PARAMS })
       .then((res) => {
-        if (!cancelled) setMilestones(res?.data?.items ?? []);
+        if (cancelled) return;
+        setMilestones(res?.data?.items ?? []);
+        setTotal(res?.data?.total ?? 0);
       })
       .catch(() => {});
     return () => {
@@ -132,43 +164,44 @@ function MilestonesTab({ projectId }: { projectId: number }) {
     };
   }, [projectId]);
 
-  if (milestones.length === 0) {
-    return <Empty description="暂无里程碑" />;
-  }
-
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      {milestones.map((milestone) => (
-        <Card
-          key={String(milestone.id ?? milestone.name ?? '')}
-          size="small"
-          title={milestone.name ?? '-'}
-          extra={
-            milestone.status_code ? (
-              <DictTag
-                dictType="module_pm_milestone_status"
-                value={milestone.status_code}
-              />
-            ) : null
-          }
-        >
-          <Space direction="vertical" size="small" style={{ width: '100%' }}>
-            <Progress percent={milestone.progress ?? 0} />
-            <Space size="large" wrap>
-              <span>
-                计划区间 {dateRange(milestone.start_date, milestone.due_date)}
-              </span>
-              <span>
-                实际区间{' '}
-                {dateRange(
-                  milestone.actual_start_date,
-                  milestone.actual_end_date,
-                )}
-              </span>
+      {truncationAlert('里程碑', total, milestones.length)}
+      {milestones.length === 0 ? (
+        <Empty description="暂无里程碑" />
+      ) : (
+        milestones.map((milestone) => (
+          <Card
+            key={String(milestone.id ?? milestone.name ?? '')}
+            size="small"
+            title={milestone.name ?? '-'}
+            extra={
+              milestone.status_code ? (
+                <DictTag
+                  dictType="module_pm_milestone_status"
+                  value={milestone.status_code}
+                />
+              ) : null
+            }
+          >
+            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+              <Progress percent={milestone.progress ?? 0} />
+              <Space size="large" wrap>
+                <span>
+                  计划区间 {dateRange(milestone.start_date, milestone.due_date)}
+                </span>
+                <span>
+                  实际区间{' '}
+                  {dateRange(
+                    milestone.actual_start_date,
+                    milestone.actual_end_date,
+                  )}
+                </span>
+              </Space>
             </Space>
-          </Space>
-        </Card>
-      ))}
+          </Card>
+        ))
+      )}
     </Space>
   );
 }
@@ -179,12 +212,16 @@ function MilestonesTab({ projectId }: { projectId: number }) {
  */
 function TasksTab({ projectId }: { projectId: number }) {
   const [tasks, setTasks] = useState<TaskOut[]>([]);
+  // 后端一共多少个任务(与实际加载的条数比一比才知道截没截)
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     listTasks({ project_id: projectId, ...SUB_LIST_PARAMS })
       .then((res) => {
-        if (!cancelled) setTasks(res?.data?.items ?? []);
+        if (cancelled) return;
+        setTasks(res?.data?.items ?? []);
+        setTotal(res?.data?.total ?? 0);
       })
       .catch(() => {});
     return () => {
@@ -233,7 +270,12 @@ function TasksTab({ projectId }: { projectId: number }) {
     },
   ];
 
-  return <Table<TaskOut> rowKey="id" columns={columns} dataSource={tasks} />;
+  return (
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      {truncationAlert('任务', total, tasks.length)}
+      <Table<TaskOut> rowKey="id" columns={columns} dataSource={tasks} />
+    </Space>
+  );
 }
 
 /**
@@ -242,12 +284,16 @@ function TasksTab({ projectId }: { projectId: number }) {
  */
 function RisksTab({ projectId }: { projectId: number }) {
   const [risks, setRisks] = useState<RiskOut[]>([]);
+  // 后端一共多少条风险(与实际加载的条数比一比才知道截没截)
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     listRisks({ project_id: projectId, ...SUB_LIST_PARAMS })
       .then((res) => {
-        if (!cancelled) setRisks(res?.data?.items ?? []);
+        if (cancelled) return;
+        setRisks(res?.data?.items ?? []);
+        setTotal(res?.data?.total ?? 0);
       })
       .catch(() => {});
     return () => {
@@ -256,32 +302,35 @@ function RisksTab({ projectId }: { projectId: number }) {
   }, [projectId]);
 
   return (
-    <List
-      dataSource={risks}
-      renderItem={(risk) => {
-        // score 为空就没法推导等级,连标签一起不显示
-        const level = risk.score == null ? null : riskLevel(risk.score);
-        return (
-          <List.Item>
-            <Space size="middle" wrap>
-              <span>{risk.title ?? '-'}</span>
-              {level ? (
-                <Tag color={RISK_LEVEL_COLOR[level]}>
-                  {riskLevelLabel(level)}
-                </Tag>
-              ) : null}
-              {risk.score == null ? null : <span>{risk.score} 分</span>}
-              {risk.status_code ? (
-                <DictTag
-                  dictType="module_pm_risk_status"
-                  value={risk.status_code}
-                />
-              ) : null}
-            </Space>
-          </List.Item>
-        );
-      }}
-    />
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      {truncationAlert('风险', total, risks.length)}
+      <List
+        dataSource={risks}
+        renderItem={(risk) => {
+          // score 为空就没法推导等级,连标签一起不显示
+          const level = risk.score == null ? null : riskLevel(risk.score);
+          return (
+            <List.Item>
+              <Space size="middle" wrap>
+                <span>{risk.title ?? '-'}</span>
+                {level ? (
+                  <Tag color={RISK_LEVEL_COLOR[level]}>
+                    {riskLevelLabel(level)}
+                  </Tag>
+                ) : null}
+                {risk.score == null ? null : <span>{risk.score} 分</span>}
+                {risk.status_code ? (
+                  <DictTag
+                    dictType="module_pm_risk_status"
+                    value={risk.status_code}
+                  />
+                ) : null}
+              </Space>
+            </List.Item>
+          );
+        }}
+      />
+    </Space>
   );
 }
 
