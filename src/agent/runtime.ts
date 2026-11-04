@@ -1,0 +1,324 @@
+/**
+ * Agent 运行时 —— 把「会话 / 命令 / 事件流」串起来。
+ *
+ * ```
+ * 前端 ──POST /command──▶ 运行时 ──▶ 启动锁（同会话串行）──▶ pi 会话
+ *   │                          │                                  │
+ *   │                          ├──▶ ai_message（用户/助手的话）    │
+ *   └──GET /events (SSE)◀──────┴──── 事件发布 ◀──────────────────┘
+ * ```
+ *
+ * ## 关键约定
+ *
+ * - **同一会话的 prompt 串行**（启动锁）：pi 在流式输出期间再 `prompt()` 会抛
+ *   `Agent is already processing` ⇒ 必须排队，不能报错。
+ * - **命令立即返回**：HTTP 响应只说「收到了」，真正的结果走 SSE
+ *   （`success: true` 的含义是「已受理并排队」）。
+ * - **快照才是真相**：`GET /api/agent/:cid/state` 返回完整的会话与消息，
+ *   客户端随时可以用它重建界面。
+ */
+
+import { AadminClient } from "../aadmin/client";
+import { AadminDataSource } from "../adapter/datasource";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import { env } from "../env";
+import { buildFrame } from "../http/sse";
+import type { TaskCreator } from "../tools/create-task";
+import { buildCommandTools } from "../tools";
+import { SSE_EVENTS, type SseEventName, type SsePayload } from "./events";
+import { AgentEventMapper, extractAssistantText, isAssistantMessage } from "./event-mapper";
+import { CurrentUserResolver, type CurrentUser } from "./identity";
+import { createPiSession } from "./pi-session";
+import { PM_AGENT_PROMPT } from "./prompt";
+import {
+	SessionRegistry,
+	type AgentSessionLike,
+	type ChannelSubscriber,
+	type ConversationChannel,
+} from "./session-registry";
+import { StartupLock } from "./startup-lock";
+import { ConversationStore, type ConversationRecord, type MessageRecord } from "./store";
+
+/** 运行时的错误种类。 */
+export type AgentErrorKind = "NOT_FOUND" | "VALIDATION" | "AUTH_EXPIRED" | "UPSTREAM";
+
+/** 运行时自己的错误（不是 AiAdmin 那边来的）。 */
+export class AgentError extends Error {
+	readonly kind: AgentErrorKind;
+
+	constructor(kind: AgentErrorKind, message: string) {
+		super(message);
+		this.name = "AgentError";
+		this.kind = kind;
+	}
+}
+
+/** 命令的受理结果（前端拿它对 Idempotency-Key）。 */
+export interface CommandAck {
+	/** 回显请求里的命令 id。 */
+	id: string;
+	/** 固定 "response"。 */
+	type: "response";
+	/** 已受理并排队。 */
+	success: boolean;
+}
+
+/** 会话状态（`GET /api/agent/:cid/state` 的 data）。 */
+export interface ConversationState {
+	conversationId: string;
+	messages: MessageRecord[];
+	isStreaming: boolean;
+	model: string;
+}
+
+/** 运行时可注入的依赖（测试用假实现，生产用默认）。 */
+export interface AgentRuntimeOptions {
+	/** 造 pi 会话。 */
+	createSession?: (tools: ReturnType<typeof buildCommandTools>, systemPrompt: string) => Promise<AgentSessionLike>;
+	/** 数据源工厂。 */
+	createDataSource?: (token: string) => TaskCreator;
+	/** 解析当前用户。 */
+	resolveUser?: (token: string) => Promise<CurrentUser>;
+	/** 存取。 */
+	store?: ConversationStore;
+	/** 对外显示的模型标识。 */
+	model?: string;
+}
+
+export class AgentRuntime {
+	readonly #registry = new SessionRegistry();
+	readonly #lock = new StartupLock();
+	readonly #store: ConversationStore;
+	readonly #createSession: NonNullable<AgentRuntimeOptions["createSession"]>;
+	readonly #createDataSource: (token: string) => TaskCreator;
+	readonly #resolveUser: (token: string) => Promise<CurrentUser>;
+	readonly #model: string;
+	readonly #userResolver: CurrentUserResolver;
+	/** 每个会话的事件映射器。 */
+	readonly #mappers = new Map<string, AgentEventMapper>();
+
+	constructor(options: AgentRuntimeOptions = {}) {
+		this.#store = options.store ?? new ConversationStore();
+		this.#createSession = options.createSession ?? createPiSession;
+		this.#model = options.model ?? env.AI_MODEL;
+
+		const client = new AadminClient({ baseUrl: env.AIADMIN_BASE_URL });
+		this.#userResolver = new CurrentUserResolver(client);
+		this.#resolveUser =
+			options.resolveUser ?? ((token: string) => this.#userResolver.resolve(token));
+		this.#createDataSource =
+			options.createDataSource ??
+			((token: string) =>
+				new AadminDataSource({
+					client: new AadminClient({ baseUrl: env.AIADMIN_BASE_URL }),
+					token,
+				}));
+	}
+
+	/** 建一个会话。 */
+	async createConversation(userId: string, title?: string): Promise<ConversationRecord> {
+		const conversation = await this.#store.create(userId, title ?? null);
+		this.#registry.ensure(conversation.conversationId);
+		return conversation;
+	}
+
+	/** 列某个用户的会话。 */
+	async listConversations(userId: string): Promise<ConversationRecord[]> {
+		return this.#store.list(userId);
+	}
+
+	/**
+	 * 提交一条命令（`type: "prompt"`）。
+	 *
+	 * 立即返回「已受理」；真正的执行在后台排队跑，结果走 SSE。
+	 *
+	 * @param request.userId 当前用户 id（用来确认这个会话是他的）。
+	 */
+	async submitCommand(request: {
+		conversationId: string;
+		token: string;
+		message: string;
+		commandId: string;
+		userId: string;
+	}): Promise<CommandAck> {
+		const message = request.message.trim();
+		if (message.length === 0) {
+			throw new AgentError("VALIDATION", "消息不能为空");
+		}
+		const conversation = await this.#store.get(request.conversationId);
+		if (conversation === undefined || conversation.userId !== request.userId) {
+			// ⚠️ 「不属于你」与「不存在」回**同一个**说法 —— 不泄露会话是否存在
+			throw new AgentError("NOT_FOUND", `会话 ${request.conversationId} 不存在`);
+		}
+
+		const channel = this.#registry.ensure(request.conversationId);
+		// token 只在内存里；每次命令都刷新（token 轮换后能用新的那个）
+		channel.token = request.token;
+
+		// 用户说的这句话先落库（state 里立刻能看到）
+		const seq = channel.allocateSeq(await this.#store.maxSeq(request.conversationId));
+		await this.#store.appendMessage(request.conversationId, "USER", message, seq);
+
+		// 同一会话的 prompt 串行排队（不同会话并行）
+		void this.#lock
+			.run(request.conversationId, async () => {
+				await this.#runTurn(channel, message);
+			})
+			.catch((error: unknown) => {
+				this.#publishTurnError(channel, error);
+			});
+
+		return { id: request.commandId, type: "response", success: true };
+	}
+
+	/** 订阅某个会话的事件流；返回退订函数。 */
+	subscribe(conversationId: string, subscriber: ChannelSubscriber): () => void {
+		return this.#registry.subscribe(conversationId, subscriber);
+	}
+
+	/** 取某个会话的通道（没有就 undefined）—— SSE 端点用它读回放窗口。 */
+	getChannel(conversationId: string): ConversationChannel | undefined {
+		return this.#registry.get(conversationId);
+	}
+
+	/**
+	 * 解析 token 对应的当前用户。
+	 *
+	 * ⚠️ **本服务不自己校验 token** —— 问 AiAdmin（它是权威）。
+	 * token 无效时抛 `AdapterErrorException("AUTH_EXPIRED")`，由路由转成 401 信封。
+	 */
+	async resolveCurrentUser(token: string): Promise<CurrentUser> {
+		return this.#resolveUser(token);
+	}
+
+	/**
+	 * 会话状态（快照）。
+	 *
+	 * @param userId 当前用户 id（别人的会话不给看）。
+	 */
+	async readState(conversationId: string, userId: string): Promise<ConversationState> {
+		const conversation = await this.#store.get(conversationId);
+		if (conversation === undefined || conversation.userId !== userId) {
+			throw new AgentError("NOT_FOUND", `会话 ${conversationId} 不存在`);
+		}
+		const messages = await this.#store.listMessages(conversationId);
+		const channel = this.#registry.get(conversationId);
+		return {
+			conversationId,
+			messages,
+			isStreaming: channel?.isStreaming ?? false,
+			model: this.#model,
+		};
+	}
+
+	/** 关掉一个会话（释放 pi 会话）。 */
+	close(conversationId: string): void {
+		this.#registry.close(conversationId);
+	}
+
+	/** 关掉全部会话（进程退出时）。 */
+	closeAll(): void {
+		this.#registry.closeAll();
+	}
+
+	/* ------------------------------------------------------------ 内部 */
+
+	/** 跑一轮对话。 */
+	async #runTurn(channel: ConversationChannel, message: string): Promise<void> {
+		const session = await this.#ensureSession(channel);
+		// 不展开提示词模板：用户的「/xxx」不是命令
+		await session.prompt(message, { expandPromptTemplates: false });
+	}
+
+	/** 懒创建 pi 会话（同一个会话复用同一个）。 */
+	async #ensureSession(channel: ConversationChannel): Promise<AgentSessionLike> {
+		if (channel.session !== undefined) {
+			return channel.session;
+		}
+		const tools = buildCommandTools({
+			currentToken: () => channel.token,
+			createDataSource: this.#createDataSource,
+			resolveReporterId: async (token: string) => (await this.#resolveUser(token)).id,
+		});
+		const session = await this.#createSession(tools, PM_AGENT_PROMPT);
+		channel.session = session;
+		channel.unsubscribe = session.subscribe((event) => {
+			this.#handleEvent(channel, event);
+		});
+		return session;
+	}
+
+	/** pi 事件 → 发布 SSE 帧。 */
+	#handleEvent(channel: ConversationChannel, event: AgentSessionEvent): void {
+		if (event.type === "agent_start") {
+			channel.isStreaming = true;
+		}
+		if (event.type === "agent_settled") {
+			channel.isStreaming = false;
+		}
+		const mapper = this.#mapperOf(channel.conversationId);
+		for (const mapped of mapper.map(channel.conversationId, event)) {
+			this.#publish(channel, mapped.event, mapped.payload);
+		}
+		if (event.type === "message_end" && isAssistantMessage(event.message)) {
+			// ⚠️ **只存助手的话**：用户那句话是运行时自己存的（角色 USER），
+			// 工具结果消息（role=toolResult）也不是对话内容 —— 存进来会把界面弄乱。
+			const text = extractAssistantText(event.message);
+			if (text.trim().length > 0) {
+				void this.#appendAssistantMessage(channel, text);
+			}
+		}
+	}
+
+	/** 每个会话一个事件映射器（它要记住「这一轮助手消息开过头没有」）。 */
+	#mapperOf(conversationId: string): AgentEventMapper {
+		const existing = this.#mappers.get(conversationId);
+		if (existing !== undefined) {
+			return existing;
+		}
+		const mapper = new AgentEventMapper();
+		this.#mappers.set(conversationId, mapper);
+		return mapper;
+	}
+
+	/** 助手说的话落库。 */
+	async #appendAssistantMessage(channel: ConversationChannel, text: string): Promise<void> {
+		try {
+			const seq = channel.allocateSeq(await this.#store.maxSeq(channel.conversationId));
+			await this.#store.appendMessage(channel.conversationId, "ASSISTANT", text, seq);
+			await this.#store.touch(channel.conversationId);
+		} catch (error) {
+			// 落库失败不该影响正在进行的对话（前端还能从 SSE 看到内容）
+			console.error("[agent] 助手消息落库失败", error);
+		}
+	}
+
+	/** 发布一帧。 */
+	#publish(channel: ConversationChannel, event: SseEventName, payload: SsePayload): void {
+		this.#registry.publish(channel, buildFrame(event, payload));
+	}
+
+	/** 一轮出错（模型挂了、上游 500……）：把原因告诉前端。 */
+	#publishTurnError(channel: ConversationChannel, error: unknown): void {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error("[agent] 这一轮没能完成", error);
+		this.#publish(channel, SSE_EVENTS.MESSAGE_END, {
+			conversationId: channel.conversationId,
+			text: `这一轮没能完成：${message}`,
+			error: message,
+		});
+		this.#publish(channel, SSE_EVENTS.AGENT_SETTLED, { conversationId: channel.conversationId });
+		channel.isStreaming = false;
+	}
+}
+
+/* ------------------------------------------------------------ 进程级单例 */
+
+const globalForAgent = globalThis as unknown as { agentRuntime?: AgentRuntime };
+
+/** 进程级的运行时（dev 热重载复用同一个，别每次都重建）。 */
+export const agentRuntime: AgentRuntime = globalForAgent.agentRuntime ?? new AgentRuntime();
+
+if (process.env.NODE_ENV !== "production") {
+	globalForAgent.agentRuntime = agentRuntime;
+}

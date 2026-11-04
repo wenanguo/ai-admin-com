@@ -48,6 +48,73 @@ npm run dev               # http://localhost:3100
 
 测试用的环境变量是**假值**，写在 `vitest.config.ts` 的 `test.env` 里；真值只在 `.env`。
 
+> ⚠️ **改了 `src/agent/` 下的代码要重启 dev 服务器**：`src/agent/runtime.ts` 把运行时挂在
+> `globalThis` 上（dev 热重载不重复建会话），热重载后进程里**还是旧的运行时实例**，
+> 新代码不生效。生产环境每次部署都是新进程，不受这条影响。
+
+---
+
+## 接口（前端按这份契约接）
+
+所有接口都在 `/api/agent` 下，响应一律是 `{code, msg, data}`（`code === 0` 为成功）。
+
+| 接口 | 说明 |
+| --- | --- |
+| `POST /api/agent/conversations` | 新建会话 → `{conversationId, title, createdAt}` |
+| `GET /api/agent/conversations` | 列会话 → `[{conversationId, title, updatedAt}]` |
+| `POST /api/agent/:cid/command` | 提交命令（`{id, type:'prompt', message}`）→ `{id, type:'response', success:true}` |
+| `GET /api/agent/:cid/events` | **SSE** 事件流（`text/event-stream`） |
+| `GET /api/agent/:cid/state` | 会话快照 → `{conversationId, messages[], isStreaming, model}` |
+
+### 鉴权
+
+每个接口都要带 **`Authorization: Bearer <token>`**（前端自己的登录 token）。
+
+- 本服务**不解析 token**，只把它**透传**给 AiAdmin —— AiAdmin 才是权威；
+- **缺 token ⇒ 401 信封**；token 无效时 AiAdmin 说了算（本服务如实转成 401）；
+- token **绝不**进日志、进错误消息、进数据库（只在内存里待着）。
+
+### CORS
+
+`Access-Control-Allow-Origin` 回 `env.ALLOWED_ORIGINS` 里的**具体源**（**不用 `*`** ——
+请求带 `Authorization`，`*` 会被浏览器拒掉）。预检（`OPTIONS`）会回
+`Access-Control-Allow-Headers: authorization, content-type` 与 `Access-Control-Max-Age: 300`。
+
+### SSE 事件
+
+| 事件 | 载荷 |
+| --- | --- |
+| `connected` | `{conversationId, isStreaming}` |
+| `message_start` / `text_delta` / `message_end` | 助手说的话（`message_start` 在第一条文本增量到来时才发 ⇒ 没有空气泡） |
+| `tool_call` | `{toolName, args}` |
+| `tool_result` | `{toolName, status:'ok'|'error', summary, details}` |
+| `agent_settled` | 一轮结束 |
+
+- 首帧是 `connected`，接着回放这个会话**之前**发生过的帧，再接增量；
+- 每 15 秒一个心跳（`: heartbeat` 注释行，EventSource 会忽略它）；
+- 回放窗口上限 16 MB，超了**先丢 `text_delta`**（可从 `state` 快照重建），保留结构帧；
+- **`state` 才是真相**：SSE 是增量的，断线/刷新后用 `GET /api/agent/:cid/state` 重建界面。
+
+### 命令
+
+目前只有一个命令：**`create_task`**（非破坏性 ⇒ 不需要用户先确认）。
+模型全靠工具描述决定用不用它，所以描述写清了「什么时候用 / 什么时候别用 / 参数格式与单位」；
+参数名用**统一领域名**（`project_key` / `title` / `type` / `status` / `priority`），
+不出现后端字段名（`project_id` 之类）。
+
+### 前端怎么接
+
+开发期在前端加一条代理（`ai-admin-com` 的 config）：
+
+```ts
+proxy: {
+  '/ai-api': { target: 'http://localhost:3100', changeOrigin: true },
+},
+```
+
+然后前端把 AI 相关请求打到 `/ai-api/api/agent/...`；或者直接用
+`AI_API_BASE_URL=http://localhost:3100`（跨域时记得把源加进本服务的 `ALLOWED_ORIGINS`）。
+
 ---
 
 ## 数据库（⚠️ 共享库，谨慎）
@@ -148,7 +215,10 @@ src/db.ts                         PrismaClient 单例（globalThis 缓存，dev 
 src/types/api.ts                  AiAdmin 响应信封（ApiResponse / SUCCESS_CODES / isSuccess）
 src/aadmin/                       AiAdmin HTTP 客户端（client / errors / types：路径、字段逐字对齐后端）
 src/adapter/                      适配层（enums 枚举归一 / capabilities 能力位 / keys 统一 key / model 统一模型 / datasource 读写）
-src/app/                          Route Handler
+src/agent/                        agent 运行时（runtime 会话与命令 / session-registry 通道与订阅 / startup-lock 同会话串行 / event-mapper 事件映射 / frame-buffer 回放窗口 / identity 当前用户 / pi-session SDK 接线 / prompt 系统提示词 / store 落库）
+src/tools/                        命令目录（create_task 一个命令 + 闸门形状）
+src/http/                         HTTP 通用件（cors / respond 信封 / auth 取 token / sse 帧格式 / errors 错误映射）
+src/app/                          Route Handler（/api/agent/** 与 spike 路由）
 spike/                            Task 1 的风险尖峰（一次性，结论在 spike/FINDINGS.md）
 ```
 
