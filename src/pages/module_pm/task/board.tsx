@@ -1,4 +1,4 @@
-import { useAccess } from '@umijs/max';
+import { Link, useAccess } from '@umijs/max';
 import { Alert, Avatar, Card, Col, Empty, Row, Spin, theme } from 'antd';
 import dayjs from 'dayjs';
 import type React from 'react';
@@ -8,7 +8,11 @@ import type { TaskOut } from '@/services/api/pm/task';
 import { type BoardStatus, useBoardColumns } from './useBoardColumns';
 
 /**
- * 任务看板页 —— 路由 /pm/task/board(菜单由后端下发,目录挂在 /pm 下)。
+ * 任务看板页 —— 路由 /pm/task/board。
+ *
+ * 看板**没有菜单入口**:后端的菜单种子只种了列表页,看板是子页面 ——
+ * 入口在任务列表页的工具栏按钮(见 src/pages/module_pm/task/index.tsx),
+ * 本页顶部给一条回列表的路。
  *
  * 六列(待规划/待办/进行中/阻塞/评审/已完成),**已取消的任务不进看板** ——
  * 取消掉的任务已经退出工作流,取消操作走列表页的编辑弹窗。
@@ -147,7 +151,13 @@ const TaskBoard: React.FC = () => {
   return (
     <div className="flex flex-col gap-4">
       {/* 页面标题:与其它 PM 页(ProTable 的 headerTitle / 详情页的 Card title)对齐 */}
-      <div className="text-base font-semibold">任务看板</div>
+      <div className="flex items-center gap-3">
+        <span className="text-base font-semibold">任务看板</span>
+        {/* 看板没有菜单入口,列表页才是入口 —— 这里给一条回去的路 */}
+        <Link to="/pm/task" className="text-sm">
+          返回任务列表
+        </Link>
+      </div>
       {truncated ? (
         <Alert
           type="info"

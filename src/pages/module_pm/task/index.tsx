@@ -1,6 +1,6 @@
-import { PlusOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, PlusOutlined } from '@ant-design/icons';
 import { type ProColumns, ProTable } from '@ant-design/pro-components';
-import { useAccess } from '@umijs/max';
+import { useAccess, useNavigate } from '@umijs/max';
 import { Alert, Button } from 'antd';
 import type React from 'react';
 import { useMemo } from 'react';
@@ -42,7 +42,8 @@ function lookupName(names: Map<number, string>, id?: number | null): string {
 }
 
 /**
- * 任务管理列表页 —— 路由 /pm/task(菜单由后端下发,目录挂在 /pm 下)。
+ * 任务管理列表页 —— 路由 /pm/task(菜单由后端下发,后端的路径是插件源码路径,
+ * 靠 config/routes.ts 里的重定向路由落到本页)。
  *
  * 骨架逻辑(状态机 / 操作列 / 分页)在共享脚手架 @/components/CrudTable 里,
  * 本页只留「列定义 + service 调用 + 声明式 JSX」,与其它模块同范式。
@@ -53,6 +54,7 @@ function lookupName(names: Map<number, string>, id?: number | null): string {
  */
 const TaskManagement: React.FC = () => {
   const access = useAccess();
+  const navigate = useNavigate();
 
   // 载荷有两种形状:新增带创建三列,更新不带 —— 见 services/api/pm/task.ts
   const crud = useCrudTable<TaskOut, TaskCreateParams | TaskUpdateParams>({
@@ -295,6 +297,18 @@ const TaskManagement: React.FC = () => {
         // (ProComponents v3 在 onRequestError 未定义时会 rethrow,产生未捕获的 promise rejection)
         onRequestError={() => {}}
         toolBarRender={() => [
+          /*
+            看板页(/pm/task/board)的入口:后端的菜单种子**没有**看板这一项
+            (看板是子页面,不是独立菜单),所以入口放在列表页的工具栏上,
+            与项目列表用「项目名称」链到详情页是同一个路子。
+          */
+          <Button
+            key="board"
+            icon={<AppstoreOutlined />}
+            onClick={() => navigate('/pm/task/board')}
+          >
+            看板
+          </Button>,
           <Button
             key="create"
             type="primary"

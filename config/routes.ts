@@ -122,7 +122,8 @@ export default [
   },
   {
     // PM 模块(项目管理):目录 /pm + 各业务页。菜单由后端下发(adapter),
-    // 前端只注册路由 —— 菜单里能不能看到入口取决于后端有没有播 PM 菜单种子
+    // 前端只注册路由 —— 后端下发的菜单路径是**插件源码路径**(module_pm_*),
+    // 靠下面那两组重定向路由落到这些页面上
     path: '/pm',
     name: 'pm',
     icon: 'project',
@@ -176,6 +177,63 @@ export default [
         name: 'risk',
         icon: 'alert',
         component: './module_pm/risk',
+      },
+    ],
+  },
+  {
+    /*
+      后端 PM 菜单的**源码路径** → 前端真实页面的重定向。
+
+      后端 `platform_menu` 里 PM 菜单的 route_path 是**插件的源码路径**
+      (`module_pm_project/pm_project` 这种,后端按插件目录自动生成),
+      不是前端的 /pm/*。前端菜单适配器只保留「已在前端路由表注册过」的菜单路径
+      ⇒ 这四条路径不注册,整块 PM 菜单就会被跳过(控制台打印
+      `[menu] 前端缺少路由: <path>`)。注册成重定向路由,侧边栏点「项目列表」
+      就落到 /pm/project。
+
+      为什么挂在**顶层**而不是 /pm 目录下面:React Router 要求子路由的绝对路径
+      必须以父路由的路径开头 —— `/module_pm_*` 不以 `/pm` 开头,挂在 /pm 下面
+      会抛 "Absolute route path ... nested under path \"/pm\" is not valid",
+      整个应用白屏(生产构建同样抛)。所以这四条与 /pm 平级。
+
+      redirect 挂在**子路由**上(与 /system 同理):挂在父路由上会让所有子路径
+      都重定向到自己 ⇒ React 无限重定向(error #185,页面空白)。
+
+      icon 是给侧边栏用的:菜单图标取前端路由表的(collectRouteIcons 按 path 取),
+      后端下发的 icon 是 Remix Icon 类名,ProLayout 认不出来 —— 这四条路径
+      各自要一份自己的图标。
+    */
+    path: '/module_pm_project',
+    routes: [
+      {
+        // 目录「项目管理」与菜单「项目列表」共用这一条路径(后端就是这么种的)
+        path: '/module_pm_project/pm_project',
+        icon: 'project',
+        redirect: '/pm/project',
+      },
+      {
+        path: '/module_pm_project/pm_task',
+        icon: 'checkSquare',
+        redirect: '/pm/task',
+      },
+      {
+        path: '/module_pm_project/pm_milestone',
+        icon: 'flag',
+        redirect: '/pm/milestone',
+      },
+    ],
+  },
+  {
+    /*
+      同上:风险模块的源码路径 → /pm/risk。
+      目录「pm_risk」与菜单「风险」共用这一条路径。
+    */
+    path: '/module_pm_risk',
+    routes: [
+      {
+        path: '/module_pm_risk/pm_risk',
+        icon: 'alert',
+        redirect: '/pm/risk',
       },
     ],
   },
