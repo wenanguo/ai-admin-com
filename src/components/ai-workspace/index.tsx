@@ -9,7 +9,7 @@
  * ⚠️ 侧栏**不是 Drawer**（规格 §3.1 明确否决了抽屉）——
  * 挂进布局是下一刀的事（`Layout.Sider`，宽 400，可折叠到 40）。
  */
-import { Tabs, theme } from 'antd';
+import { Button, Tabs, theme } from 'antd';
 import type React from 'react';
 import { useState } from 'react';
 import { AuditPanel } from './AuditPanel';
@@ -74,13 +74,30 @@ export function AiWorkspace({
         <div
           data-role="ai-connection-error"
           style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: token.sizeXS,
             padding: `${token.paddingSM}px ${token.padding}px`,
             fontSize: token.fontSizeSM,
             color: token.colorWarning,
             borderBottom: `1px solid ${token.colorBorderSecondary}`,
           }}
         >
-          AI 服务未连接：{workspace.connectionError}
+          <span>AI 服务未连接：{workspace.connectionError}</span>
+          {/*
+            重试入口：只提示不给出路是不行的（用户没法自己恢复）。
+            重连 = 重跑一遍「建会话」的流程；会话 id 建出来后事件流会自动订阅。
+          */}
+          <Button
+            size="small"
+            type="link"
+            onClick={() => {
+              workspace.reconnect();
+            }}
+          >
+            重试连接
+          </Button>
         </div>
       ) : null}
       <Tabs

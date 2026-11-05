@@ -8,6 +8,7 @@ import {
 } from '../src/services/api/pm/paths';
 import {
   gotoModulePage,
+  mainContent,
   modalFormItem,
   pickInModal,
   pickToday,
@@ -751,7 +752,8 @@ test.describe('项目详情页', () => {
     await expect(alert).toContainText('只加载了最新的 100 个');
     await expect(alert).toContainText('其余 150 个未显示');
     // 提示是 **tab 级**的(不是页面顶上的一条全局提示)
-    await expect(page.locator('.ant-alert')).toHaveCount(1);
+    // ⚠️ 计数只算**主内容区**里的：AI 工作台的侧栏里也有自己的 Alert
+    await expect(mainContent(page).locator('.ant-alert')).toHaveCount(1);
 
     // 任务 tab:条数没超 ⇒ 不提示
     await page.getByRole('tab', { name: '任务' }).click();

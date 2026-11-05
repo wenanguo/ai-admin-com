@@ -55,6 +55,14 @@ export interface Workspace {
   send: (text: string) => Promise<void>;
   /** 重试上一条失败的消息（**复用同一个命令 id**）。 */
   retry: () => Promise<void>;
+  /**
+   * 重连（会话建不起来时的重试入口）。
+   *
+   * 只提示不给出路是不行的 —— 用户没法自己恢复。
+   * 重连 = 重跑一遍「建会话」的流程；会话 id 一旦建出来，
+   * 事件流（`useAgentStream`）会跟着重新订阅。
+   */
+  reconnect: () => void;
 }
 
 /** 未知错误转成一句话。 */
@@ -85,6 +93,14 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
   const lastCommandRef = useRef<{ id: string; text: string } | undefined>(
     undefined,
   );
+  /**
+   * 建会话的**尝试次数**（重连时 +1 ⇒ effect 重跑一遍）。
+   *
+   * ⚠️ 不能简单地「再调一次 createAiConversation」——
+   *    整段流程（读快照、复用会话 id、新建会话）都在 effect 里，
+   *    重跑 effect 才是真正的「再来一次」。
+   */
+  const [attempt, setAttempt] = useState(0);
   /** 当前会话 id 的副本：发送是异步的，要读**最新**的值。 */
   const conversationIdRef = useRef<string | undefined>(undefined);
   /** 会话就绪的信号：会话建好（或建不出来）之后 resolve。 */
@@ -152,7 +168,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
       disposed = true;
       resolveReady();
     };
-  }, [restore, storageKey]);
+  }, [restore, storageKey, attempt]);
 
   /** 把一条命令发出去（id 由这里生成）。 */
   const submit = useCallback(
@@ -207,6 +223,12 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     await submit(last.id, last.text);
   }, [submit]);
 
+  /** 重连：重跑一遍「建会话」的流程。 */
+  const reconnect = useCallback((): void => {
+    setConnectionError(undefined);
+    setAttempt((previous) => previous + 1);
+  }, []);
+
   return {
     conversationId,
     messages,
@@ -217,5 +239,6 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     connectionError,
     send,
     retry,
+    reconnect,
   };
 }

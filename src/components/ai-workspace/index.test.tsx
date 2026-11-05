@@ -111,4 +111,31 @@ describe('AI 工作台侧栏', () => {
 
     await expect.element(getByText(/AI 服务未连接/)).toBeVisible();
   });
+
+  it('连不上时可以点「重试连接」重试一次', async () => {
+    mocks.createAiConversation.mockRejectedValue(
+      new Error('AI 事件流请求失败（HTTP 502）'),
+    );
+
+    const { getByRole, getByText } = await render(<AiWorkspace />);
+    await expect.element(getByText(/AI 服务未连接/)).toBeVisible();
+
+    // 第二次就连上了
+    mocks.createAiConversation.mockResolvedValue({
+      conversationId: 'c1',
+      title: '新对话',
+    });
+    // ⚠️ antd 会在两个汉字之间插一个空格 ⇒ 可访问名是「重 试 连 接」
+    await getByRole('button', { name: /重\s*试\s*连\s*接/ }).click();
+
+    await vi.waitFor(() => {
+      expect(mocks.createAiConversation).toHaveBeenCalledTimes(2);
+    });
+    // 重试成功后那条提示就没了
+    await vi.waitFor(() => {
+      expect(
+        document.querySelector('[data-role="ai-connection-error"]'),
+      ).toBeNull();
+    });
+  });
 });

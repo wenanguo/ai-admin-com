@@ -1,7 +1,12 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { PM_TASK_PREFIX } from '../src/services/api/pm/paths';
-import { businessErrorBody, gotoModulePage, setupModulePage } from './helpers';
+import {
+  businessErrorBody,
+  gotoModulePage,
+  mainContent,
+  setupModulePage,
+} from './helpers';
 
 /**
  * 任务看板页(/pm/task/board)的前端闭环,接口全部拦截。
@@ -354,7 +359,8 @@ test.describe('任务看板页', () => {
     // 后端一共 250 个任务,但看板只拉得回第一页(100 条)
     await setupBoardPage(page, { total: 250 });
 
-    const alert = page.locator('.ant-alert');
+    // ⚠️ 计数只算**主内容区**里的：AI 工作台的侧栏里也有自己的 Alert
+    const alert = mainContent(page).locator('.ant-alert');
     await expect(alert).toHaveCount(1);
     // 提示说的是**实际发生的事**:只拉到前 100 条 + 已取消的不进看板
     await expect(alert).toContainText('只拉了前 100 个任务');

@@ -7,6 +7,7 @@ import {
 } from '../src/services/api/pm/paths';
 import {
   gotoModulePage,
+  mainContent,
   modalFormItem,
   pickInModal,
   pickToday,
@@ -524,7 +525,8 @@ test.describe('任务管理页', () => {
     );
 
     // 上限**不静默**:页面上有一条提示说清侧载盖了什么
-    const alert = page.locator('.ant-alert');
+    // ⚠️ 计数只算**主内容区**里的：AI 工作台的侧栏里也有自己的 Alert
+    const alert = mainContent(page).locator('.ant-alert');
     await expect(alert).toHaveCount(1);
     await expect(alert).toContainText('后端一次最多给 100 条');
     await expect(alert).toContainText('250 个项目');

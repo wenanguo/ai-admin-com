@@ -126,7 +126,10 @@ describe('AI 工作台布局外壳', () => {
     expect(input).not.toBeNull();
     input?.focus();
 
-    window.dispatchEvent(
+    // ⚠️ 事件必须**派发在输入框上** ⇒ event.target 真的是那个 input。
+    //    派发在 window 上时 event.target === window ⇒「目标是不是可编辑元素」
+    //    永远为假 ⇒ 这条守卫根本不会被测到（测试会永远绿）。
+    input?.dispatchEvent(
       new KeyboardEvent('keydown', {
         key: 'b',
         ctrlKey: true,
@@ -134,7 +137,16 @@ describe('AI 工作台布局外壳', () => {
       }),
     );
 
-    expect(sider(container).style.width).toBe('400px');
+    // React 的状态更新是异步的 ⇒ 先让它刷出来。
+    // 守卫失效时侧栏会折成 40px ⇒ 下面的断言就会红。
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+
+    // 守卫生效 ⇒ 侧栏**没有**被折叠
+    await vi.waitFor(() => {
+      expect(sider(container).style.width).toBe('400px');
+    });
   });
 
   it('折叠状态写进 localStorage，刷新后还在', async () => {

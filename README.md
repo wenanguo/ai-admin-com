@@ -25,6 +25,31 @@ npm start        # 带 antd-pro 演示页 mock
 > 代理按环境挑选是靠 `config/config.ts` 里的 `proxy: proxy[UMI_ENV]` 这一行实现的,
 > 改代理时不要动它。
 
+### 后端证书过期时的本地临时开关（`PROXY_INSECURE_TLS`）
+
+线上后端的 TLS 证书已于 **2026-11-04 23:59:59 过期**,证书校验失败会让**所有**
+本地请求 502。`NODE_TLS_REJECT_UNAUTHORIZED=0` 对这条代理**无效**
+（http-proxy 会显式把 `rejectUnauthorized` 设成 `true`）,
+所以 `config/proxy.ts` 里留了一个**默认关闭**的开关:
+
+```bash
+# .env.local（不入库）
+PROXY_TARGET=https://www.pmdict.cn
+PROXY_INSECURE_TLS=true
+```
+
+| 变量                 | 默认值   | 作用                                                               |
+| -------------------- | -------- | ------------------------------------------------------------------ |
+| `PROXY_TARGET`       | 线上后端 | 代理目标（`/api/` 规则）                                           |
+| `PROXY_INSECURE_TLS` | `false`  | **`true` = 跳过后端证书校验**（只影响 `/api/` 规则，其它行为不变） |
+
+⚠️ 这个开关的名字里带 "INSECURE" 是故意的：它关掉的是 **TLS 校验**,
+等于把通道降级成「不验证对端身份」。它**只在本地临时用**,
+打开时 dev server 启动日志里会打一条醒目的警告。
+
+**证书续签之后**:把 `.env.local` 里的 `PROXY_INSECURE_TLS` 那一行**删掉**即可
+（默认值就是校验证书，不需要改 `config/proxy.ts`；`PROXY_TARGET` 那行也可以一并删掉）。
+
 ### 构建产物目录
 
 `config/config.ts` 里 `outputPath` 按环境分开了:
@@ -110,14 +135,14 @@ PM 的 6 个路由在 `config/routes.ts` 注册,侧边栏里也有入口。
 (菜单表就叫 `platform_menu`,后端**没有** `sys_menu` 这张表)。
 实测后端 `current/info` 下发的 PM 菜单树是这么一棵:
 
-| id | 类型 | 标题 | `route_path` |
-| --- | ---- | ---- | ------------ |
-| 339 | 目录 | 项目管理 | `/module_pm_project/pm_project` |
-| 340 | 菜单 | 项目清单 | `/module_pm_project/pm_project` |
-| 351 | 菜单 | 任务 | `/module_pm_project/pm_task` |
-| 362 | 菜单 | 里程碑 | `/module_pm_project/pm_milestone` |
-| 372 | 目录 | pm_risk | `/module_pm_risk/pm_risk` |
-| 373 | 菜单 | 风险 | `/module_pm_risk/pm_risk` |
+| id  | 类型 | 标题     | `route_path`                      |
+| --- | ---- | -------- | --------------------------------- |
+| 339 | 目录 | 项目管理 | `/module_pm_project/pm_project`   |
+| 340 | 菜单 | 项目清单 | `/module_pm_project/pm_project`   |
+| 351 | 菜单 | 任务     | `/module_pm_project/pm_task`      |
+| 362 | 菜单 | 里程碑   | `/module_pm_project/pm_milestone` |
+| 372 | 目录 | pm_risk  | `/module_pm_risk/pm_risk`         |
+| 373 | 菜单 | 风险     | `/module_pm_risk/pm_risk`         |
 
 **菜单里的路径是后端的插件源码路径**(`/module_pm_*` 那种),不是前端的
 `/pm/*` —— 这些菜单行是后端**按插件目录自动生成**的,路径就是插件的目录
@@ -125,8 +150,8 @@ PM 的 6 个路由在 `config/routes.ts` 注册,侧边栏里也有入口。
 ⇒ 前端在 `config/routes.ts` 里给这四条路径各注册了一条**重定向路由**:
 
 | 后端菜单路径                      | 重定向到        |
-| -------------------------------- | --------------- |
-| `/module_pm_project/pm_project`  | `/pm/project`   |
+| --------------------------------- | --------------- |
+| `/module_pm_project/pm_project`   | `/pm/project`   |
 | `/module_pm_project/pm_task`      | `/pm/task`      |
 | `/module_pm_project/pm_milestone` | `/pm/milestone` |
 | `/module_pm_risk/pm_risk`         | `/pm/risk`      |
@@ -155,12 +180,12 @@ PM 的 6 个路由在 `config/routes.ts` 注册,侧边栏里也有入口。
 码一般是**三段式**(`模块:实体:动作`),
 与 `platform_menu.permission` 列的注释一致:
 
-| 实体                  | 权限码前缀                       | 动作                                                                                                         |
-| --------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 项目 `pm_project`     | `module_pm_project:pm_project`   | `query` `detail` `create` `update` `delete` `patch` `export` `import` `download` `transition` `member:write` |
-| 里程碑 `pm_milestone` | `module_pm_project:pm_milestone` | `query` `detail` `create` `update` `delete` `patch` `export` `import` `download`                             |
-| 任务 `pm_task`        | `module_pm_project:pm_task`      | `query` `detail` `create` `update` `delete` `patch` `export` `import` `download`                             |
-| 风险 `pm_risk`        | `module_pm_risk:pm_risk`         | `query` `detail` `create` `update` `delete` `patch` `export` `import` `download`                             |
+| 实体                 | 权限码前缀                       | 动作                                                                                                         |
+| -------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 项目 `pm_project`    | `module_pm_project:pm_project`   | `query` `detail` `create` `update` `delete` `patch` `export` `import` `download` `transition` `member:write` |
+| 里程碑`pm_milestone` | `module_pm_project:pm_milestone` | `query` `detail` `create` `update` `delete` `patch` `export` `import` `download`                             |
+| 任务`pm_task`        | `module_pm_project:pm_task`      | `query` `detail` `create` `update` `delete` `patch` `export` `import` `download`                             |
+| 风险`pm_risk`        | `module_pm_risk:pm_risk`         | `query` `detail` `create` `update` `delete` `patch` `export` `import` `download`                             |
 
 > ⚠️ **后端还有两族权限码不在上面的清单里**:`module_pm_meeting:pm_meeting:*`
 > (会议)与 `module_pm_comment:pm_comment:*`(评论)。这两个模块**在本前端还没有页面**

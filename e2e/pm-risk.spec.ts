@@ -6,6 +6,7 @@ import {
 } from '../src/services/api/pm/paths';
 import {
   gotoModulePage,
+  mainContent,
   modalFormItem,
   pickInModal,
   pickToday,
@@ -471,7 +472,8 @@ test.describe('风险登记册页', () => {
 
     // 上限**不静默**:页面上有一条提示说清侧载盖了什么
     // (热力图那一条不在 —— 风险没截断)
-    const alerts = page.locator('.ant-alert');
+    // ⚠️ 计数只算**主内容区**里的：AI 工作台的侧栏里也有自己的 Alert
+    const alerts = mainContent(page).locator('.ant-alert');
     await expect(alerts).toHaveCount(1);
     await expect(alerts.first()).toContainText('后端一次最多给 100 个');
     await expect(alerts.first()).toContainText('250 个项目');

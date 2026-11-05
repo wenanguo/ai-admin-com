@@ -16,6 +16,8 @@
  * - 侧边栏出现「AI 工作台」（常驻右栏，**不是抽屉**）；
  * - `⌘B` / `Ctrl+B` 能折叠与展开（400px ⇄ 40px，主内容跟着收窄）；
  * - 输入一句话能出现助手回复（SSE 走完一轮，外加一张命令卡片）。
+ *
+ * 外加一条**窄屏**用例：视口窄于 1200px 时侧栏自动收成竖条（规格 §3.1）。
  */
 import type { Page, Route } from '@playwright/test';
 import { expect, test } from '@playwright/test';
@@ -238,10 +240,37 @@ function sider(page: Page) {
   return page.getByTestId('ai-workspace-sider');
 }
 
+/** 主内容那一列（侧栏左边那块）。 */
+function content(page: Page) {
+  return page.getByTestId('ai-workspace-content');
+}
+
 /** 侧边栏的宽度（折叠 ⇄ 展开）。 */
 async function siderWidth(page: Page): Promise<number | undefined> {
   const box = await sider(page).boundingBox();
   return box?.width;
+}
+
+/**
+ * 等布局**稳定**下来再量盒子。
+ *
+ * ⚠️ ProLayout 的左侧菜单在首屏之后还会自己展开一次（约 1 秒后），
+ *    那一瞬间整页的宽度都会变 ⇒ 量之前必须等它稳下来，
+ *    否则「主内容多宽了多少」会量到一个假的差值。
+ */
+async function waitForStableLayout(page: Page): Promise<void> {
+  let previous = -1;
+  await expect
+    .poll(
+      async () => {
+        const width = (await content(page).boundingBox())?.width ?? -1;
+        const stable = width === previous;
+        previous = width;
+        return stable;
+      },
+      { timeout: 15_000, intervals: [200, 200, 200, 200, 200, 200, 200, 200] },
+    )
+    .toBe(true);
 }
 
 test.describe('AI 工作台侧栏', () => {
@@ -263,20 +292,39 @@ test.describe('AI 工作台侧栏', () => {
     await expect(sider(page).getByText('AI 工作台')).toBeVisible();
     await expect(sider(page).getByRole('tab', { name: '对话' })).toBeVisible();
 
+    await waitForStableLayout(page);
+
     // 展开时 400px
     expect(await siderWidth(page)).toBe(400);
 
     // 在主内容**右边**（不是盖在主内容上面）
+    //
+    // ⚠️ 光比 `siderBox.x > tableBox.x` **抓不到重叠** ——
+    //    侧栏盖在表格上时，表格的左边缘仍然在侧栏的左边缘左边。
+    //    要比的是「表格的**右**边缘」和「侧栏的**左**边缘」。
     const siderBox = await sider(page).boundingBox();
     const tableBox = await page.locator('.ant-table').first().boundingBox();
-    expect(siderBox).not.toBeNull();
-    expect(tableBox).not.toBeNull();
-    expect(siderBox?.x).toBeGreaterThan(tableBox?.x ?? 0);
+    if (!siderBox || !tableBox) {
+      throw new Error('侧栏或表格没有布局盒');
+    }
+    expect(tableBox.x + tableBox.width).toBeLessThanOrEqual(siderBox.x);
+
+    // 主内容的右边缘**贴着**侧栏的左边缘（既没有空档，也没有被盖住）
+    const contentBox = await content(page).boundingBox();
+    if (!contentBox) {
+      throw new Error('主内容没有布局盒');
+    }
+    expect(contentBox.x + contentBox.width).toBeCloseTo(siderBox.x, 0);
 
     // 请求走的是**独立前缀** `/ai-api/`（不能是 AiAdmin 的 `/api/`）
+    //
+    // ⚠️ 若构建时 `AI_API_BASE_URL` 是绝对地址（`http://localhost:3100`），
+    //    命中的就是第二条 pattern ⇒ 两种形态都算「走到了 AI 服务」，
+    //    但**不能**是 AiAdmin 的 `/api/v1/...`。
     expect(requests.length).toBeGreaterThan(0);
     for (const url of requests) {
-      expect(url).toContain('/ai-api/api/agent/');
+      expect(url).toMatch(/(\/ai-api)?\/api\/agent\//);
+      expect(url).not.toContain('/api/v1/');
     }
   });
 
@@ -294,16 +342,48 @@ test.describe('AI 工作台侧栏', () => {
     );
 
     await expect(sider(page)).toBeVisible();
+    await waitForStableLayout(page);
     expect(await siderWidth(page)).toBe(400);
+
+    // 折叠**之前**的盒子
+    const siderBefore = await sider(page).boundingBox();
+    const contentBefore = await content(page).boundingBox();
+    const tableBefore = await page.locator('.ant-table').first().boundingBox();
+    if (!siderBefore || !contentBefore || !tableBefore) {
+      throw new Error('侧栏 / 主内容 / 表格没有布局盒');
+    }
 
     // 折叠
     await page.keyboard.press('Control+b');
     await expect(page.getByTestId('ai-workspace-strip')).toBeVisible();
     await expect.poll(() => siderWidth(page)).toBe(40);
 
+    // 折叠**之后**的盒子
+    const siderAfter = await sider(page).boundingBox();
+    const contentAfter = await content(page).boundingBox();
+    const tableAfter = await page.locator('.ant-table').first().boundingBox();
+    if (!siderAfter || !contentAfter || !tableAfter) {
+      throw new Error('侧栏 / 主内容 / 表格没有布局盒');
+    }
+
+    // 侧栏让出了 360px（400 → 40）⇒ 主内容**正好**多出这么多
+    // （不是留一个空档，也不是把主内容盖住）
+    expect(contentAfter.width - contentBefore.width).toBeCloseTo(360, 0);
+    expect(tableAfter.width - tableBefore.width).toBeCloseTo(360, 0);
+
+    // 主内容的右边缘**贴着**侧栏的左边缘（没有空档）
+    expect(contentAfter.x + contentAfter.width).toBeCloseTo(siderAfter.x, 0);
+    // 表格也没有被侧栏盖住
+    expect(tableAfter.x + tableAfter.width).toBeLessThanOrEqual(siderAfter.x);
+
     // 展开
     await page.keyboard.press('Control+b');
     await expect.poll(() => siderWidth(page)).toBe(400);
+    const contentBack = await content(page).boundingBox();
+    if (!contentBack) {
+      throw new Error('主内容没有布局盒');
+    }
+    expect(contentBack.width).toBeCloseTo(contentBefore.width, 0);
   });
 
   test('输入一句话能出现助手回复', async ({ page }) => {
@@ -346,5 +426,55 @@ test.describe('AI 工作台侧栏', () => {
         url.endsWith(`/api/agent/${CONVERSATION_ID}/command`),
       ),
     ).toBe(true);
+  });
+});
+
+/**
+ * 窄屏（< 1200px）：侧栏**自动**收成竖条，主内容不被挤扁。
+ *
+ * ⚠️ 全局视口是 1600×900（理由见 `playwright.config.ts`），
+ *    所以这条用例**自己**把视口改窄 —— 窄屏的行为不能因为
+ *    「全局视口宽一点」就在 CI 里看不见。
+ */
+test.describe('窄屏（< 1200px）', () => {
+  test.use({ viewport: { width: 1000, height: 900 } });
+
+  test('侧栏自动收成竖条,主内容不被挤扁;用户仍可以展开它', async ({ page }) => {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+
+    // 窄屏 ⇒ antd 的 Sider 自己收起（breakpoint = xl = 1200px）
+    await expect(page.getByTestId('ai-workspace-strip')).toBeVisible();
+    await expect.poll(() => siderWidth(page)).toBe(40);
+
+    await waitForStableLayout(page);
+
+    const contentNarrow = await content(page).boundingBox();
+    const siderNarrow = await sider(page).boundingBox();
+    if (!contentNarrow || !siderNarrow) {
+      throw new Error('主内容或侧栏没有布局盒');
+    }
+    // 侧栏**没有**把主内容挤到 ProTable 搜索表单的断点（576px）以下
+    expect(contentNarrow.width).toBeGreaterThan(576);
+    // 主内容的右边缘贴着竖条的左边缘（没有空档）
+    expect(contentNarrow.x + contentNarrow.width).toBeCloseTo(siderNarrow.x, 0);
+
+    // 用户仍然可以把它展开（展开后主内容才会被挤窄）
+    await page.getByTestId('ai-workspace-strip').click();
+    await expect.poll(() => siderWidth(page)).toBe(400);
+    const contentExpanded = await content(page).boundingBox();
+    if (!contentExpanded) {
+      throw new Error('主内容没有布局盒');
+    }
+    expect(contentExpanded.width).toBeCloseTo(contentNarrow.width - 360, 0);
   });
 });

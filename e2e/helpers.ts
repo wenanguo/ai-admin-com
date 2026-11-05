@@ -388,6 +388,22 @@ export async function pickToday(page: Page, label: string): Promise<void> {
   await todayCell.click();
 }
 
+/**
+ * 主内容区（AI 工作台左边那一列）。
+ *
+ * ⚠️ **页面级的计数不要用 `page.locator('.ant-alert')`**：
+ *    AI 工作台的侧栏（`<aside>`）里也有自己的 `Alert`
+ *    （ChatPanel 的错误提示）⇒ 页面级的计数会被侧栏污染，
+ *    一个无关的侧栏提示就能让不相干的用例变红。
+ *    数「页面上的提示条」时要把范围限定在主内容区里。
+ *
+ * @param page 页面。
+ * @returns 主内容区的定位器。
+ */
+export function mainContent(page: Page): Locator {
+  return page.getByTestId('ai-workspace-content');
+}
+
 /** 表格行 —— 用例关心的就绪信号(不用 networkidle) */
 export function tableRows(page: Page) {
   return page.locator('.ant-table-tbody tr.ant-table-row');

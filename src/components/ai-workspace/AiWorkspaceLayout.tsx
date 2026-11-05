@@ -13,6 +13,13 @@
  * - 状态存在 `localStorage['aipm.workspace']` 的 `collapsed` 字段（见 `storage.ts`）；
  * - 输入框里**不劫持**快捷键（那里 `Ctrl+B` 是加粗）。
  *
+ * ## 窄屏自动收起（规格 §3.1 的「不能让侧栏把内容挤没了」）
+ *
+ * 400px 的常驻右栏在窄屏上会把主内容压到 ProTable 搜索表单的断点（576px）以下。
+ * ⇒ 用 antd 自己的 `Layout.Sider` 的 `breakpoint`（`xl` = 1200px）：
+ * 视口窄于 1200px 时**自动收成 40px 的竖条**，主内容不被挤扁；
+ * 用户仍然可以随时点竖条把它展开（展开只是这一次的内容被挤扁）。
+ *
  * ## 为什么单独一个组件
  *
  * `src/app.tsx` 的 `childrenRender` 只负责「把它挂上去」，
@@ -38,6 +45,20 @@ export const AI_WORKSPACE_WIDTH = 400;
 
 /** 折叠后的宽度（规格 §3.1：40px 的竖条）。 */
 export const AI_WORKSPACE_COLLAPSED_WIDTH = 40;
+
+/**
+ * 窄屏自动收起的断点（antd 的栅格断点）。
+ *
+ * `xl` = 1200px：视口窄于它时侧栏自动收成竖条（antd 的 `Sider.breakpoint`）。
+ */
+export const AI_WORKSPACE_BREAKPOINT = 'xl';
+
+/**
+ * antd `Layout.Sider` 回调折叠时的原因（与 antd 的 `CollapseType` 一致）。
+ *
+ * `responsive` = 视口跨过断点时 antd 自己改的；`clickTrigger` = 用户点了触发器。
+ */
+type SiderCollapseReason = 'clickTrigger' | 'responsive';
 
 /**
  * 事件目标是不是可编辑元素。
@@ -124,6 +145,17 @@ export function AiWorkspaceLayout({
   /** 内容区顶边离视口顶边的距离（侧栏要钉在固定头部下面）。 */
   const [stickyTop, setStickyTop] = useState(0);
   const rowRef = useRef<HTMLDivElement>(null);
+  /**
+   * 组件挂载了吗（用来分辨 antd 的「挂载时对齐断点」与「真的跨过断点」）。
+   *
+   * ⚠️ 子组件的 effect 先于父组件的 effect 跑 ⇒ Sider 挂载时的那次
+   * 响应式回调到达时，这个 ref 还是 false。
+   */
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+  }, []);
 
   /** 折叠 / 展开，并把状态写进 localStorage。 */
   const toggle = useCallback((): void => {
@@ -179,6 +211,23 @@ export function AiWorkspaceLayout({
     };
   }, [toggle]);
 
+  // 窄屏（< 1200px）自动收成竖条：侧栏不能把主内容挤没了。
+  //
+  // ⚠️ antd 的 `Sider` 在**挂载时**就会把折叠状态对齐到断点
+  // （`collapsed !== mql.matches` ⇒ 回调 `onCollapse(matches, 'responsive')`）。
+  // 那会把「用户自己收起来的侧栏」在刷新后强行展开 ⇒ 挂载时**要展开**的那一次不照做；
+  // **要收起**的那一次照做（窄屏上侧栏必须让开）。
+  // 自动收起**不写进 localStorage** —— 那是响应式行为，不是用户的选择。
+  const handleCollapse = useCallback(
+    (next: boolean, reason: SiderCollapseReason): void => {
+      if (reason === 'responsive' && !next && !mountedRef.current) {
+        return;
+      }
+      setCollapsed(next);
+    },
+    [],
+  );
+
   return (
     <div
       ref={rowRef}
@@ -191,16 +240,24 @@ export function AiWorkspaceLayout({
         在**这一列里**横向滚动 —— 不能让它溢出到 AI 侧栏底下，
         那样「操作」列的按钮就点不到了。
       */}
-      <div style={{ flex: 1, minWidth: 0, overflowX: 'auto' }}>{children}</div>
+      <div
+        data-testid="ai-workspace-content"
+        style={{ flex: 1, minWidth: 0, overflowX: 'auto' }}
+      >
+        {children}
+      </div>
       <Sider
         data-testid="ai-workspace-sider"
         width={AI_WORKSPACE_WIDTH}
         collapsedWidth={AI_WORKSPACE_COLLAPSED_WIDTH}
         collapsible
         collapsed={collapsed}
-        onCollapse={setCollapsed}
+        onCollapse={handleCollapse}
         trigger={null}
         theme="light"
+        // 窄屏（< 1200px）自动收成竖条：侧栏不能把主内容挤没了。
+        // ⚠️ 自动收起**不写进 localStorage** —— 那是响应式行为，不是用户的选择。
+        breakpoint={AI_WORKSPACE_BREAKPOINT}
         style={{
           // 常驻的一列：跟着页面滚，但自己钉在固定头部下面，
           // 高度取「视口高 - 顶边距离」⇒ 输入区永远落在视口内。
