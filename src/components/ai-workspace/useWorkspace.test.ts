@@ -169,6 +169,12 @@ describe('AI 工作台的会话', () => {
   });
 
   it('重试复用同一个命令 id', async () => {
+    // ⚠️ **护甲**：第二次调用 `createAiCommandId` 给一个**不同的**值。
+    // 若 `retry` 将来被改成重新生成 id，它拿到的就是 `cmd-2`，
+    // 服务端会把这个命令**真的再执行一遍**（服务端按 id 去重）⇒ 下面的断言会挂。
+    mocks.createAiCommandId
+      .mockReturnValueOnce('cmd-1')
+      .mockReturnValueOnce('cmd-2');
     mocks.sendAiCommand.mockRejectedValueOnce(new Error('网络断了'));
 
     const { result } = await renderHook(() => useWorkspace());
@@ -188,5 +194,7 @@ describe('AI 工作台的会话', () => {
     expect(mocks.sendAiCommand).toHaveBeenCalledTimes(2);
     expect(mocks.sendAiCommand.mock.calls[0]?.[2]).toEqual({ id: 'cmd-1' });
     expect(mocks.sendAiCommand.mock.calls[1]?.[2]).toEqual({ id: 'cmd-1' });
+    // 重试**没有**重新生成 id（生成出来的会是 cmd-2）
+    expect(mocks.createAiCommandId).toHaveBeenCalledTimes(1);
   });
 });

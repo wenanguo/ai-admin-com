@@ -3,17 +3,19 @@
  *
  * 这一层是**容器**：头部 + 三个页签（对话 / 待确认 / 审计）。
  *
- * - **对话**页签这一刀做完了（`ChatPanel`）；
- * - **待确认**与**审计**两个页签是下一刀的事（服务端的只读端点已经就绪，
- *   这里先占个位，别画还没接上的按钮）。
+ * - **对话**页签的数据在 `useWorkspace` 里（会话 + 事件流）；
+ * - **待确认**与**审计**两个页签的数据在 `useAiLists` 里（两个只读端点）。
  *
  * ⚠️ 侧栏**不是 Drawer**（规格 §3.1 明确否决了抽屉）——
  * 挂进布局是下一刀的事（`Layout.Sider`，宽 400，可折叠到 40）。
  */
-import { Empty, Tabs, theme } from 'antd';
+import { Tabs, theme } from 'antd';
 import type React from 'react';
 import { useState } from 'react';
+import { AuditPanel } from './AuditPanel';
 import { ChatPanel } from './ChatPanel';
+import { PendingPanel } from './PendingPanel';
+import { useAiLists } from './useAiLists';
 import { useWorkspace } from './useWorkspace';
 
 /** 页签。 */
@@ -34,6 +36,13 @@ export function AiWorkspace({
   const { token } = theme.useToken();
   const [activeTab, setActiveTab] = useState<WorkspaceTab>(defaultTab);
   const workspace = useWorkspace();
+  // ⚠️ **按需读**：页签没打开就不读那两个列表 ——
+  // 侧栏挂在整个布局上（Task 4），一挂上就发请求会让 AI 服务不可达时
+  // 用户在别的页面上莫名其妙看到报错。
+  const lists = useAiLists({
+    pending: activeTab === 'pending',
+    audit: activeTab === 'audit',
+  });
 
   return (
     <div
@@ -89,9 +98,10 @@ export function AiWorkspace({
             key: 'pending',
             label: '待确认',
             children: (
-              <Empty
-                description="批量与破坏性操作会先在这里等你点头"
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
+              <PendingPanel
+                items={lists.pending}
+                loading={lists.pendingLoading}
+                error={lists.pendingError}
               />
             ),
           },
@@ -99,9 +109,10 @@ export function AiWorkspace({
             key: 'audit',
             label: '审计',
             children: (
-              <Empty
-                description="AI 的每次写入都会记在这里"
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
+              <AuditPanel
+                items={lists.audit}
+                loading={lists.auditLoading}
+                error={lists.auditError}
               />
             ),
           },

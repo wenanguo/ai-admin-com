@@ -2,7 +2,7 @@
  * AI 工作台侧栏容器的测试 —— 只验**容器**（页签与头部），
  * 对话页签的行为在 `ChatPanel.test.tsx` 里。
  */
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { AiWorkspace } from './index';
 
@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   sendAiCommand: vi.fn(),
   createAiCommandId: vi.fn(),
   subscribeAiEvents: vi.fn(() => () => undefined),
+  listAiAudit: vi.fn(async () => ({ total: 0, items: [] })),
+  listAiPending: vi.fn(async () => []),
 }));
 
 vi.mock('@/services/api/ai/client', () => ({
@@ -21,8 +23,8 @@ vi.mock('@/services/api/ai/client', () => ({
   sendAiCommand: mocks.sendAiCommand,
   createAiConversation: mocks.createAiConversation,
   getAiState: mocks.getAiState,
-  listAiAudit: vi.fn(),
-  listAiPending: vi.fn(),
+  listAiAudit: mocks.listAiAudit,
+  listAiPending: mocks.listAiPending,
   listAiConversations: vi.fn(),
 }));
 
@@ -33,6 +35,10 @@ vi.mock('@/services/api/ai/sse', () => ({
 }));
 
 describe('AI 工作台侧栏', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('有头部与三个页签', async () => {
     mocks.createAiConversation.mockResolvedValue({
       conversationId: 'c1',
@@ -50,5 +56,46 @@ describe('AI 工作台侧栏', () => {
     await expect.element(getByText('对话')).toBeVisible();
     await expect.element(getByText('待确认')).toBeVisible();
     await expect.element(getByText('审计')).toBeVisible();
+  });
+
+  it('页签没打开就不读待确认与审计', async () => {
+    mocks.createAiConversation.mockResolvedValue({
+      conversationId: 'c1',
+      title: '新对话',
+    });
+    mocks.getAiState.mockResolvedValue({
+      conversationId: 'c1',
+      messages: [],
+      isStreaming: false,
+    });
+
+    const { getByText } = await render(<AiWorkspace />);
+    await expect.element(getByText('AI 工作台')).toBeVisible();
+
+    // 侧栏挂在整个布局上（Task 4）⇒ 一挂上就发请求会让 AI 服务不可达时
+    // 用户在别的页面上莫名其妙看到报错。
+    expect(mocks.listAiPending).not.toHaveBeenCalled();
+    expect(mocks.listAiAudit).not.toHaveBeenCalled();
+  });
+
+  it('打开「审计」页签才去读审计', async () => {
+    mocks.createAiConversation.mockResolvedValue({
+      conversationId: 'c1',
+      title: '新对话',
+    });
+    mocks.getAiState.mockResolvedValue({
+      conversationId: 'c1',
+      messages: [],
+      isStreaming: false,
+    });
+
+    const { getByRole } = await render(<AiWorkspace />);
+    await getByRole('tab', { name: '审计' }).click();
+
+    await vi.waitFor(() => {
+      expect(mocks.listAiAudit).toHaveBeenCalledTimes(1);
+    });
+    // 待确认还没打开 ⇒ 不读
+    expect(mocks.listAiPending).not.toHaveBeenCalled();
   });
 });

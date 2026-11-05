@@ -10,16 +10,8 @@
  */
 import { Tag, theme } from 'antd';
 import type React from 'react';
+import { AI_PURPLE } from './palette';
 import type { ChatCommand, CommandStatus } from './useAgentStream';
-
-/**
- * AI 身份色（紫）。
- *
- * ⚠️ antd 6 **没有** `colorPurple` 这个 token ——
- * 规格里说的紫色在 antd 里就是预设色 `purple`（`Tag color="purple"`），
- * 它的色值是 seed 里的 `#722ED1`。
- */
-const AI_PURPLE = '#722ED1';
 
 /** 状态标签的取值。 */
 interface StatusTag {
