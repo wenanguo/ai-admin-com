@@ -145,6 +145,8 @@ export default function AiWorkspacePage(): React.ReactElement {
           <Dropdown
             open={historyOpen}
             onOpenChange={handleHistoryOpen}
+            // ⚠️ 默认是 hover ⇒ 触屏上点不开；这是个**按钮**，就该用 click。
+            trigger={['click']}
             menu={{
               items:
                 historyError !== undefined
