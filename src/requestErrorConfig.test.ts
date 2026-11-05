@@ -325,6 +325,21 @@ describe('requestErrorConfig', () => {
       ).toThrow('boom');
     });
 
+    it('clears the login and redirects even when skipErrorHandler is set', () => {
+      // ⚠️ AI 服务的请求也设了 `skipErrorHandler: true`（不想在每个页面上弹提示），
+      //    但**登录态失效**是全局问题 ⇒ 不能被这个开关跳过
+      //    （否则用户卡在一个登不进去也退不出来的界面里）。
+      const error: any = new Error('登录状态已失效，请重新登录');
+      error.name = 'UnauthorizedError';
+
+      errorHandler(error, { skipErrorHandler: true });
+
+      expect(clearAuth).toHaveBeenCalled();
+      expect(mockHistoryReplace).toHaveBeenCalled();
+      // 不弹全局提示（登录页自己会说）
+      expect(message.error).not.toHaveBeenCalled();
+    });
+
     it('shows the backend message for a BizError', () => {
       const error: any = new Error('验证码不能为空');
       error.name = 'BizError';

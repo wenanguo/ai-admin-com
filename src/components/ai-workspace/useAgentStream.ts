@@ -142,14 +142,28 @@ interface ReplayWindow {
   snapshotReady: boolean;
   /** 窗口里攒下的帧（用来把命令卡片补回去）。 */
   buffer: StreamState;
+  /** 回放里已经**收完**了几轮（`message_end` 的个数）。 */
+  completedTurns: number;
+  /**
+   * 快照里有几条助手消息。
+   *
+   * ⇒ 回放收完的轮数够了，就说明**整段回放都到了** ⇒ 可以关窗口了。
+   */
+  expectedTurns?: number;
   /** 要用的快照。 */
   snapshot?: AiState;
   /** 静默计时器。 */
   timer?: ReturnType<typeof setTimeout>;
 }
 
-/** 回放窗口的静默期：这么久没有新帧 ⇒ 认为回放结束。 */
-const REPLAY_SETTLE_MS = 200;
+/**
+ * 回放窗口的静默期（**兜底**）：这么久没有新帧 ⇒ 强制关窗口。
+ *
+ * ⚠️ 正常情况下窗口靠「回放收完」（`completedTurns >= expectedTurns`）关，
+ *    这个静默期只在**回放与快照对不上**时兜底
+ *    （服务端重启后内存里的帧缓冲空了、或者旧帧被淘汰了）。
+ */
+const REPLAY_SETTLE_MS = 1000;
 
 /** 初始状态。 */
 const EMPTY_STATE: StreamState = { messages: [], streaming: false };
@@ -315,6 +329,13 @@ function snapshotToMessages(snapshot: AiState): ChatMessage[] {
   }));
 }
 
+/** 快照里的助手消息条数（回放收完的轮数够了 ⇒ 整段回放都到了）。 */
+function countAssistantMessages(snapshot: AiState): number {
+  return (snapshot.messages ?? []).filter(
+    (message) => message.role === 'ASSISTANT',
+  ).length;
+}
+
 /** 从消息列表里挑出「带命令卡片」的那些轮次。 */
 function collectCommandSources(messages: ChatMessage[]): CommandSource[] {
   return messages
@@ -429,6 +450,7 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
   const replayRef = useRef<ReplayWindow>({
     open: false,
     snapshotReady: false,
+    completedTurns: 0,
     buffer: EMPTY_STATE,
   });
 
@@ -543,6 +565,32 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
   }, [applySnapshot]);
 
   /**
+   * 回放**收完**了就把窗口关上（不等静默期）。
+   *
+   * ## 为什么能这样判
+   *
+   * 服务端是 `write(connected)` → `for (const frame of snapshot) write(...)`
+   * ⇒ **整段回放在服务端是同步写完的**，而客户端是在收到 `connected` 之后
+   * 才去拉快照 ⇒ **快照一定包含整段回放**。
+   *
+   * ⇒ 回放里收完的轮数（`message_end` 的个数）够了 ⇒ 整段回放都到了
+   *    ⇒ 再来的帧就是**新的**（不是回放的尾巴）⇒ 可以关窗口了。
+   */
+  const tryCloseReplayWindow = useCallback((): void => {
+    const window = replayRef.current;
+    if (!window.open || !window.snapshotReady) {
+      return;
+    }
+    if (window.expectedTurns === undefined) {
+      return;
+    }
+    if (window.completedTurns < window.expectedTurns) {
+      return;
+    }
+    closeReplayWindow();
+  }, [closeReplayWindow]);
+
+  /**
    * 重新开始静默计时：又来新帧 ⇒ 回放还没完 ⇒ 窗口继续开着。
    */
   const scheduleSettle = useCallback((): void => {
@@ -568,6 +616,8 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
     window.open = true;
     window.snapshotReady = false;
     window.snapshot = undefined;
+    window.completedTurns = 0;
+    window.expectedTurns = undefined;
     window.buffer = EMPTY_STATE;
 
     const id = conversationIdRef.current;
@@ -590,9 +640,14 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
       }
       current.snapshot = snapshot;
       current.snapshotReady = true;
+      if (snapshot) {
+        current.expectedTurns = countAssistantMessages(snapshot);
+      }
       scheduleSettle();
+      // 回放已经收完 ⇒ 不用等静默期
+      tryCloseReplayWindow();
     })();
-  }, [closeReplayWindow, scheduleSettle]);
+  }, [closeReplayWindow, scheduleSettle, tryCloseReplayWindow]);
 
   useEffect(() => {
     if (!conversationId) {
@@ -631,7 +686,12 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
           // 回放中的帧：**不上屏**（快照会覆盖它），
           // 但要攒着 —— 里面的**命令卡片**快照里没有。
           window.buffer = applyAiEvent(window.buffer, event);
+          if (event.type === 'message_end') {
+            window.completedTurns += 1;
+          }
           scheduleSettle();
+          // 回放收完了 ⇒ 不用再等静默期
+          tryCloseReplayWindow();
           return;
         }
         setState((previous) => applyAiEvent(previous, event));

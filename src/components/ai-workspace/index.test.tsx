@@ -15,6 +15,11 @@ const mocks = vi.hoisted(() => ({
   subscribeAiEvents: vi.fn(() => () => undefined),
   listAiAudit: vi.fn(async () => ({ total: 0, items: [] })),
   listAiPending: vi.fn(async () => []),
+  /** 事件流订阅的回调（测试自己往里喂「连上了」与「断了」）。 */
+  stream: {
+    onEvent: undefined as ((event: unknown) => void) | undefined,
+    onError: undefined as ((error: Error) => void) | undefined,
+  },
 }));
 
 vi.mock('@umijs/max', () => ({
@@ -37,7 +42,15 @@ vi.mock('@/services/api/ai/client', () => ({
 }));
 
 vi.mock('@/services/api/ai/sse', () => ({
-  subscribeAiEvents: mocks.subscribeAiEvents,
+  subscribeAiEvents: (
+    _conversationId: string,
+    onEvent: (event: unknown) => void,
+    onError?: (error: Error) => void,
+  ) => {
+    mocks.stream.onEvent = onEvent;
+    mocks.stream.onError = onError;
+    return () => undefined;
+  },
   readSseFrames: vi.fn(),
   toAiEvent: vi.fn(),
 }));
@@ -144,6 +157,76 @@ describe('AI 工作台侧栏', () => {
       expect(
         document.querySelector('[data-role="ai-connection-error"]'),
       ).toBeNull();
+    });
+  });
+
+  it('事件流断了以后头部显示「AI 服务不可用」', async () => {
+    mocks.createAiConversation.mockResolvedValue({
+      conversationId: 'c1',
+      title: '新对话',
+    });
+    mocks.getAiState.mockResolvedValue({
+      conversationId: 'c1',
+      messages: [],
+      isStreaming: false,
+    });
+
+    const { container } = await render(<AiWorkspace />);
+    await expect
+      .element(
+        container.querySelector<HTMLElement>(
+          '[data-role="ai-unavailable-tag"]',
+        ),
+      )
+      .toBeNull();
+
+    // 连上了 ⇒ 不该显示「不可用」
+    await vi.waitFor(() => {
+      expect(mocks.stream.onEvent).toBeTypeOf('function');
+    });
+    mocks.stream.onEvent?.({
+      type: 'connected',
+      conversationId: 'c1',
+      isStreaming: false,
+    });
+    // ⚠️ 等 React 把「连上了」这一帧刷出来（否则后面的「断了」会被一起批处理掉）
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+
+    // 断了（token 过期 / 服务挂了）⇒ 必须看得见
+    await vi.waitFor(() => {
+      expect(mocks.stream.onError).toBeTypeOf('function');
+    });
+    mocks.stream.onError?.(new Error('AI 事件流请求失败（HTTP 401）'));
+
+    await vi.waitFor(() => {
+      expect(
+        container.querySelector('[data-role="ai-unavailable-tag"]'),
+      ).not.toBeNull();
+    });
+    expect(container.textContent).toContain('AI 服务不可用');
+  });
+
+  it('页签切换会写进 localStorage,刷新后还在', async () => {
+    mocks.createAiConversation.mockResolvedValue({
+      conversationId: 'c1',
+      title: '新对话',
+    });
+    mocks.getAiState.mockResolvedValue({
+      conversationId: 'c1',
+      messages: [],
+      isStreaming: false,
+    });
+
+    const { getByRole } = await render(<AiWorkspace />);
+    await getByRole('tab', { name: '审计' }).click();
+
+    // ⚠️ 页签要持久化（规格 §3.1 / U2）：刷新后还停在刚才那个页签
+    await vi.waitFor(() => {
+      const raw = localStorage.getItem('aipm.workspace');
+      expect(raw).not.toBeNull();
+      expect((JSON.parse(raw as string) as { tab?: string }).tab).toBe('audit');
     });
   });
 });

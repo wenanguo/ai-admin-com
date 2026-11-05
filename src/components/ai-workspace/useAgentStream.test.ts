@@ -217,12 +217,16 @@ describe('AI 流式状态机', () => {
     await vi.waitFor(() => {
       expect(loadState).toHaveBeenCalledWith('c1');
     });
-    await vi.waitFor(() => {
-      expect(result.current.messages.map((item) => item.text)).toEqual([
-        '建个任务',
-        '好的',
-      ]);
-    });
+    // ⚠️ 超时给足：快照到了之后还要等「回放静默期」（兜底）才重建界面
+    await vi.waitFor(
+      () => {
+        expect(result.current.messages.map((item) => item.text)).toEqual([
+          '建个任务',
+          '好的',
+        ]);
+      },
+      { timeout: 3000 },
+    );
     expect(result.current.streaming).toBe(false);
   });
 
@@ -259,9 +263,12 @@ describe('AI 流式状态机', () => {
     await vi.waitFor(() => {
       expect(loadState).toHaveBeenCalled();
     });
-    await vi.waitFor(() => {
-      expect(result.current.messages).toHaveLength(1);
-    });
+    await vi.waitFor(
+      () => {
+        expect(result.current.messages).toHaveLength(1);
+      },
+      { timeout: 3000 },
+    );
     expect(result.current.messages[0].text).toBe('本周所有 P0 顺延到下周一');
   });
 
@@ -355,12 +362,15 @@ describe('AI 流式状态机', () => {
       });
     });
 
-    await vi.waitFor(() => {
-      expect(result.current.messages.map((item) => item.text)).toEqual([
-        '建个任务',
-        '好的',
-      ]);
-    });
+    await vi.waitFor(
+      () => {
+        expect(result.current.messages.map((item) => item.text)).toEqual([
+          '建个任务',
+          '好的',
+        ]);
+      },
+      { timeout: 3000 },
+    );
 
     // ⚠️ 卡片不能消失：用户会以为命令根本没执行
     const commands = result.current.messages.flatMap((item) => item.commands);
