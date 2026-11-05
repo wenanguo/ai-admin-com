@@ -2,6 +2,7 @@ import { message } from 'antd';
 import axios from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearAuth } from '@/auth/token';
+import { AI_API_BASE_URL } from '@/services/api/ai/client';
 import type { AppMessage } from '@/utils/appMessage';
 import { setAppMessage } from '@/utils/appMessage';
 import { errorConfig } from './requestErrorConfig';
@@ -448,6 +449,21 @@ describe('requestErrorConfig', () => {
       await onFulfilled({
         data: envelope,
         config: { method: 'GET', url: '/system/user/list' },
+      });
+
+      expect(message.success).not.toHaveBeenCalled();
+    });
+
+    it('does not show a success message for AI service requests', async () => {
+      // AI 服务的每一条命令都会带一个 msg ⇒ 不豁免的话每发一句话就弹一次提示
+      const onFulfilled = getResponseInterceptors()[0];
+
+      await onFulfilled({
+        data: envelope,
+        config: {
+          method: 'POST',
+          url: `${AI_API_BASE_URL}/api/agent/c1/command`,
+        },
       });
 
       expect(message.success).not.toHaveBeenCalled();

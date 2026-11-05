@@ -6,7 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AI_API_BASE_URL } from './client';
-import { subscribeAiEvents } from './sse';
+import { subscribeAiEvents, toAiEvent } from './sse';
 import type { AiEvent } from './types';
 
 vi.mock('@umijs/max', () => ({
@@ -130,6 +130,34 @@ describe('AI 事件流订阅', () => {
     await vi.waitFor(() => expect(events).toHaveLength(1));
     expect(events[0]).toEqual({ type: 'text_delta', delta: 'x' });
     cancel();
+  });
+
+  it('message_end 保留失败原因(error)', () => {
+    // 服务端 `src/agent/events.ts` 的 MessageEndPayload 带 error ——
+    // 前端要靠它分辨「这一轮失败了」和「这一轮正常结束」
+    const event = toAiEvent({
+      event: 'message_end',
+      data: JSON.stringify({
+        conversationId: 'c1',
+        text: '',
+        error: '模型调用失败',
+      }),
+    });
+
+    expect(event).toEqual({
+      type: 'message_end',
+      text: '',
+      error: '模型调用失败',
+    });
+  });
+
+  it('message_end 正常结束时没有 error', () => {
+    const event = toAiEvent({
+      event: 'message_end',
+      data: JSON.stringify({ conversationId: 'c1', text: '好的' }),
+    });
+
+    expect(event).toEqual({ type: 'message_end', text: '好的' });
   });
 
   it('断线后重连', async () => {

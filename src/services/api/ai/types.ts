@@ -66,7 +66,14 @@ export type AiEvent =
   | { type: 'connected'; conversationId: string; isStreaming: boolean }
   | { type: 'message_start'; role: string }
   | { type: 'text_delta'; delta: string }
-  | { type: 'message_end'; text?: string }
+  /**
+   * 一条助手消息结束。
+   *
+   * ⚠️ `error` **失败时才有**（服务端 `src/agent/events.ts` 的 MessageEndPayload）：
+   * 前端要靠它分辨「这一轮失败了」与「这一轮正常结束」——
+   * 丢掉了这个字段,界面就没办法把失败的那一轮标出来。
+   */
+  | { type: 'message_end'; text?: string; error?: string }
   | { type: 'tool_call'; toolName: string; args: unknown }
   | {
       type: 'tool_result';

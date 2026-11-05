@@ -204,7 +204,13 @@ export function toAiEvent(frame: SseFrame): AiEvent | undefined {
     case 'text_delta':
       return { type: 'text_delta', delta: readString(payload, 'delta') };
     case 'message_end':
-      return { type: 'message_end', text: readOptionalString(payload, 'text') };
+      // ⚠️ `error` 失败时才有（服务端 `src/agent/events.ts` 的 MessageEndPayload）——
+      // 丢掉它，界面就没办法把失败的那一轮标出来
+      return {
+        type: 'message_end',
+        text: readOptionalString(payload, 'text'),
+        error: readOptionalString(payload, 'error'),
+      };
     case 'tool_call':
       return {
         type: 'tool_call',

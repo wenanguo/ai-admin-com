@@ -10,6 +10,7 @@ import type { RequestConfig } from '@umijs/max';
 import { getIntl, getRequestInstance, history } from '@umijs/max';
 import { createUnauthorizedError, refreshSession } from '@/auth/session';
 import { clearAuth, getAccessToken } from '@/auth/token';
+import { AI_API_BASE_URL } from '@/services/api/ai/client';
 import { AUTH_FREE_API_PATHS } from '@/services/http';
 import {
   createBizError,
@@ -151,7 +152,8 @@ export const errorConfig: RequestConfig = {
           throw createBizError(body);
         }
 
-        // 成功提示:非 GET 且不是登录/登出/刷新这类机制性接口
+        // 成功提示:非 GET 且不是登录/登出/刷新这类机制性接口,
+        // 也不包括 AI 服务(它的每次命令都带 msg,弹一次提示就成噪音了)
         const method = String(response?.config?.method ?? 'GET').toUpperCase();
         const url = String(response?.config?.url ?? '');
         if (
@@ -160,7 +162,8 @@ export const errorConfig: RequestConfig = {
           method !== 'GET' &&
           !url.includes('login') &&
           !url.includes('logout') &&
-          !url.includes('token/refresh')
+          !url.includes('token/refresh') &&
+          !url.includes(AI_API_BASE_URL)
         ) {
           getMessage().success(body.msg);
         }
