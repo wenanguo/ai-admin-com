@@ -57,7 +57,7 @@ npm run dev               # http://localhost:3100
 
 ## 接口（前端按这份契约接）
 
-对话那四件套在 `/api/agent` 下，审计流水在 `/api/audit`；
+对话那四件套在 `/api/agent` 下，审计流水在 `/api/audit`，待确认列表在 `/api/pending`；
 响应一律是 `{code, msg, data}`（`code === 0` 为成功）。
 
 | 接口 | 说明 |
@@ -68,6 +68,7 @@ npm run dev               # http://localhost:3100
 | `GET /api/agent/:cid/events` | **SSE** 事件流（`text/event-stream`） |
 | `GET /api/agent/:cid/state` | 会话快照 → `{conversationId, messages[], isStreaming, model}` |
 | `GET /api/audit` | 审计流水 → `{total, items[]}`（**只看自己的行**） |
+| `GET /api/pending` | 待确认列表 → `[{id, conversationId, command, args, preview, status, expiresAt, createdAt}]`（**只看自己的行**） |
 
 ### 审计（只读）
 
@@ -80,6 +81,26 @@ npm run dev               # http://localhost:3100
 - `items[]` 的每一项：`{id, command, actorType, actorName, args, before, after,
   undoOf, undoneAt, adopted, model, tokens, latencyMs, traceId, error, createdAt}`；
 - ⚠️ `args` **已脱敏**（凭据类键名的值换成「[已脱敏]」，与写审计同一份实现）。
+
+### 待确认（只读）
+
+`GET /api/pending?status=&limit=` → `data` 是**数组**（没有 `total`）。
+
+- **只看自己的行**（按 `userId` 过滤）—— 别人的待确认行一条都不返回；
+- `status` **缺省 `PENDING`**（只看待确认的；认得 `PENDING`/`CONFIRMED`/`REJECTED`/`EXPIRED`/`EXECUTED`，
+  别的值当没传 ⇒ 仍按 `PENDING` 查，不报错）；
+- `limit` 缺省 50、**上限 200**；新的排在前面；
+- **不认识的 query 参数静默忽略**（前端会多传 `from` / `to`，本轮不做时间区间）；
+- `data[]` 的每一项：
+  `{id, conversationId, command, args, preview, status, expiresAt, createdAt}`
+  —— `id` 是**字符串**（前端当不透明 key 用）、`conversationId` 没有就是 `null`、
+  `expiresAt`/`createdAt` 是 ISO 字符串；
+- `preview` 是 JSON 列，**原样透出**（`{title, hits[], warning}` 这类给人看的摘要）；
+- ⚠️ `args` **已脱敏**（与审计读侧共用同一份实现）；
+- ℹ️ **现在这个列表是空的**：当前切片里唯一的命令 `create_task` 是**非破坏性**的
+  （新建的东西可以补偿撤销）⇒ 不需要先问人 ⇒ 没有命令会写 `ai_pending_action`。
+  端点是真的读表的（不是写死的空数组）⇒ 前端的空态是真的，
+  完整版的确认流程（挂起/恢复）落地后这里立刻就有数据。
 
 ### 鉴权
 
@@ -240,9 +261,10 @@ src/agent/                        agent 运行时（runtime 会话与命令 / se
 src/audit.ts                      审计的**写侧**（每次 AI 写入留一条 ai_audit_log）
 src/audit-redact.ts               审计参数脱敏（**写侧与读侧共用同一份**）
 src/audit-query.ts                审计的**读侧**（只看自己的行 + 筛选 + 脱敏 + 分页）
+src/pending-query.ts              待确认的**读侧**（只看自己的行 + status 缺省 PENDING + preview 原样透出）
 src/tools/                        命令目录（create_task 一个命令 + 闸门形状）
 src/http/                         HTTP 通用件（cors / respond 信封 / auth 取 token / sse 帧格式 / errors 错误映射）
-src/app/                          Route Handler（/api/agent/** 与 /api/audit；尖峰路由已删）
+src/app/                          Route Handler（/api/agent/** 、/api/audit 与 /api/pending；尖峰路由已删）
 spike/                            Task 1 的风险尖峰（一次性，结论在 spike/FINDINGS.md）
 ```
 
