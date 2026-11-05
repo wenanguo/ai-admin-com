@@ -1,0 +1,129 @@
+/**
+ * 对话页签的测试 —— 界面层。
+ *
+ * 钉死五件事：
+ * 1. 用户气泡右对齐、助手气泡左对齐且带头像
+ * 2. 命令卡片的状态标签由事件驱动（执行中 / 已执行 / 失败）
+ * 3. 这一轮失败时（`message_end.error`）气泡里有一条错误提示
+ * 4. 空对话时的 5 条快捷 chips **只填输入框**，不直接发送
+ * 5. 流式中输入禁用，并提示「本轮进行中…」
+ */
+
+import { describe, expect, it, vi } from 'vitest';
+import { userEvent } from 'vitest/browser';
+import { render } from 'vitest-browser-react';
+import { ChatPanel } from './ChatPanel';
+import type { ChatMessage } from './useAgentStream';
+
+/** 造一条助手消息。 */
+function assistant(overrides: Partial<ChatMessage> = {}): ChatMessage {
+  return {
+    id: 'm2',
+    role: 'assistant',
+    text: '',
+    commands: [],
+    ...overrides,
+  };
+}
+
+describe('AI 对话页签', () => {
+  it('用户气泡右对齐、助手气泡左对齐且带头像', async () => {
+    const messages: ChatMessage[] = [
+      { id: 'm1', role: 'user', text: '建个任务', commands: [] },
+      assistant({ id: 'm2', text: '好的' }),
+    ];
+
+    const { container } = await render(
+      <ChatPanel messages={messages} onSend={() => undefined} />,
+    );
+
+    const user = container.querySelector<HTMLElement>('[data-role="user"]');
+    const bot = container.querySelector<HTMLElement>('[data-role="assistant"]');
+    expect(user).not.toBeNull();
+    expect(bot).not.toBeNull();
+    // 右对齐 / 左对齐
+    expect(user?.style.marginLeft).toBe('auto');
+    expect(bot?.style.marginRight).toBe('auto');
+    // 助手带头像
+    expect(bot?.querySelector('.ant-avatar')).not.toBeNull();
+  });
+
+  it('命令卡片的状态标签跟着事件走', async () => {
+    const messages: ChatMessage[] = [
+      assistant({
+        commands: [
+          { id: 'c1', toolName: 'create_task', status: 'running' },
+          { id: 'c2', toolName: 'update_task', status: 'ok' },
+          { id: 'c3', toolName: 'delete_task', status: 'error' },
+        ],
+      }),
+    ];
+
+    const { getByText } = await render(
+      <ChatPanel messages={messages} onSend={() => undefined} />,
+    );
+
+    await expect.element(getByText('执行中')).toBeVisible();
+    await expect.element(getByText('已执行')).toBeVisible();
+    await expect.element(getByText('失败')).toBeVisible();
+    // 命令名用等宽字体（规格 §2.3）
+    await expect.element(getByText('create_task')).toBeVisible();
+  });
+
+  it('这一轮失败时气泡里有一条错误提示', async () => {
+    const messages: ChatMessage[] = [
+      assistant({ text: '我先看看', error: '模型调用失败' }),
+    ];
+
+    const { getByText } = await render(
+      <ChatPanel messages={messages} onSend={() => undefined} />,
+    );
+
+    await expect.element(getByText('模型调用失败')).toBeVisible();
+  });
+
+  it('空对话时的快捷 chips 只填输入框,不直接发送', async () => {
+    const onSend = vi.fn();
+
+    const { getByRole, getByText } = await render(
+      <ChatPanel messages={[]} onSend={onSend} />,
+    );
+
+    const chip = getByText('@AI 建一个 SSO 登录任务');
+    await expect.element(chip).toBeVisible();
+    await chip.click();
+
+    await vi.waitFor(() => {
+      const input = getByRole('textbox').element() as HTMLInputElement;
+      expect(input.value).toBe('@AI 建一个 SSO 登录任务');
+    });
+    // 只填不发
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('流式中输入禁用并提示本轮进行中', async () => {
+    const { getByRole, getByText } = await render(
+      <ChatPanel messages={[]} streaming onSend={() => undefined} />,
+    );
+
+    await expect.element(getByText('本轮进行中…')).toBeVisible();
+    const input = getByRole('textbox').element() as HTMLInputElement;
+    expect(input.disabled).toBe(true);
+  });
+
+  it('回车发送', async () => {
+    const onSend = vi.fn();
+
+    const { getByRole } = await render(
+      <ChatPanel messages={[]} onSend={onSend} />,
+    );
+
+    const input = getByRole('textbox').element() as HTMLInputElement;
+    await userEvent.fill(input, '建个任务');
+    await userEvent.keyboard('{Enter}');
+
+    await vi.waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith('建个任务');
+    });
+  });
+});
