@@ -9,12 +9,14 @@
  * ⚠️ 侧栏**不是 Drawer**（规格 §3.1 明确否决了抽屉）——
  * 挂进布局是下一刀的事（`Layout.Sider`，宽 400，可折叠到 40）。
  */
+import { Link } from '@umijs/max';
 import { Button, Tabs, theme } from 'antd';
 import type React from 'react';
 import { useState } from 'react';
 import { AuditPanel } from './AuditPanel';
 import { ChatPanel } from './ChatPanel';
 import { PendingPanel } from './PendingPanel';
+import { AI_WORKSPACE_PAGE_PATH } from './paths';
 import { useAiLists } from './useAiLists';
 import { useWorkspace } from './useWorkspace';
 
@@ -57,11 +59,37 @@ export function AiWorkspace({
       <div
         style={{
           padding: `${token.paddingSM}px ${token.padding}px`,
+          // ⚠️ 右边留出 40px：折叠按钮（`AiWorkspaceLayout` 里那个绝对定位的按钮）
+          // 就在这一块的右上角 ⇒ 不留白的话链接会被它压住。
+          paddingRight: 40,
           background: token.colorPrimary,
           color: token.colorTextLightSolid,
         }}
       >
-        <div style={{ fontWeight: 600 }}>AI 工作台</div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: token.sizeXS,
+          }}
+        >
+          <span style={{ fontWeight: 600 }}>AI 工作台</span>
+          {/*
+            进全宽页的入口（规格 §4）：侧栏只有 400px，
+            「规则与 AI 的分工」的双栏与意图卡片墙在那边放不下。
+          */}
+          <Link
+            to={AI_WORKSPACE_PAGE_PATH}
+            data-role="ai-workspace-full-page-link"
+            style={{
+              color: token.colorTextLightSolid,
+              fontSize: token.fontSizeSM,
+            }}
+          >
+            全宽页
+          </Link>
+        </div>
         <div style={{ fontSize: token.fontSizeSM, opacity: 0.85 }}>
           对话 · 待确认 · 审计 ｜ 命令层受控写入
         </div>

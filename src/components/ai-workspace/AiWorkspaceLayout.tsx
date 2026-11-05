@@ -26,6 +26,7 @@
  * 折叠、快捷键、持久化这些逻辑都在这里 —— 于是它们可以被单测钉住。
  */
 import { RightOutlined, RobotOutlined } from '@ant-design/icons';
+import { useLocation } from '@umijs/max';
 import { Button, Layout, theme } from 'antd';
 import type React from 'react';
 import {
@@ -36,6 +37,7 @@ import {
   useState,
 } from 'react';
 import { AiWorkspace } from './index';
+import { AI_WORKSPACE_PAGE_PATH } from './paths';
 import { readWorkspaceStorage, writeWorkspaceStorage } from './storage';
 
 const { Sider } = Layout;
@@ -139,6 +141,24 @@ export function AiWorkspaceLayout({
   children,
 }: AiWorkspaceLayoutProps): React.ReactElement {
   const { token } = theme.useToken();
+  const location = useLocation();
+  /**
+   * 全宽页上**不挂侧栏**。
+   *
+   * ## 为什么
+   *
+   * 1. **宽度**：这一页要放「规则与 AI 的分工」的双栏、意图卡片墙与宽版对话，
+   *    400px 的侧栏会把它们挤扁（规格 §4 的落点就是「侧栏装不下」）。
+   * 2. **会话不打架**：侧栏是常驻在**整个布局**上的（`src/app.tsx` 的
+   *    `childrenRender`）⇒ 侧栏与页面各挂一个 `useWorkspace` 时，
+   *    两个实例会**各建一个会话**（两边界面各说各话，还会在
+   *    `localStorage` 里互相覆盖）。
+   *    侧栏让开 ⇒ 这一页上只有一个会话实例。
+   *
+   * ⚠️ 会话**仍然是同一个**：页面用的也是 `aipm.workspace` 这个存储键 ⇒
+   * 在别的页面用侧栏聊的会话，切到这一页还在（反之亦然）。
+   */
+  const isFullWidthPage = location.pathname === AI_WORKSPACE_PAGE_PATH;
   const [collapsed, setCollapsed] = useState<boolean>(
     () => readWorkspaceStorage().collapsed === true,
   );
@@ -246,51 +266,53 @@ export function AiWorkspaceLayout({
       >
         {children}
       </div>
-      <Sider
-        data-testid="ai-workspace-sider"
-        width={AI_WORKSPACE_WIDTH}
-        collapsedWidth={AI_WORKSPACE_COLLAPSED_WIDTH}
-        collapsible
-        collapsed={collapsed}
-        onCollapse={handleCollapse}
-        trigger={null}
-        theme="light"
-        // 窄屏（< 1200px）自动收成竖条：侧栏不能把主内容挤没了。
-        // ⚠️ 自动收起**不写进 localStorage** —— 那是响应式行为，不是用户的选择。
-        breakpoint={AI_WORKSPACE_BREAKPOINT}
-        style={{
-          // 常驻的一列：跟着页面滚，但自己钉在固定头部下面，
-          // 高度取「视口高 - 顶边距离」⇒ 输入区永远落在视口内。
-          position: 'sticky',
-          top: stickyTop,
-          height: `calc(100vh - ${stickyTop}px)`,
-          borderInlineStart: `1px solid ${token.colorBorderSecondary}`,
-          background: token.colorBgContainer,
-        }}
-      >
-        {collapsed ? (
-          <CollapsedStrip onExpand={toggle} />
-        ) : (
-          <>
-            <AiWorkspace />
-            <Button
-              type="text"
-              size="small"
-              aria-label="收起 AI 工作台"
-              title="收起 AI 工作台（⌘B）"
-              icon={<RightOutlined />}
-              onClick={toggle}
-              style={{
-                position: 'absolute',
-                top: 10,
-                right: 8,
-                zIndex: 2,
-                color: token.colorTextLightSolid,
-              }}
-            />
-          </>
-        )}
-      </Sider>
+      {isFullWidthPage ? null : (
+        <Sider
+          data-testid="ai-workspace-sider"
+          width={AI_WORKSPACE_WIDTH}
+          collapsedWidth={AI_WORKSPACE_COLLAPSED_WIDTH}
+          collapsible
+          collapsed={collapsed}
+          onCollapse={handleCollapse}
+          trigger={null}
+          theme="light"
+          // 窄屏（< 1200px）自动收成竖条：侧栏不能把主内容挤没了。
+          // ⚠️ 自动收起**不写进 localStorage** —— 那是响应式行为，不是用户的选择。
+          breakpoint={AI_WORKSPACE_BREAKPOINT}
+          style={{
+            // 常驻的一列：跟着页面滚，但自己钉在固定头部下面，
+            // 高度取「视口高 - 顶边距离」⇒ 输入区永远落在视口内。
+            position: 'sticky',
+            top: stickyTop,
+            height: `calc(100vh - ${stickyTop}px)`,
+            borderInlineStart: `1px solid ${token.colorBorderSecondary}`,
+            background: token.colorBgContainer,
+          }}
+        >
+          {collapsed ? (
+            <CollapsedStrip onExpand={toggle} />
+          ) : (
+            <>
+              <AiWorkspace />
+              <Button
+                type="text"
+                size="small"
+                aria-label="收起 AI 工作台"
+                title="收起 AI 工作台（⌘B）"
+                icon={<RightOutlined />}
+                onClick={toggle}
+                style={{
+                  position: 'absolute',
+                  top: 10,
+                  right: 8,
+                  zIndex: 2,
+                  color: token.colorTextLightSolid,
+                }}
+              />
+            </>
+          )}
+        </Sider>
+      )}
     </div>
   );
 }

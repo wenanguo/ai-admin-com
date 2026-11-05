@@ -53,6 +53,13 @@ export interface ChatMessage {
   commands: ChatCommand[];
   /** 这一轮失败的原因（`message_end.error`）—— 正常结束没有这个字段。 */
   error?: string;
+  /**
+   * 当前模型（来自会话快照）。
+   *
+   * ⚠️ 服务端**没有**模型列表端点 ⇒ 这里只有「当前这一个」，
+   * 页面也只敢显示它（不能列一排模型让人选）。
+   */
+  model?: string;
 }
 
 /** 订阅事件流的形状（与 `subscribeAiEvents` 一致，测试注入假实现用）。 */
@@ -80,6 +87,8 @@ export interface AgentStream {
   streaming: boolean;
   /** 事件流是不是连着的。 */
   connected: boolean;
+  /** 当前模型（快照里的 `model`；服务端**没有**模型列表端点 ⇒ 只有这一个）。 */
+  model?: string;
   /** 追加一条用户气泡（发送时乐观上屏）。 */
   appendUserMessage: (text: string) => void;
   /** 用一份**已经拿到的**快照重建界面（刷新页面恢复历史）。 */
@@ -98,6 +107,8 @@ interface StreamState {
   activeId?: string;
   /** 本轮是否在进行中。 */
   streaming: boolean;
+  /** 当前模型（快照里的 `model`；快照没有就是 undefined）。 */
+  model?: string;
 }
 
 /** 初始状态。 */
@@ -313,6 +324,8 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
       messages: [...rebuilt, ...missing.map((text) => createUserMessage(text))],
       activeId: undefined,
       streaming: snapshot.isStreaming === true,
+      // 当前模型：服务端只有这一个（没有模型列表端点）
+      model: snapshot.model,
     });
   }, []);
 
@@ -351,7 +364,9 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
     setState((previous) =>
       previous.conversationId === conversationId
         ? previous
-        : { ...EMPTY_STATE, conversationId },
+        : // ⚠️ `model` 留着：它是**服务级**的配置（不是某个会话的属性），
+          // 换会话时它不该闪一下「未知」。
+          { ...EMPTY_STATE, conversationId, model: previous.model },
     );
     pendingUserMessagesRef.current = [];
 
@@ -402,6 +417,7 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
     messages: state.messages,
     streaming: state.streaming,
     connected,
+    model: state.model,
     appendUserMessage,
     restore,
     resync,

@@ -34,6 +34,13 @@ export interface UseWorkspaceOptions {
 export interface Workspace {
   /** 当前会话 id（还没有时是 undefined）。 */
   conversationId?: string;
+  /**
+   * 当前模型（会话快照里的 `model`）。
+   *
+   * ⚠️ 服务端**没有**模型列表端点，也没有配额端点 ⇒ 页面只能显示这一个，
+   * 更不能画一条没有数据源的配额进度条。
+   */
+  model?: string;
   /** 气泡列表。 */
   messages: ChatMessage[];
   /** 本轮是否在进行中。 */
@@ -63,6 +70,20 @@ export interface Workspace {
    * 事件流（`useAgentStream`）会跟着重新订阅。
    */
   reconnect: () => void;
+  /**
+   * 新建一个会话并切过去（「新对话」）。
+   *
+   * ⚠️ 新的会话 id 会写进 `localStorage` ⇒ 侧栏下次挂载时用的也是它，
+   * 两边不会各说各话。
+   */
+  newConversation: () => Promise<void>;
+  /**
+   * 切到另一个已有的会话（「历史对话」）。
+   *
+   * 先读一次快照 —— 服务端不认这个会话时（被清掉了）就别切，
+   * 否则界面会挂在一个死会话上。
+   */
+  switchConversation: (conversationId: string) => Promise<void>;
 }
 
 /** 未知错误转成一句话。 */
@@ -106,7 +127,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
   /** 会话就绪的信号：会话建好（或建不出来）之后 resolve。 */
   const readyRef = useRef<Promise<void> | undefined>(undefined);
 
-  const { messages, streaming, connected, appendUserMessage, restore } =
+  const { messages, streaming, connected, model, appendUserMessage, restore } =
     useAgentStream({
       conversationId,
     });
@@ -229,8 +250,46 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     setAttempt((previous) => previous + 1);
   }, []);
 
+  /** 新建一个会话并切过去。 */
+  const newConversation = useCallback(async (): Promise<void> => {
+    setSendError(undefined);
+    try {
+      const created = await createAiConversation();
+      conversationIdRef.current = created.conversationId;
+      setConversationId(created.conversationId);
+      writeWorkspaceStorage(
+        { conversationId: created.conversationId },
+        storageKey,
+      );
+      // 上一条命令的重试 id 对新会话没有意义了
+      lastCommandRef.current = undefined;
+    } catch (error) {
+      setSendError(toMessage(error));
+    }
+  }, [storageKey]);
+
+  /** 切到另一个已有的会话。 */
+  const switchConversation = useCallback(
+    async (id: string): Promise<void> => {
+      setSendError(undefined);
+      try {
+        // 先读快照：服务端不认这个会话时就别切
+        const snapshot = await getAiState(id);
+        conversationIdRef.current = id;
+        setConversationId(id);
+        writeWorkspaceStorage({ conversationId: id }, storageKey);
+        lastCommandRef.current = undefined;
+        restore(snapshot, id);
+      } catch (error) {
+        setSendError(toMessage(error));
+      }
+    },
+    [restore, storageKey],
+  );
+
   return {
     conversationId,
+    model,
     messages,
     streaming,
     connected,
@@ -240,5 +299,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     send,
     retry,
     reconnect,
+    newConversation,
+    switchConversation,
   };
 }

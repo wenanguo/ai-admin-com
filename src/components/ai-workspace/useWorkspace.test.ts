@@ -197,4 +197,69 @@ describe('AI 工作台的会话', () => {
     // 重试**没有**重新生成 id（生成出来的会是 cmd-2）
     expect(mocks.createAiCommandId).toHaveBeenCalledTimes(1);
   });
+
+  it('当前模型来自会话快照', async () => {
+    // ⚠️ 快照里才有 `model`（服务端**没有**模型列表端点 ⇒ 只有这一个）
+    localStorage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({ conversationId: 'c-old' }),
+    );
+    mocks.getAiState.mockResolvedValue({
+      conversationId: 'c-old',
+      messages: [],
+      isStreaming: false,
+      model: 'e2e-model',
+    });
+
+    const { result } = await renderHook(() => useWorkspace());
+
+    await vi.waitFor(() => {
+      expect(result.current.model).toBe('e2e-model');
+    });
+  });
+
+  it('「新对话」建一个新会话并切过去', async () => {
+    mocks.createAiConversation
+      .mockResolvedValueOnce({ conversationId: 'c-new', title: '新对话' })
+      .mockResolvedValueOnce({ conversationId: 'c-second', title: '新对话' });
+
+    const { result } = await renderHook(() => useWorkspace());
+
+    await vi.waitFor(() => {
+      expect(result.current.conversationId).toBe('c-new');
+    });
+
+    await result.current.newConversation();
+
+    await vi.waitFor(() => {
+      expect(result.current.conversationId).toBe('c-second');
+    });
+    // 会话 id 写进存储 ⇒ 侧栏（别的页面）下次挂载用的也是它
+    expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).toContain('c-second');
+  });
+
+  it('「历史对话」切到另一个会话并把它的历史带回来', async () => {
+    mocks.getAiState.mockResolvedValue({
+      conversationId: 'c-old',
+      messages: [{ id: 'm1', role: 'USER', content: '建个任务', seq: 1 }],
+      isStreaming: false,
+    });
+
+    const { result } = await renderHook(() => useWorkspace());
+
+    await vi.waitFor(() => {
+      expect(result.current.conversationId).toBe('c-new');
+    });
+
+    await result.current.switchConversation('c-old');
+
+    await vi.waitFor(() => {
+      expect(result.current.conversationId).toBe('c-old');
+    });
+    // 历史也跟着切过来了
+    await vi.waitFor(() => {
+      expect(result.current.messages).toHaveLength(1);
+    });
+    expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).toContain('c-old');
+  });
 });

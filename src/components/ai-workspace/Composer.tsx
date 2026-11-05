@@ -28,6 +28,8 @@ export interface ComposerProps {
   busy?: boolean;
   /** 空对话时显示快捷 chips。 */
   showChips?: boolean;
+  /** 输入框的占位文案（缺省「说点什么…」）。 */
+  placeholder?: string;
 }
 
 /**
@@ -39,6 +41,7 @@ export function Composer({
   onSend,
   busy,
   showChips,
+  placeholder = '说点什么…',
 }: ComposerProps): React.ReactElement {
   const { token } = theme.useToken();
 
@@ -79,7 +82,7 @@ export function Composer({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onPressEnter={onSend}
-          placeholder="说点什么…"
+          placeholder={placeholder}
           disabled={busy}
         />
         <Button

@@ -238,6 +238,21 @@ export default [
     ],
   },
   {
+    /*
+      AI 工作台**全宽页**（规格 §4）。
+
+      侧栏只有 400px —— 「规则与 AI 的分工」的双栏、10 类意图卡片墙
+      与宽一点的对话在那边放不下 ⇒ 单独开一页。
+
+      ⚠️ 菜单是**后端下发**的（`src/app.tsx` 的 `menuDataRender`），
+      这一页**不出现在侧边栏**里；入口在 AI 工作台侧栏的头部（「全宽页」链接）。
+    */
+    path: '/ai/workspace',
+    name: 'aiWorkspace',
+    icon: 'robot',
+    component: './ai/workspace',
+  },
+  {
     path: '/admin',
     name: 'admin',
     icon: 'crown',

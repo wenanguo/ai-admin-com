@@ -2,6 +2,7 @@
  * AI 工作台侧栏容器的测试 —— 只验**容器**（页签与头部），
  * 对话页签的行为在 `ChatPanel.test.tsx` 里。
  */
+import type React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { AiWorkspace } from './index';
@@ -14,6 +15,13 @@ const mocks = vi.hoisted(() => ({
   subscribeAiEvents: vi.fn(() => () => undefined),
   listAiAudit: vi.fn(async () => ({ total: 0, items: [] })),
   listAiPending: vi.fn(async () => []),
+}));
+
+vi.mock('@umijs/max', () => ({
+  // 侧栏头部有进全宽页的入口（一个 `Link`）。
+  Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
+    <a href={to}>{children}</a>
+  ),
 }));
 
 vi.mock('@/services/api/ai/client', () => ({

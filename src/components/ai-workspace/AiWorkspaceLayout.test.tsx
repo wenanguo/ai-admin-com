@@ -6,6 +6,7 @@
  * 2. `⌘B` / `Ctrl+B` 能折叠与展开；
  * 3. 折叠状态存在 `localStorage`（`aipm.workspace` 的 `collapsed` 字段）。
  */
+import type React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { AiWorkspaceLayout } from './AiWorkspaceLayout';
@@ -17,6 +18,15 @@ const mocks = vi.hoisted(() => ({
   subscribeAiEvents: vi.fn(() => () => undefined),
   listAiAudit: vi.fn(async () => ({ total: 0, items: [] })),
   listAiPending: vi.fn(async () => []),
+}));
+
+vi.mock('@umijs/max', () => ({
+  // 布局外壳要知道当前路由（全宽页上不挂侧栏）⇒ 这里给一个固定的路径。
+  useLocation: () => ({ pathname: '/' }),
+  // 侧栏头部有进全宽页的入口（一个 `Link`）。
+  Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
+    <a href={to}>{children}</a>
+  ),
 }));
 
 vi.mock('@/services/api/ai/client', () => ({
