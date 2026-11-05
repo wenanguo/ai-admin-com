@@ -57,7 +57,8 @@ npm run dev               # http://localhost:3100
 
 ## 接口（前端按这份契约接）
 
-所有接口都在 `/api/agent` 下，响应一律是 `{code, msg, data}`（`code === 0` 为成功）。
+对话那四件套在 `/api/agent` 下，审计流水在 `/api/audit`；
+响应一律是 `{code, msg, data}`（`code === 0` 为成功）。
 
 | 接口 | 说明 |
 | --- | --- |
@@ -66,6 +67,19 @@ npm run dev               # http://localhost:3100
 | `POST /api/agent/:cid/command` | 提交命令（`{id, type:'prompt', message}`）→ `{id, type:'response', success:true}` |
 | `GET /api/agent/:cid/events` | **SSE** 事件流（`text/event-stream`） |
 | `GET /api/agent/:cid/state` | 会话快照 → `{conversationId, messages[], isStreaming, model}` |
+| `GET /api/audit` | 审计流水 → `{total, items[]}`（**只看自己的行**） |
+
+### 审计（只读）
+
+`GET /api/audit?actor=&command=&limit=&offset=&undone=` → `{total, items[]}`。
+
+- **只看自己的行**（按 `userId` 过滤）—— 别人的审计流水一条都不返回；
+- `limit` 缺省 50、**上限 200**；`offset` 缺省 0；新的排在前面；
+- `actor`（`AI`/`USER`）、`command`（精确匹配）、`undone=true`（只看已撤销的）；
+- **不认识的 query 参数静默忽略**（前端会多传 `from` / `to`，本轮不做时间区间）；
+- `items[]` 的每一项：`{id, command, actorType, actorName, args, before, after,
+  undoOf, undoneAt, adopted, model, tokens, latencyMs, traceId, error, createdAt}`；
+- ⚠️ `args` **已脱敏**（凭据类键名的值换成「[已脱敏]」，与写审计同一份实现）。
 
 ### 鉴权
 
@@ -223,9 +237,12 @@ src/types/api.ts                  AiAdmin 响应信封（ApiResponse / SUCCESS_C
 src/aadmin/                       AiAdmin HTTP 客户端（client / errors / types：路径、字段逐字对齐后端）
 src/adapter/                      适配层（enums 枚举归一 / capabilities 能力位 / keys 统一 key / model 统一模型 / datasource 读写）
 src/agent/                        agent 运行时（runtime 会话与命令 / session-registry 通道与订阅 / startup-lock 同会话串行 / event-mapper 事件映射 / frame-buffer 回放窗口 / identity 当前用户 / pi-session SDK 接线 / prompt 系统提示词 / store 落库）
+src/audit.ts                      审计的**写侧**（每次 AI 写入留一条 ai_audit_log）
+src/audit-redact.ts               审计参数脱敏（**写侧与读侧共用同一份**）
+src/audit-query.ts                审计的**读侧**（只看自己的行 + 筛选 + 脱敏 + 分页）
 src/tools/                        命令目录（create_task 一个命令 + 闸门形状）
 src/http/                         HTTP 通用件（cors / respond 信封 / auth 取 token / sse 帧格式 / errors 错误映射）
-src/app/                          Route Handler（只有 /api/agent/**；尖峰路由已删）
+src/app/                          Route Handler（/api/agent/** 与 /api/audit；尖峰路由已删）
 spike/                            Task 1 的风险尖峰（一次性，结论在 spike/FINDINGS.md）
 ```
 
