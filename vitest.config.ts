@@ -24,6 +24,13 @@ export default defineConfig({
       '@@': join(__dirname, 'src', '.umi'),
     },
   },
+  // 与 config/config.ts 的 define 对齐：浏览器里没有 process，
+  // 构建期（umi）与测试期（vitest）都把它替换成字面量。
+  define: {
+    'process.env.AI_API_BASE_URL': JSON.stringify(
+      process.env.AI_API_BASE_URL || '/ai-api',
+    ),
+  },
   test: {
     browser: {
       enabled: true,

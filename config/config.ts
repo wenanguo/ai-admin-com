@@ -225,6 +225,17 @@ export default defineConfig({
   define: {
     'process.env.CI': process.env.CI,
     'process.env.COMMIT_HASH': commitHash,
+    /**
+     * AI 服务的前缀。
+     *
+     * ⚠️ **不能复用 AiAdmin 的 `/api/`**：dev 代理里 `'/api/'` 那条规则归 AiAdmin，
+     * 而 AI 服务的路径也是 `/api/agent/...` ⇒ 浏览器侧要用另一个前缀。
+     * 开发期是 `/ai-api`（走 `config/proxy.ts` 的 `'/ai-api/'` 规则），
+     * 生产期是 AI 服务的绝对地址。
+     */
+    'process.env.AI_API_BASE_URL': JSON.stringify(
+      process.env.AI_API_BASE_URL || '/ai-api',
+    ),
     __APP_VERSION__: require('./../package.json').version,
     __UMI_VERSION__: require('@umijs/max/package.json').version,
     __UTOO_VERSION__: require('@utoo/pack/package.json').version,
