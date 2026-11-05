@@ -7,13 +7,38 @@
 import { Button, Input, Tag, theme } from 'antd';
 import type React from 'react';
 
+/**
+ * 一条快捷问句。
+ */
+export interface QuickPrompt {
+  /** 问句（点一下只填进输入框，**不发送**）。 */
+  text: string;
+  /**
+   * 这个问句现在能不能答。
+   *
+   * ⚠️ AI 服务当前**只有 `create_task`（建任务）一条命令**，
+   *    **一条读命令都还没有**（服务端 `src/tools/index.ts` 的命令目录）
+   *    ⇒ 查询类意图拿不到结论。
+   *
+   * ⇒ 与 10 类意图卡片**同一个口径**：拿不到结论的就标上「暂未开放」
+   *   （见 `src/pages/ai/workspace/intents.ts`）。
+   */
+  available: boolean;
+}
+
 /** 空对话时显示的 5 条快捷问句（规格 §3.3）。 */
-export const QUICK_PROMPTS = [
-  '@AI 建一个 SSO 登录任务',
-  '本周所有 P0 顺延到下周一',
-  '「预付款模块」还能按期完成吗？',
-  '识别「财务对账系统」的潜在风险',
-  '总结本周项目亮点与风险',
+export const QUICK_PROMPTS: readonly QuickPrompt[] = [
+  // 建任务 ⇒ 服务端**能**做（唯一一条命令）。
+  { text: '@AI 建一个 SSO 登录任务', available: true },
+  // 批量改期 ⇒ 写意图（能不能做要看服务端有没有那条命令）。
+  { text: '本周所有 P0 顺延到下周一', available: true },
+  // ↓↓ 下面三条都是**查询**意图 ⇒ 服务端一条读命令都没有 ⇒ 标「暂未开放」。
+  // 进度查询（与意图卡片「进度查询」同一类）。
+  { text: '「预付款模块」还能按期完成吗？', available: false },
+  // 风险查询（与意图卡片「风险查询」同一句问法）。
+  { text: '识别「财务对账系统」的潜在风险', available: false },
+  // 总结查询（与意图卡片「总结查询」同一类）。
+  { text: '总结本周项目亮点与风险', available: false },
 ];
 
 /** 输入区的 props。 */
@@ -58,11 +83,22 @@ export function Composer({
         >
           {QUICK_PROMPTS.map((prompt) => (
             <Tag
-              key={prompt}
+              key={prompt.text}
               style={{ cursor: 'pointer' }}
-              onClick={() => onChange(prompt)}
+              title={
+                prompt.available
+                  ? undefined
+                  : '该意图暂未开放（AI 服务还没有对应的读命令）'
+              }
+              onClick={() => onChange(prompt.text)}
             >
-              {prompt}
+              {prompt.text}
+              {prompt.available ? null : (
+                // ⚠️ 拿不到结论的意图必须**标出来**（与意图卡片一个口径）
+                <span style={{ marginInlineStart: 4, opacity: 0.75 }}>
+                  暂未开放
+                </span>
+              )}
             </Tag>
           ))}
         </div>

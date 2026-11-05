@@ -47,6 +47,14 @@ export interface Workspace {
   streaming: boolean;
   /** 事件流是不是连着的。 */
   connected: boolean;
+  /**
+   * AI 服务是不是**不可用**（侧栏头部要挂一个「AI 服务不可用」的标签）。
+   *
+   * ⚠️ 不能直接用 `!connected`：首次连接**还没连上**的那一瞬间也是 false
+   * ⇒ 每个页面刚打开都会闪一下「不可用」（服务其实是好的）。
+   * ⇒ 只在「**曾经连上过、现在断了**」或「会话都建不起来」时才算不可用。
+   */
+  aiUnavailable: boolean;
   /** 命令还在发出去（还没被受理）。 */
   sending: boolean;
   /** 上一条命令发送失败的原因。 */
@@ -131,6 +139,22 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     useAgentStream({
       conversationId,
     });
+
+  /**
+   * 事件流**曾经**连上过吗。
+   *
+   * ⚠️ 用它区分「还没连上」与「连上又断了」——
+   * 前者是正常状态（不能报「不可用」），后者才是真的不可用。
+   */
+  const [everConnected, setEverConnected] = useState(false);
+  useEffect(() => {
+    if (connected) {
+      setEverConnected(true);
+    }
+  }, [connected]);
+  /** AI 服务不可用（侧栏头部据此挂「AI 服务不可用」的标签，规格 §3.10）。 */
+  const aiUnavailable =
+    connectionError !== undefined || (everConnected && !connected);
 
   // 会话的生命周期：复用 / 新建 / 换一个
   useEffect(() => {
@@ -293,6 +317,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     messages,
     streaming,
     connected,
+    aiUnavailable,
     sending,
     sendError,
     connectionError,

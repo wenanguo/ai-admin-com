@@ -10,13 +10,14 @@
  * 挂进布局是下一刀的事（`Layout.Sider`，宽 400，可折叠到 40）。
  */
 import { Link } from '@umijs/max';
-import { Button, Tabs, theme } from 'antd';
+import { Button, Tabs, Tag, theme } from 'antd';
 import type React from 'react';
 import { useState } from 'react';
 import { AuditPanel } from './AuditPanel';
 import { ChatPanel } from './ChatPanel';
 import { PendingPanel } from './PendingPanel';
 import { AI_WORKSPACE_PAGE_PATH } from './paths';
+import { readWorkspaceStorage, writeWorkspaceStorage } from './storage';
 import { useAiLists } from './useAiLists';
 import { useWorkspace } from './useWorkspace';
 
@@ -25,18 +26,35 @@ export type WorkspaceTab = 'chat' | 'pending' | 'audit';
 
 /** 侧栏的 props。 */
 export interface AiWorkspaceProps {
-  /** 默认选中的页签。 */
+  /**
+   * 默认选中的页签。
+   *
+   * ⚠️ 不传 ⇒ 用**存储里那个**（规格 §3.1 / U2：页签要持久化）。
+   */
   defaultTab?: WorkspaceTab;
+}
+
+/**
+ * 读存储里的页签。
+ *
+ * 不认识的值（老版本留下的、被人改过的）⇒ 当「对话」，
+ * 不能让一个坏值把侧栏弄成空白。
+ */
+function readStoredTab(): WorkspaceTab {
+  const stored = readWorkspaceStorage().tab;
+  return stored === 'pending' || stored === 'audit' ? stored : 'chat';
 }
 
 /**
  * AI 工作台侧栏。
  */
 export function AiWorkspace({
-  defaultTab = 'chat',
+  defaultTab,
 }: AiWorkspaceProps): React.ReactElement {
   const { token } = theme.useToken();
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>(defaultTab);
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>(
+    () => defaultTab ?? readStoredTab(),
+  );
   const workspace = useWorkspace();
   // ⚠️ **按需读**：页签没打开就不读那两个列表 ——
   // 侧栏挂在整个布局上（Task 4），一挂上就发请求会让 AI 服务不可达时
@@ -74,7 +92,31 @@ export function AiWorkspace({
             gap: token.sizeXS,
           }}
         >
-          <span style={{ fontWeight: 600 }}>AI 工作台</span>
+          <span
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: token.sizeXS,
+              fontWeight: 600,
+            }}
+          >
+            AI 工作台
+            {/*
+              ⚠️ **AI 服务不可用**要看得见（规格 §3.10 / U6）：
+              事件流断了（比如 token 过期）时，对话会**静默死掉**，
+              用户只会以为「AI 不理我了」。
+              这个标签就是那句「它坏了，而且我们知道了」。
+            */}
+            {workspace.aiUnavailable ? (
+              <Tag
+                color="error"
+                data-role="ai-unavailable-tag"
+                style={{ marginInlineEnd: 0 }}
+              >
+                AI 服务不可用
+              </Tag>
+            ) : null}
+          </span>
           {/*
             进全宽页的入口（规格 §4）：侧栏只有 400px，
             「规则与 AI 的分工」的双栏与意图卡片墙在那边放不下。
@@ -131,7 +173,13 @@ export function AiWorkspace({
       <Tabs
         size="small"
         activeKey={activeTab}
-        onChange={(key) => setActiveTab(key as WorkspaceTab)}
+        onChange={(key) => {
+          const tab = key as WorkspaceTab;
+          setActiveTab(tab);
+          // ⚠️ 页签要**持久化**（规格 §3.1 / U2）：
+          //    刷新页面后还停在刚才那个页签，不要每次都跳回「对话」。
+          writeWorkspaceStorage({ tab });
+        }}
         style={{ flex: 1, minHeight: 0 }}
         styles={{
           content: { height: '100%', overflow: 'hidden' },

@@ -25,8 +25,9 @@
  * 指数退避重连（起点 1 秒，上限 30 秒）。服务端**每次连接都先发一帧 `connected`**
  * ⇒ 重连后可以据此重新同步（配合 `getAiState` 的快照重建界面）。
  */
+import { refreshSession } from '@/auth/session';
 import { getAccessToken } from '@/auth/token';
-import { aiUrl } from './client';
+import { aiUrl } from './base';
 import type { AiEvent } from './types';
 
 /** 一帧 SSE（还没映射成业务事件）。 */
@@ -263,7 +264,13 @@ export function subscribeAiEvents(
   let closed = false;
   /** 已经连续失败了几次（连上就归零）。 */
   let failures = 0;
-  /** 最近一次收到的事件 id（重连时带上 `Last-Event-ID`）。 */
+  /**
+   * 最近一次收到的事件 id（重连时带上 `Last-Event-ID`）。
+   *
+   * ⚠️ 服务端目前**不发** `id:` 行（它的帧没有对外的序号）
+   * ⇒ 这个字段一直是 undefined ⇒ `Last-Event-ID` 实际上没被带出去过。
+   *    保留它是为了将来服务端补上序号时不用改这里。
+   */
   let lastEventId: string | undefined;
 
   const run = async (): Promise<void> => {
@@ -281,6 +288,16 @@ export function subscribeAiEvents(
           aiUrl(`/api/agent/${conversationId}/events`),
           { headers, signal: controller.signal },
         );
+        if (response.status === 401) {
+          // ⚠️ **用户的 token 过期了**（规格 §3.10）：
+          //    先走 AiAdmin 的静默刷新流程，刷新成功再重连（退避重试会自动重连）。
+          //
+          //    不做这件事的话，事件流会一直拿旧 token 去连 ⇒ 一直 401 ⇒
+          //    对话**静默死掉**（用户看不到任何提示）。
+          //
+          //    刷新失败（登录态真的没了）⇒ 异常抛出去 ⇒ 界面显示「AI 服务不可用」。
+          await refreshSession();
+        }
         if (!response.ok) {
           throw new Error(`AI 事件流请求失败（HTTP ${response.status}）`);
         }

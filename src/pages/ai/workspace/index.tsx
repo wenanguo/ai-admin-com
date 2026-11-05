@@ -235,7 +235,7 @@ export default function AiWorkspacePage(): React.ReactElement {
           type="error"
           showIcon
           data-role="ai-connection-error"
-          message={`AI 服务未连接：${workspace.connectionError}`}
+          title={`AI 服务未连接：${workspace.connectionError}`}
           action={
             <Button size="small" onClick={workspace.reconnect}>
               重试连接

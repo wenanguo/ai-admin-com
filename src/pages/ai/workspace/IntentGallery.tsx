@@ -61,7 +61,7 @@ export function IntentGallery({
         type="info"
         showIcon
         data-role="ai-intent-note"
-        message="这 10 类意图是意图空间的演示，不是十个已经能用的功能"
+        title="这 10 类意图是意图空间的演示，不是十个已经能用的功能"
         description={
           <span>
             AI 服务当前只接通了{' '}

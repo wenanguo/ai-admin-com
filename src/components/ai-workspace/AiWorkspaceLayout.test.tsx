@@ -6,8 +6,10 @@
  * 2. `⌘B` / `Ctrl+B` 能折叠与展开；
  * 3. 折叠状态存在 `localStorage`（`aipm.workspace` 的 `collapsed` 字段）。
  */
+
 import type React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-react';
 import { AiWorkspaceLayout } from './AiWorkspaceLayout';
 import { WORKSPACE_STORAGE_KEY } from './storage';
@@ -65,7 +67,14 @@ function storedCollapsed(): boolean | undefined {
 }
 
 describe('AI 工作台布局外壳', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    // ⚠️ **这个文件要宽视口**：侧栏带 `breakpoint="xl"`（1200px），
+    //    窄于它时 antd 会自动把侧栏收成 40px 的竖条 ⇒
+    //    「展开时 400px」这条断言在手机宽下根本测不到。
+    //
+    //    全局视口是**手机宽**（414×896，见 `vitest.config.ts`）⇒
+    //    需要宽视口的测试文件自己声明。
+    await page.viewport(1440, 900);
     vi.clearAllMocks();
     localStorage.removeItem(WORKSPACE_STORAGE_KEY);
     mocks.createAiConversation.mockResolvedValue({

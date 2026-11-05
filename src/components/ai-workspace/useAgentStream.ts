@@ -53,13 +53,6 @@ export interface ChatMessage {
   commands: ChatCommand[];
   /** 这一轮失败的原因（`message_end.error`）—— 正常结束没有这个字段。 */
   error?: string;
-  /**
-   * 当前模型（来自会话快照）。
-   *
-   * ⚠️ 服务端**没有**模型列表端点 ⇒ 这里只有「当前这一个」，
-   * 页面也只敢显示它（不能列一排模型让人选）。
-   */
-  model?: string;
 }
 
 /** 订阅事件流的形状（与 `subscribeAiEvents` 一致，测试注入假实现用）。 */
@@ -110,6 +103,53 @@ interface StreamState {
   /** 当前模型（快照里的 `model`；快照没有就是 undefined）。 */
   model?: string;
 }
+
+/**
+ * 一轮里的命令卡片（连同它属于哪一轮的话）。
+ *
+ * ⚠️ 快照里**没有**工具调用历史（服务端不持久化 `tool_call`/`tool_result`）
+ * ⇒ 重建界面时只能靠本地已知的卡片补回去 ⇒ 需要记住「这些卡片属于哪一轮」。
+ */
+interface CommandSource {
+  /** 这一轮助手说的话（用来跟快照里的消息对上）。 */
+  text: string;
+  /** 这一轮的命令卡片。 */
+  commands: ChatCommand[];
+}
+
+/**
+ * **回放窗口**的内部状态。
+ *
+ * ## 为什么有窗口，而不是「快照一落地就清标志」
+ *
+ * 服务端连上后**立刻**把整段历史（回放）写进同一个响应
+ * （服务端 `src/app/api/agent/[conversationId]/events/route.ts`：
+ * `write(connected)` → `for (const frame of snapshot) write(...)`），
+ * 而客户端收到 `connected` 就去拉快照 ⇒ **两者赛跑**。
+ *
+ * ⚠️ 快照**可能落在回放的中间**（回放跨多个 chunk 时必然如此）
+ *    ⇒ 「快照落地」不等于「回放结束」⇒ 回放的**尾巴**还会再来。
+ *    尾巴直接上屏 ⇒ 历史被渲染两遍（而且是永久的）。
+ *
+ * ## 窗口什么时候关
+ *
+ * 「快照已落地」+「静默 `REPLAY_SETTLE_MS`」⇒ 认为回放结束。
+ */
+interface ReplayWindow {
+  /** 窗口开着吗（开着时进来的帧**不上屏**）。 */
+  open: boolean;
+  /** 快照到了吗（没到之前不能关窗口：关了就没有真相了）。 */
+  snapshotReady: boolean;
+  /** 窗口里攒下的帧（用来把命令卡片补回去）。 */
+  buffer: StreamState;
+  /** 要用的快照。 */
+  snapshot?: AiState;
+  /** 静默计时器。 */
+  timer?: ReturnType<typeof setTimeout>;
+}
+
+/** 回放窗口的静默期：这么久没有新帧 ⇒ 认为回放结束。 */
+const REPLAY_SETTLE_MS = 200;
 
 /** 初始状态。 */
 const EMPTY_STATE: StreamState = { messages: [], streaming: false };
@@ -275,6 +315,92 @@ function snapshotToMessages(snapshot: AiState): ChatMessage[] {
   }));
 }
 
+/** 从消息列表里挑出「带命令卡片」的那些轮次。 */
+function collectCommandSources(messages: ChatMessage[]): CommandSource[] {
+  return messages
+    .filter((message) => message.commands.length > 0)
+    .map((message) => ({ text: message.text, commands: message.commands }));
+}
+
+/** 两张卡片是不是同一张（合并时避免重复）。 */
+function isSameCommand(left: ChatCommand, right: ChatCommand): boolean {
+  return (
+    left.toolName === right.toolName &&
+    left.status === right.status &&
+    left.summary === right.summary
+  );
+}
+
+/**
+ * 给一轮命令卡片找能挂的位置。
+ *
+ * - 正文**完全一样**的那条（最常见：本地那一轮 = 快照里那一轮）；
+ * - 「一边是另一边的前缀」的那条（本地那一轮只收到了一半）；
+ * - 都不行 ⇒ 挂到最后一条助手消息上。
+ *
+ * ⚠️ 宁可挂错位置也不要丢卡片：卡片丢了，用户会以为命令根本没执行。
+ */
+function findCommandTarget(
+  messages: ChatMessage[],
+  text: string,
+): ChatMessage | undefined {
+  const assistants = messages.filter((message) => message.role === 'assistant');
+  if (assistants.length === 0) {
+    return undefined;
+  }
+  if (text) {
+    const exact = assistants.find((message) => message.text === text);
+    if (exact) {
+      return exact;
+    }
+    const partial = assistants.find(
+      (message) =>
+        message.text.length > 0 &&
+        text.length > 0 &&
+        (message.text.startsWith(text) || text.startsWith(message.text)),
+    );
+    if (partial) {
+      return partial;
+    }
+  }
+  return assistants[assistants.length - 1];
+}
+
+/**
+ * 把命令卡片合并回重建后的消息列表。
+ *
+ * ⚠️ **快照里没有工具调用历史**（服务端不持久化 `tool_call`/`tool_result`）
+ * ⇒ 重建时必须把本地已知的卡片补回去，否则用户会以为命令没执行
+ * （规格 §3.4 的命令卡片是「命令层受控写入」的可见证据）。
+ */
+function mergeCommandSources(
+  rebuilt: ChatMessage[],
+  sources: CommandSource[],
+): ChatMessage[] {
+  if (sources.length === 0) {
+    return rebuilt;
+  }
+  const messages = rebuilt.map((message) => ({
+    ...message,
+    commands: [...message.commands],
+  }));
+  for (const source of sources) {
+    const target = findCommandTarget(messages, source.text);
+    if (!target) {
+      continue;
+    }
+    for (const command of source.commands) {
+      const duplicated = target.commands.some((existing) =>
+        isSameCommand(existing, command),
+      );
+      if (!duplicated) {
+        target.commands.push(command);
+      }
+    }
+  }
+  return messages;
+}
+
 /** 缺省的订阅实现。 */
 const defaultSubscribe: AiEventSubscriber = (
   conversationId,
@@ -299,6 +425,12 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
   const loadStateRef = useRef<(id: string) => Promise<AiState>>(getAiState);
   // 乐观上屏、还没落库的用户消息（重连快照里没有它们时要留住）
   const pendingUserMessagesRef = useRef<string[]>([]);
+  // 回放窗口（服务端连上后会**立刻**回放整段历史 ⇒ 它与快照赛跑）
+  const replayRef = useRef<ReplayWindow>({
+    open: false,
+    snapshotReady: false,
+    buffer: EMPTY_STATE,
+  });
 
   useEffect(() => {
     conversationIdRef.current = conversationId;
@@ -306,28 +438,49 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
     loadStateRef.current = options.loadState ?? getAiState;
   });
 
-  /** 用一份快照重建界面。 */
-  const applySnapshot = useCallback((snapshot: AiState, id: string): void => {
-    const rebuilt = snapshotToMessages(snapshot);
-    // 快照里还没有的本地用户消息要留住（服务端可能还没落库）
-    const missing = pendingUserMessagesRef.current.filter(
-      (text) =>
-        !rebuilt.some(
-          (message) => message.role === 'user' && message.text === text,
-        ),
-    );
-    pendingUserMessagesRef.current = pendingUserMessagesRef.current.filter(
-      (text) => !missing.includes(text),
-    );
-    setState({
-      conversationId: id,
-      messages: [...rebuilt, ...missing.map((text) => createUserMessage(text))],
-      activeId: undefined,
-      streaming: snapshot.isStreaming === true,
-      // 当前模型：服务端只有这一个（没有模型列表端点）
-      model: snapshot.model,
-    });
-  }, []);
+  /**
+   * 用一份快照重建界面。
+   *
+   * @param snapshot 服务端快照。
+   * @param id 会话 id。
+   * @param extraSources 额外要合并回去的命令卡片来源
+   *   （回放窗口里攒下的那些 —— 快照里没有工具调用历史）。
+   */
+  const applySnapshot = useCallback(
+    (snapshot: AiState, id: string, extraSources: ChatMessage[] = []): void => {
+      setState((previous) => {
+        const rebuilt = snapshotToMessages(snapshot);
+        // ⚠️ 快照里**没有工具调用历史** ⇒ 把本地已知的命令卡片合并回去
+        //（否则每次重建后「已执行」的卡片就消失了，用户会以为命令没跑）。
+        const messages = mergeCommandSources(rebuilt, [
+          ...collectCommandSources(previous.messages),
+          ...collectCommandSources(extraSources),
+        ]);
+        // 快照里还没有的本地用户消息要留住（服务端可能还没落库）
+        const missing = pendingUserMessagesRef.current.filter(
+          (text) =>
+            !messages.some(
+              (message) => message.role === 'user' && message.text === text,
+            ),
+        );
+        pendingUserMessagesRef.current = pendingUserMessagesRef.current.filter(
+          (text) => !missing.includes(text),
+        );
+        return {
+          conversationId: id,
+          messages: [
+            ...messages,
+            ...missing.map((text) => createUserMessage(text)),
+          ],
+          activeId: undefined,
+          streaming: snapshot.isStreaming === true,
+          // 当前模型：服务端只有这一个（没有模型列表端点）
+          model: snapshot.model,
+        };
+      });
+    },
+    [],
+  );
 
   /** 用一份已经拿到的快照重建界面（刷新页面恢复历史）。 */
   const restore = useCallback(
@@ -337,7 +490,7 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
     [applySnapshot],
   );
 
-  /** 用快照重建界面。 */
+  /** 用快照重建界面（断线重连后调用）。 */
   const resync = useCallback(async (): Promise<void> => {
     const id = conversationIdRef.current;
     if (!id) {
@@ -350,6 +503,96 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
       // 快照读不到（会话没了 / 网络断了）⇒ 保留本地界面，等下一次重连
     }
   }, [applySnapshot]);
+
+  /**
+   * 关掉回放窗口：把快照（连同窗口里攒下的命令卡片）一起上屏。
+   *
+   * 窗口里的那些**文本帧不上屏** —— 快照才是真相，回放会被它覆盖；
+   * 但帧里的**命令卡片要留下**（快照里没有工具调用历史）。
+   */
+  const closeReplayWindow = useCallback((): void => {
+    const window = replayRef.current;
+    if (!window.open) {
+      return;
+    }
+    window.open = false;
+    if (window.timer !== undefined) {
+      clearTimeout(window.timer);
+      window.timer = undefined;
+    }
+    const snapshot = window.snapshot;
+    const buffered = window.buffer;
+    window.buffer = EMPTY_STATE;
+    window.snapshot = undefined;
+    window.snapshotReady = false;
+
+    const id = conversationIdRef.current;
+    if (snapshot && id) {
+      applySnapshot(snapshot, id, buffered.messages);
+      return;
+    }
+    // 快照没拿到（会话没了 / 网络断了）⇒ 不重建历史，
+    // 只把窗口里攒下的命令卡片补回本地界面。
+    setState((previous) => ({
+      ...previous,
+      messages: mergeCommandSources(
+        previous.messages,
+        collectCommandSources(buffered.messages),
+      ),
+    }));
+  }, [applySnapshot]);
+
+  /**
+   * 重新开始静默计时：又来新帧 ⇒ 回放还没完 ⇒ 窗口继续开着。
+   */
+  const scheduleSettle = useCallback((): void => {
+    const window = replayRef.current;
+    if (window.timer !== undefined) {
+      clearTimeout(window.timer);
+    }
+    window.timer = setTimeout(() => {
+      window.timer = undefined;
+      // 快照还没到 ⇒ 不能关（关了就没有真相了）⇒ 等它
+      if (!window.snapshotReady) {
+        return;
+      }
+      closeReplayWindow();
+    }, REPLAY_SETTLE_MS);
+  }, [closeReplayWindow]);
+
+  /**
+   * 连上之后：打开回放窗口，拉快照，等回放静默了再一起上屏。
+   */
+  const startResync = useCallback((): void => {
+    const window = replayRef.current;
+    window.open = true;
+    window.snapshotReady = false;
+    window.snapshot = undefined;
+    window.buffer = EMPTY_STATE;
+
+    const id = conversationIdRef.current;
+    if (!id) {
+      closeReplayWindow();
+      return;
+    }
+    void (async () => {
+      let snapshot: AiState | undefined;
+      try {
+        snapshot = await loadStateRef.current(id);
+      } catch {
+        // 快照读不到（会话没了 / 网络断了）⇒ 不重建界面，等下一次重连
+        snapshot = undefined;
+      }
+      const current = replayRef.current;
+      if (!current.open) {
+        // 窗口已经关了（换会话 / 组件卸载）⇒ 这次快照作废
+        return;
+      }
+      current.snapshot = snapshot;
+      current.snapshotReady = true;
+      scheduleSettle();
+    })();
+  }, [closeReplayWindow, scheduleSettle]);
 
   useEffect(() => {
     if (!conversationId) {
@@ -377,9 +620,18 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
           return;
         }
         if (event.type === 'connected') {
-          // 连上了（首次连接或断线重连）⇒ 用快照重建，不自己猜增量
+          // 连上了（首次连接或断线重连）⇒ 打开回放窗口：
+          // 历史以**快照**为准，回放的帧不直接上屏（否则会渲染两遍）。
           setConnected(true);
-          void resync();
+          startResync();
+          return;
+        }
+        const window = replayRef.current;
+        if (window.open) {
+          // 回放中的帧：**不上屏**（快照会覆盖它），
+          // 但要攒着 —— 里面的**命令卡片**快照里没有。
+          window.buffer = applyAiEvent(window.buffer, event);
+          scheduleSettle();
           return;
         }
         setState((previous) => applyAiEvent(previous, event));
@@ -394,8 +646,16 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
     return () => {
       disposed = true;
       cancel();
+      // 回放窗口关掉（定时器也清掉）——
+      // 不留一个会在组件卸载后再 setState 的定时器。
+      const window = replayRef.current;
+      window.open = false;
+      if (window.timer !== undefined) {
+        clearTimeout(window.timer);
+        window.timer = undefined;
+      }
     };
-  }, [conversationId, resync]);
+  }, [conversationId, resync, scheduleSettle, startResync]);
 
   /** 追加一条用户气泡（发送时乐观上屏）。 */
   const appendUserMessage = useCallback((text: string): void => {

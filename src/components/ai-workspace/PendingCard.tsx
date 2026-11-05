@@ -19,7 +19,6 @@
 import { Alert, Button, Tag, Tooltip, theme } from 'antd';
 import type React from 'react';
 import type { AiPendingRow } from '@/services/api/ai/types';
-import { AI_PURPLE } from './palette';
 import { fromNow, remainingMs } from './time';
 
 /** 离过期不到这么多毫秒就标红（规格 §3.5）。 */
@@ -167,16 +166,21 @@ export function PendingCard({ item }: PendingCardProps): React.ReactElement {
           gap: token.sizeSM,
         }}
       >
-        <span
+        {/*
+          ⚠️ 命令名用 antd 的**主题感知**紫色（`Tag color="purple"`）：
+          写死 `#722ED1`（`palette.ts`）在**深色模式**下对比度不够。
+        */}
+        <Tag
+          color="purple"
           data-role="pending-command"
           style={{
             fontFamily: token.fontFamilyCode,
             fontSize: token.fontSizeSM,
-            color: AI_PURPLE,
+            marginInlineEnd: 0,
           }}
         >
           ⌨ {item.command}
-        </span>
+        </Tag>
         <Tag color={tag.color}>{tag.text}</Tag>
       </div>
 

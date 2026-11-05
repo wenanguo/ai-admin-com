@@ -10,7 +10,6 @@
  */
 import { Tag, theme } from 'antd';
 import type React from 'react';
-import { AI_PURPLE } from './palette';
 import type { ChatCommand, CommandStatus } from './useAgentStream';
 
 /** 状态标签的取值。 */
@@ -68,15 +67,22 @@ export function CommandCard({ command }: CommandCardProps): React.ReactElement {
           gap: token.sizeSM,
         }}
       >
-        <span
+        {/*
+          ⚠️ 命令名用 antd 的**主题感知**紫色（`Tag color="purple"`）：
+          写死 `#722ED1`（`palette.ts`）在**深色模式**下对比度不够，
+          读不出来。预设色会跟着主题走（浅色/深色两套）。
+        */}
+        <Tag
+          color="purple"
+          data-role="command-name"
           style={{
             fontFamily: token.fontFamilyCode,
             fontSize: token.fontSizeSM,
-            color: AI_PURPLE,
+            marginInlineEnd: 0,
           }}
         >
           {command.toolName}
-        </span>
+        </Tag>
         <Tag color={tag.color}>{tag.text}</Tag>
       </div>
       {command.summary ? (

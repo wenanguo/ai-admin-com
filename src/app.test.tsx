@@ -32,6 +32,9 @@ vi.mock('@umijs/max', () => ({
 
 vi.mock('@/auth/session', () => ({
   fetchCurrentUser: (...args: unknown[]) => mockFetchCurrentUser(...args),
+  // ⚠️ AI 事件流在 401 时会调它（`src/services/api/ai/sse.ts`）⇒ 这里要补上，
+  //    否则 ESM 命名导入会直接报错（整个测试文件都加载不了）。
+  refreshSession: vi.fn(async () => 'access-1'),
 }));
 
 vi.mock('@/components', () => ({

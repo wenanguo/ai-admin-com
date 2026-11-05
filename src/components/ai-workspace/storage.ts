@@ -8,11 +8,16 @@
 /** 工作台状态在 localStorage 里的键。 */
 export const WORKSPACE_STORAGE_KEY = 'aipm.workspace';
 
-/** 工作台状态（会话 id 是这一层自己用的，折叠与页签留给挂进布局那一步）。 */
+/** 工作台状态（会话 id 与页签是这一层自己用的，折叠状态也是）。 */
 export interface WorkspaceStorage {
   /** 侧栏是否折叠。 */
   collapsed?: boolean;
-  /** 当前选中的页签。 */
+  /**
+   * 当前选中的页签（`chat` / `pending` / `audit`）。
+   *
+   * ⚠️ 存的是**字符串**（localStorage 里只有字符串）⇒ 读的时候要**校验**
+   *    （见 `src/components/ai-workspace/index.tsx` 的 `readStoredTab`）。
+   */
   tab?: string;
   /** 会话 id。 */
   conversationId?: string;

@@ -264,4 +264,169 @@ describe('AI 流式状态机', () => {
     });
     expect(result.current.messages[0].text).toBe('本周所有 P0 顺延到下周一');
   });
+
+  it('回放的帧不上屏:快照才是真相,历史只渲染一遍', async () => {
+    const { captured, subscribe } = fakeSubscribe();
+    // 快照什么时候落地由测试控制（要模拟「快照落在回放的中间」）
+    let resolveSnapshot: ((snapshot: AiState) => void) | undefined;
+    const loadState = vi.fn(
+      () =>
+        new Promise<AiState>((resolve) => {
+          resolveSnapshot = resolve;
+        }),
+    );
+
+    const { act, result } = await renderHook(() =>
+      useAgentStream({
+        conversationId: 'c1',
+        subscribe,
+        loadState,
+      }),
+    );
+
+    // 连上 ⇒ 拉快照
+    await act(async () => {
+      captured.onEvent?.({
+        type: 'connected',
+        conversationId: 'c1',
+        isStreaming: false,
+      });
+    });
+
+    // 快照落地
+    await act(async () => {
+      resolveSnapshot?.(SNAPSHOT);
+      await Promise.resolve();
+    });
+
+    // ⚠️ 真实服务端在**同一个响应**里紧接着回放整段历史
+    //    ⇒ 这些帧与快照赛跑 ⇒ 不能直接上屏（否则历史渲染两遍）。
+    await act(async () => {
+      captured.onEvent?.({ type: 'message_start', role: 'assistant' });
+      captured.onEvent?.({ type: 'text_delta', delta: '好的' });
+      captured.onEvent?.({ type: 'message_end', text: '好的' });
+      captured.onEvent?.({ type: 'agent_settled' });
+    });
+
+    await vi.waitFor(() => {
+      expect(result.current.messages.map((item) => item.text)).toEqual([
+        '建个任务',
+        '好的',
+      ]);
+    });
+  });
+
+  it('重建后本地已知的命令卡片不能消失', async () => {
+    const { captured, subscribe } = fakeSubscribe();
+    const loadState = vi.fn(async () => SNAPSHOT);
+
+    const { act, result } = await renderHook(() =>
+      useAgentStream({
+        conversationId: 'c1',
+        subscribe,
+        loadState,
+      }),
+    );
+
+    // 本地跑了一轮命令（卡片在本地）
+    await act(async () => {
+      captured.onEvent?.({ type: 'message_start', role: 'assistant' });
+      captured.onEvent?.({
+        type: 'tool_call',
+        toolName: 'create_task',
+        args: { title: 'SSO 登录' },
+      });
+      captured.onEvent?.({
+        type: 'tool_result',
+        toolName: 'create_task',
+        status: 'ok',
+        summary: '已创建任务「SSO 登录」',
+      });
+      captured.onEvent?.({ type: 'message_end', text: '好的' });
+    });
+    expect(result.current.messages[0].commands).toHaveLength(1);
+
+    // 重连 ⇒ 快照重建（⚠️ 快照里**没有**工具调用历史）
+    await act(async () => {
+      captured.onEvent?.({
+        type: 'connected',
+        conversationId: 'c1',
+        isStreaming: false,
+      });
+    });
+
+    await vi.waitFor(() => {
+      expect(result.current.messages.map((item) => item.text)).toEqual([
+        '建个任务',
+        '好的',
+      ]);
+    });
+
+    // ⚠️ 卡片不能消失：用户会以为命令根本没执行
+    const commands = result.current.messages.flatMap((item) => item.commands);
+    expect(commands).toHaveLength(1);
+    expect(commands[0].toolName).toBe('create_task');
+    expect(commands[0].status).toBe('ok');
+  });
+
+  it('回放里的命令卡片也会被合并回去', async () => {
+    const { captured, subscribe } = fakeSubscribe();
+    let resolveSnapshot: ((snapshot: AiState) => void) | undefined;
+    const loadState = vi.fn(
+      () =>
+        new Promise<AiState>((resolve) => {
+          resolveSnapshot = resolve;
+        }),
+    );
+
+    const { act, result } = await renderHook(() =>
+      useAgentStream({
+        conversationId: 'c1',
+        subscribe,
+        loadState,
+      }),
+    );
+
+    await act(async () => {
+      captured.onEvent?.({
+        type: 'connected',
+        conversationId: 'c1',
+        isStreaming: false,
+      });
+    });
+    await act(async () => {
+      resolveSnapshot?.(SNAPSHOT);
+      await Promise.resolve();
+    });
+
+    // 回放里带一张命令卡片（服务端把历史**连同命令**一起回放）
+    await act(async () => {
+      captured.onEvent?.({ type: 'message_start', role: 'assistant' });
+      captured.onEvent?.({ type: 'text_delta', delta: '好的' });
+      captured.onEvent?.({
+        type: 'tool_call',
+        toolName: 'create_task',
+        args: { title: 'SSO 登录' },
+      });
+      captured.onEvent?.({
+        type: 'tool_result',
+        toolName: 'create_task',
+        status: 'ok',
+        summary: '已创建任务「SSO 登录」',
+      });
+      captured.onEvent?.({ type: 'message_end', text: '好的' });
+    });
+
+    await vi.waitFor(() => {
+      expect(result.current.messages.map((item) => item.text)).toEqual([
+        '建个任务',
+        '好的',
+      ]);
+    });
+
+    const commands = result.current.messages.flatMap((item) => item.commands);
+    expect(commands).toHaveLength(1);
+    expect(commands[0].toolName).toBe('create_task');
+    expect(commands[0].status).toBe('ok');
+  });
 });

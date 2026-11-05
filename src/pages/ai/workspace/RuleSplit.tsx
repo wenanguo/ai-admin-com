@@ -139,7 +139,7 @@ export function RuleSplit(): React.ReactElement {
           type="warning"
           showIcon
           data-role="ai-split-boundary"
-          message="边界"
+          title="边界"
           description={
             <span>
               LLM 不能写库、不能定权限、不能自己决定「要不要人确认」。

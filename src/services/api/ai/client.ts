@@ -19,6 +19,7 @@
  */
 import { request } from '@umijs/max';
 import { getAccessToken } from '@/auth/token';
+import { AI_API_BASE_URL, aiUrl } from './base';
 import type {
   AiAuditRow,
   AiConversation,
@@ -28,20 +29,13 @@ import type {
 } from './types';
 
 /**
- * AI 服务的前缀（构建期由 `config/config.ts` 的 `define` 注入）。
+ * 前缀常量住在 `./base`（叶子模块）里。
  *
- * - 开发期：`/ai-api`（走 `config/proxy.ts` 的代理规则）
- * - 生产期：AI 服务的绝对地址
- *
- * ⚠️ umi 不会把任意 `process.env.*` 暴露给浏览器 ⇒ 自定义变量要在
- * `config/config.ts` 的 `define` 里配（那里已有 `process.env.CI` 等的先例）。
+ * ⚠️ 这里**再导出**一份，是为了兼容既有引用；
+ *    真正需要它的共享请求配置应该直接 import `@/services/api/ai/base`
+ *    （那才是没有依赖的那一份）。
  */
-export const AI_API_BASE_URL: string = process.env.AI_API_BASE_URL || '/ai-api';
-
-/** 拼 AI 服务的完整路径（不含 origin）。 */
-export function aiUrl(path: string): string {
-  return `${AI_API_BASE_URL}${path}`;
-}
+export { AI_API_BASE_URL, aiUrl };
 
 /** 请求选项（只用到这几个）。 */
 interface AiRequestOptions {

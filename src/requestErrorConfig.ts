@@ -10,7 +10,10 @@ import type { RequestConfig } from '@umijs/max';
 import { getIntl, getRequestInstance, history } from '@umijs/max';
 import { createUnauthorizedError, refreshSession } from '@/auth/session';
 import { clearAuth, getAccessToken } from '@/auth/token';
-import { AI_API_BASE_URL } from '@/services/api/ai/client';
+// ⚠️ 从**叶子模块** `@/services/api/ai/base` import（不是 `.../ai/client`）：
+//    client.ts import 了 `@umijs/max` 的 request（umi 运行时），
+//    而本文件是 umi 运行时的一部分 ⇒ 从 client.ts import 会形成循环依赖。
+import { AI_API_BASE_URL } from '@/services/api/ai/base';
 import { AUTH_FREE_API_PATHS } from '@/services/http';
 import {
   createBizError,
@@ -70,14 +73,20 @@ export const errorConfig: RequestConfig = {
      * umi 内置的 errorThrower 只在 success === false 时触发,会漏判。
      */
     errorHandler: (error: any, opts: any) => {
-      if (opts?.skipErrorHandler) throw error;
-
-      // 刷新失败导致的未授权
+      // ⚠️ **未授权不受 `skipErrorHandler` 影响**：
+      //    登录态失效是**全局**问题（用户在这个系统里什么都不该做）⇒
+      //    必须清登录态 + 跳登录页。
+      //    而 AI 服务的请求也设了 `skipErrorHandler: true`（不想在每个页面上
+      //    弹一次全局提示）—— 若连这条也跳过，token 过期后用户就**卡在
+      //    一个登不进去也退不出来的界面**里。
       if (error?.name === 'UnauthorizedError') {
         clearAuth();
         redirectToLogin();
         return;
       }
+
+      // 其余错误：AI 服务不可达之类**不弹全局提示**（侧栏自己会说）
+      if (opts?.skipErrorHandler) throw error;
 
       // 业务错误
       if (error?.name === 'BizError') {

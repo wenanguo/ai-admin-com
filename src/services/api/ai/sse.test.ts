@@ -5,7 +5,7 @@
  * 这样「拆帧 / 忽略未知事件 / 断线重连 / 取消」都能在浏览器里跑，不需要真的服务。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AI_API_BASE_URL } from './client';
+import { AI_API_BASE_URL } from './base';
 import { subscribeAiEvents, toAiEvent } from './sse';
 import type { AiEvent } from './types';
 
@@ -15,6 +15,20 @@ vi.mock('@umijs/max', () => ({
 
 vi.mock('@/auth/token', () => ({
   getAccessToken: vi.fn(() => 'token-abc'),
+  // ⚠️ `@/auth/session` 会 import 这几个（这里只 import 不会报错，
+  //    但缺了的话真调起来会炸）⇒ 补齐。
+  clearAuth: vi.fn(),
+  getRefreshToken: vi.fn(() => 'refresh-abc'),
+  isRememberMe: vi.fn(() => true),
+  setTokens: vi.fn(),
+}));
+
+const mocks = vi.hoisted(() => ({
+  refreshSession: vi.fn(async () => 'token-new'),
+}));
+
+vi.mock('@/auth/session', () => ({
+  refreshSession: mocks.refreshSession,
 }));
 
 /** 造一帧标准 SSE（服务端 `src/http/sse.ts` 的 `frameToSse`）。 */
@@ -189,5 +203,43 @@ describe('AI 事件流订阅', () => {
     cancel();
 
     expect(signal.aborted).toBe(true);
+  });
+
+  it('401（token 过期）先静默刷新,再重连', async () => {
+    // ⚠️ token 过期时事件流会一直 401 ⇒ 对话静默死掉（规格 §3.10）。
+    //    ⇒ 收到 401 要先走 AiAdmin 的静默刷新流程，再重连。
+    const calls: { url: string; init: RequestInit | undefined }[] = [];
+    const mock = vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (calls.length === 1) {
+        return {
+          ok: false,
+          status: 401,
+          body: null,
+        } as unknown as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        body: openStream(),
+      } as unknown as Response;
+    });
+    vi.stubGlobal('fetch', mock);
+
+    const errors: Error[] = [];
+    const cancel = subscribeAiEvents(
+      'c1',
+      () => undefined,
+      (error) => errors.push(error),
+      { initialRetryDelayMs: 5, maxRetryDelayMs: 20 },
+    );
+
+    // 刷新被调了
+    await vi.waitFor(() => expect(mocks.refreshSession).toHaveBeenCalled());
+    // 然后重连了（第二次请求）
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(2));
+    // 失败被报出来了（界面据此显示「AI 服务不可用」）
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    cancel();
   });
 });
