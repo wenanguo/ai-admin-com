@@ -88,7 +88,7 @@ export function MessageBubble({
         ))}
         {message.error ? (
           <div style={{ marginTop: token.sizeSM }}>
-            <Alert type="error" showIcon message={message.error} />
+            <Alert type="error" showIcon title={message.error} />
           </div>
         ) : null}
       </div>

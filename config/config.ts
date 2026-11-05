@@ -232,10 +232,13 @@ export default defineConfig({
      * 而 AI 服务的路径也是 `/api/agent/...` ⇒ 浏览器侧要用另一个前缀。
      * 开发期是 `/ai-api`（走 `config/proxy.ts` 的 `'/ai-api/'` 规则），
      * 生产期是 AI 服务的绝对地址。
+     *
+     * ⚠️ **这里给的是「原值」**：umi 的 `define` 自己会 JSON.stringify 一遍
+     * （见 `@umijs/bundler-webpack` 的 definePlugin），
+     * 再 stringify 一次的话，运行时的值会变成 `"/ai-api"`（**带引号**），
+     * 于是拼出来的地址变成 `/pm/"ai-api"/api/agent/...` —— 相对当前路径解析，直接打错。
      */
-    'process.env.AI_API_BASE_URL': JSON.stringify(
-      process.env.AI_API_BASE_URL || '/ai-api',
-    ),
+    'process.env.AI_API_BASE_URL': process.env.AI_API_BASE_URL || '/ai-api',
     __APP_VERSION__: require('./../package.json').version,
     __UMI_VERSION__: require('@umijs/max/package.json').version,
     __UTOO_VERSION__: require('@utoo/pack/package.json').version,

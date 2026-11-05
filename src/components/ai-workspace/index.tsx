@@ -66,6 +66,23 @@ export function AiWorkspace({
           对话 · 待确认 · 审计 ｜ 命令层受控写入
         </div>
       </div>
+      {/*
+        会话建不起来（AI 服务不可达）——**显示在这里**，不弹全局提示：
+        侧栏常驻在每个页面上，全局提示会在每个页面上重复出现。
+      */}
+      {workspace.connectionError ? (
+        <div
+          data-role="ai-connection-error"
+          style={{
+            padding: `${token.paddingSM}px ${token.padding}px`,
+            fontSize: token.fontSizeSM,
+            color: token.colorWarning,
+            borderBottom: `1px solid ${token.colorBorderSecondary}`,
+          }}
+        >
+          AI 服务未连接：{workspace.connectionError}
+        </div>
+      ) : null}
       <Tabs
         size="small"
         activeKey={activeTab}

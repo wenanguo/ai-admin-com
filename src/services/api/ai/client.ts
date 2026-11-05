@@ -56,6 +56,11 @@ interface AiRequestOptions {
  * ⚠️ `baseURL: ''` 是必须的：共享的 request 实例的 baseURL 是 AiAdmin 的
  * `/api/v1`（`src/app.tsx`）⇒ 不置空的话 AI 服务的路径会被拼成
  * `/api/v1/ai-api/...`，打到 AiAdmin 的代理规则上去。
+ *
+ * ⚠️ `skipErrorHandler: true`：AI 服务不可达时**不要弹全局错误提示**。
+ * 侧栏是常挂在整个布局上的（每个页面都会发这几次请求）⇒ 服务没起来的话，
+ * 用户在别的页面上也会莫名其妙看到一串报错。侧栏自己会把错误显示在面板里
+ * （对话页签的错误条、待确认/审计页签的错误态）。
  */
 async function aiRequest<T>(
   path: string,
@@ -64,6 +69,7 @@ async function aiRequest<T>(
   const response = await request<AiEnvelope<T>>(aiUrl(path), {
     method: options.method,
     baseURL: '',
+    skipErrorHandler: true,
     headers: { Authorization: `Bearer ${getAccessToken()}` },
     params: options.params,
     data: options.data,

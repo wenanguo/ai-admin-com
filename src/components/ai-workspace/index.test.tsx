@@ -37,6 +37,9 @@ vi.mock('@/services/api/ai/sse', () => ({
 describe('AI 工作台侧栏', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // 会话 id 存在 localStorage 里 ⇒ 清掉，否则上一条用例留下的会话
+    // 会让这一条直接去读快照（走不到「新建会话失败」那条路）。
+    localStorage.removeItem('aipm.workspace');
   });
 
   it('有头部与三个页签', async () => {
@@ -97,5 +100,15 @@ describe('AI 工作台侧栏', () => {
     });
     // 待确认还没打开 ⇒ 不读
     expect(mocks.listAiPending).not.toHaveBeenCalled();
+  });
+
+  it('AI 服务连不上时在面板里说一声（不靠全局提示）', async () => {
+    mocks.createAiConversation.mockRejectedValue(
+      new Error('AI 事件流请求失败（HTTP 502）'),
+    );
+
+    const { getByText } = await render(<AiWorkspace />);
+
+    await expect.element(getByText(/AI 服务未连接/)).toBeVisible();
   });
 });

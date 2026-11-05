@@ -452,9 +452,13 @@ function membersResponse(members: unknown[]) {
  * 当前激活的 tab 面板(懒挂载:只有打开过的 tab 才在 DOM 里)。
  * 隐藏面板是 aria-hidden="true",激活的才是 false —— 用 ARIA 契约选,
  * 不碰 antd 内部类名(antd 6 的面板类名已从 ant-tabs-tabpane-* 改成 ant-tabs-content-*)
+ *
+ * ⚠️ `:not(aside *)`:AI 工作台是**常驻在每个页面上的**,它自己也有 Tabs
+ * ⇒ 页面��有两个「激活的面板」。AI 工作台在 `Layout.Sider`(an <aside>)里,
+ * 这里把它排除掉,只留主内容的面板。
  */
 function activePanel(page: Page) {
-  return page.locator('[role="tabpanel"][aria-hidden="false"]');
+  return page.locator('[role="tabpanel"][aria-hidden="false"]:not(aside *)');
 }
 
 /**

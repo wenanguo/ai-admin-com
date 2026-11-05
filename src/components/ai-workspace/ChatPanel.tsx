@@ -91,7 +91,7 @@ export function ChatPanel({
           <Alert
             type="error"
             showIcon
-            message={sendError}
+            title={sendError}
             action={
               onRetry ? (
                 <Button size="small" onClick={onRetry}>

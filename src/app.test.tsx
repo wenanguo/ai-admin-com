@@ -53,6 +53,10 @@ vi.mock('@ant-design/pro-components', () => ({
 
 vi.mock('@ant-design/icons', () => ({
   LinkOutlined: () => null,
+  // ⚠️ AI 工作台的布局外壳也用这两个图标（折叠按钮与竖条上的机器人）——
+  // 少了任何一个，这个 mock 就会让整个模块导入失败。
+  RightOutlined: () => null,
+  RobotOutlined: () => null,
 }));
 
 vi.mock('./requestErrorConfig', () => ({

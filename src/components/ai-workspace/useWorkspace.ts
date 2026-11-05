@@ -44,6 +44,13 @@ export interface Workspace {
   sending: boolean;
   /** 上一条命令发送失败的原因。 */
   sendError?: string;
+  /**
+   * 会话建不起来的原因（AI 服务不可达之类）。
+   *
+   * ⚠️ 侧栏常驻在每个页面上 ⇒ AI 服务不可达是**全局**状态，
+   * 显示在面板里，而不是弹一次全局提示（那个会在每个页面上重复出现）。
+   */
+  connectionError?: string;
   /** 发送一句话。 */
   send: (text: string) => Promise<void>;
   /** 重试上一条失败的消息（**复用同一个命令 id**）。 */
@@ -70,6 +77,10 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
   );
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | undefined>(undefined);
+  /** 会话建不起来的原因（AI 服务不可达之类）。 */
+  const [connectionError, setConnectionError] = useState<string | undefined>(
+    undefined,
+  );
   /** 上一条命令（重试时要复用它的 id）。 */
   const lastCommandRef = useRef<{ id: string; text: string } | undefined>(
     undefined,
@@ -121,8 +132,15 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
           { conversationId: created.conversationId },
           storageKey,
         );
-      } catch {
+      } catch (error) {
         // 建不出来就留在「还没有会话」的状态：界面提示用户，不崩
+        //
+        // ⚠️ 这里**不弹全局提示**（AI 服务的请求已设 skipErrorHandler）——
+        // 侧栏是常驻在每个页面上的，服务没起来时不该在每个页面上都弹一次。
+        // 失败的原因显示在侧栏面板里（`connectionError`）。
+        if (!disposed) {
+          setConnectionError(toMessage(error));
+        }
       }
     };
 
@@ -196,6 +214,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     connected,
     sending,
     sendError,
+    connectionError,
     send,
     retry,
   };

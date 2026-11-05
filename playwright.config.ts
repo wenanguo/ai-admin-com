@@ -23,7 +23,18 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      // ⚠️ 视口为什么是 1600x900(而不是 Desktop Chrome 默认的 1280x720):
+      // AI 工作台是**常驻的 400px 右栏**,主内容会窄 400px ⇒ 1280 宽时主内容
+      // 只剩 544px,而 ProTable 的搜索表单在表单宽度 < 576px 时会塌成
+      // 「一行一个字段」⇒「用第二个搜索字段筛选」这类用例点不到那个字段。
+      // 1600 宽是现在常见的笔记本屏幕,主内容还有 880px,
+      // 搜索表单与表格都保持原来的形状。
+      //
+      // ⚠️ 必须写在 devices 的**后面**:项目级的 use 会覆盖顶级的 use。
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1600, height: 900 },
+      },
     },
   ],
   webServer: {

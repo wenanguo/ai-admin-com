@@ -18,6 +18,7 @@ import {
   OfflineBanner,
   VersionDropdown,
 } from '@/components';
+import { AiWorkspaceLayout } from '@/components/ai-workspace/AiWorkspaceLayout';
 import type { BackendMenu } from '@/menu/adapter';
 import {
   buildMenuItems,
@@ -203,7 +204,11 @@ export const layout: RunTimeLayoutConfig = ({
       // if (initialState?.loading) return <PageLoading />;
       return (
         <>
-          {children}
+          {/*
+            AI 工作台：常驻在主内容右边的一列（不是抽屉 —— 规格 §3.1）。
+            折叠与快捷键的逻辑在组件里，这里只负责「挂上去」。
+          */}
+          <AiWorkspaceLayout>{children}</AiWorkspaceLayout>
           <SettingDrawer
             disableUrlParams
             enableDarkTheme
