@@ -49,6 +49,16 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   /** 正文（`text_delta` 累积出来的 / 快照里的 content）。 */
   text: string;
+  /**
+   * 服务端在 `message_end` 里给的**完整正文**。
+   *
+   * ⚠️ 为什么单独存一份：`text_delta` 可能被服务端的帧缓冲淘汰
+   *    （16MB 上限，见服务端 `src/agent/frame-buffer.ts`）
+   *    ⇒ 累积出来的 `text` 可能是**残缺**的
+   *    ⇒ 而落库的那一条（快照里的 content）用的是 `message_end` 的完整正文
+   *    ⇒ 拿它对账才能认出「这是同一轮」。
+   */
+  serverText?: string;
   /** 这一轮里的命令卡片。 */
   commands: ChatCommand[];
   /** 这一轮失败的原因（`message_end.error`）—— 正常结束没有这个字段。 */
@@ -70,6 +80,13 @@ export interface UseAgentStreamOptions {
   loadState?: (conversationId: string) => Promise<AiState>;
   /** 订阅事件流 —— 缺省用 `subscribeAiEvents`。 */
   subscribe?: AiEventSubscriber;
+  /**
+   * 回放窗口的**最长时长**（毫秒）—— 缺省 {@link REPLAY_MAX_WINDOW_MS}。
+   *
+   * ⚠️ 这是**兜底**：快照请求卡住时（服务没起来、连接半开），
+   *    窗口不能一直开着 —— 开着就会把实时帧一直攒着不上屏。
+   */
+  replayWindowMs?: number;
 }
 
 /** hook 的返回值。 */
@@ -137,6 +154,16 @@ interface CommandSource {
  * ⇒ 整段回放都到了 ⇒ 关窗口。
  * 收不齐（服务端重启后内存里的帧缓冲空了、或者旧帧被淘汰了）
  * ⇒ 靠静默期 `REPLAY_SETTLE_MS` 兜底。
+ * 快照**永远不回来**（请求卡住）⇒ 靠窗口上限 `REPLAY_MAX_WINDOW_MS` 兜底。
+ *
+ * ## 关窗口时那些帧怎么办
+ *
+ * - **快照里有**的那几轮 ⇒ 正文不上屏（快照才是真相），但**命令卡片**要合并回去
+ *   （快照里没有工具调用历史）。
+ * - **快照之后才发生的**那几轮（用户在重连后又发了一句话）⇒ **要上屏**
+ *   （快照是连上那一刻拍的，里面没有它们 ⇒ 丢了就是「助手不回」）。
+ * - **一个快照都没拿到** ⇒ 回放的积压就是历史 ⇒ 整个渲染出来
+ *   （比空对话强得多）。
  */
 interface ReplayWindow {
   /** 窗口开着吗（开着时进来的帧**不上屏**）。 */
@@ -157,16 +184,45 @@ interface ReplayWindow {
   snapshot?: AiState;
   /** 静默计时器。 */
   timer?: ReturnType<typeof setTimeout>;
+  /** 窗口上限计时器（硬兜底：快照卡住时到点就关）。 */
+  maxTimer?: ReturnType<typeof setTimeout>;
+  /**
+   * 窗口是不是被「上限」关掉的。
+   *
+   * ⇒ 这种情况下**迟到的快照还要上屏**（否则历史就凭空少了）。
+   */
+  closedByTimeout: boolean;
 }
 
 /**
  * 回放窗口的静默期（**兜底**）：这么久没有新帧 ⇒ 强制关窗口。
  *
- * ⚠️ 正常情况下窗口靠「回放收完」（`completedTurns >= expectedTurns`）关，
- *    这个静默期只在**回放与快照对不上**时兜底
+ * ⚠️ 正常情况下窗口靠「回放收完」（`completedTurns >= expectedTurns`）关
+ *    ⇒ 回放与快照对得上时**不等**这个静默期。
+ *    这个静默期只在**对不上**时兜底
  *    （服务端重启后内存里的帧缓冲空了、或者旧帧被淘汰了）。
+ *
+ * ⚠️ 为什么不能太短：回放是服务端**同步写完**的同一个响应，
+ *    但**网络可以把它拆成几块**（代理缓冲、分块传输）
+ *    ⇒ 静默期要盖得住「回放还在路上」的那段时间
+ *    （e2e 的「快照落在回放中间」用例里，回放的尾巴隔了 600ms 才到）。
+ *    ⚠️ 而且窗口开着的时候进来的帧**不上屏** ⇒ 静默期就是
+ *    「用户刚发的话要等多久才看见」⇒ 但宁可晚一点，也不能把回放的尾巴
+ *    漏到窗口外面（那会让历史被渲染两遍）。
  */
 const REPLAY_SETTLE_MS = 1000;
+
+/**
+ * 回放窗口的**最长时长**（硬兜底）：这么久窗口还开着 ⇒ 强制关。
+ *
+ * ⚠️ 为什么必须有：快照请求可能**永远不回来**（服务卡住、连接半开）
+ *    ⇒ 窗口一直开着 ⇒ 实时帧一直被攒着（用户看到的是「我发了话，助手不回」）。
+ *    到点就关 ⇒ 攒下的东西渲染出来（宁可少一点历史，也不能吞掉实时帧）。
+ *
+ * ⚠️ 它要比「快照请求的超时」长一点（`client.ts` 里的 `SNAPSHOT_TIMEOUT_MS`）：
+ *    让请求先失败 ⇒ 走「快照读不到」那条路 ⇒ 历史由回放的积压顶上。
+ */
+const REPLAY_MAX_WINDOW_MS = 4000;
 
 /** 初始状态。 */
 const EMPTY_STATE: StreamState = { messages: [], streaming: false };
@@ -293,6 +349,8 @@ export function applyAiEvent(state: StreamState, event: AiEvent): StreamState {
         ...message,
         // 正文空着（重连丢了 delta）⇒ 用 message_end 的完整文本补上
         text: message.text || event.text || '',
+        // ⚠️ 服务端的**完整正文**单独记一份（对账用，见 ChatMessage.serverText）
+        serverText: event.text || message.serverText,
         error: event.error ?? message.error,
       }));
     case 'tool_call':
@@ -328,6 +386,8 @@ function snapshotToMessages(snapshot: AiState): ChatMessage[] {
     // SYSTEM 消息在界面上也当助手的话（它是系统提示，不是用户说的）
     role: message.role === 'USER' ? 'user' : 'assistant',
     text: message.content,
+    // 快照里的 content 就是服务端落库的完整正文
+    serverText: message.content,
     commands: [],
   }));
 }
@@ -339,11 +399,72 @@ function countAssistantMessages(snapshot: AiState): number {
   ).length;
 }
 
+/**
+ * 把窗口里攒下的轮次分成「快照里已经有了的」与「快照之后才发生的」。
+ *
+ * ## 为什么不能一律丢掉
+ *
+ * 窗口开着的时候，用户可能又发了一句话 ⇒ 服务端回的新一轮**也**进了缓冲区。
+ * 那一轮**不在**快照里（快照是连上那一刻拍的）⇒ 一律丢掉就把它吞了
+ * （用户看到的是「我发了话，助手却不回」）。
+ *
+ * ## 怎么分
+ *
+ * - **按正文对**：快照里的助手消息正文 == 缓冲里那一轮的正文 ⇒ 同一轮（回放）。
+ *   （服务端落库的就是助手那一轮的正文，见服务端 `src/agent/runtime.ts`
+ *   的 `extractAssistantText` ⇒ 正文相同就一定是同一轮。）
+ * - **按条数兜底**：缓冲里的轮数比快照里的助手消息还多 ⇒ 末尾多出来的那几条
+ *   一定是新的（快照更早 ⇒ 多出来的只能是连上之后才发生的）。
+ */
+function partitionTurns(
+  buffered: ChatMessage[],
+  snapshot: AiState,
+): { replayed: ChatMessage[]; fresh: ChatMessage[] } {
+  const snapshotTexts = (snapshot.messages ?? [])
+    .filter((message) => message.role === 'ASSISTANT')
+    .map((message) => message.content);
+  const turns = buffered.filter((message) => message.role === 'assistant');
+  // 末尾多出来的那几条一定是新的
+  const tailStart = Math.min(turns.length, snapshotTexts.length);
+  const used = new Set<number>();
+  const replayed: ChatMessage[] = [];
+  const fresh: ChatMessage[] = [];
+  turns.forEach((turn, position) => {
+    if (position >= tailStart) {
+      fresh.push(turn);
+      return;
+    }
+    const matched = snapshotTexts.findIndex(
+      (text, index) =>
+        !used.has(index) && text === (turn.serverText ?? turn.text),
+    );
+    if (matched < 0) {
+      fresh.push(turn);
+      return;
+    }
+    used.add(matched);
+    replayed.push(turn);
+  });
+  return { replayed, fresh };
+}
+
 /** 从消息列表里挑出「带命令卡片」的那些轮次。 */
 function collectCommandSources(messages: ChatMessage[]): CommandSource[] {
   return messages
     .filter((message) => message.commands.length > 0)
-    .map((message) => ({ text: message.text, commands: message.commands }));
+    .map((message) => ({
+      // ⚠️ 对账用服务端的**完整正文**（累积出来的正文可能是残缺的）
+      text: message.serverText ?? message.text,
+      commands: message.commands,
+    }));
+}
+
+/** 两个气泡是不是同一轮（比服务端的完整正文，没有就比正文）。 */
+function isSameTurn(left: ChatMessage, right: ChatMessage): boolean {
+  return (
+    left.role === right.role &&
+    (left.serverText ?? left.text) === (right.serverText ?? right.text)
+  );
 }
 
 /** 两张卡片是不是同一张（合并时避免重复）。 */
@@ -455,12 +576,18 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
     snapshotReady: false,
     completedTurns: 0,
     buffer: EMPTY_STATE,
+    closedByTimeout: false,
   });
+  // 窗口上限（毫秒）也放进 ref：它变了不该让事件流断开重连
+  const replayWindowMsRef = useRef(
+    options.replayWindowMs ?? REPLAY_MAX_WINDOW_MS,
+  );
 
   useEffect(() => {
     conversationIdRef.current = conversationId;
     subscribeRef.current = options.subscribe ?? defaultSubscribe;
     loadStateRef.current = options.loadState ?? getAiState;
+    replayWindowMsRef.current = options.replayWindowMs ?? REPLAY_MAX_WINDOW_MS;
   });
 
   /**
@@ -468,18 +595,31 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
    *
    * @param snapshot 服务端快照。
    * @param id 会话 id。
-   * @param extraSources 额外要合并回去的命令卡片来源
-   *   （回放窗口里攒下的那些 —— 快照里没有工具调用历史）。
+   * @param buffered 窗口里攒下的东西（回放的积压）：
+   *   - 里面**快照已经有的**轮次 ⇒ 正文不上屏（快照里有），命令卡片合并回去；
+   *   - 里面**快照之后才发生的**轮次 ⇒ 要上屏（不能吞）。
+   * @param keepLocal 用**当前界面**当积压（迟到的快照：别把已经渲染出来的
+   *   实时帧弄丢）。
    */
   const applySnapshot = useCallback(
-    (snapshot: AiState, id: string, extraSources: ChatMessage[] = []): void => {
+    (
+      snapshot: AiState,
+      id: string,
+      buffered?: StreamState,
+      keepLocal = false,
+    ): void => {
       setState((previous) => {
+        // 积压：回放窗口里攒的那些（或者迟到的快照 ⇒ 当前界面）
+        const source = keepLocal ? previous : buffered;
+        const partition = source
+          ? partitionTurns(source.messages, snapshot)
+          : { replayed: [], fresh: [] };
         const rebuilt = snapshotToMessages(snapshot);
         // ⚠️ 快照里**没有工具调用历史** ⇒ 把本地已知的命令卡片合并回去
         //（否则每次重建后「已执行」的卡片就消失了，用户会以为命令没跑）。
         const messages = mergeCommandSources(rebuilt, [
           ...collectCommandSources(previous.messages),
-          ...collectCommandSources(extraSources),
+          ...collectCommandSources(partition.replayed),
         ]);
         // 快照里还没有的本地用户消息要留住（服务端可能还没落库）
         const missing = pendingUserMessagesRef.current.filter(
@@ -491,16 +631,68 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
         pendingUserMessagesRef.current = pendingUserMessagesRef.current.filter(
           (text) => !missing.includes(text),
         );
+        // 快照之后才发生的轮次 ⇒ 补在历史后面（**不能吞**）
+        const lastFresh = partition.fresh[partition.fresh.length - 1];
+        const activeId =
+          source?.activeId !== undefined && lastFresh?.id === source.activeId
+            ? lastFresh.id
+            : undefined;
+        let streaming = snapshot.isStreaming === true;
+        if (partition.fresh.length > 0) {
+          streaming = source?.streaming === true;
+        }
+        if (activeId !== undefined) {
+          streaming = true;
+        }
         return {
           conversationId: id,
           messages: [
             ...messages,
+            // 还没落库的用户消息（乐观上屏的）在前
             ...missing.map((text) => createUserMessage(text)),
+            // 快照之后才发生的轮次（是那些消息的回复）在后
+            ...partition.fresh,
           ],
-          activeId: undefined,
-          streaming: snapshot.isStreaming === true,
+          activeId,
+          streaming,
           // 当前模型：服务端只有这一个（没有模型列表端点）
           model: snapshot.model,
+        };
+      });
+    },
+    [],
+  );
+
+  /**
+   * **没有快照**时：回放的积压就是历史。
+   *
+   * ⚠️ 早先的实现只把命令卡片合并回去 ⇒ 整段回放被丢弃
+   *    （用户看到的历史凭空少了一截，直到下一次重连或刷新才回来）。
+   *    ⇒ 这里把积压**整个渲染出来**（比空对话强得多）。
+   */
+  const applyBufferedBacklog = useCallback(
+    (buffered: StreamState, id: string): void => {
+      setState((previous) => {
+        const backlog = buffered.messages;
+        // 回放里本地没有的那些轮次 ⇒ 补在后面
+        const extra = backlog.filter(
+          (message) =>
+            !previous.messages.some((item) => isSameTurn(item, message)),
+        );
+        // 命令卡片：本地已知的 + 回放里的，都要留下
+        const messages = mergeCommandSources(
+          [...previous.messages, ...extra],
+          [
+            ...collectCommandSources(previous.messages),
+            ...collectCommandSources(backlog),
+          ],
+        );
+        return {
+          ...previous,
+          conversationId: id,
+          messages,
+          activeId: buffered.activeId,
+          streaming: buffered.streaming,
         };
       });
     },
@@ -545,27 +737,30 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
       clearTimeout(window.timer);
       window.timer = undefined;
     }
+    if (window.maxTimer !== undefined) {
+      clearTimeout(window.maxTimer);
+      window.maxTimer = undefined;
+    }
     const snapshot = window.snapshot;
     const buffered = window.buffer;
     window.buffer = EMPTY_STATE;
     window.snapshot = undefined;
     window.snapshotReady = false;
+    window.expectedTurns = undefined;
 
     const id = conversationIdRef.current;
-    if (snapshot && id) {
-      applySnapshot(snapshot, id, buffered.messages);
+    if (!id) {
       return;
     }
-    // 快照没拿到（会话没了 / 网络断了）⇒ 不重建历史，
-    // 只把窗口里攒下的命令卡片补回本地界面。
-    setState((previous) => ({
-      ...previous,
-      messages: mergeCommandSources(
-        previous.messages,
-        collectCommandSources(buffered.messages),
-      ),
-    }));
-  }, [applySnapshot]);
+    if (snapshot) {
+      // 快照是真相 ⇒ 用它重建；
+      // 窗口里**快照之后才发生的**那几轮 ⇒ 一并上屏（不能吞）。
+      applySnapshot(snapshot, id, buffered);
+      return;
+    }
+    // 快照没拿到（读不到 / 超时）⇒ 回放的积压就是历史 ⇒ 整个渲染出来。
+    applyBufferedBacklog(buffered, id);
+  }, [applyBufferedBacklog, applySnapshot]);
 
   /**
    * 回放**收完**了就把窗口关上（不等静默期）。
@@ -601,14 +796,23 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
     if (window.timer !== undefined) {
       clearTimeout(window.timer);
     }
-    window.timer = setTimeout(() => {
-      window.timer = undefined;
-      // 快照还没到 ⇒ 不能关（关了就没有真相了）⇒ 等它
-      if (!window.snapshotReady) {
-        return;
-      }
-      closeReplayWindow();
-    }, REPLAY_SETTLE_MS);
+    const arm = (): void => {
+      window.timer = setTimeout(() => {
+        window.timer = undefined;
+        // 快照还没到 ⇒ 不能关（关了就没有真相了）⇒ 等它
+        if (!window.snapshotReady) {
+          return;
+        }
+        // ⚠️ 回放**正说到一半**（这一轮还没收完）⇒ 再等一轮静默。
+        //    关了的话，回放的尾巴随后会直接上屏 ⇒ 历史被渲染**两遍**。
+        if (window.buffer.activeId !== undefined) {
+          arm();
+          return;
+        }
+        closeReplayWindow();
+      }, REPLAY_SETTLE_MS);
+    };
+    arm();
   }, [closeReplayWindow]);
 
   /**
@@ -622,23 +826,50 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
     window.completedTurns = 0;
     window.expectedTurns = undefined;
     window.buffer = EMPTY_STATE;
+    window.closedByTimeout = false;
 
     const id = conversationIdRef.current;
     if (!id) {
       closeReplayWindow();
       return;
     }
+
+    // 窗口上限（硬兜底）：快照请求卡住 ⇒ 到点就关窗口，把攒下的渲染出来。
+    //
+    // ⚠️ 没有它的话，一个卡住的 `GET /state` 会让窗口一直开着
+    //    ⇒ 实时帧全被攒着不上屏（用户看到的是「我发了话，助手不回」）。
+    window.maxTimer = setTimeout(() => {
+      const current = replayRef.current;
+      if (!current.open) {
+        return;
+      }
+      current.maxTimer = undefined;
+      current.closedByTimeout = true;
+      closeReplayWindow();
+    }, replayWindowMsRef.current);
+
     void (async () => {
       let snapshot: AiState | undefined;
       try {
         snapshot = await loadStateRef.current(id);
       } catch {
-        // 快照读不到（会话没了 / 网络断了）⇒ 不重建界面，等下一次重连
+        // 快照读不到（会话没了 / 网络断了 / 超时）⇒ 用回放的积压顶上
         snapshot = undefined;
       }
       const current = replayRef.current;
       if (!current.open) {
-        // 窗口已经关了（换会话 / 组件卸载）⇒ 这次快照作废
+        // 窗口已经关了（换会话 / 组件卸载 / 到了上限）
+        //
+        // ⚠️ 被「上限」关的 ⇒ **迟到的快照还要上屏**
+        //    （否则历史就凭空少了一截）。
+        //    用「当前界面当积压」⇒ 已经渲染出来的实时帧不会被弄丢。
+        if (
+          current.closedByTimeout &&
+          snapshot &&
+          conversationIdRef.current === id
+        ) {
+          applySnapshot(snapshot, id, undefined, true);
+        }
         return;
       }
       current.snapshot = snapshot;
@@ -650,7 +881,7 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
       // 回放已经收完 ⇒ 不用等静默期
       tryCloseReplayWindow();
     })();
-  }, [closeReplayWindow, scheduleSettle, tryCloseReplayWindow]);
+  }, [applySnapshot, closeReplayWindow, scheduleSettle, tryCloseReplayWindow]);
 
   useEffect(() => {
     if (!conversationId) {
@@ -716,6 +947,10 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
       if (window.timer !== undefined) {
         clearTimeout(window.timer);
         window.timer = undefined;
+      }
+      if (window.maxTimer !== undefined) {
+        clearTimeout(window.maxTimer);
+        window.maxTimer = undefined;
       }
     };
   }, [conversationId, resync, scheduleSettle, startResync]);

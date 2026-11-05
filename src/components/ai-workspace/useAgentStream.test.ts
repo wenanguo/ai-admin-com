@@ -379,6 +379,159 @@ describe('AI 流式状态机', () => {
     expect(commands[0].status).toBe('ok');
   });
 
+  it('快照读不到时:回放的积压要渲染出来(不能整段丢掉)', async () => {
+    const { captured, subscribe } = fakeSubscribe();
+    // 快照读不到（服务挂了 / 会话没了 / 超时）
+    const loadState = vi.fn(async () => {
+      throw new Error('快照读不到');
+    });
+
+    const { act, result } = await renderHook(() =>
+      useAgentStream({
+        conversationId: 'c1',
+        subscribe,
+        loadState,
+      }),
+    );
+
+    await act(async () => {
+      captured.onEvent?.({
+        type: 'connected',
+        conversationId: 'c1',
+        isStreaming: false,
+      });
+    });
+
+    // 服务端在**同一个响应**里把整段历史回放出来
+    await act(async () => {
+      captured.onEvent?.({ type: 'message_start', role: 'assistant' });
+      captured.onEvent?.({ type: 'text_delta', delta: '好的' });
+      captured.onEvent?.({
+        type: 'tool_call',
+        toolName: 'create_task',
+        args: { title: 'SSO 登录' },
+      });
+      captured.onEvent?.({
+        type: 'tool_result',
+        toolName: 'create_task',
+        status: 'ok',
+        summary: '已创建任务「SSO 登录」',
+      });
+      captured.onEvent?.({ type: 'message_end', text: '好的' });
+      captured.onEvent?.({ type: 'agent_settled' });
+    });
+
+    // 窗口会自己关（静默期）⇒ 等它
+    await vi.waitFor(
+      () => {
+        expect(result.current.messages.map((item) => item.text)).toEqual([
+          '好的',
+        ]);
+      },
+      { timeout: 5000 },
+    );
+
+    // 命令卡片也要在（快照里**没有**工具调用历史）
+    const commands = result.current.messages.flatMap((item) => item.commands);
+    expect(commands).toHaveLength(1);
+    expect(commands[0].toolName).toBe('create_task');
+    expect(commands[0].status).toBe('ok');
+  });
+
+  it('快照请求卡住时:实时帧不能被吞掉(窗口到点自己关)', async () => {
+    const { captured, subscribe } = fakeSubscribe();
+    // 快照**永远不回来**（请求卡住）
+    const loadState = vi.fn(() => new Promise<AiState>(() => undefined));
+
+    const { act, result } = await renderHook(() =>
+      useAgentStream({
+        conversationId: 'c1',
+        subscribe,
+        loadState,
+        // 窗口上限调短（测试里等不了默认值）
+        replayWindowMs: 300,
+      }),
+    );
+
+    await act(async () => {
+      captured.onEvent?.({
+        type: 'connected',
+        conversationId: 'c1',
+        isStreaming: false,
+      });
+    });
+
+    // 重连之后用户又发了一句话 ⇒ 服务端回的新一轮
+    await act(async () => {
+      captured.onEvent?.({ type: 'message_start', role: 'assistant' });
+      captured.onEvent?.({ type: 'text_delta', delta: '我在' });
+      captured.onEvent?.({ type: 'message_end', text: '我在' });
+    });
+
+    // 窗口到了上限会自己关 ⇒ 攒下的帧要渲染出来（不能被吞）
+    await vi.waitFor(
+      () => {
+        expect(result.current.messages.map((item) => item.text)).toEqual([
+          '我在',
+        ]);
+      },
+      { timeout: 5000 },
+    );
+  });
+
+  it('窗口开着的时候到的帧不能被丢(快照之后才发生的那一轮)', async () => {
+    const { captured, subscribe } = fakeSubscribe();
+    // 快照什么时候落地由测试控制
+    let resolveSnapshot: ((snapshot: AiState) => void) | undefined;
+    const loadState = vi.fn(
+      () =>
+        new Promise<AiState>((resolve) => {
+          resolveSnapshot = resolve;
+        }),
+    );
+
+    const { act, result } = await renderHook(() =>
+      useAgentStream({
+        conversationId: 'c1',
+        subscribe,
+        loadState,
+      }),
+    );
+
+    await act(async () => {
+      captured.onEvent?.({
+        type: 'connected',
+        conversationId: 'c1',
+        isStreaming: false,
+      });
+    });
+
+    // 用户在重连之后又发了一句话 ⇒ 新的一轮（**不在**快照里）
+    await act(async () => {
+      captured.onEvent?.({ type: 'message_start', role: 'assistant' });
+      captured.onEvent?.({ type: 'text_delta', delta: '收到' });
+      captured.onEvent?.({ type: 'message_end', text: '收到' });
+    });
+
+    // 快照落地（里面只有旧的历史）
+    await act(async () => {
+      resolveSnapshot?.(SNAPSHOT);
+      await Promise.resolve();
+    });
+
+    // 那一轮**不在**快照里 ⇒ 不能被吞掉
+    await vi.waitFor(
+      () => {
+        expect(result.current.messages.map((item) => item.text)).toEqual([
+          '建个任务',
+          '好的',
+          '收到',
+        ]);
+      },
+      { timeout: 5000 },
+    );
+  });
+
   it('回放里的命令卡片也会被合并回去', async () => {
     const { captured, subscribe } = fakeSubscribe();
     let resolveSnapshot: ((snapshot: AiState) => void) | undefined;

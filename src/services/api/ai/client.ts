@@ -42,6 +42,8 @@ interface AiRequestOptions {
   method: 'GET' | 'POST';
   params?: Record<string, string | number | undefined>;
   data?: unknown;
+  /** 超时（毫秒）—— 不给就跟着 axios 的默认（不超时）。 */
+  timeout?: number;
 }
 
 /**
@@ -67,6 +69,7 @@ async function aiRequest<T>(
     headers: { Authorization: `Bearer ${getAccessToken()}` },
     params: options.params,
     data: options.data,
+    timeout: options.timeout,
   });
   return response.data;
 }
@@ -88,10 +91,24 @@ export async function createAiConversation(
   });
 }
 
+/**
+ * 快照请求的超时（毫秒）。
+ *
+ * ⚠️ **必须有**：AI 服务卡住时 `GET /state` 会一直挂着
+ *    ⇒ 前端的回放窗口一直开着 ⇒ 实时帧被无限期攒着不上屏
+ *    （用户看到的是「我发了话，助手不回」）。
+ *    超时之后请求失败 ⇒ 前端走「快照读不到」那条路（用回放的积压顶上）。
+ *
+ * ⚠️ 它要比前端回放窗口的上限（`useAgentStream.ts` 的 `REPLAY_MAX_WINDOW_MS`）
+ *    **短**：让请求先失败 ⇒ 历史由回放的积压补上，而不是等窗口到期。
+ */
+const SNAPSHOT_TIMEOUT_MS = 3000;
+
 /** 取会话快照（消息、是否在跑、当前模型）。 */
 export async function getAiState(conversationId: string): Promise<AiState> {
   return aiRequest<AiState>(`/api/agent/${conversationId}/state`, {
     method: 'GET',
+    timeout: SNAPSHOT_TIMEOUT_MS,
   });
 }
 
