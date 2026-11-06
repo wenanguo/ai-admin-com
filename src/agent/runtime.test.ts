@@ -514,3 +514,82 @@ describe("运行时 · 告警去处", () => {
 		}
 	});
 });
+
+/* ------------------------------------------- P4：token 轮换（MCP 身份） */
+
+/**
+ * 场景：同一个会话，调用方的 token 换了（重新登录 / token 轮换）。
+ *
+ * ⚠️ **越权风险**：老会话的 MCP 连接带着**旧 token** ⇒
+ *    模型调 MCP 时用的还是上一个人的身份。
+ */
+describe("运行时 · token 轮换（P4）", () => {
+	/** 造一个能记录 createSession 参数的运行时。 */
+	function makeRuntimeWithMcp(mcpUrl: string | undefined): {
+		runtime: AgentRuntime;
+		created: PiSessionOptions[];
+	} {
+		const { store } = fakeStore(fakeConversation());
+		const audit = fakeAudit();
+		const created: PiSessionOptions[] = [];
+
+		const runtime = new AgentRuntime({
+			store,
+			audit: audit.writer,
+			mcpUrl,
+			createSession: async (options: PiSessionOptions) => {
+				created.push(options);
+				return {
+					prompt: async (): Promise<void> => {},
+					subscribe: () => () => {},
+					dispose: () => {},
+					isStreaming: false,
+				};
+			},
+			createDataSource: () => ({
+				createTask: async (input: CreateTaskInput) => {
+					void input;
+					return fakeTask();
+				},
+			}),
+			resolveUser: async () => ({ id: 2 }),
+		});
+
+		return { runtime, created };
+	}
+
+	it("token 变了 ⇒ 重建 pi 会话（老会话不能继续用旧 token 调 MCP）", async () => {
+		const { runtime, created } = makeRuntimeWithMcp("http://aiadmin.test/api/v1/mcp");
+
+		await runtime.submitCommand({ ...command("cmd-1"), token: "token-a" });
+		await waitFor(() => created.length >= 1);
+		expect(created[0]?.mcp?.token).toBe("token-a");
+
+		// ⚠️ 同一个会话，但 token 换了
+		await runtime.submitCommand({ ...command("cmd-2"), token: "token-b" });
+		await waitFor(() => created.length >= 2);
+
+		// ⇒ 重建了一个会话，带的是**新** token
+		expect(created[1]?.mcp?.token).toBe("token-b");
+	});
+
+	it("token 没变 ⇒ 不重建会话（别每次都重连 MCP）", async () => {
+		const { runtime, created } = makeRuntimeWithMcp("http://aiadmin.test/api/v1/mcp");
+
+		await runtime.submitCommand({ ...command("cmd-1"), token: "token-a" });
+		await waitFor(() => created.length >= 1);
+		await runtime.submitCommand({ ...command("cmd-2"), token: "token-a" });
+		await sleep(50);
+
+		expect(created).toHaveLength(1);
+	});
+
+	it("没配 MCP 地址 ⇒ 不接 MCP（后端还没部署时零噪音）", async () => {
+		const { runtime, created } = makeRuntimeWithMcp(undefined);
+
+		await runtime.submitCommand({ ...command("cmd-1"), token: "token-a" });
+		await waitFor(() => created.length >= 1);
+
+		expect(created[0]?.mcp).toBeUndefined();
+	});
+});

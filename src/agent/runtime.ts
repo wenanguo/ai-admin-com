@@ -111,6 +111,13 @@ export interface AgentRuntimeOptions {
 	model?: string;
 	/** 审计去处（生产用 `PrismaAuditWriter`，测试用假实现）。 */
 	audit?: AuditWriter;
+	/**
+	 * AiAdmin 的 MCP 地址（**不给就不接 MCP**）。
+	 *
+	 * ⚠️ **缺省不接**：后端的 MCP 还没上线 ⇒ 接了只会每次建会话都连接失败
+	 * （噪音 + 延迟）⇒ 显式配上才接。
+	 */
+	mcpUrl?: string;
 	/** 每个会话最多记多少个命令 id（测试用；生产用默认上限）。 */
 	maxTrackedCommands?: number;
 }
@@ -128,6 +135,8 @@ export class AgentRuntime {
 	readonly #mappers = new Map<string, AgentEventMapper>();
 	/** 审计去处（每次写操作都留一条 `ai_audit_log`）。 */
 	readonly #audit: AuditWriter;
+	/** AiAdmin 的 MCP 地址（**没配就不接 MCP**）。 */
+	readonly #mcpUrl: string | undefined;
 	/** 命令 id ⇒ 上次的 ack（**幂等**：同一个 id 不跑两遍）。 */
 	readonly #acks = new Map<string, Map<string, CommandAck>>();
 	/** 每个会话最多记多少个命令 id。 */
@@ -138,6 +147,7 @@ export class AgentRuntime {
 		this.#createSession = options.createSession ?? createPiSession;
 		this.#model = options.model ?? env.AI_MODEL;
 		this.#audit = options.audit ?? new PrismaAuditWriter();
+		this.#mcpUrl = options.mcpUrl ?? env.AIADMIN_MCP_URL;
 		this.#maxTrackedCommands = options.maxTrackedCommands ?? MAX_TRACKED_COMMANDS_PER_CONVERSATION;
 
 		const client = new AadminClient({ baseUrl: env.AIADMIN_BASE_URL });
@@ -206,6 +216,18 @@ export class AgentRuntime {
 		const known = this.#ackOf(request.conversationId, request.commandId);
 		if (known !== undefined) {
 			return known;
+		}
+
+		// ⚠️ **token 变了 ⇒ 重建会话**：老会话的 MCP 连接带着**旧 token**
+		//    ⇒ 模型调 MCP 时用的还是上一个人的身份（越权）。
+		//    ⇒ 直接把老通道关掉（连带 dispose 掉 pi 会话与 MCP 连接）。
+		const previous = this.#registry.get(request.conversationId);
+		if (
+			previous !== undefined &&
+			previous.token !== undefined &&
+			previous.token !== request.token
+		) {
+			this.#registry.close(request.conversationId);
 		}
 
 		const channel = this.#registry.ensure(request.conversationId);
@@ -458,6 +480,11 @@ export class AgentRuntime {
 			conversationId: channel.conversationId,
 			history,
 			model: this.#model,
+			// ⚠️ MCP 的身份 = **当次调用方的 token**（每个会话一份）
+			mcp:
+				this.#mcpUrl === undefined
+					? undefined
+					: { url: this.#mcpUrl, token: channel.token ?? "" },
 		});
 		channel.session = session;
 		channel.unsubscribe = session.subscribe((event) => {
