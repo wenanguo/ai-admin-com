@@ -323,6 +323,34 @@ src/app/                          Route Handler（/api/agent/** 、/api/audit �
 spike/                            Task 1 的风险尖峰（一次性，结论在 spike/FINDINGS.md）
 ```
 
+## MCP：工具从哪来（后端接口 ⇒ AI 的能力）
+
+**一句话**：AiAdmin 的接口被后端挂成 **MCP tool** ⇒ AI 直接调用它们。
+**后端加接口，AI 侧一行代码都不用改。**
+
+| 事项 | 说明 |
+| ---- | ---- |
+| 开启方式 | 配 `AIADMIN_MCP_URL`（一般是 `${AIADMIN_BASE_URL}/mcp`）；**不配就不接**（AI 仍能用，只是没有那些工具） |
+| 工具名 | `mcp__aiadmin__<工具名>`（模型看到的是带前缀的名字） |
+| 身份 | 每个会话带**当次调用方的 JWT** ⇒ 后端的权限码校验原样生效（用户在 AiAdmin 的权限 = AI 能替他做的范围） |
+| 换 token | 调用方 token 变了 ⇒ **重建会话**（老会话的 MCP 连接还带着旧 token ⇒ 会越权） |
+| 连不上 | **会话照常能用**（只是没有那些工具）⇒ 后端还没部署 MCP 也不影响 |
+
+### 怎么用
+
+1. 后端把 `module_mcp` 合并部署，并把 `MCP_INCLUDE_TAGS` 开到要暴露的模块（默认只有「任务模块」）。
+2. 本服务配 `AIADMIN_MCP_URL` ⇒ 重启。
+3. **验证**：让 AI 说一句「列一下项目」⇒ 看 SSE 里的 `tool_call` 是不是 `mcp__aiadmin__*`。
+
+### 与技能的关系
+
+- **工具**（MCP）= 能做什么（后端给的）；
+- **技能**（`.pi/skills/*/SKILL.md`）= 怎么用（人写的配方）。
+
+⇒ **加能力不用改代码**：后端加接口（自动成为工具）+ 写一个技能（教模型怎么用）。
+
+---
+
 ## 技能（SKILL.md）：加 AI 能力不用改代码
 
 **一句话**：加一条 AI 能力 = 在 `.pi/skills/<名字>/SKILL.md` 放一个 markdown 文件，
