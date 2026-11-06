@@ -37,10 +37,26 @@ export interface CommandDefinition {
 	name: string;
 	/** 人读的标签。 */
 	label: string;
-	/** 是不是破坏性命令（破坏性的要先问人）。 */
-	destructive: boolean;
 	/** 造出工具。 */
 	build(context: CommandContext): CommandTool;
+}
+
+/**
+ * 这个命令是不是**破坏性**的。
+ *
+ * ## 唯一事实源：工具自己的 `annotations.destructiveHint`
+ *
+ * 之前这里还有一个手写的 `destructive: boolean` 字段，与工具里的
+ * `annotations.destructiveHint` **各说各的** ⇒ 改一处忘另一处 ⇒
+ * 「破坏性命令要不要先问人」这个判断就不可信了。
+ *
+ * ⇒ 现在只有一个事实源：**工具的 annotations**（SDK 的 `ToolAnnotations`）。
+ * 闸门（`CommandGate`）与待确认队列都读它。
+ *
+ * ⚠️ 没标 `destructiveHint` 的工具按**非破坏性**处理（新建类命令可补偿撤销）。
+ */
+export function isDestructiveCommand(command: CommandTool): boolean {
+	return command.annotations?.destructiveHint === true;
 }
 
 /** 全部命令。 */
@@ -48,8 +64,8 @@ export const COMMAND_CATALOG: readonly CommandDefinition[] = [
 	{
 		name: CREATE_TASK_TOOL_NAME,
 		label: "创建任务",
-		// 新建是可补偿的（能改能删）⇒ 非破坏性 ⇒ 不需要待确认
-		destructive: false,
+		// ⚠️ 破坏性不在这儿写 —— 它由**工具自己的 annotations** 决定
+		//（`destructiveHint: false`：新建是可补偿的 ⇒ 非破坏性 ⇒ 不需要待确认）。
 		build: (context) =>
 			createCreateTaskTool({
 				currentToken: context.currentToken,

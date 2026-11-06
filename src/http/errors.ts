@@ -10,16 +10,34 @@
  * 这里只做「原样转出去」，不再加工。
  */
 
-import { AdapterErrorException } from "../aadmin/errors";
+import { AdapterErrorException, isAdapterErrorException } from "../aadmin/errors";
 import { AgentError } from "../agent/runtime";
 import { errorEnvelope } from "./respond";
 
+/**
+ * 这个错误是不是**运行时自己的**（会话不存在、参数不对……）。
+ *
+ * ⚠️ 不能只看 `instanceof`：Next 的打包器可能把同一个模块在不同的 chunk 里
+ *    **各实例化一次** ⇒ 跨 chunk 的 `instanceof` 就是 false
+ *    （适配层那边的同类问题见 `aadmin/errors.ts` 的 `isAdapterErrorException`）。
+ *
+ * ⇒ 用 `name` 做结构化判定（`AgentError` 与 `AdapterErrorException` 互不相同）。
+ */
+function isAgentError(error: unknown): error is AgentError {
+	return (
+		error instanceof AgentError ||
+		(typeof error === "object" &&
+			error !== null &&
+			(error as { name?: unknown }).name === "AgentError")
+	);
+}
+
 /** 把异常变成一个带 CORS 头的错误信封。 */
 export function errorResponse(request: Request, error: unknown): Response {
-	if (error instanceof AgentError) {
+	if (isAgentError(error)) {
 		return errorEnvelope(request, statusOf(error.kind), error.message, statusOf(error.kind));
 	}
-	if (error instanceof AdapterErrorException) {
+	if (isAdapterErrorException(error)) {
 		const status = statusOf(error.kind);
 		return errorEnvelope(request, status, error.message, status);
 	}

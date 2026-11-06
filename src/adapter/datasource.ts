@@ -13,7 +13,7 @@
 
 import { createHash } from "node:crypto";
 import type { AadminClient } from "../aadmin/client";
-import { AdapterErrorException } from "../aadmin/errors";
+import { AdapterErrorException, isAdapterErrorException } from "../aadmin/errors";
 import {
 	PM_PATHS,
 	type AadminPageResult,
@@ -285,7 +285,7 @@ export class AadminDataSource {
 			const wire = await this.#client.get<PmTaskOut>(PM_PATHS.task.detail(id), this.#token);
 			return toUnifiedTask(wire, this.#onWarning);
 		} catch (error) {
-			if (error instanceof AdapterErrorException && error.kind === "NOT_FOUND") {
+			if (isAdapterErrorException(error) && error.kind === "NOT_FOUND") {
 				return null;
 			}
 			throw error;

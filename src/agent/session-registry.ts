@@ -25,13 +25,31 @@ export type ChannelSubscriber = (frame: StreamFrame) => void;
  */
 export interface AgentSessionLike {
 	/** 发起一轮对话。 */
-	prompt(text: string, options?: { expandPromptTemplates?: boolean }): Promise<void>;
+	prompt(
+		text: string,
+		options?: { expandPromptTemplates?: boolean; streamingBehavior?: "steer" | "followUp" },
+	): Promise<void>;
 	/** 订阅事件；返回退订函数。 */
 	subscribe(listener: (event: AgentSessionEvent) => void): () => void;
 	/** 释放会话。 */
 	dispose(): void;
 	/** 正在流式输出？ */
 	readonly isStreaming: boolean;
+	/**
+	 * 排到当前轮**之后**（不打断）：当前 run 干完活就处理它。
+	 *
+	 * ⚠️ 这是 SDK 的原生排队语义（`AgentSession.followUp`）——
+	 *    自己造队列只能做到「等整轮跑完」，做不到「插进去」。
+	 */
+	followUp?(text: string): Promise<"queued" | "handled">;
+	/**
+	 * **打断**当前轮：插到当前助手轮次（及其工具调用）之后、下一次模型调用之前。
+	 *
+	 * ⚠️ SDK 原生语义（`AgentSession.steer`）。
+	 */
+	steer?(text: string): Promise<"queued" | "handled">;
+	/** 停掉当前正在跑的操作（用户点「停止」）。 */
+	abort?(): Promise<void>;
 }
 
 /** 一个会话通道。 */

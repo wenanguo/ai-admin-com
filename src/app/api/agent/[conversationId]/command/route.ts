@@ -1,10 +1,18 @@
 /**
  * `POST /api/agent/[conversationId]/command` —— 提交一条命令。
  *
- * 请求体：`{ id, type: "prompt", message }`
+ * 请求体：`{ id, type, message }`
  * 响应：`{ id, type: "response", success: true }`
  *
- * ⚠️ **`success: true` 的含义是「已受理并排队」**，不是「这一轮已经跑完」。
+ * ## 命令类型
+ *
+ * | type | 含义 |
+ * | ---- | ---- |
+ * | `prompt` | 说一句话（默认）。当前没有轮次在跑 ⇒ 立刻开始跑；在跑 ⇒ 排队（不打断） |
+ * | `prompt-followup` | 明确排队：当前轮干完活再处理这句 |
+ * | `prompt-steer` | 打断：插到当前助手轮次（及其工具调用）之后 |
+ *
+ * ⚠️ **响应里的 `success: true` 的含义是「已受理并排队」**，不是「这一轮已经跑完」。
  * 这一轮的结果走 SSE（`/events`）：`message_start` → `text_delta`* → `tool_call` →
  * `tool_result` → `message_end` → `agent_settled`。
  *
@@ -22,6 +30,12 @@ export const dynamic = "force-dynamic";
 
 /** 缺 token 的统一说法。 */
 const MISSING_TOKEN = "缺少 Authorization: Bearer <token>（token 由调用方提供，本服务只做透传）";
+
+/** 支持的命令类型。 */
+const SUPPORTED_COMMAND_TYPES = ["prompt", "prompt-followup", "prompt-steer"] as const;
+
+/** 命令类型。 */
+type CommandType = (typeof SUPPORTED_COMMAND_TYPES)[number];
 
 /** CORS 预检。 */
 export async function OPTIONS(request: Request): Promise<Response> {
@@ -56,8 +70,16 @@ export async function POST(
 	if (id.length === 0) {
 		return errorEnvelope(request, 400, "命令 id 不能为空", 400);
 	}
-	if (type !== "prompt") {
-		return errorEnvelope(request, 400, `暂不支持的命令类型「${type}」（本切片只有 prompt）`, 400);
+	if (type.length === 0) {
+		return errorEnvelope(request, 400, "命令类型不能为空", 400);
+	}
+	if (!(SUPPORTED_COMMAND_TYPES as readonly string[]).includes(type)) {
+		return errorEnvelope(
+			request,
+			400,
+			`暂不支持的命令类型「${type}」（支持：${SUPPORTED_COMMAND_TYPES.join(" / ")}）`,
+			400,
+		);
 	}
 	if (message.trim().length === 0) {
 		return errorEnvelope(request, 400, "消息不能为空", 400);
@@ -72,6 +94,7 @@ export async function POST(
 			message,
 			commandId: id,
 			userId: String(user.id),
+			type: type as CommandType,
 		});
 		return okEnvelope(request, ack);
 	} catch (error) {

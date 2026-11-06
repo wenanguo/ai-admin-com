@@ -21,7 +21,7 @@ import type { AuditWriter } from "../audit";
 import { redactAuditArgs } from "../audit-redact";
 import type { CreateTaskInput } from "../adapter/datasource";
 import type { UnifiedTask } from "../adapter/model";
-import { AdapterErrorException } from "../aadmin/errors";
+import { AdapterErrorException, isAdapterErrorException } from "../aadmin/errors";
 import { ALLOW_ALL_GATE, type CommandGate, type CommandTool } from "./types";
 
 /** 工具名（模型用它来调用）。 */
@@ -239,7 +239,7 @@ export function createCreateTaskTool(deps: CreateTaskToolDeps): CommandTool<
 					details,
 				};
 			} catch (error) {
-				if (error instanceof AdapterErrorException) {
+				if (isAdapterErrorException(error)) {
 					return failure(error.message, error.kind);
 				}
 				const message = error instanceof Error ? error.message : String(error);

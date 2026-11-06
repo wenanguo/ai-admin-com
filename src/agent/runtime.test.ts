@@ -18,6 +18,7 @@ import { taskStatusToUnified } from "../adapter/enums";
 import type { CreateTaskInput } from "../adapter/datasource";
 import type { UnifiedTask } from "../adapter/model";
 import { prisma } from "../db";
+import type { PiSessionOptions } from "./pi-session";
 import { AgentRuntime } from "./runtime";
 import type { ConversationRecord, ConversationStore, MessageRecord } from "./store";
 import type { CommandTool } from "../tools/types";
@@ -118,28 +119,35 @@ function makeRuntime(options: { maxTrackedCommands?: number } = {}): {
 	runtime: AgentRuntime;
 	calls: CreateTaskInput[];
 	appended: MessageRecord[];
+	/** 造 pi 会话时收到的参数（用来断言「历史有没有交给它」）。 */
+	sessionOptions: PiSessionOptions[];
 } {
 	const calls: CreateTaskInput[] = [];
 	const { store, appended } = fakeStore(fakeConversation());
 	const audit = fakeAudit();
+	const sessionOptions: PiSessionOptions[] = [];
 
 	const runtime = new AgentRuntime({
 		store,
 		audit: audit.writer,
 		maxTrackedCommands: options.maxTrackedCommands,
 		// 假会话：一收到 prompt 就调工具（模拟模型调 create_task）
-		createSession: async (tools: CommandTool[]) => ({
-			prompt: async (): Promise<void> => {
-				const tool = tools[0];
-				if (tool === undefined) {
-					throw new Error("一个工具都没注册");
-				}
-				await tool.execute("call-1", { project_key: "PRJ-1", title: "标题" });
-			},
-			subscribe: () => () => {},
-			dispose: () => {},
-			isStreaming: false,
-		}),
+		createSession: async (options: PiSessionOptions) => {
+			sessionOptions.push(options);
+			const tools = options.tools;
+			return {
+				prompt: async (): Promise<void> => {
+					const tool = tools[0];
+					if (tool === undefined) {
+						throw new Error("一个工具都没注册");
+					}
+					await tool.execute("call-1", { project_key: "PRJ-1", title: "标题" });
+				},
+				subscribe: () => () => {},
+				dispose: () => {},
+				isStreaming: false,
+			};
+		},
 		createDataSource: () => ({
 			createTask: async (input: CreateTaskInput) => {
 				calls.push(input);
@@ -148,7 +156,7 @@ function makeRuntime(options: { maxTrackedCommands?: number } = {}): {
 		}),
 		resolveUser: async () => ({ id: 2 }),
 	});
-	return { runtime, calls, appended };
+	return { runtime, calls, appended, sessionOptions };
 }
 
 /** 等条件成立（最多 timeoutMs 毫秒）。 */
@@ -247,6 +255,244 @@ describe("运行时 · 命令去重（Idempotency-Key）", () => {
 		await waitFor(() => calls.length >= 4);
 
 		expect(calls).toHaveLength(4);
+	});
+});
+
+/* -------------------------------------------------- P0：会话上下文还原 */
+
+/**
+ * 场景：**进程重启后**（或通道被回收后），模型仍然记得之前聊过什么。
+ *
+ * ⇒ 验收标准：新建的 pi 会话拿到的 `history` 里**有**之前的对话。
+ */
+describe("运行时 · 会话上下文（P0）", () => {
+	it("建 pi 会话时把会话 id 与历史交给它", async () => {
+		const { runtime, sessionOptions } = makeRuntime();
+
+		await runtime.submitCommand(command("cmd-1"));
+		await waitFor(() => sessionOptions.length >= 1);
+
+		expect(sessionOptions[0]?.conversationId).toBe("conv-1");
+		// ⚠️ **当前这句不在历史里** —— 它随后由 `prompt()` 加进 pi 的消息列表，
+		//    两边都放的话模型会看到同一句话两遍。
+		expect(sessionOptions[0]?.history).toHaveLength(0);
+	});
+
+	it("当前这句不会既进历史又进 prompt（模型只看一遍）", async () => {
+		const { runtime, sessionOptions } = makeRuntime();
+
+		await runtime.submitCommand(command("cmd-1", "这句话别看两遍"));
+		await waitFor(() => sessionOptions.length >= 1);
+
+		expect(
+			sessionOptions[0]?.history.some((row) => row.content === "这句话别看两遍"),
+		).toBe(false);
+	});
+
+	it("⭐ 重启后新建的会话仍然带着之前的历史（模型不会失忆）", async () => {
+		const { store, appended } = fakeStore(fakeConversation());
+		const audit = fakeAudit();
+		const sessionOptions: PiSessionOptions[] = [];
+
+		// 第一个「进程」：聊了一轮（用户一句 + 助手一句）
+		const first = new AgentRuntime({
+			store,
+			audit: audit.writer,
+			createSession: async (options: PiSessionOptions) => {
+				sessionOptions.push(options);
+				return {
+					prompt: async (): Promise<void> => {
+						// 模拟助手回答落库
+						await store.appendMessage("conv-1", "ASSISTANT", "好，建了", 2);
+					},
+					subscribe: () => () => {},
+					dispose: () => {},
+					isStreaming: false,
+				};
+			},
+			createDataSource: () => ({
+				createTask: async (input: CreateTaskInput) => {
+					void input;
+					return fakeTask();
+				},
+			}),
+			resolveUser: async () => ({ id: 2 }),
+		});
+		await first.submitCommand(command("cmd-1"));
+		await waitFor(() => appended.length >= 2);
+		await first.closeAll();
+
+		// 第二个「进程」：同一个 store（历史还在），新建一个运行时
+		const second = new AgentRuntime({
+			store,
+			audit: audit.writer,
+			createSession: async (options: PiSessionOptions) => {
+				sessionOptions.push(options);
+				return {
+					prompt: async (): Promise<void> => {},
+					subscribe: () => () => {},
+					dispose: () => {},
+					isStreaming: false,
+				};
+			},
+			createDataSource: () => ({
+				createTask: async (input: CreateTaskInput) => {
+					void input;
+					return fakeTask();
+				},
+			}),
+			resolveUser: async () => ({ id: 2 }),
+		});
+		await second.submitCommand(command("cmd-2"));
+		await waitFor(() => sessionOptions.length >= 2);
+
+		// ⚠️ 关键断言：新会话拿到的历史里**有**重启前的对话
+		const restored = sessionOptions[1];
+		expect(restored?.conversationId).toBe("conv-1");
+		expect(restored?.history.map((row) => `${row.role}:${row.content}`)).toEqual([
+			"USER:建个任务",
+			"ASSISTANT:好，建了",
+		]);
+	});
+});
+
+/* ------------------------------------------- P1：pi 原生的排队语义 */
+
+/** 造一个「正在流式输出」的运行时（假会话的 isStreaming 恒为 true）。 */
+function makeStreamingRuntime(): {
+	runtime: AgentRuntime;
+	prompted: string[];
+	followed: string[];
+	steered: string[];
+} {
+	const { store } = fakeStore(fakeConversation());
+	const audit = fakeAudit();
+	const prompted: string[] = [];
+	const followed: string[] = [];
+	const steered: string[] = [];
+
+	const runtime = new AgentRuntime({
+		store,
+		audit: audit.writer,
+		createSession: async (options: PiSessionOptions) => ({
+			prompt: async (text: string): Promise<void> => {
+				prompted.push(text);
+			},
+			subscribe: () => () => {},
+			dispose: () => {},
+			isStreaming: true,
+			followUp: async (text: string) => {
+				followed.push(text);
+				return "queued" as const;
+			},
+			steer: async (text: string) => {
+				steered.push(text);
+				return "queued" as const;
+			},
+		}),
+		createDataSource: () => ({
+			createTask: async (input: CreateTaskInput) => {
+				void input;
+				return fakeTask();
+			},
+		}),
+		resolveUser: async () => ({ id: 2 }),
+	});
+
+	return { runtime, prompted, followed, steered };
+}
+
+describe("运行时 · 排队语义（P1）", () => {
+	it("轮次在跑时，普通 prompt 走 followUp（排队，不打断）", async () => {
+		const { runtime, prompted, followed } = makeStreamingRuntime();
+
+		await runtime.submitCommand(command("cmd-1", "第一句"));
+		await waitFor(() => followed.length >= 1);
+
+		expect(followed).toEqual(["第一句"]);
+		// ⚠️ 没有另起一轮（否则就是两个模型请求在抢）
+		expect(prompted).toHaveLength(0);
+	});
+
+	it("轮次在跑时，prompt-steer 走 steer（打断当前轮）", async () => {
+		const { runtime, followed, steered } = makeStreamingRuntime();
+
+		await runtime.submitCommand({
+			...command("cmd-1", "改主意了"),
+			type: "prompt-steer",
+		});
+		await waitFor(() => steered.length >= 1);
+
+		expect(steered).toEqual(["改主意了"]);
+		expect(followed).toHaveLength(0);
+	});
+
+	it("轮次在跑时，prompt-followup 明确排队（不进 steer）", async () => {
+		const { runtime, followed, steered } = makeStreamingRuntime();
+
+		await runtime.submitCommand({
+			...command("cmd-1", "排队这句"),
+			type: "prompt-followup",
+		});
+		await waitFor(() => followed.length >= 1);
+
+		expect(followed).toEqual(["排队这句"]);
+		expect(steered).toHaveLength(0);
+	});
+});
+
+/* ------------------------------------------------------------- P2：中止 */
+
+/** 造一个能中止的运行时。 */
+function makeAbortableRuntime(): {
+	runtime: AgentRuntime;
+	abortedCount: () => number;
+} {
+	const { store } = fakeStore(fakeConversation());
+	const audit = fakeAudit();
+	let aborted = 0;
+
+	const runtime = new AgentRuntime({
+		store,
+		audit: audit.writer,
+		createSession: async (options: PiSessionOptions) => ({
+			prompt: async (): Promise<void> => {
+				void options;
+			},
+			subscribe: () => () => {},
+			dispose: () => {},
+			isStreaming: true,
+			abort: async (): Promise<void> => {
+				aborted += 1;
+			},
+		}),
+		createDataSource: () => ({
+			createTask: async (input: CreateTaskInput) => {
+				void input;
+				return fakeTask();
+			},
+		}),
+		resolveUser: async () => ({ id: 2 }),
+	});
+
+	return { runtime, abortedCount: () => aborted };
+}
+
+describe("运行时 · 中止（P2）", () => {
+	it("abort 会叫 pi 的 session.abort()", async () => {
+		const { runtime, abortedCount } = makeAbortableRuntime();
+
+		await runtime.submitCommand(command("cmd-1"));
+		await waitFor(() => abortedCount() >= 0);
+		await runtime.abort("conv-1", "2");
+
+		expect(abortedCount()).toBe(1);
+	});
+
+	it("中止别人的会话 ⇒ 报「不存在」（不泄露会话是否存在）", async () => {
+		const { runtime } = makeAbortableRuntime();
+
+		await expect(runtime.abort("conv-1", "999")).rejects.toThrow(/不存在/);
 	});
 });
 

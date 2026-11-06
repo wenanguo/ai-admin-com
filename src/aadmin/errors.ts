@@ -111,6 +111,29 @@ export class AdapterErrorException extends Error {
 }
 
 /**
+ * 这个错误是不是**适配层归一过的**。
+ *
+ * ## 为什么不能只看 `instanceof`
+ *
+ * Next 的打包器可能把**同一个模块**在不同的 chunk 里**各实例化一次**
+ * ⇒ 跨 chunk 的 `instanceof` 就是 false。
+ *
+ * ⚠️ 实测踩过：命令路由里 AiAdmin 的「凭证已失效」（本该是 **401**）
+ *    被降级成了 **500** —— 路由那一侧认不出另一个 chunk 里造出来的实例。
+ * ⇒ 判定改成**结构化**的：看 `name`。
+ *
+ * @param error 任意错误值。
+ */
+export function isAdapterErrorException(error: unknown): error is AdapterErrorException {
+	return (
+		error instanceof AdapterErrorException ||
+		(typeof error === "object" &&
+			error !== null &&
+			(error as { name?: unknown }).name === "AdapterErrorException")
+	);
+}
+
+/**
  * 这个错误值不值得再试一次。
  *
  * 判定**只有一个来源**：错误自带的 `details.retryable`。

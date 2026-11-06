@@ -64,7 +64,8 @@ npm run dev               # http://localhost:3100
 | --- | --- |
 | `POST /api/agent/conversations` | 新建会话 → `{conversationId, title, createdAt}` |
 | `GET /api/agent/conversations` | 列会话 → `[{conversationId, title, updatedAt}]` |
-| `POST /api/agent/:cid/command` | 提交命令（`{id, type:'prompt', message}`）→ `{id, type:'response', success:true}` |
+| `POST /api/agent/:cid/command` | 提交命令（`{id, type, message}`）→ `{id, type:'response', success:true}` |
+| `POST /api/agent/:cid/abort` | **中止**当前那一轮 → `{conversationId, aborted:true}` |
 | `GET /api/agent/:cid/events` | **SSE** 事件流（`text/event-stream`） |
 | `GET /api/agent/:cid/state` | 会话快照 → `{conversationId, messages[], isStreaming, model}` |
 | `GET /api/audit` | 审计流水 → `{total, items[]}`（**只看自己的行**） |
@@ -137,12 +138,40 @@ npm run dev               # http://localhost:3100
 - 回放窗口上限 16 MB，超了**先丢 `text_delta`**（可从 `state` 快照重建），保留结构帧；
 - **`state` 才是真相**：SSE 是增量的，断线/刷新后用 `GET /api/agent/:cid/state` 重建界面。
 
+### 命令类型
+
+`POST /api/agent/:cid/command` 的 `type` 有三种：
+
+| type | 含义 |
+| --- | --- |
+| `prompt` | 说一句话（**默认**）。当前没有轮次在跑 ⇒ 立刻开始跑；在跑 ⇒ 排队（**不打断**） |
+| `prompt-followup` | 明确排队：当前轮干完活再处理这句 |
+| `prompt-steer` | **打断**：插到当前助手轮次（及其工具调用）之后、下一次模型调用之前 |
+
+- 后两种是 pi SDK 的**原生**排队语义（`session.followUp()` / `session.steer()`），
+  不是本服务自己造的队列；
+- ⚠️ 同一个 `id` 重复提交仍然**只跑一遍**（幂等），三种类型都算；
+- ⚠️ `success: true` 的含义是「**已受理并排队**」，不是「这一轮跑完了」。
+
+### 中止
+
+`POST /api/agent/:cid/abort` → `{conversationId, aborted: true}`。
+
+- 停掉**当前正在跑**的那一轮（pi 的 `session.abort()`），随后 pi 自己会发
+  `agent_settled` ⇒ 前端输入框解禁；
+- ⚠️ **中止不是回滚**：这一轮已经落库的消息（用户那句话、助手已写出的部分）都还在，
+  已经建出来的任务也不会被撤销；
+- 会话必须属于当前用户，否则 404。
+
 ### 命令
 
 目前只有一个命令：**`create_task`**（非破坏性 ⇒ 不需要用户先确认）。
 模型全靠工具描述决定用不用它，所以描述写清了「什么时候用 / 什么时候别用 / 参数格式与单位」；
 参数名用**统一领域名**（`project_key` / `title` / `type` / `status` / `priority`），
 不出现后端字段名（`project_id` 之类）。
+
+⚠️ **破坏性由工具自己的 `annotations.destructiveHint` 决定**（SDK 的 `ToolAnnotations`），
+没有另一个手写的开关 —— 「要不要先问人」只有一个事实源。
 
 ### 前端怎么接
 
@@ -247,6 +276,27 @@ Route Handler 里还要显式写 `export const runtime = "nodejs"`。
 尖峰阶段的实测结论（pi SDK 的真实 API、SSE 行为、Prisma 在共享库上的脾气）都在
 [`spike/FINDINGS.md`](spike/FINDINGS.md)，写代码前先读它。
 
+### 上下文怎么进到模型里（⚠️ 容易写错）
+
+pi 的 SDK 文档说得很直白：
+
+> **SessionManager is authoritative for finalized model context.**
+> Restore external history by constructing the session with a manager containing those entries.
+> Assigning `session.agent.state.messages` **does not** replace persisted context.
+
+本服务把对话历史存在自己的 `ai_message` 表里，而 pi 会话是**内存态、懒创建**的
+（进程重启就没了；通道空闲 30 分钟也会被回收）⇒
+
+⇒ 建 pi 会话时，**把 `ai_message` 里的历史还原成 pi 的 entries**，
+交给 `SessionManager.inMemory(cwd, { id }, entries)`（见 `src/agent/session-entries.ts`）。
+
+- 不还原的话：**前端看得见历史，模型看不见**（用户会觉得「AI 明明看得到，却像第一次见我」）；
+- ⚠️ **当前这一句要排除在历史之外** —— 它随后会被 `session.prompt(message)` 加进
+  pi 的消息列表，两边都放 ⇒ 模型看到同一句话两遍；
+- ⚠️ `session.agent.state.messages = ...` 那条路**不生效**（SDK 文档明说），
+  上下文只有 `SessionManager` 一个权威来源；
+- 附带好处：pi 的 compaction（长对话自动摘要）也随之生效（没有 entries 它无从下手）。
+
 ## 目录
 
 ```
@@ -257,7 +307,7 @@ src/db.ts                         PrismaClient 单例（globalThis 缓存，dev 
 src/types/api.ts                  AiAdmin 响应信封（ApiResponse / SUCCESS_CODES / isSuccess）
 src/aadmin/                       AiAdmin HTTP 客户端（client / errors / types：路径、字段逐字对齐后端）
 src/adapter/                      适配层（enums 枚举归一 / capabilities 能力位 / keys 统一 key / model 统一模型 / datasource 读写）
-src/agent/                        agent 运行时（runtime 会话与命令 / session-registry 通道与订阅 / startup-lock 同会话串行 / event-mapper 事件映射 / frame-buffer 回放窗口 / identity 当前用户 / pi-session SDK 接线 / prompt 系统提示词 / store 落库）
+src/agent/                        agent 运行时（runtime 会话与命令 / session-registry 通道与订阅 / startup-lock 同会话串行 / event-mapper 事件映射 / frame-buffer 回放窗口 / identity 当前用户 / pi-session SDK 接线 / **session-entries 历史→pi entries** / prompt 系统提示词 / store 落库）
 src/audit.ts                      审计的**写侧**（每次 AI 写入留一条 ai_audit_log）
 src/audit-redact.ts               审计参数脱敏（**写侧与读侧共用同一份**）
 src/audit-query.ts                审计的**读侧**（只看自己的行 + 筛选 + 脱敏 + 分页）

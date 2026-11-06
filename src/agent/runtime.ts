@@ -30,7 +30,7 @@ import { setEnumWarningSink, standardEnumWarningSink } from "../adapter/enums";
 import { SSE_EVENTS, type SseEventName, type SsePayload } from "./events";
 import { AgentEventMapper, extractAssistantText, isAssistantMessage } from "./event-mapper";
 import { CurrentUserResolver, type CurrentUser } from "./identity";
-import { createPiSession } from "./pi-session";
+import { createPiSession, type PiSessionOptions } from "./pi-session";
 import { PM_AGENT_PROMPT } from "./prompt";
 import {
 	SessionRegistry,
@@ -66,6 +66,20 @@ export interface CommandAck {
 }
 
 /**
+ * 命令类型。
+ *
+ * | 类型 | 含义 |
+ * | ---- | ---- |
+ * | `prompt` | 说一句话（**默认**）。当前没有轮次在跑 ⇒ 立刻开始跑；在跑 ⇒ 当成 followUp（排队，不打断） |
+ * | `prompt-followup` | 明确排队：当前轮干完活再处理这句 |
+ * | `prompt-steer` | 打断：插到当前助手轮次（及其工具调用）之后 |
+ *
+ * ⚠️ 后两种是 pi 的**原生**排队语义（`session.followUp()` / `session.steer()`），
+ * 见 SDK 文档的 Prompting 一节。自己造队列只能做到「等整轮跑完」。
+ */
+export type CommandType = "prompt" | "prompt-followup" | "prompt-steer";
+
+/**
  * 每个会话最多记多少个命令 id（超出就淘汰最老的那个）。
  *
  * ⚠️ **有上限是必须的**：这是**进程内**的 Map，不淘汰就会被长跑进程吃满内存。
@@ -85,8 +99,8 @@ export interface ConversationState {
 
 /** 运行时可注入的依赖（测试用假实现，生产用默认）。 */
 export interface AgentRuntimeOptions {
-	/** 造 pi 会话。 */
-	createSession?: (tools: ReturnType<typeof buildCommandTools>, systemPrompt: string) => Promise<AgentSessionLike>;
+	/** 造 pi 会话（带会话 id 与历史 —— 上下文就靠这个还原）。 */
+	createSession?: (options: PiSessionOptions) => Promise<AgentSessionLike>;
 	/** 数据源工厂。 */
 	createDataSource?: (token: string) => TaskCreator;
 	/** 解析当前用户。 */
@@ -175,6 +189,8 @@ export class AgentRuntime {
 		message: string;
 		commandId: string;
 		userId: string;
+		/** 命令类型（缺省 `prompt`）。 */
+		type?: CommandType;
 	}): Promise<CommandAck> {
 		const message = request.message.trim();
 		if (message.length === 0) {
@@ -198,16 +214,19 @@ export class AgentRuntime {
 
 		// 用户说的这句话先落库（state 里立刻能看到）
 		const seq = channel.allocateSeq(await this.#store.maxSeq(request.conversationId));
-		await this.#store.appendMessage(request.conversationId, "USER", message, seq);
+		const userMessage = await this.#store.appendMessage(
+			request.conversationId,
+			"USER",
+			message,
+			seq,
+		);
 
-		// 同一会话的 prompt 串行排队（不同会话并行）
-		void this.#lock
-			.run(request.conversationId, async () => {
-				await this.#runTurn(channel, message);
-			})
-			.catch((error: unknown) => {
+		// 发起这一轮（排队语义见 `CommandType`）
+		void this.#dispatchTurn(channel, message, request.type ?? "prompt", userMessage.id).catch(
+			(error: unknown) => {
 				this.#publishTurnError(channel, error);
-			});
+			},
+		);
 
 		const ack: CommandAck = { id: request.commandId, type: "response", success: true };
 		this.#rememberAck(request.conversationId, request.commandId, ack);
@@ -264,6 +283,36 @@ export class AgentRuntime {
 		this.#registry.closeAll();
 	}
 
+	/**
+	 * 停掉当前正在跑的那一轮（用户点「停止生成」）。
+	 *
+	 * ⚠️ SDK 的 `session.abort()`：停掉当前操作并等到会话空闲。
+	 *    pi 自己会发 `agent_settled` ⇒ 前端的输入框会解禁。
+	 *
+	 * @param conversationId 会话 id。
+	 * @param userId 当前用户 id（不是他的会话就不给停）。
+	 */
+	async abort(conversationId: string, userId: string): Promise<void> {
+		const conversation = await this.#store.get(conversationId);
+		if (conversation === undefined || conversation.userId !== userId) {
+			throw new AgentError("NOT_FOUND", `会话 ${conversationId} 不存在`);
+		}
+		const channel = this.#registry.get(conversationId);
+		if (channel === undefined) {
+			return;
+		}
+		const session = channel.session;
+		if (session === undefined) {
+			// 根本没有在跑的会话 ⇒ 告诉前端「这一轮已经结束了」（输入框解禁）
+			this.#publish(channel, SSE_EVENTS.AGENT_SETTLED, { conversationId });
+			return;
+		}
+		if (session.abort === undefined) {
+			return;
+		}
+		await session.abort();
+	}
+
 	/* ------------------------------------------------------------ 内部 */
 
 	/** 取上次这个命令 id 的 ack（没有 ⇒ undefined）。 */
@@ -309,15 +358,79 @@ export class AgentRuntime {
 		}
 	}
 
-	/** 跑一轮对话。 */
-	async #runTurn(channel: ConversationChannel, message: string): Promise<void> {
-		const session = await this.#ensureSession(channel);
-		// 不展开提示词模板：用户的「/xxx」不是命令
-		await session.prompt(message, { expandPromptTemplates: false });
+	/**
+	 * 发起一轮对话。
+	 *
+	 * ## 排队语义（用 pi 的原生能力）
+	 *
+	 * - 当前**没有**轮次在跑 ⇒ 直接 `prompt()`；
+	 * - 当前**有**轮次在跑 ⇒
+	 *   - `prompt-steer` ⇒ `session.steer()`：插到当前助手轮次（及其工具调用）之后；
+	 *   - 其它 ⇒ `session.followUp()`：当前轮干完活再处理这句（**不打断**）。
+	 *
+	 * ⚠️ 自己造队列（`StartupLock`）只能做到「等整轮跑完」⇒ 能用 SDK 原生
+	 *    语义的地方就用原生的（SDK 文档 · Prompting 一节）。
+	 *
+	 * @param channel 会话通道。
+	 * @param message 用户说的那句话。
+	 * @param type 命令类型。
+	 * @param currentMessageId **当前这句**消息的 id（要排除在历史之外，见下）。
+	 */
+	async #dispatchTurn(
+		channel: ConversationChannel,
+		message: string,
+		type: CommandType,
+		currentMessageId: string,
+	): Promise<void> {
+		const session = await this.#ensureSession(channel, currentMessageId);
+
+		// 已经有轮次在跑 ⇒ 走 pi 的排队语义
+		if (session.isStreaming && (await this.#queueInto(channel, session, message, type))) {
+			return;
+		}
+
+		await this.#lock.run(channel.conversationId, async () => {
+			// 拿到锁后再看一眼（可能刚被别人起了一轮）
+			if (session.isStreaming && (await this.#queueInto(channel, session, message, type))) {
+				return;
+			}
+			await session.prompt(message, { expandPromptTemplates: false });
+		});
+	}
+
+	/**
+	 * 把这句话排进当前正在跑的那一轮。
+	 *
+	 * @returns 排进去了 ⇒ true；pi 不接受 ⇒ false（落回普通排队）。
+	 */
+	async #queueInto(
+		channel: ConversationChannel,
+		session: AgentSessionLike,
+		message: string,
+		type: CommandType,
+	): Promise<boolean> {
+		try {
+			if (type === "prompt-steer" && session.steer !== undefined) {
+				await session.steer(message);
+				return true;
+			}
+			if (type !== "prompt-steer" && session.followUp !== undefined) {
+				await session.followUp(message);
+				return true;
+			}
+		} catch (error) {
+			// ⚠️ pi 不接受这句话（比如它被当成了扩展命令）⇒ 落回普通排队。
+			//    不当错误报出去：那句话本身没毛病，只是排队的路子走不通。
+			console.warn("[agent] 排队进当前轮没成，改成正常排队", error);
+		}
+		return false;
 	}
 
 	/** 懒创建 pi 会话（同一个会话复用同一个）。 */
-	async #ensureSession(channel: ConversationChannel): Promise<AgentSessionLike> {
+	async #ensureSession(
+		channel: ConversationChannel,
+		currentMessageId?: string,
+	): Promise<AgentSessionLike> {
 		if (channel.session !== undefined) {
 			return channel.session;
 		}
@@ -328,7 +441,24 @@ export class AgentRuntime {
 			audit: this.#audit,
 			model: this.#model,
 		});
-		const session = await this.#createSession(tools, PM_AGENT_PROMPT);
+		// ★ 把这个会话的历史交给 pi ⇒ **模型记得之前聊过什么**。
+		//    pi 会话是内存态、懒创建的 ⇒ 不还原历史的话，进程重启或通道被回收后
+		//    新建的会话是空白的（前端看得见历史，模型看不见）。
+		//
+		// ⚠️ **当前这句要从历史里排除**：它随后会被 `session.prompt(message)`
+		//    加进 pi 的消息列表 ⇒ 两边都放 ⇒ 模型看到同一句话两遍。
+		const messages = await this.#store.listMessages(channel.conversationId);
+		const history =
+			currentMessageId === undefined
+				? messages
+				: messages.filter((row) => row.id !== currentMessageId);
+		const session = await this.#createSession({
+			tools,
+			systemPrompt: PM_AGENT_PROMPT,
+			conversationId: channel.conversationId,
+			history,
+			model: this.#model,
+		});
 		channel.session = session;
 		channel.unsubscribe = session.subscribe((event) => {
 			this.#handleEvent(channel, event);

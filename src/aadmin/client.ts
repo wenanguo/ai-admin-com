@@ -1,5 +1,5 @@
 import { isSuccess } from "../types/api";
-import { AdapterErrorException, isRetryable } from "./errors";
+import { AdapterErrorException, isAdapterErrorException, isRetryable } from "./errors";
 
 /**
  * 查询参数。值为 `undefined` 的键**不拼进 URL**；其余值按字符串编码。
@@ -102,7 +102,7 @@ export class AadminClient {
 				return await this.#readEnvelope<T>(response, spec);
 			} catch (err) {
 				const error = redactError(
-					err instanceof AdapterErrorException ? err : networkError(err, spec),
+					isAdapterErrorException(err) ? err : networkError(err, spec),
 					spec.token,
 				);
 				const canRetry = attempt < maxAttempts && isRetryable(error);
