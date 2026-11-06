@@ -7,6 +7,13 @@
  *
  * dhtmlx 自带的样式也是 CSS 变量(`--dhx-gantt-*`)⇒ 这里把 antd 的
  * token 转译过去,不需要 `!important` 硬压。
+ *
+ * ## 线上码 → 颜色的对照表**只在这里**
+ *
+ * 组件(TSX)不造任何码表:状态只把映射层给的 `statusCssClass(status_code)`
+ * 发出来(形如 `pm-gantt-in_progress`),下面按 `.pm-gantt-<线上码>` 选择器
+ * 上色 ⇒ **加一个状态码只要在这里加一条规则,不用改 TS**。
+ * 已知码之外的(字典新增的码)走兜底规则,落默认色。
  */
 
 /* 根容器:把 dhtmlx 的变量接到我们的 token 变量上 */
@@ -39,8 +46,9 @@
   --dhx-gantt-timeline-scale-border-vertical: var(--pm-gantt-border);
 
   --dhx-gantt-task-border-radius: var(--pm-gantt-radius);
-  --dhx-gantt-task-color: var(--pm-gantt-on-solid);
-  --dhx-gantt-task-line-text: var(--pm-gantt-on-solid);
+  /* 条上的文字:底色是浅色调 ⇒ 用主题正文色(亮/暗都够对比) */
+  --dhx-gantt-task-color: var(--pm-gantt-text);
+  --dhx-gantt-task-line-text: var(--pm-gantt-text);
 }
 
 /* 表头里的刻度文字:不要被 dhtmlx 默认的 uppercase 弄成大写 */
@@ -48,16 +56,14 @@
   text-transform: none;
 }
 
-/* 时间轴刻度区:今天线要绝对定位在它里面 */
-.pm-gantt-root .gantt_task_scale {
-  position: relative;
-}
-
 /**
  * 今天线。
  *
  * 社区版没有 `addMarker`(Pro 能力)⇒ 自己画一条线:位置由组件按
  * `posFromDate` 换算后写在 `left` 上。
+ *
+ * 挂点是 `.gantt_data_area` —— dhtmlx 自己已经给它 `position: relative`
+ * ⇒ 这里**不需要**再给 `.gantt_task_scale` 加定位(那是条死规则)。
  */
 .pm-gantt-today {
   position: absolute;
@@ -69,77 +75,99 @@
   z-index: 3;
 }
 
-/* 状态/优先级标签:深底浅字(白字压在浅底预设色上看不清,所以不用那种色) */
-.pm-gantt-tag {
+/* ------------------------------------------------------------------
+ * 状态线上码 → 语义色(本文件是**唯一**的码表)
+ *
+ * 每个码给三档:
+ * - `--pm-gantt-state`        实色(边框/强调)
+ * - `--pm-gantt-state-bg`     浅色底(标签底色)
+ * - `--pm-gantt-state-border` 中间色(条形底色)
+ * 文字一律用 `--pm-gantt-text`(主题正文色)⇒ 亮/暗主题下都够对比,
+ * 不会出现「浅底浅字」。
+ * ------------------------------------------------------------------ */
+.pm-gantt-root .pm-gantt-done {
+  --pm-gantt-state: var(--pm-gantt-success);
+  --pm-gantt-state-bg: var(--pm-gantt-success-bg);
+  --pm-gantt-state-border: var(--pm-gantt-success-border);
+}
+
+.pm-gantt-root .pm-gantt-in_progress {
+  --pm-gantt-state: var(--pm-gantt-primary);
+  --pm-gantt-state-bg: var(--pm-gantt-primary-bg);
+  --pm-gantt-state-border: var(--pm-gantt-primary-border);
+}
+
+.pm-gantt-root .pm-gantt-review {
+  --pm-gantt-state: var(--pm-gantt-warning);
+  --pm-gantt-state-bg: var(--pm-gantt-warning-bg);
+  --pm-gantt-state-border: var(--pm-gantt-warning-border);
+}
+
+.pm-gantt-root .pm-gantt-blocked {
+  --pm-gantt-state: var(--pm-gantt-error);
+  --pm-gantt-state-bg: var(--pm-gantt-error-bg);
+  --pm-gantt-state-border: var(--pm-gantt-error-border);
+}
+
+.pm-gantt-root .pm-gantt-todo {
+  --pm-gantt-state: var(--pm-gantt-info);
+  --pm-gantt-state-bg: var(--pm-gantt-info-bg);
+  --pm-gantt-state-border: var(--pm-gantt-info-border);
+}
+
+.pm-gantt-root .pm-gantt-backlog {
+  --pm-gantt-state: var(--pm-gantt-muted);
+  --pm-gantt-state-bg: var(--pm-gantt-muted-bg);
+  --pm-gantt-state-border: var(--pm-gantt-muted-border);
+}
+
+.pm-gantt-root .pm-gantt-cancelled {
+  --pm-gantt-state: var(--pm-gantt-muted);
+  --pm-gantt-state-bg: var(--pm-gantt-muted-bg);
+  --pm-gantt-state-border: var(--pm-gantt-muted-border);
+}
+
+/**
+ * 兜底:字典里新增的、这里没配过的状态码 ⇒ 落默认色。
+ *
+ * 用 `:where()` 压低优先级(0,1,0)⇒ 上面按线上码的规则(0,2,0)照样赢。
+ */
+:where(.pm-gantt-root) :is(.gantt_task_line, .pm-gantt-tag) {
+  --pm-gantt-state: var(--pm-gantt-info);
+  --pm-gantt-state-bg: var(--pm-gantt-info-bg);
+  --pm-gantt-state-border: var(--pm-gantt-info-border);
+}
+
+/* 状态/优先级标签:浅底 + 语义色边框 + 主题正文色文字 */
+.pm-gantt-root .pm-gantt-tag {
   display: inline-block;
   max-width: 100%;
   padding: 0 6px;
+  border: 1px solid var(--pm-gantt-state);
   border-radius: var(--pm-gantt-radius);
+  background: var(--pm-gantt-state-bg);
+  color: var(--pm-gantt-text);
   font-size: 12px;
   line-height: 20px;
-  color: var(--pm-gantt-on-solid);
-  background: var(--pm-gantt-info);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.pm-gantt-tag--primary {
-  background: var(--pm-gantt-primary);
+/* 优先级:中性(后端优先级码无从得知,规格也没要求语义色) */
+.pm-gantt-root .pm-gantt-tag--neutral {
+  --pm-gantt-state: var(--pm-gantt-muted);
+  --pm-gantt-state-bg: var(--pm-gantt-muted-bg);
+  --pm-gantt-state-border: var(--pm-gantt-muted-border);
 }
 
-.pm-gantt-tag--success {
-  background: var(--pm-gantt-success);
+/* 条形:中间色底 + 语义色边框(分组行的汇总条没有状态 class ⇒ 走 dhtmlx 默认) */
+.pm-gantt-root .gantt_task_line[class*="pm-gantt-"] {
+  background: var(--pm-gantt-state-border);
+  border-color: var(--pm-gantt-state);
 }
 
-.pm-gantt-tag--warning {
-  background: var(--pm-gantt-warning);
-}
-
-.pm-gantt-tag--error {
-  background: var(--pm-gantt-error);
-}
-
-.pm-gantt-tag--info {
-  background: var(--pm-gantt-info);
-}
-
-.pm-gantt-tag--muted {
-  background: var(--pm-gantt-muted);
-}
-
-/* 条形:状态语义色(class 由组件按状态码算出来) */
-.pm-gantt-root .gantt_task_line.pm-gantt-bar--primary {
-  background: var(--pm-gantt-primary);
-  border-color: var(--pm-gantt-primary);
-}
-
-.pm-gantt-root .gantt_task_line.pm-gantt-bar--success {
-  background: var(--pm-gantt-success);
-  border-color: var(--pm-gantt-success);
-}
-
-.pm-gantt-root .gantt_task_line.pm-gantt-bar--warning {
-  background: var(--pm-gantt-warning);
-  border-color: var(--pm-gantt-warning);
-}
-
-.pm-gantt-root .gantt_task_line.pm-gantt-bar--error {
-  background: var(--pm-gantt-error);
-  border-color: var(--pm-gantt-error);
-}
-
-.pm-gantt-root .gantt_task_line.pm-gantt-bar--info {
-  background: var(--pm-gantt-info);
-  border-color: var(--pm-gantt-info);
-}
-
-.pm-gantt-root .gantt_task_line.pm-gantt-bar--muted {
-  background: var(--pm-gantt-muted);
-  border-color: var(--pm-gantt-muted);
-}
-
-/* 条上的文字:深底 ⇒ 浅字 */
+/* 条上的文字:主题正文色(浅底 ⇒ 不用浅色字) */
 .pm-gantt-root .gantt_task_line .gantt_task_content {
-  color: var(--pm-gantt-on-solid);
+  color: var(--pm-gantt-text);
 }

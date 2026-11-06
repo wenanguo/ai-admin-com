@@ -24,11 +24,17 @@
  * `undefined`)⇒ 今天线用一条绝对定位的 div 画在时间轴上,位置由
  * `posFromDate` 换算。
  *
- * ## 颜色从哪来
+ * ## 颜色从哪来(以及「不自己造字典」)
  *
  * 颜色**一律**是 antd token:组件用 `theme.useToken()` 取 token,注成
  * `--pm-gantt-*` CSS 变量挂在根元素上,`gantt.css` 里只写
  * `var(--pm-gantt-*)` ⇒ 主题切换自动跟上,css 文件里没有一个色值。
+ *
+ * **线上码 → 颜色的对照表只在 `gantt.css` 里**(按 `.pm-gantt-<线上码>`
+ * 选择器写)。本文件**不造任何码表**:状态只把映射层给的
+ * `statusCssClass(status_code)`(带线上码的 class)发出去,具体颜色由 css
+ * 决定;优先级后端的线上码无从得知(规格也没要求语义色)⇒ 只发**中性**
+ * 标签,文案查 `labels`,查不到回退线上码。
  */
 import { theme } from 'antd';
 import type { Dayjs } from 'dayjs';
@@ -74,34 +80,6 @@ const ZOOM_LEVELS: ZoomLevel[] = [
   },
 ];
 
-/** 语态色:只用 antd 的语义深色(不用字典的 list_class —— 那是浅底预设色) */
-type Tone = 'primary' | 'success' | 'warning' | 'error' | 'info' | 'muted';
-
-/**
- * 状态线上码 → 语态色。
- *
- * 字典 `module_pm_task_status` 的线上码是固定的七个(看板那边也写死了
- * 同一套码),这里只做「码 → 语义色」的翻译;字典新增的码走兜底色。
- */
-const STATUS_TONES: Record<string, Tone> = {
-  done: 'success',
-  in_progress: 'primary',
-  review: 'warning',
-  blocked: 'error',
-  todo: 'info',
-  backlog: 'muted',
-  cancelled: 'muted',
-};
-
-/** 优先级线上码 → 语态色(字典 `module_pm_priority`) */
-const PRIORITY_TONES: Record<string, Tone> = {
-  urgent: 'error',
-  high: 'error',
-  medium: 'warning',
-  normal: 'warning',
-  low: 'info',
-};
-
 /**
  * 灌给 dhtmlx 的行:在 dhtmlx 的行之外带上负责人/状态/优先级与条形 class。
  *
@@ -115,7 +93,7 @@ interface GanttTaskData extends SerializedTask {
   status?: string;
   /** 优先级线上码 */
   priority?: string;
-  /** 条形 class(映射层给的 + 语义角色) */
+  /** 条形 class(映射层给的:带线上码,色值在 gantt.css) */
   css?: string;
 }
 
@@ -166,19 +144,15 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/** 状态/优先级标签的 HTML(class 只给语义角色,色值在 gantt.css 里) */
-function tagHtml(text: string, tone: Tone): string {
-  return `<span class="pm-gantt-tag pm-gantt-tag--${tone}">${escapeHtml(text)}</span>`;
-}
-
-/** 状态线上码 → 语态色 */
-function statusTone(code?: string): Tone {
-  return (code && STATUS_TONES[code]) || 'info';
-}
-
-/** 优先级线上码 → 语态色 */
-function priorityTone(code?: string): Tone {
-  return (code && PRIORITY_TONES[code]) || 'info';
+/**
+ * 标签的 HTML。
+ *
+ * `extraClass` 决定颜色:状态标签带**线上码** class(映射层给的
+ * `statusCssClass` ⇒ `pm-gantt-in_progress`),颜色由 gantt.css 按这个
+ * class 上色;优先级标签带中性 class(`pm-gantt-tag--neutral`)。
+ */
+function tagHtml(text: string, extraClass: string): string {
+  return `<span class="pm-gantt-tag ${extraClass}">${escapeHtml(text)}</span>`;
 }
 
 /** Date → YYYY-MM-DD(缺值给空串) */
@@ -215,6 +189,31 @@ function computeRange(data: GanttRow[]): { start: Date; end: Date } {
 }
 
 /**
+ * 本周起点(以 **dhtmlx 自己的**周起点为准)。
+ *
+ * ⚠️ 不能用 dayjs 的 `startOf('week')`:dayjs 的周起点跟着 **locale** 走
+ * (缺省周日、`dayjs/locale/zh-cn` 是周一),而仓库里别的文件 import 了
+ * `dayjs/locale/zh-cn` ⇒ 同一份代码的「周锚点」会随 import 顺序变;
+ * dhtmlx 的列却**总是**按 `config.start_on_monday`(默认 true ⇒ 周一)排
+ * ⇒ 锚点必须跟 dhtmlx 一致,不能跟 dayjs 的 locale 走。
+ *
+ * 这里优先用 dhtmlx 自己的 `date.week_start()`(它读的就是
+ * `config.start_on_monday`);拿不到时按同一个 config 推导。
+ */
+function weekStart(inst: GanttStatic, today: Dayjs): Dayjs {
+  const dhtmlxWeekStart = inst.date?.week_start;
+  if (typeof dhtmlxWeekStart === 'function') {
+    return dayjs(dhtmlxWeekStart.call(inst.date, today.toDate())).startOf(
+      'day',
+    );
+  }
+  // 兜底:dhtmlx 的 config.start_on_monday(默认 true ⇒ 周一)
+  const monday = inst.config.start_on_monday !== false;
+  const offset = monday ? (today.day() + 6) % 7 : today.day();
+  return today.subtract(offset, 'day').startOf('day');
+}
+
+/**
  * 今天在时间轴上的像素位置。
  *
  * `posFromDate` 给的是**所在列**的起点:日视图下就是今天零点,周/月
@@ -227,7 +226,7 @@ function todayPosition(inst: GanttStatic, today: Dayjs): number {
     unit === 'month'
       ? today.startOf('month')
       : unit === 'week'
-        ? today.startOf('week')
+        ? weekStart(inst, today)
         : today.startOf('day');
   const span =
     unit === 'month'
@@ -248,8 +247,9 @@ function todayPosition(inst: GanttStatic, today: Dayjs): number {
 /** 甘特行 → dhtmlx 的 task(分组行没有日期,dhtmlx 自己画汇总条) */
 function toGanttTasks(data: GanttRow[]): GanttTaskData[] {
   return data.map((row) => {
-    // 条形 class:状态色 class(来自映射层) + 语义角色 class(决定颜色);
-    // 分组行没有状态 ⇒ 不给 class,走 dhtmlx 自己的汇总条配色
+    // 条形 class:**只发线上码 class**(映射层给的),颜色由 gantt.css 按
+    // `.pm-gantt-<线上码>` 上色;分组行没有状态 ⇒ 不给 class,走 dhtmlx
+    // 自己的汇总条配色
     const css =
       row.css ?? (row.status ? statusCssClass(row.status) : undefined);
     return {
@@ -263,7 +263,7 @@ function toGanttTasks(data: GanttRow[]): GanttTaskData[] {
       assignee: row.assignee,
       status: row.status,
       priority: row.priority,
-      css: css ? `${css} pm-gantt-bar--${statusTone(row.status)}` : undefined,
+      css,
     };
   });
 }
@@ -341,6 +341,11 @@ export const GanttChart = forwardRef<GanttChartHandle, GanttChartProps>(
       inst.templates.task_class = (_start, _end, task) =>
         (task as GanttTaskData).css ?? '';
 
+      // 条形上的文字(= 标题)也要转义:dhtmlx 默认的 task_text 模板直接
+      // 把 task.text 塞进 DOM ⇒ 标题里的尖括号会被当 HTML
+      inst.templates.task_text = (_start, _end, task) =>
+        escapeHtml(task.text ?? '');
+
       inst.init(box);
 
       // 拖动前:把旧日期存下来,回滚时用(调用方不用知道旧日期)
@@ -383,6 +388,9 @@ export const GanttChart = forwardRef<GanttChartHandle, GanttChartProps>(
       const range = computeRange(data);
       inst.config.start_date = range.start;
       inst.config.end_date = range.end;
+      // ⚠️ 灌新数据前把「拖动前的旧日期」清掉:缓存里留着上一批数据的
+      // 日期,回滚会把**新数据**的行改回上一批的日期
+      dragBeforeRef.current.clear();
       inst.clearAll();
       inst.parse({ data: toGanttTasks(data), links: [] });
       syncTodayLine();
@@ -399,6 +407,16 @@ export const GanttChart = forwardRef<GanttChartHandle, GanttChartProps>(
       inst.render();
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [readOnly]);
+
+    // 高度变化:dhtmlx 的布局尺寸是算出来的,容器高度变了要让它重算
+    // (setSizes 就是 dhtmlx 公开的「resize 图表」入口,内部等价 render)
+    useEffect(() => {
+      const inst = instRef.current;
+      if (!inst) return;
+      inst.setSizes();
+      syncTodayLine();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [height]);
 
     // 字典文案变了:列模板要重画
     // ⚠️ 用文案内容当依赖:页面每次渲染都可能传一个新的 labels 对象,
@@ -450,13 +468,26 @@ export const GanttChart = forwardRef<GanttChartHandle, GanttChartProps>(
       '--pm-gantt-border': token.colorBorderSecondary,
       '--pm-gantt-text': token.colorText,
       '--pm-gantt-text-light': token.colorTextSecondary,
-      '--pm-gantt-on-solid': token.colorTextLightSolid,
+      // 语义色三档(实色 / 浅底 / 中间色):gantt.css 按线上码取用
       '--pm-gantt-primary': token.colorPrimary,
+      '--pm-gantt-primary-bg': token.colorPrimaryBg,
+      '--pm-gantt-primary-border': token.colorPrimaryBorder,
       '--pm-gantt-success': token.colorSuccess,
+      '--pm-gantt-success-bg': token.colorSuccessBg,
+      '--pm-gantt-success-border': token.colorSuccessBorder,
       '--pm-gantt-error': token.colorError,
+      '--pm-gantt-error-bg': token.colorErrorBg,
+      '--pm-gantt-error-border': token.colorErrorBorder,
       '--pm-gantt-warning': token.colorWarning,
+      '--pm-gantt-warning-bg': token.colorWarningBg,
+      '--pm-gantt-warning-border': token.colorWarningBorder,
       '--pm-gantt-info': token.colorInfo,
+      '--pm-gantt-info-bg': token.colorInfoBg,
+      '--pm-gantt-info-border': token.colorInfoBorder,
+      // 中性档(优先级标签 / backlog、cancelled 这类状态)
       '--pm-gantt-muted': token.colorTextSecondary,
+      '--pm-gantt-muted-bg': token.colorFillQuaternary,
+      '--pm-gantt-muted-border': token.colorFillSecondary,
       '--pm-gantt-today': token.colorError,
       '--pm-gantt-radius': String(token.borderRadius),
     } as React.CSSProperties;
@@ -482,7 +513,16 @@ function buildColumns(
   };
 
   return [
-    { name: 'text', label: '任务', tree: true, width: '*', align: 'left' },
+    {
+      name: 'text',
+      label: '任务',
+      tree: true,
+      width: '*',
+      align: 'left',
+      // 标题也要转义(dhtmlx 的模板不转义,默认渲染会把标题当 HTML)
+      // 树形缩进由 dhtmlx 自己加在模板内容**前面**⇒ 不受影响
+      template: (task: Task) => escapeHtml(task.text ?? ''),
+    },
     {
       name: 'assignee',
       label: '负责人',
@@ -496,21 +536,22 @@ function buildColumns(
       label: '状态',
       width: 90,
       align: 'left',
-      template: (task: Task) =>
-        tagHtml(
-          text('status', (task as GanttTaskData).status),
-          statusTone((task as GanttTaskData).status),
-        ),
+      // class 用映射层的 statusCssClass(带线上码)⇒ 颜色在 gantt.css 里
+      template: (task: Task) => {
+        const status = (task as GanttTaskData).status;
+        return tagHtml(text('status', status), statusCssClass(status));
+      },
     },
     {
       name: 'priority',
       label: '优先级',
       width: 80,
       align: 'left',
+      // 优先级**不做语义色**(后端线上码无从得知,规格也没要求)⇒ 中性标签
       template: (task: Task) =>
         tagHtml(
           text('priority', (task as GanttTaskData).priority),
-          priorityTone((task as GanttTaskData).priority),
+          'pm-gantt-tag--neutral',
         ),
     },
     {
