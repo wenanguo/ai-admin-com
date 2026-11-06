@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import {
   PM_MILESTONE_PREFIX,
@@ -10,13 +10,15 @@ import { gotoModulePage, mainContent, setupModulePage } from './helpers';
 /**
  * 任务甘特页(/pm/task/gantt)的前端闭环,接口全部拦截。
  *
- * 覆盖六件事(brief 逐条):
+ * 覆盖这些事(brief 逐条 + 复审的回归点):
  * - 渲染出甘特容器 `.gantt_container`,行数 = 任务条数 + 分组行数;
- * - **被截断**时提示说清「共 N 条,已显示前 M 条」(分页口径);
+ * - **被截断**时提示说清「共 N 条,已显示前 M 条」(分页口径),
+ *   且 M 只算**真正画进甘特**的任务(不含缺日期被排除的);
  * - **缺计划起止日期**的任务给出提示(不静默丢),并列出被排除的标题;
  * - 列表页工具栏的「甘特」按钮能进甘特页;
- * - 没有 `…:update` 权限时条形不可拖拽;
- * - 时间轴被挤窄时给出提示,收起 AI 工作台(⌘B)后提示消失。
+ * - 没有 `…:update` 权限时条形不可拖拽;**有**权限时有拖拽手柄(正向对照);
+ * - 没有可排期任务时「今天」「适应」是禁用的;
+ * - 时间轴被挤窄时给出提示(窄视口有、宽视口没有 —— 与 AI 面板状态无关)。
  *
  * 菜单树:PM 模块挂在「/pm」目录下(helpers.buildCurrentUserResponse 的
  * MenuParent 参数),甘特菜单的相对 route_path 'task/gantt' 会被拼到 /pm 下,
@@ -202,12 +204,15 @@ const milestoneList = {
  *
  * @param canUpdate 是否授予 `…:update` 权限(没有它条形不可拖拽)
  * @param taskList 任务列表的响应(默认三条带日期的任务)
+ * @param ready 「页面真的可用」的内容信号;默认等甘特容器。
+ *   ⚠️ 空数据那页**没有**甘特容器 ⇒ 那里要传空状态的定位器。
  */
 async function setupGanttPage(
   page: Page,
   options?: {
     canUpdate?: boolean;
     taskList?: ReturnType<typeof listEnvelope>;
+    ready?: Locator;
   },
 ): Promise<void> {
   const canUpdate = options?.canUpdate ?? true;
@@ -262,7 +267,11 @@ async function setupGanttPage(
     }),
   );
 
-  await gotoModulePage(page, GANTT_PAGE_PATH, page.locator('.gantt_container'));
+  await gotoModulePage(
+    page,
+    GANTT_PAGE_PATH,
+    options?.ready ?? page.locator('.gantt_container'),
+  );
 }
 
 test.describe('任务甘特页', () => {
@@ -293,6 +302,50 @@ test.describe('任务甘特页', () => {
     await expect(alert).toHaveCount(1);
     await expect(alert).toContainText('共 250 条');
     await expect(alert).toContainText('已显示前 3 条');
+  });
+
+  /**
+   * 截断提示里的数字**只算真正画进甘特的任务**。
+   *
+   * ⚠️ 这条是「两条提示不许互相矛盾」的回归测试:
+   *   取回 4 条(3 条有日期 + 1 条缺日期)、后端总数 5 ⇒
+   *   - 截断提示说「已显示前 3 条」(真的画了 3 条条形);
+   *   - 排除提示说「1 个任务没有计划起止日期,未显示」(取到了但没画)。
+   *   以前截断提示把 excludedCount 也加进去 ⇒ 说「已显示前 4 条」,
+   *   而实际只画了 3 条 ⇒ 与另一条提示自相矛盾。
+   */
+  test('截断提示的数字只算画进甘特的任务(不含缺日期被排除的)', async ({
+    page,
+  }) => {
+    const noDate = taskRow({
+      id: 34,
+      title: '还没排期的任务',
+      status_code: 'backlog',
+      start_date: null,
+      due_date: null,
+    });
+
+    await setupGanttPage(page, {
+      taskList: listEnvelope([...datedTasks, noDate], 5),
+    });
+
+    const alerts = mainContent(page).locator('.ant-alert-info');
+    // 两条提示各自独立
+    await expect(alerts).toHaveCount(2);
+
+    // 截断提示:M = 真正画出来的条数(3),**不是**取回的条数(4)
+    const truncated = alerts.filter({ hasText: '共 5 条' });
+    await expect(truncated).toHaveCount(1);
+    await expect(truncated).toContainText('已显示前 3 条');
+    await expect(truncated).not.toContainText('已显示前 4 条');
+
+    // 排除提示:N = 取到了但没显示的条数
+    const excluded = alerts.filter({ hasText: '没有计划起止日期' });
+    await expect(excluded).toHaveCount(1);
+    await expect(excluded).toContainText('1 个任务没有计划起止日期');
+
+    // 真的只画了 3 条任务条(3 任务 + 2 分组 = 5 行)
+    await expect(page.locator('.gantt_row')).toHaveCount(5);
   });
 
   test('缺计划起止日期的任务给出提示(不静默丢)', async ({ page }) => {
@@ -337,15 +390,87 @@ test.describe('任务甘特页', () => {
     await expect(page.locator('.gantt_task_drag')).toHaveCount(0);
   });
 
-  test('时间轴被挤窄时给提示,收起 AI 工作台后提示消失', async ({ page }) => {
+  /**
+   * 权限那条用例的**正向对照**。
+   *
+   * ⚠️ 只断言「没有权限时 `.gantt_task_drag` 为 0」是不够的:
+   *   class 名写错、或者根本没渲染,这条断言照样通过(假绿)。
+   *   这里补一条反向对照:有 `…:update` 权限时**必须**有拖拽手柄
+   *   ⇒ 前一条的「0」才真的说明「是权限把它关掉了」。
+   */
+  test('有 update 权限时条形带拖拽手柄(正向对照)', async ({ page }) => {
     await setupGanttPage(page);
 
-    // 右侧常驻的 AI 工作台占 400px ⇒ 时间轴被挤 ⇒ 页面给一条提示
-    const hint = mainContent(page).locator('.ant-alert-warning');
-    await expect(hint).toContainText('时间轴空间有限');
+    // 三条任务都是叶子行(不是分组汇总行)⇒ 每条都该有拖拽手柄
+    await expect(page.locator('.gantt_task_drag')).not.toHaveCount(0);
+  });
 
-    // 收起 AI 工作台(⌘B / Ctrl+B)⇒ 主内容变宽 ⇒ 提示消失
-    await page.keyboard.press('Control+b');
+  /**
+   * 没有可排期任务时,「今天」「适应」是死的按钮 ⇒ 必须禁用。
+   *
+   * 空数据分支里图表压根没挂载 ⇒ 点击只是「点了空气」,
+   * 用户还以为图表坏了。
+   */
+  test('没有可排期任务时禁用「今天」「适应」', async ({ page }) => {
+    const noDate = taskRow({
+      id: 41,
+      title: '还没排期的任务',
+      status_code: 'backlog',
+      start_date: null,
+      due_date: null,
+    });
+
+    await setupGanttPage(page, {
+      taskList: listEnvelope([noDate], 1),
+      // 没有可排期任务 ⇒ 甘特容器不存在,等空状态
+      ready: mainContent(page).locator('.ant-empty'),
+    });
+
+    // 空状态在
+    await expect(mainContent(page).locator('.ant-empty')).toBeVisible();
+    // 图表没挂载
+    await expect(page.locator('.gantt_container')).toHaveCount(0);
+
+    // 两个按钮都是禁用的
+    // ⚠️ antd 会给**两个汉字**的按钮文案中间插一个空格(排版用)
+    //    ⇒ 可访问名是「今 天」,不是「今天」⇒ 用正则宽松匹配
+    await expect(
+      mainContent(page).getByRole('button', { name: /今\s*天/ }),
+    ).toBeDisabled();
+    await expect(
+      mainContent(page).getByRole('button', { name: /适\s*应/ }),
+    ).toBeDisabled();
+  });
+
+  /**
+   * 窄时间轴的提示:窄视口时出现、宽视口时消失。
+   *
+   * ⚠️ **这条用例不能依赖 AI 工作台的展开/收起状态**:
+   *   提示的判据是「图表容器的宽度」(= 主内容宽度 - 侧栏),
+   *   而侧栏展开与否会改这个宽度 ⇒ 同一份代码在两种面板状态下结论相反。
+   *   之前那条用例(默认 1600px 视口 + 默认展开的面板 + 按 Ctrl+B 收起)
+   *   其实是在断言「面板恰好是展开的」⇒ 面板状态一变就挂。
+   *
+   *   现在改成**只看视口宽度**,而且两个视口下**面板展开或收起都一样**:
+   *   - 1000px:侧栏被 antd 的断点自动收成竖条(40px),
+   *     主内容 = 1000 - 40 - 左侧菜单 - 内边距 ⇒ 远小于 1200 ⇒ 提示必现;
+   *     (面板即便被展开,主内容只会更窄,提示照样现)
+   *   - 2200px:即便面板完全展开(400px),主内容也 > 1200 ⇒ 提示必不现。
+   */
+  test('窄视口时给提示,宽视口时不出现(与 AI 面板状态无关)', async ({
+    page,
+  }) => {
+    await setupGanttPage(page);
+
+    const hint = mainContent(page).locator('.ant-alert-warning');
+
+    // 窄视口 ⇒ 提示在(文案里的快捷键是 Ctrl/⌘+B,不是硬编码的 ⌘B)
+    await page.setViewportSize({ width: 1000, height: 900 });
+    await expect(hint).toContainText('时间轴空间有限');
+    await expect(hint).toContainText('Ctrl/⌘+B');
+
+    // 宽视口 ⇒ 提示不在
+    await page.setViewportSize({ width: 2200, height: 900 });
     await expect(hint).toHaveCount(0);
   });
 });

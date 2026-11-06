@@ -21,6 +21,11 @@ import { useProjectNames } from './useProjectNames';
  *    - 「后端总数 > 本次取回的条数」⇒ 提示「共 N 条,已显示前 M 条」(分页口径);
  *    - 「缺计划起止日期,画不出条形」⇒ 提示「N 个任务没有计划起止日期,未显示」。
  *    两条**不混成一条**:前者是「没取到」,后者是「取到了但画不出」。
+ *    ⚠️ 两条提示里的数字**各说各的,不许互相矛盾**:
+ *    - 「已显示前 M 条」的 M = **真正画进甘特的条数**(mapping.taskCount)
+ *      —— 缺日期被排除的任务**画不出来**,算进 M 就是骗人
+ *      (取回 100 条、其中 5 条缺日期 ⇒ 实际只画了 95 条,M 就得是 95);
+ *    - 「N 个任务…未显示」的 N = mapping.excludedCount(取到了但没显示)。
  * 2. **拖拽写回**:整对象 PUT(后端没有 PATCH),写失败把条形**弹回**原位;
  *    错误提示由请求层统一弹,页面自己不弹 message。
  * 3. **页面不自己发 message**:成功/失败都不弹,只回滚界面。
@@ -34,8 +39,10 @@ type ZoomLevel = 'day' | 'week' | 'month';
  *
  * 右侧常驻着 400px 的 AI 工作台 ⇒ 主内容只剩 ~1050px ⇒ 减去 dhtmlx 那条
  * 320px 的固定网格列,时间轴不到 800px,几个刻度就滚过去了。
- * 低于这个宽度就提示用户把 AI 工作台收起来(⌘B)——
- * 否则用户只会觉得「这图怎么这么挤」,不知道能救。
+ * 低于这个宽度就提示用户把 AI 工作台收起来(Ctrl/⌘+B)——
+ * ⚠️ **不要硬编码 ⌘**:本项目的用户主要在 Windows(Ctrl+B),
+ *   应用两个快捷键都收 ⇒ 文案写「Ctrl/⌘+B」。
+ *   否则用户只会觉得「这图怎么这么挤」,不知道能救。
  */
 const NARROW_CHART_WIDTH = 1200;
 
@@ -133,6 +140,8 @@ const TaskGantt: React.FC = () => {
 
   /** 本次取回的任务条数(画进甘特的 + 因缺日期被排除的) */
   const fetched = mapping.taskCount + mapping.excludedCount;
+  /** 有没有可排期的任务(画进甘特的任务条数 > 0) */
+  const hasChart = mapping.taskCount > 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -149,8 +158,8 @@ const TaskGantt: React.FC = () => {
         <Alert
           type="info"
           showIcon
-          title={`共 ${total} 条,已显示前 ${fetched} 条`}
-          description="甘特一次只拉一页(后端 page_size 上限 100),其余任务请到「任务管理」页查看。"
+          title={`共 ${total} 条,已显示前 ${mapping.taskCount} 条`}
+          description={`甘特一次只拉一页(后端 page_size 上限 100),本次取回 ${fetched} 条、其中 ${mapping.taskCount} 条画进了甘特;其余任务请到「任务管理」页查看。`}
         />
       ) : null}
 
@@ -171,7 +180,7 @@ const TaskGantt: React.FC = () => {
         <Alert
           type="warning"
           showIcon
-          title="时间轴空间有限？按 ⌘B 收起右侧 AI 工作台"
+          title="时间轴空间有限？按 Ctrl/⌘+B 收起右侧 AI 工作台"
           description="甘特图左侧的网格列是固定的,右边留给时间轴的宽度会被常驻的 AI 工作台挤掉。"
         />
       ) : null}
@@ -187,6 +196,7 @@ const TaskGantt: React.FC = () => {
           onChange={(value) => setProjectId(value ?? undefined)}
         />
         <Segmented<ZoomLevel>
+          disabled={!hasChart}
           value={zoom}
           options={[
             { label: '日', value: 'day' },
@@ -198,8 +208,20 @@ const TaskGantt: React.FC = () => {
             chartRef.current?.setZoom(value);
           }}
         />
-        <Button onClick={() => chartRef.current?.scrollToToday()}>今天</Button>
-        <Button onClick={() => chartRef.current?.zoomToFit()}>适应</Button>
+        {/* ⚠️ 没有可排期任务时图表根本没挂载 ⇒ 这两个按钮点了没反应
+            (点了空气比不给点更糟)⇒ 直接禁用 */}
+        <Button
+          disabled={!hasChart}
+          onClick={() => chartRef.current?.scrollToToday()}
+        >
+          今天
+        </Button>
+        <Button
+          disabled={!hasChart}
+          onClick={() => chartRef.current?.zoomToFit()}
+        >
+          适应
+        </Button>
       </div>
 
       {loading ? (
