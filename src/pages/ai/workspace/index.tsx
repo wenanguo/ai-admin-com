@@ -265,6 +265,10 @@ export default function AiWorkspacePage(): React.ReactElement {
           onRetry={() => {
             void workspace.retry();
           }}
+          onStop={() => {
+            void workspace.abort();
+          }}
+          stopping={workspace.aborting}
         />
       </div>
 

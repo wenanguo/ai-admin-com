@@ -144,6 +144,39 @@ describe('AI 对话页签', () => {
     expect(input.disabled).toBe(true);
   });
 
+  it('⭐ 本轮进行中时有「停止生成」按钮（不然用户没有出路）', async () => {
+    const onStop = vi.fn();
+
+    const { getByRole } = await render(
+      <ChatPanel
+        messages={[]}
+        streaming
+        onSend={() => undefined}
+        onStop={onStop}
+      />,
+    );
+
+    const button = getByRole('button', { name: /停止生成/ });
+    await expect.element(button).toBeVisible();
+    await button.click();
+
+    await vi.waitFor(() => {
+      expect(onStop).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('不进行中时没有「停止生成」按钮', async () => {
+    const { container } = await render(
+      <ChatPanel
+        messages={[]}
+        onSend={() => undefined}
+        onStop={() => undefined}
+      />,
+    );
+
+    expect(container.querySelector('[data-role="ai-stop-button"]')).toBeNull();
+  });
+
   it('回车发送', async () => {
     const onSend = vi.fn();
 

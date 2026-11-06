@@ -44,6 +44,7 @@ vi.mock('@/services/api/ai/client', () => ({
   sendAiCommand: vi.fn(),
   createAiConversation: mocks.createAiConversation,
   getAiState: mocks.getAiState,
+  abortAiConversation: vi.fn(),
   listAiAudit: mocks.listAiAudit,
   listAiPending: mocks.listAiPending,
   listAiConversations: vi.fn(),

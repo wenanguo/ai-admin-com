@@ -43,8 +43,12 @@ const NOT_OPEN_INTENTS = [
 ];
 
 /** 装上 AI 服务的假实现。 */
-async function setupAiService(page: Page): Promise<string[]> {
+async function setupAiService(
+  page: Page,
+  options: { streaming?: boolean } = {},
+): Promise<string[]> {
   const requests: string[] = [];
+  const streaming = options.streaming === true;
 
   const handler = async (route: Route): Promise<void> => {
     const url = route.request().url();
@@ -71,13 +75,21 @@ async function setupAiService(page: Page): Promise<string[]> {
 
     // 事件流（SSE）：只回一个 connected —— 这一页不需要真的对话
     if (path.endsWith('/events')) {
+      const connected = `event: connected\ndata: ${JSON.stringify({
+        conversationId: CONVERSATION_ID,
+        isStreaming: streaming,
+      })}\n\n`;
+      // 模拟「有一轮正在跑」：补一帧 message_start ⇒ 前端进入流式状态
+      const started = streaming
+        ? `event: message_start\ndata: ${JSON.stringify({
+            conversationId: CONVERSATION_ID,
+            role: 'assistant',
+          })}\n\n`
+        : '';
       await route.fulfill({
         status: 200,
         contentType: 'text/event-stream',
-        body: `event: connected\ndata: ${JSON.stringify({
-          conversationId: CONVERSATION_ID,
-          isStreaming: false,
-        })}\n\n`,
+        body: connected + started,
       });
       return;
     }
@@ -87,9 +99,15 @@ async function setupAiService(page: Page): Promise<string[]> {
       json({
         conversationId: CONVERSATION_ID,
         messages: [],
-        isStreaming: false,
+        isStreaming: streaming,
         model: MODEL,
       });
+      return;
+    }
+
+    // 中止当前那一轮（点「停止生成」）
+    if (path.endsWith('/abort')) {
+      json({ conversationId: CONVERSATION_ID, aborted: true });
       return;
     }
 
@@ -121,8 +139,11 @@ async function setupAiService(page: Page): Promise<string[]> {
 }
 
 /** 打开全宽页（装好登录态与 AI 服务的假实现）。 */
-async function openWorkspacePage(page: Page): Promise<string[]> {
-  const requests = await setupAiService(page);
+async function openWorkspacePage(
+  page: Page,
+  options: { streaming?: boolean } = {},
+): Promise<string[]> {
+  const requests = await setupAiService(page, options);
   await setupModulePage(page, {
     menus: [{ title: '岗位管理', routePath: 'position' }],
     // 这一页不读 AiAdmin 的列表接口；给一个永远不会被请求的占位。
@@ -201,6 +222,38 @@ test.describe('AI 工作台全宽页', () => {
 
     // 助手那边也没有多出气泡（没发 ⇒ 没回）
     await expect(page.locator('[data-role="user"]')).toHaveCount(0);
+  });
+
+  test('⭐ 本轮进行中有「停止生成」按钮,点了会调 abort 并解禁输入', async ({
+    page,
+  }) => {
+    const requests = await openWorkspacePage(page, { streaming: true });
+
+    // 本轮进行中 ⇒ 输入框禁用
+    const input = page
+      .getByTestId('ai-workspace-page')
+      .getByPlaceholder(/问点什么/);
+    await expect(input).toBeDisabled();
+    await expect(page.getByText('本轮进行中…')).toBeVisible();
+
+    // ⚠️ **没有这个按钮就是死路**（模型跑飞时用户什么都做不了）
+    const stop = page.locator('[data-role="ai-stop-button"]');
+    await expect(stop).toBeVisible();
+    await stop.click();
+
+    // 真的调了中止端点
+    await expect
+      .poll(() => requests.filter((url) => url.includes('/abort')).length)
+      .toBeGreaterThan(0);
+
+    // ⚠️ **乐观解禁**：不等服务端的 agent_settled 帧 ⇒ 输入框能用了
+    await expect(input).toBeEnabled();
+  });
+
+  test('不进行中时没有「停止生成」按钮', async ({ page }) => {
+    await openWorkspacePage(page);
+
+    await expect(page.locator('[data-role="ai-stop-button"]')).toHaveCount(0);
   });
 
   test('不画配额条', async ({ page }) => {

@@ -26,6 +26,10 @@ export interface ChatPanelProps {
   onSend: (text: string) => void;
   /** 重试上一条失败的消息。 */
   onRetry?: () => void;
+  /** 中止当前这一轮（点「停止生成」）。 */
+  onStop?: () => void;
+  /** 正在中止。 */
+  stopping?: boolean;
 }
 
 /**
@@ -38,6 +42,8 @@ export function ChatPanel({
   sendError,
   onSend,
   onRetry,
+  onStop,
+  stopping,
 }: ChatPanelProps): React.ReactElement {
   const { token } = theme.useToken();
   const [value, setValue] = useState('');
@@ -129,6 +135,8 @@ export function ChatPanel({
           onSend={handleSend}
           busy={busy}
           showChips={messages.length === 0}
+          onStop={onStop}
+          stopping={stopping}
         />
       </div>
     </div>

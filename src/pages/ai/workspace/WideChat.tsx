@@ -33,6 +33,10 @@ export interface WideChatProps {
   sendError?: string;
   /** 重试上一条失败的消息。 */
   onRetry?: () => void;
+  /** 中止当前这一轮（点「停止生成」）。 */
+  onStop?: () => void;
+  /** 正在中止。 */
+  stopping?: boolean;
 }
 
 /**
@@ -49,6 +53,8 @@ export function WideChat({
   sending,
   sendError,
   onRetry,
+  onStop,
+  stopping,
 }: WideChatProps): React.ReactElement {
   const { token } = theme.useToken();
   const listRef = useRef<HTMLDivElement>(null);
@@ -161,6 +167,8 @@ export function WideChat({
             busy={busy}
             showChips={false}
             placeholder="问点什么…（也可以先点上面的意图卡片）"
+            onStop={onStop}
+            stopping={stopping}
           />
         </div>
       </div>

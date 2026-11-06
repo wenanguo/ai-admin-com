@@ -242,6 +242,10 @@ export function AiWorkspace({
                 onRetry={() => {
                   void workspace.retry();
                 }}
+                onStop={() => {
+                  void workspace.abort();
+                }}
+                stopping={workspace.aborting}
               />
             ),
           },

@@ -8,6 +8,7 @@ import { request } from '@umijs/max';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AI_API_BASE_URL,
+  abortAiConversation,
   aiUrl,
   createAiCommandId,
   createAiConversation,
@@ -91,6 +92,29 @@ describe('AI 服务客户端', () => {
     expect(options.headers).toMatchObject({
       Authorization: 'Bearer token-abc',
     });
+  });
+
+  it('中止当前那一轮：POST 到 abort 端点并带上 token', async () => {
+    vi.mocked(request).mockResolvedValue(
+      envelope({ conversationId: 'c1', aborted: true }),
+    );
+
+    await abortAiConversation('c1');
+
+    const [url, options] = callOf(0);
+    expect(url).toBe(`${AI_API_BASE_URL}/api/agent/c1/abort`);
+    expect(options.method).toBe('POST');
+    expect(options.headers).toMatchObject({
+      Authorization: 'Bearer token-abc',
+    });
+    // ⚠️ baseURL 也要置空（否则会打到 AiAdmin 的代理规则上）
+    expect(options.baseURL).toBe('');
+  });
+
+  it('中止失败时抛错（界面据此提示）', async () => {
+    vi.mocked(request).mockRejectedValue(new Error('网络断了'));
+
+    await expect(abortAiConversation('c1')).rejects.toThrow('网络断了');
   });
 
   it('命令 id 由客户端生成', async () => {

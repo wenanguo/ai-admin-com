@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  abortAiConversation,
   createAiCommandId,
   createAiConversation,
   getAiState,
@@ -92,6 +93,18 @@ export interface Workspace {
    * 否则界面会挂在一个死会话上。
    */
   switchConversation: (conversationId: string) => Promise<void>;
+  /**
+   * **中止**当前正在跑的那一轮（用户点「停止生成」）。
+   *
+   * ⚠️ 中止**不是回滚**：已经落库的消息与已经建出来的任务都还在。
+   * ⚠️ 中止后**乐观地**解禁输入框（不等服务端的 `agent_settled` 帧）——
+   *    万一那一帧丢了，界面就会永远停在「本轮进行中…」，用户再没有出路。
+   */
+  abort: () => Promise<void>;
+  /** 正在中止（按钮转圈）。 */
+  aborting: boolean;
+  /** 中止失败的原因。 */
+  abortError?: string;
 }
 
 /** 未知错误转成一句话。 */
@@ -118,6 +131,10 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
   const [connectionError, setConnectionError] = useState<string | undefined>(
     undefined,
   );
+  /** 中止失败的原因。 */
+  const [abortError, setAbortError] = useState<string | undefined>(undefined);
+  /** 正在中止。 */
+  const [aborting, setAborting] = useState(false);
   /** 上一条命令（重试时要复用它的 id）。 */
   const lastCommandRef = useRef<{ id: string; text: string } | undefined>(
     undefined,
@@ -135,10 +152,17 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
   /** 会话就绪的信号：会话建好（或建不出来）之后 resolve。 */
   const readyRef = useRef<Promise<void> | undefined>(undefined);
 
-  const { messages, streaming, connected, model, appendUserMessage, restore } =
-    useAgentStream({
-      conversationId,
-    });
+  const {
+    messages,
+    streaming,
+    connected,
+    model,
+    appendUserMessage,
+    restore,
+    settle,
+  } = useAgentStream({
+    conversationId,
+  });
 
   /**
    * 事件流**曾经**连上过吗。
@@ -311,6 +335,26 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     [restore, storageKey],
   );
 
+  /** 中止当前这一轮。 */
+  const abort = useCallback(async (): Promise<void> => {
+    const conversation = conversationIdRef.current;
+    if (!conversation) {
+      return;
+    }
+    setAbortError(undefined);
+    setAborting(true);
+    try {
+      await abortAiConversation(conversation);
+      // ⚠️ **乐观解禁**：不等服务端的 `agent_settled` 帧。
+      //    万一那一帧丢了（断线），界面会永远停在「本轮进行中…」。
+      settle();
+    } catch (error) {
+      setAbortError(toMessage(error));
+    } finally {
+      setAborting(false);
+    }
+  }, [settle]);
+
   return {
     conversationId,
     model,
@@ -326,5 +370,8 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     reconnect,
     newConversation,
     switchConversation,
+    abort,
+    aborting,
+    abortError,
   };
 }

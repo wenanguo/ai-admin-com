@@ -105,6 +105,14 @@ export interface AgentStream {
   restore: (snapshot: AiState, conversationId: string) => void;
   /** 用快照重建界面（断线重连后调用）。 */
   resync: () => Promise<void>;
+  /**
+   * 强行结束本轮（用户点了「停止生成」）。
+   *
+   * ⚠️ **乐观解禁**：不等服务端的 `agent_settled` 帧，先把输入框放开。
+   *    理由：万一服务端那一帧丢了（断线），界面就会永远停在「本轮进行中…」
+   *    ⇒ 用户再也没有出路。真的 `agent_settled` 到了也是幂等的（再解一次）。
+   */
+  settle: () => void;
 }
 
 /** 内部状态。 */
@@ -971,6 +979,15 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
     }));
   }, []);
 
+  /** 强行结束本轮（用户点了「停止生成」）。 */
+  const settle = useCallback((): void => {
+    setState((previous) =>
+      previous.streaming
+        ? { ...previous, activeId: undefined, streaming: false }
+        : previous,
+    );
+  }, []);
+
   return {
     messages: state.messages,
     streaming: state.streaming,
@@ -979,5 +996,6 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
     appendUserMessage,
     restore,
     resync,
+    settle,
   };
 }

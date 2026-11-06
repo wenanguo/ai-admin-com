@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   getAiState: vi.fn(),
   sendAiCommand: vi.fn(),
   createAiCommandId: vi.fn(),
+  abortAiConversation: vi.fn(),
   subscribeAiEvents: vi.fn(() => () => undefined),
 }));
 
@@ -28,6 +29,7 @@ vi.mock('@/services/api/ai/client', () => ({
   sendAiCommand: mocks.sendAiCommand,
   createAiConversation: mocks.createAiConversation,
   getAiState: mocks.getAiState,
+  abortAiConversation: mocks.abortAiConversation,
   listAiAudit: vi.fn(),
   listAiPending: vi.fn(),
   listAiConversations: vi.fn(),
@@ -57,6 +59,7 @@ describe('AI 工作台的会话', () => {
       conversationId: 'c-new',
       title: '新对话',
     });
+    mocks.abortAiConversation.mockResolvedValue(undefined);
   });
 
   it('没有存过的会话会新建一个并记住', async () => {
@@ -236,6 +239,55 @@ describe('AI 工作台的会话', () => {
     });
     // 会话 id 写进存储 ⇒ 侧栏（别的页面）下次挂载用的也是它
     expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).toContain('c-second');
+  });
+
+  it('中止当前这一轮：叫服务端的 abort，并乐观地解禁输入', async () => {
+    const { result } = await renderHook(() => useWorkspace());
+
+    await vi.waitFor(() => {
+      expect(result.current.conversationId).toBe('c-new');
+    });
+
+    await result.current.abort();
+
+    expect(mocks.abortAiConversation).toHaveBeenCalledWith('c-new');
+    // ⚠️ 乐观解禁（不等服务端的 agent_settled 帧 ⇒ 那一帧丢了也不会卡住）
+    await vi.waitFor(() => {
+      expect(result.current.streaming).toBe(false);
+    });
+    expect(result.current.aborting).toBe(false);
+  });
+
+  it('中止失败时把原因挂在 abortError 上（不崩）', async () => {
+    mocks.abortAiConversation.mockRejectedValue(new Error('服务不可达'));
+
+    const { result } = await renderHook(() => useWorkspace());
+
+    await vi.waitFor(() => {
+      expect(result.current.conversationId).toBe('c-new');
+    });
+
+    await result.current.abort();
+
+    await vi.waitFor(() => {
+      expect(result.current.abortError).toBeTruthy();
+    });
+    expect(result.current.abortError).toContain('服务不可达');
+  });
+
+  it('会话还没建好时中止不会报错', async () => {
+    mocks.createAiConversation.mockImplementation(
+      () =>
+        new Promise(() => {
+          // 永远不 resolve ⇒ 会话建不出来
+        }),
+    );
+
+    const { result } = await renderHook(() => useWorkspace());
+
+    await result.current.abort();
+
+    expect(mocks.abortAiConversation).not.toHaveBeenCalled();
   });
 
   it('「历史对话」切到另一个会话并把它的历史带回来', async () => {

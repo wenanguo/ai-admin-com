@@ -171,6 +171,26 @@ export async function sendAiCommand(
   return { id, success: ack?.success === true };
 }
 
+/**
+ * 中止当前正在跑的那一轮（用户点「停止生成」）。
+ *
+ * ⚠️ 服务端的 `POST /api/agent/:cid/abort` ⇒ pi 的 `session.abort()`。
+ *    中止**不是回滚**：这一轮已经落库的消息（用户那句话、助手已写出的部分）
+ *    都还在，已经建出来的任务也不会被撤销。
+ *
+ * ⚠️ 中止后服务端会发一帧 `agent_settled` ⇒ 前端输入框解禁。
+ *    但为了不让界面卡在「本轮进行中…」，调用方还会**乐观地**解禁一次
+ *    （见 `useWorkspace.abort`）。
+ */
+export async function abortAiConversation(
+  conversationId: string,
+): Promise<void> {
+  await aiRequest<{ conversationId: string; aborted: boolean }>(
+    `/api/agent/${conversationId}/abort`,
+    { method: 'POST' },
+  );
+}
+
 /** 审计流水的筛选条件（服务端只认这几个，其余参数静默忽略）。 */
 export interface AiAuditQuery {
   actor?: 'AI' | 'USER';

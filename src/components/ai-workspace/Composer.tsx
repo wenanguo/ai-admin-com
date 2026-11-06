@@ -69,6 +69,15 @@ export interface ComposerProps {
   showChips?: boolean;
   /** 输入框的占位文案（缺省「输入消息」）。 */
   placeholder?: string;
+  /**
+   * 点「停止生成」（本轮进行中时才有这个按钮）。
+   *
+   * ⚠️ **没有它就是死路**：本轮进行中时输入框是禁用的、发送也点不了
+   *    ⇒ 模型跑飞（工具卡住、模型陷入长思考）时用户只能干等。
+   */
+  onStop?: () => void;
+  /** 正在中止（按钮转圈、不可重复点）。 */
+  stopping?: boolean;
 }
 
 /**
@@ -81,6 +90,8 @@ export function Composer({
   busy,
   showChips,
   placeholder = '输入消息',
+  onStop,
+  stopping,
 }: ComposerProps): React.ReactElement {
   const { token } = theme.useToken();
 
@@ -120,11 +131,31 @@ export function Composer({
       {busy ? (
         <div
           style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: token.sizeXS,
             fontSize: token.fontSizeSM,
             color: token.colorTextSecondary,
           }}
         >
-          本轮进行中…
+          <span>本轮进行中…</span>
+          {/*
+            ⚠️ **停止按钮**：本轮进行中时输入框是禁用的 ⇒ 没有这个按钮
+            用户就没有任何出路（模型跑飞时只能干等）。
+            ⇒ 它就在「本轮进行中…」旁边，不藏在别处。
+          */}
+          {onStop ? (
+            <Button
+              size="small"
+              danger
+              loading={stopping === true}
+              onClick={onStop}
+              data-role="ai-stop-button"
+            >
+              停止生成
+            </Button>
+          ) : null}
         </div>
       ) : null}
       {/*
