@@ -13,7 +13,10 @@ import { useGanttTasks } from './useGanttTasks';
  *    「缺日期被排除」不算截断(由 excludedCount 单独表达,两条提示不重叠);
  * 4. 写回:拖拽后整对象 PUT,**只有起止两个日期变了**,其余字段原样带回;
  * 5. 失败与无效输入都解析成 false(不抛给调用方,错误提示由请求层统一弹);
- * 6. reload 重新取数。
+ * 6. reload 重新取数;
+ * 7. **写回成功后把新日期写回本地 state**:侧载的项目/里程碑名字晚到时
+ *    mapping 会重算,若 state 里还是旧日期,用户刚拖完的条会被「弹回」旧位置
+ *    (而服务端已经是新值)。
  */
 
 const mocks = vi.hoisted(() => ({
@@ -261,6 +264,66 @@ describe('useGanttTasks 甘特数据', () => {
         priority_code: 'high',
         start_date: '2026-09-05',
         due_date: '2026-09-20',
+      });
+    });
+
+    it('写回成功后:新日期写回本地 state(映射层立刻反映新日期)', async () => {
+      const { result } = await renderHook(() => useGanttTasks());
+
+      await vi.waitFor(() => {
+        expect(result.current.mapping.taskCount).toBe(1);
+      });
+
+      const ok = await result.current.applyDateChange('t-10', {
+        start_date: '2026-09-05',
+        end_date: '2026-09-20',
+      });
+
+      expect(ok).toBe(true);
+      await vi.waitFor(() => {
+        expect(
+          result.current.mapping.data.find((row) => row.id === 't-10'),
+        ).toMatchObject({
+          start_date: '2026-09-05',
+          end_date: '2026-09-20',
+        });
+      });
+    });
+
+    it('侧载名字晚到时,刚拖完的日期不会被旧数据弹回', async () => {
+      // 项目名侧载**卡住** ⇒ 写回之后它才到 ⇒ mapping 会因为名字变化而重算。
+      // 若本地 state 里还是旧日期,重算出来的行就是旧日期 ⇒ 条被弹回旧位置。
+      let resolveProjects: (value: unknown) => void = () => {};
+      mocks.listProjects.mockReturnValue(
+        new Promise((resolve) => {
+          resolveProjects = resolve;
+        }),
+      );
+
+      const { result } = await renderHook(() => useGanttTasks());
+
+      await vi.waitFor(() => {
+        expect(result.current.mapping.taskCount).toBe(1);
+      });
+
+      const ok = await result.current.applyDateChange('t-10', {
+        start_date: '2026-09-05',
+        end_date: '2026-09-20',
+      });
+      expect(ok).toBe(true);
+
+      // 侧载的名字这时才到 ⇒ mapping 重算
+      resolveProjects(envelope(page([{ id: 1, name: 'Alpha 项目' }], 1)));
+
+      await vi.waitFor(() => {
+        expect(result.current.mapping.data[0].text).toBe('Alpha 项目');
+      });
+      // 重算之后,日期还是**新**的(不是被弹回旧位置)
+      expect(
+        result.current.mapping.data.find((row) => row.id === 't-10'),
+      ).toMatchObject({
+        start_date: '2026-09-05',
+        end_date: '2026-09-20',
       });
     });
 

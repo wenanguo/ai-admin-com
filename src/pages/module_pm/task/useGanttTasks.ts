@@ -136,6 +136,21 @@ export function useGanttTasks(options?: {
 
       try {
         await updateTask(taskId, payload);
+        // ⚠️ 写回成功后要把新日期写回**本地 state**:
+        // mapping 的 useMemo 依赖 projectNames/milestoneNames ⇒ 侧载的名字晚到时
+        // mapping 会重算。若 state 里还是旧日期,重算出来的行就是旧日期 ⇒
+        // 甘特图重新 parse() 时会把用户刚拖完的条「弹回」旧位置(而服务端已是新值)。
+        setTasks((previous) =>
+          previous.map((item) =>
+            item.id === taskId
+              ? {
+                  ...item,
+                  start_date: change.start_date,
+                  due_date: change.end_date,
+                }
+              : item,
+          ),
+        );
         return true;
       } catch {
         // 错误提示由请求层统一弹,这里只管成败(调用方拿 false 去回滚甘特行)
