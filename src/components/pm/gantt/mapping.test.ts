@@ -9,7 +9,9 @@ import { formatRange, mapTasksToGantt, statusCssClass } from './mapping';
  * 1. 层级拼装:项目/里程碑分组行按需去重生成,任务行 parent 按
  *    parent_id > milestone_id > project_id 兜底(有父任务就绝不挂里程碑);
  * 2. 排除口径:缺计划起止日期的任务不进行、不分组,只计数 + 报标题(封顶 5 条);
- * 3. taskCount:只数任务行(分组行不算)—— useGanttTasks 靠它判「被截断」;
+ * 3. taskCount:只数任务行(分组行不算)—— 给页面显示「画进甘特的任务条数」;
+ *    ⚠️ **不用它判「被截断」**:截断是分页口径(后端总数 > 本次取回的条数),
+ *    由 useGanttTasks 判(taskCount 偏小,拿它判会算出假截断);
  * 4. 悬空父级:父任务没进甘特时,子任务的 parent 回退到里程碑/项目行;
  * 5. 与输入顺序无关:子任务排在父任务前面也能挂上父任务行;
  * 6. 两个格式化函数的边界:空状态也有 class、缺日期给「-」。
