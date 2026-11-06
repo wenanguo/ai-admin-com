@@ -23,6 +23,20 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 	DefaultResourceLoader: class {
 		constructor(public readonly options: unknown) {}
 		async reload(): Promise<void> {}
+		getSkills() {
+			return {
+				skills: [
+					{
+						name: "create-task",
+						description: "在 AiAdmin 里建任务。",
+						filePath: "/repo/.pi/skills/create-task/SKILL.md",
+						baseDir: "/repo/.pi/skills/create-task",
+						disableModelInvocation: false,
+					},
+				],
+				diagnostics: [],
+			};
+		}
 	},
 	ModelRuntime: {
 		create: vi.fn(async () => ({
@@ -99,7 +113,9 @@ describe("pi 会话构造", () => {
 
 		const options = vi.mocked(createAgentSession).mock.calls[0]?.[0];
 		expect(options?.noTools).toBe("builtin");
-		expect(options?.customTools).toEqual([fakeTool]);
+		// 我们的命令 + `load_skill`（读技能文件）
+		const names = (options?.customTools ?? []).map((tool) => tool.name);
+		expect(names).toEqual(["create_task", "load_skill"]);
 	});
 
 	it("系统提示词走 resourceLoader（不在 createAgentSession 的选项里）", async () => {
@@ -113,12 +129,48 @@ describe("pi 会话构造", () => {
 
 		const options = vi.mocked(createAgentSession).mock.calls[0]?.[0];
 		const loader = options?.resourceLoader as { options?: { systemPrompt?: string } };
-		expect(loader.options?.systemPrompt).toBe("你是助手");
-		// 也不要 pi 的扩展 / 技能 / 上下文文件
+		// 基础提示词在，技能段接在后面（见下面那条用例）
+		expect(loader.options?.systemPrompt).toContain("你是助手");
+		// 也不要 pi 的扩展 / 上下文文件
 		const loaderOptions = loader.options as Record<string, unknown>;
 		expect(loaderOptions["noExtensions"]).toBe(true);
-		expect(loaderOptions["noSkills"]).toBe(true);
 		expect(loaderOptions["noContextFiles"]).toBe(true);
+		// ⚠️ **技能要开着**（noSkills: false）—— 让 pi 自己去发现 `.pi/skills/`，
+		//    我们只读它发现的结果（不自己再扫一遍目录）。
+		//    注意：这**不等于**放开 pi 的 read/bash 工具（那仍然关着），
+		//    读技能文件靠我们自己的 `load_skill`（只读技能目录）。
+		expect(loaderOptions["noSkills"]).toBe(false);
+	});
+
+	it("把技能段拼进系统提示词", async () => {
+		await createPiSession({
+			tools: [fakeTool],
+			systemPrompt: "你是助手。",
+			conversationId: "conv-1",
+			history: [],
+			model: "minimax-cn/MiniMax-M3.1-Flash",
+		});
+
+		const options = vi.mocked(createAgentSession).mock.calls[0]?.[0];
+		const loader = options?.resourceLoader as { options?: { systemPrompt?: string } };
+		expect(loader.options?.systemPrompt).toContain("<available_skills>");
+		expect(loader.options?.systemPrompt).toContain("<name>create-task</name>");
+	});
+
+	it("customTools 里含 load_skill", async () => {
+		await createPiSession({
+			tools: [fakeTool],
+			systemPrompt: "你是助手。",
+			conversationId: "conv-1",
+			history: [],
+			model: "minimax-cn/MiniMax-M3.1-Flash",
+		});
+
+		const options = vi.mocked(createAgentSession).mock.calls[0]?.[0];
+		const names = (options?.customTools ?? []).map((tool) => tool.name);
+		expect(names).toContain("load_skill");
+		// 业务命令也要还在
+		expect(names).toContain("create_task");
 	});
 
 	it("模型标识不是 provider/model 形式 ⇒ 直接报错（别猜）", async () => {

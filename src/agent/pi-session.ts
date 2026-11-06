@@ -21,6 +21,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { env } from "../env";
 import type { CommandTool } from "../tools/types";
+import { buildSystemPrompt } from "./skills";
+import { createLoadSkillTool } from "./skill-tools";
 import { buildSessionEntries } from "./session-entries";
 import type { AgentSessionLike } from "./session-registry";
 import type { MessageRecord } from "./store";
@@ -87,16 +89,37 @@ export async function createPiSession(
 		throw new Error(`找不到模型 ${modelId}`);
 	}
 
-	const resourceLoader = new DefaultResourceLoader({
+	// ⚠️ **两阶段**：技能要进系统提示词，而技能是 loader 发现的 ⇒ 顺序上
+	//    「先发现技能，再定提示词」。而 loader 的 systemPrompt 是**构造时**定的
+	//    ⇒ 先用一个 loader 把技能发现出来，再用带技能段的提示词建**最终**那个。
+	//    （建会话是懒的、每会话一次 ⇒ 多发现一次的开销可以忽略。）
+	const loaderOptions = {
 		cwd,
 		agentDir: join(AGENT_DIR, "agent"),
-		// 只用自己的提示词与工具：不要 pi 的扩展、技能、提示词模板、上下文文件
+		// 只用自己的提示词与工具：不要 pi 的扩展、提示词模板、上下文文件
 		noExtensions: true,
-		noSkills: true,
+		// ⚠️ **技能要开着**（默认 false）：让 pi 自己去发现 `.pi/skills/`，
+		//    我们只读它发现的结果（不自己再扫一遍目录 ⇒ 与 pi 的去重/诊断一致）。
+		//    这**不等于**放开 pi 的 read/bash 工具（那仍然关着）——
+		//    读技能文件靠我们自己的 `load_skill`（只读技能目录内的文件）。
+		noSkills: false,
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
+	};
+
+	const discoveryLoader = new DefaultResourceLoader({
+		...loaderOptions,
 		systemPrompt: options.systemPrompt,
+	});
+	await discoveryLoader.reload();
+	// pi 发现的技能（名字 → 文件位置）
+	const skills = discoveryLoader.getSkills().skills;
+
+	const resourceLoader = new DefaultResourceLoader({
+		...loaderOptions,
+		// 系统提示词 = 基础提示词 + 技能段（模型据此知道有哪些技能、怎么加载）
+		systemPrompt: buildSystemPrompt(options.systemPrompt, skills),
 	});
 	await resourceLoader.reload();
 
@@ -116,7 +139,8 @@ export async function createPiSession(
 		// 关掉 pi 的 coding 内置工具（read/bash/edit/write）——
 		// 它们能在服务器上乱跑，本服务只给模型业务命令。
 		noTools: "builtin",
-		customTools: options.tools,
+		// 业务命令 + `load_skill`（读技能文件；只读技能目录内的）
+		customTools: [...options.tools, createLoadSkillTool(skills)],
 		// 内存态会话，但**带着我们还原出来的历史**：
 		// 持久化归我们（ai_message 表），pi 这边只管「这一轮对话的上下文」。
 		sessionManager: SessionManager.inMemory(cwd, { id: options.conversationId }, entries),
