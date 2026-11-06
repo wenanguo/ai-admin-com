@@ -29,7 +29,13 @@ import { RightOutlined, RobotOutlined } from '@ant-design/icons';
 import { useLocation } from '@umijs/max';
 import { Button, Layout, theme } from 'antd';
 import type React from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { AiWorkspace } from './index';
 import { AI_WORKSPACE_PAGE_PATH } from './paths';
 import { readWorkspaceStorage, writeWorkspaceStorage } from './storage';
@@ -156,6 +162,17 @@ export function AiWorkspaceLayout({
   const [collapsed, setCollapsed] = useState<boolean>(
     () => readWorkspaceStorage().collapsed === true,
   );
+  /** 内容区顶边离视口顶边的距离（侧栏要钉在固定头部下面）。 */
+  const [stickyTop, setStickyTop] = useState(0);
+  /**
+   * 视口右边缘到**内容区**右边缘的距离（ProLayout 的右内边距，实测 40px）。
+   *
+   * 侧栏是 `position: fixed` ⇒ 它的 `right: 0` 是相对**视口**的，
+   * 而主内容的右边缘在**内容区**的右边缘 ⇒ 直接 `right: 0` 会在两者之间
+   * 空出一个内边距那么宽的缝（实测 40px）。⇒ 侧栏要按这个内边距往左让。
+   */
+  const [rightInset, setRightInset] = useState(0);
+  const rowRef = useRef<HTMLDivElement>(null);
   /**
    * 组件挂载了吗（用来分辨 antd 的「挂载时对齐断点」与「真的跨过断点」）。
    *
@@ -175,6 +192,32 @@ export function AiWorkspaceLayout({
       writeWorkspaceStorage({ collapsed: next });
       return next;
     });
+  }, []);
+
+  // 侧栏钉在**固定头部**下面：量出内容区顶边离视口顶边有多远。
+  //
+  // ⚠️ 用文档坐标（rect.top + scrollY）而不是视口坐标 ——
+  // 页面滚动过时视口坐标会变成负数，侧栏就会钻到头部上面去。
+  useLayoutEffect(() => {
+    const update = (): void => {
+      const node = rowRef.current;
+      if (!node) {
+        return;
+      }
+      const rect = node.getBoundingClientRect();
+      // 顶边：用文档坐标（rect.top + scrollY），页面滚动过时视口坐标会变成负数
+      const top = rect.top + window.scrollY;
+      setStickyTop(Math.max(0, Math.round(top)));
+      // 右边：内容区右边缘离视口右边缘有多远（ProLayout 的右内边距）
+      const documentWidth = document.documentElement.clientWidth;
+      const rowRight = rect.right + window.scrollX;
+      setRightInset(Math.max(0, Math.round(documentWidth - rowRight)));
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('resize', update);
+    };
   }, []);
 
   // ⌘B / Ctrl+B 切换
@@ -220,7 +263,10 @@ export function AiWorkspaceLayout({
   );
 
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', width: '100%' }}>
+    <div
+      ref={rowRef}
+      style={{ display: 'flex', alignItems: 'flex-start', width: '100%' }}
+    >
       {/*
         主内容：侧栏收窄时这一列跟着窄。
 
@@ -230,7 +276,22 @@ export function AiWorkspaceLayout({
       */}
       <div
         data-testid="ai-workspace-content"
-        style={{ flex: 1, minWidth: 0, overflowX: 'auto' }}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          overflowX: 'auto',
+          /*
+            ⚠️ 侧栏是 `position: fixed`（**脱离了文档流**）⇒ 主内容要**自己让出**
+            它的宽度，否则会滑到侧栏底下去。
+
+            折叠时让出的是 40px（竖条）；全宽页上根本不挂侧栏 ⇒ 让出 0。
+          */
+          marginRight: isFullWidthPage
+            ? 0
+            : collapsed
+              ? AI_WORKSPACE_COLLAPSED_WIDTH
+              : AI_WORKSPACE_WIDTH,
+        }}
       >
         {children}
       </div>
@@ -249,22 +310,29 @@ export function AiWorkspaceLayout({
           breakpoint={AI_WORKSPACE_BREAKPOINT}
           style={{
             /*
-              ⚠️ **不锁高度**。
+              ⚠️ **`position: fixed`，不是 `sticky`**。
 
-              之前这里是 `height: calc(100vh - ${stickyTop}px)`：侧栏是**固定高度**的一列，
-              消息区在里面自己滚 ⇒ 屏幕上有**两个滚动条**（页面滚主内容 + 侧栏滚消息），
-              操作感受很差；而且消息一多，那个内层滚动条就变得很必要、很显眼。
+              这和**左侧菜单栏**是同一套做法：一列钉在视口里，**不随主内容上下滚**。
 
-              现在：侧栏**跟着内容长高**（消息多就长高），页面滚一次就够 ⇒ **只有一个滚动条**。
-              输入区在侧栏内部 **sticky 在视口底部**（见 `ChatPanel` 的注释）⇒
-              发送按钮永远在视口里，**不用先滚一屏才找得到它**。
+              为什么不能用 `sticky`：`sticky` 的活动范围被**父容器的高度**限制 ——
+              父容器（那行 flex）只有主内容那么高（实测 993px），侧栏自己 680px
+              ⇒ 最多粘 313px，再往下就跟着滚上去了（实测滚 419px 后侧栏 top 从 88 变成 -18）。
+              `fixed` 没有这个限制。
 
-              ⇒ 侧栏也不再 `position: sticky`：一个比视口高的 sticky 元素，底部是够不到的
-              （经典的 sticky 陷阱），而且它的 sticky 会让内部那个 sticky-bottom 的参照系变复杂。
-              侧栏就当一个普通的 flex 列：它在文档流里，跟主内容一起滚。
+              代价：`fixed` 脱离了文档流 ⇒ **主内容要自己让出这 400px**
+              （见上面那个 `marginRight`）。
+
+              消息多的时候，消息区在**列内**滚（`ChatPanel` 里 `flex:1 + overflow-y:auto`），
+              输入区固定在列底 ⇒ **发送按钮永远在视口里**，不用先滚一屏才找得到它。
             */
-            alignSelf: 'stretch',
-            height: 'auto',
+            position: 'fixed',
+            top: stickyTop,
+            // ⚠️ 不是 `right: 0`：那是相对**视口**的，而主内容的右边缘在**内容区**的
+            // 右边缘 ⇒ 直接 0 会在两者之间空出一个内边距那么宽的缝（实测 40px）。
+            // `rightInset` 就是那个内边距（实测出来的，不是写死的）。
+            right: rightInset,
+            height: `calc(100vh - ${stickyTop}px)`,
+            zIndex: 10,
             borderInlineStart: `1px solid ${token.colorBorderSecondary}`,
             background: token.colorBgContainer,
           }}

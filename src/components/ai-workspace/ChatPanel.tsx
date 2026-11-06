@@ -66,16 +66,18 @@ export function ChatPanel({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        // ⚠️ **不锁高度**：消息区跟着内容长高，页面滚一次就够。
-        // 之前这里锁成 `height: 100%` + 消息区 `flex:1 + overflow-y:auto`
-        // ⇒ 侧栏里多出一层滚动条（页面一个、侧栏一个）。
+        // ⚠️ 侧栏是**固定高度的一列** ⇒ 这里填满它。
+        height: '100%',
         minHeight: 0,
       }}
     >
       <div
         ref={listRef}
         style={{
-          // 消息区跟着内容长高（不自己滚）
+          // 消息区在**列内**滚（侧栏固定高度 ⇒ 滚不动就得在列内滚）
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
           gap: token.sizeSM,
@@ -87,21 +89,18 @@ export function ChatPanel({
         ))}
       </div>
       {/*
-        ⚠️ **输入区粘在视口底部**。
+        输入区：固定在**列底**。
 
-        侧栏不再锁高度、消息区不再自己滚 ⇒ 页面滚一次就能看完全部消息。
-        但那样输入框会跑到页面很下面去 ⇒ 每次要滚一屏才找得到发送按钮。
-        ⇒ 把输入区 `sticky` 在视口底部：消息往上滚，输入框**一直挂在屏幕底部**。
-        （`zIndex` 与不透明背景：否则消息会从输入框底下透出来。）
+        侧栏是固定高度的一列（`AiWorkspaceLayout` 里 `calc(100vh - 顶边)`），
+        消息区在列内滚 ⇒ 输入区自然就在列底，**永远在视口里**，
+        不用先滚一屏才找得到发送按钮。
 
         失败提示也放进来：它说的是「刚才那次发送失败了」，得跟发送按钮待在一处，
         滚走了就没人看见了。
       */}
       <div
         style={{
-          position: 'sticky',
-          bottom: 0,
-          zIndex: 1,
+          flexShrink: 0,
           background: token.colorBgContainer,
           borderTop: `1px solid ${token.colorBorderSecondary}`,
           paddingTop: token.sizeSM,

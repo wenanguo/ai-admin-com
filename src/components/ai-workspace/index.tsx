@@ -69,8 +69,9 @@ export function AiWorkspace({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        // ⚠️ **不锁高度**：侧栏跟着内容长高（消息多就长高），
-        // 页面滚一次就够 ⇒ 不会出现「页面一个滚动条 + 侧栏一个滚动条」两个滚动条。
+        // ⚠️ 侧栏是**固定高度的一列**（`AiWorkspaceLayout` 里 `calc(100vh - 顶边)`），
+        // 这里填满它 ⇒ 消息区在**列内**滚，输入区固定在列底。
+        height: '100%',
         minHeight: 0,
         background: token.colorBgContainer,
       }}
@@ -181,7 +182,7 @@ export function AiWorkspace({
           //    刷新页面后还停在刚才那个页签，不要每次都跳回「对话」。
           writeWorkspaceStorage({ tab });
         }}
-        style={{ flex: 'none', minHeight: 0 }}
+        style={{ flex: 1, minHeight: 0 }}
         styles={{
           /*
             ⚠️ 页签条要**自己留左右内边距**。
@@ -195,12 +196,12 @@ export function AiWorkspace({
           /*
             高度链（实测出来的）：
               .ant-tabs → .ant-tabs-body-holder → .ant-tabs-body → .ant-tabs-content
-            这里**不再**给 `body` / `content` 锁高度、也不再 `overflow: hidden` ——
-            侧栏要跟着消息长高；锁了高度就会把内容挤进一个内层滚动条（两个滚动条）。
-            消息区自己长高，页面滚；输入区在 ChatPanel 里 sticky 在视口底部。
+            侧栏是固定高度的一列 ⇒ 这里要**给一个确定的高度**并**藏掉溢出**，
+            否则内容会把面板撑破、溢出到列外（消息就从「列内滚」变成了「溢出到页面」）。
+            `body` 给 `.ant-tabs-body`、`content` 给 `.ant-tabs-content`。
           */
-          content: { height: 'auto', overflow: 'visible' },
-          body: { height: 'auto' },
+          content: { height: '100%', overflow: 'hidden' },
+          body: { height: '100%' },
         }}
         items={[
           {

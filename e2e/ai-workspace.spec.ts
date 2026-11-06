@@ -694,14 +694,16 @@ test.describe('窄屏（< 1200px）', () => {
 });
 
 /**
- * 侧栏的**留白**与**滚动**。
+ * 侧栏的**留白**与**固定**。
  *
- * 这两条是真实用户报出来的两个体验问题，钉在这里防回退：
+ * 这两条是真实用户报出来的体验问题，钉在这里防回退：
  * 1. 三个页签曾经**贴着侧栏的左边缘**（antd 的 Tabs 根节点没有内边距）；
- * 2. 侧栏曾经是**固定高度**的一列、消息区在里面自己滚 ⇒ 屏幕上有**两个滚动条**，
- *    而且消息一多，那个内层滚动条就变得很显眼、很难受。
+ * 2. 侧栏曾经不固定：要么整列跟着主内容一起滚走，要么高度链断在某一环上，
+ *    内容溢出到页面外面、于是要滚一屏才找得到发送按钮。
+ *    现在侧栏是 `position: fixed` 的一列（和左侧菜单栏一样）⇒ **不随主内容上下滚**，
+ *    发送按钮一直贴在视口底。
  */
-test.describe('侧栏的留白与滚动', () => {
+test.describe('侧栏的留白与固定', () => {
   test('三个页签不贴着侧栏的左边缘', async ({ page }) => {
     await setupAiService(page);
     await setupModulePage(page, {
@@ -731,7 +733,7 @@ test.describe('侧栏的留白与滚动', () => {
     expect(gap!).toBeGreaterThanOrEqual(8);
   });
 
-  test('侧栏里没有第二个滚动条,发送按钮一直在视口里', async ({ page }) => {
+  test('侧栏不随主内容滚,发送按钮一直在视口里', async ({ page }) => {
     await setupAiService(page);
     await setupModulePage(page, {
       menus: [{ title: '岗位管理', routePath: 'position' }],
@@ -745,52 +747,32 @@ test.describe('侧栏的留白与滚动', () => {
     );
     await expect(sider(page)).toBeVisible();
 
-    // 说一句话（让侧栏长高）
+    // 说一句话（让侧栏里有内容）
     await page.getByPlaceholder('说点什么…').fill(USER_TEXT);
     await page.getByRole('button', { name: /发\s*送/ }).click();
     await expect(page.locator('[data-role="assistant"]').last()).toContainText(
       '已在 PRJ-2026-Q3-001 下建好任务',
     );
 
-    // 侧栏内部**没有**可滚动的容器（否则就是第二个滚动条）
-    const inner = await page.evaluate(() => {
-      const side = document.querySelector('[data-testid=ai-workspace-sider]');
-      if (!side) {
-        return null;
-      }
-      return [...side.querySelectorAll('*')]
-        .filter(
-          (element) =>
-            element.scrollHeight > element.clientHeight + 2 &&
-            getComputedStyle(element).overflowY !== 'visible',
-        )
-        .map((element) =>
-          typeof element.className === 'string'
-            ? element.className.slice(0, 40)
-            : '',
-        );
+    const viewportHeight = page.viewportSize()?.height ?? 0;
+
+    // 初始：侧栏的顶边在固定头部下面
+    const topBefore = (await sider(page).boundingBox())?.y ?? -1;
+    expect(topBefore).toBeGreaterThan(0);
+
+    // 滚到底 ⇒ **侧栏不动**（这是「像左边菜单栏一样」的核心）
+    await page.evaluate(() => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
     });
-    expect(inner).toEqual([]);
+    await page.waitForTimeout(400);
+    const topAfter = (await sider(page).boundingBox())?.y ?? -1;
+    expect(Math.abs(topAfter - topBefore)).toBeLessThanOrEqual(2);
 
     // 发送按钮在视口里（不用先滚一屏才找得到它）
-    const viewportHeight = page.viewportSize()?.height ?? 0;
     const sendBox = await page
       .getByRole('button', { name: /发\s*送/ })
       .boundingBox();
     expect(sendBox).not.toBeNull();
     expect(sendBox!.y + sendBox!.height).toBeLessThanOrEqual(viewportHeight);
-
-    // 滚到底之后它仍然在视口里
-    await page.evaluate(() => {
-      window.scrollTo(0, document.documentElement.scrollHeight);
-    });
-    await page.waitForTimeout(300);
-    const afterScroll = await page
-      .getByRole('button', { name: /发\s*送/ })
-      .boundingBox();
-    expect(afterScroll).not.toBeNull();
-    expect(afterScroll!.y + afterScroll!.height).toBeLessThanOrEqual(
-      viewportHeight,
-    );
   });
 });
