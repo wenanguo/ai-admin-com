@@ -5,11 +5,14 @@ import { formatRange, mapTasksToGantt, statusCssClass } from './mapping';
 /**
  * 甘特映射层的单测。
  *
- * 钉死三件事:
+ * 钉死六件事:
  * 1. 层级拼装:项目/里程碑分组行按需去重生成,任务行 parent 按
  *    parent_id > milestone_id > project_id 兜底(有父任务就绝不挂里程碑);
  * 2. 排除口径:缺计划起止日期的任务不进行、不分组,只计数 + 报标题(封顶 5 条);
- * 3. 两个格式化函数的边界:空状态也有 class、缺日期给「-」。
+ * 3. taskCount:只数任务行(分组行不算)—— useGanttTasks 靠它判「被截断」;
+ * 4. 悬空父级:父任务没进甘特时,子任务的 parent 回退到里程碑/项目行;
+ * 5. 与输入顺序无关:子任务排在父任务前面也能挂上父任务行;
+ * 6. 两个格式化函数的边界:空状态也有 class、缺日期给「-」。
  */
 
 /** 一条「能画进甘特」的完整任务 —— 其余用例在此基础上覆盖字段 */
@@ -133,6 +136,94 @@ describe('mapTasksToGantt 排除口径', () => {
     expect(mapping.excludedCount).toBe(7);
     expect(mapping.excludedTitles).toHaveLength(5);
     expect(mapping.excludedTitles[0]).toBe('无日期任务 0');
+  });
+});
+
+describe('mapTasksToGantt 任务行计数', () => {
+  it('taskCount 只数任务行,不含项目/里程碑分组行', () => {
+    const mapping = mapTasksToGantt([makeTask()], names);
+
+    // 三行(项目 + 里程碑 + 任务)里只有一行是任务行
+    expect(mapping.data).toHaveLength(3);
+    expect(mapping.taskCount).toBe(1);
+  });
+
+  it('被排除的任务不计入 taskCount', () => {
+    const mapping = mapTasksToGantt(
+      [makeTask({ id: 10 }), makeTask({ id: 12, start_date: undefined })],
+      names,
+    );
+    expect(mapping.taskCount).toBe(1);
+    expect(mapping.excludedCount).toBe(1);
+  });
+});
+
+describe('mapTasksToGantt 悬空父级引用', () => {
+  it('父任务缺日期被排除时,子任务的 parent 回退到里程碑行', () => {
+    const mapping = mapTasksToGantt(
+      [
+        makeTask({ id: 20, title: '父任务', start_date: undefined }),
+        makeTask({ id: 10, parent_id: 20, title: '子任务' }),
+      ],
+      names,
+    );
+
+    // 父任务被排除 ⇒ 子任务不能指向不存在的 t-20(悬空引用会被 dhtmlx 丢弃),
+    // 回退到里程碑行
+    expect(mapping.data.find((row) => row.id === 't-10')?.parent).toBe('m-2');
+    expect(mapping.data.find((row) => row.id === 't-20')).toBeUndefined();
+  });
+
+  it('父任务没随这一页返回时(分页没拉到),子任务的 parent 同样回退', () => {
+    const mapping = mapTasksToGantt(
+      [makeTask({ id: 10, parent_id: 20 })],
+      names,
+    );
+    expect(mapping.data.find((row) => row.id === 't-10')?.parent).toBe('m-2');
+  });
+
+  it('父任务没进甘特且任务也没有里程碑时,回退到项目行', () => {
+    const mapping = mapTasksToGantt(
+      [makeTask({ id: 10, parent_id: 20, milestone_id: undefined })],
+      names,
+    );
+    expect(mapping.data.find((row) => row.id === 't-10')?.parent).toBe('p-1');
+  });
+});
+
+describe('mapTasksToGantt 行序', () => {
+  it('子任务排在父任务前面时,子任务照样挂上父任务行', () => {
+    const mapping = mapTasksToGantt(
+      [
+        makeTask({ id: 10, parent_id: 20, title: '子任务' }),
+        makeTask({ id: 20, title: '父任务' }),
+      ],
+      names,
+    );
+
+    // 父任务行照样存在,子任务的 parent 指向它(与输入顺序无关)
+    expect(mapping.data.find((row) => row.id === 't-20')).toBeDefined();
+    expect(mapping.data.find((row) => row.id === 't-10')?.parent).toBe('t-20');
+  });
+
+  it('多项目时分组行跟着任务出现:项目/里程碑/任务一组一组排', () => {
+    const mapping = mapTasksToGantt(
+      [
+        makeTask({ id: 10, project_id: 1, milestone_id: 2 }),
+        makeTask({ id: 11, project_id: 2, milestone_id: 3 }),
+      ],
+      names,
+    );
+
+    // 「分组行在前、任务行在后」只在单项目内成立:多项目是分组行与任务行交替
+    expect(mapping.data.map((row) => row.id)).toEqual([
+      'p-1',
+      'm-2',
+      't-10',
+      'p-2',
+      'm-3',
+      't-11',
+    ]);
   });
 });
 

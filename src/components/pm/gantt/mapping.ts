@@ -43,12 +43,25 @@ export interface GanttRow {
 
 /** mapTasksToGantt 的返回:行数据 + 被排除任务的统计 */
 export interface GanttMapping {
-  /** 甘特行(项目/里程碑分组行在前,任务行在后) */
+  /**
+   * 甘特行。
+   *
+   * 行序 = **按任务出现的顺序分组**:同一批任务的项目行/里程碑行先出来,
+   * 跟着它们的任务行。单项目时看着像「分组行在前、任务行在后」,多项目时
+   * 是 `[p-1,m-2,t-10,p-2,m-3,t-11]` 交替。
+   */
   data: GanttRow[];
   /** 缺计划起止日期而没进甘特的任务数 —— 页头提示「N 个任务未显示」用 */
   excludedCount: number;
   /** 被排除的任务标题(最多 5 条,给提示列举用;更多的只计数) */
   excludedTitles: string[];
+  /**
+   * 实际进了甘特的**任务行数**(不含项目/里程碑分组行)。
+   *
+   * 给 useGanttTasks 判「后端总数 > 画出来的任务数 ⇒ 被截断」用 ——
+   * 不能拿 `data.length` 比:那里面混着分组行,会算出假截断。
+   */
+  taskCount: number;
 }
 
 /** 被排除标题的列举上限:提示是「举例」不是「清单」,5 条足够说明问题 */
@@ -78,6 +91,17 @@ export function mapTasksToGantt(
 
   let excludedCount = 0;
   const excludedTitles: string[] = [];
+  let taskCount = 0;
+
+  // 哪些任务真的进了甘特:父任务没进来时,子任务不能挂在它身上
+  // (悬空的 parent 引用会被 dhtmlx 当成根级/直接丢弃,而那个父任务
+  //  还在 excludedCount 里,用户看不出自己少了什么)
+  const includedTaskIds = new Set<number>();
+  for (const task of tasks) {
+    if (task.start_date && task.due_date && task.id != null) {
+      includedTaskIds.add(task.id);
+    }
+  }
 
   for (const task of tasks) {
     // 缺计划开始或截止 ⇒ 画不出条形,整体不进甘特(分组行也不建,
@@ -110,16 +134,20 @@ export function mapTasksToGantt(
     }
 
     // 任务行 parent 的优先级:parent_id > milestone_id > project_id
-    // —— 有父任务就挂父任务(子任务条画在父任务条下),没有才逐级退回分组行
-    const parent =
-      task.parent_id != null
-        ? `t-${task.parent_id}`
-        : task.milestone_id != null
-          ? `m-${task.milestone_id}`
-          : task.project_id != null
-            ? `p-${task.project_id}`
-            : undefined;
+    // —— 有父任务就挂父任务(子任务条画在父任务条下),没有才逐级退回分组行。
+    // ⚠️ 父任务**没进甘特**时(缺日期被排除,或压根没随这一页返回)不能挂它:
+    // 那样会留下悬空的 parent 引用 ⇒ 子任务被 dhtmlx 丢弃。逐级回退。
+    const hasParentTask =
+      task.parent_id != null && includedTaskIds.has(task.parent_id);
+    const parent = hasParentTask
+      ? `t-${task.parent_id}`
+      : task.milestone_id != null
+        ? `m-${task.milestone_id}`
+        : task.project_id != null
+          ? `p-${task.project_id}`
+          : undefined;
 
+    taskCount += 1;
     data.push({
       id: `t-${task.id}`,
       text: task.title ?? '',
@@ -136,7 +164,7 @@ export function mapTasksToGantt(
     });
   }
 
-  return { data, excludedCount, excludedTitles };
+  return { data, excludedCount, excludedTitles, taskCount };
 }
 
 /** 状态 class 前缀:gantt.css 里按 `.pm-gantt-<线上码>` 配 token 色 */
