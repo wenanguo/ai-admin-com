@@ -1,4 +1,8 @@
-import { AppstoreOutlined, PlusOutlined } from '@ant-design/icons';
+import {
+  AppstoreOutlined,
+  BarChartOutlined,
+  PlusOutlined,
+} from '@ant-design/icons';
 import { type ProColumns, ProTable } from '@ant-design/pro-components';
 import { useAccess, useNavigate } from '@umijs/max';
 import { Alert, Button } from 'antd';
@@ -308,6 +312,17 @@ const TaskManagement: React.FC = () => {
             onClick={() => navigate('/pm/task/board')}
           >
             看板
+          </Button>,
+          /*
+            甘特页(/pm/task/gantt)的入口:与看板同理 —— 后端的菜单种子没有
+            这一项(它是子页面,不是独立菜单),所以入口放在列表页工具栏上。
+          */
+          <Button
+            key="gantt"
+            icon={<BarChartOutlined />}
+            onClick={() => navigate('/pm/task/gantt')}
+          >
+            甘特
           </Button>,
           <Button
             key="create"
