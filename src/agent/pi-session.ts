@@ -72,7 +72,17 @@ export interface PiSessionOptions {
 	 * ⚠️ token 是**这次调用方**的 ⇒ 每个会话一份（后端靠它做权限码校验）。
 	 * ⚠️ 后端还没部署 MCP 时**不给这一项**即可 ⇒ 会话照常能用（只是没有那些工具）。
 	 */
-	mcp?: { url: string; token: string };
+	mcp?: {
+		url: string;
+		token: string;
+		/**
+		 * 传输层工厂（**测试用**）。
+		 *
+		 * ⚠️ 生产不传 ⇒ 用 pi 的默认传输层（真的 HTTP 连 MCP 服务器）。
+		 *    测试传假传输层 ⇒ 不依赖后端也能验证整条链路。
+		 */
+		createTransport?: (entry: unknown, cwd: string, authProvider: unknown) => unknown;
+	};
 }
 
 /**
@@ -133,8 +143,15 @@ export async function createPiSession(
 
 	// ⚠️ **MCP 扩展只挂在最终的 loader 上**（发现用的那个不需要它）：
 	//    扩展工厂在 reload 时会跑 ⇒ 挂两个就会注册两次（多跑一遍）。
+	// ⚠️ `extensionFactories` 是 **loader** 的选项（不是 `createAgentSession` 的）
+	//    —— 给错了会被静默忽略 ⇒ 扩展根本没加载 ⇒ 一个 MCP 工具都不出现。
 	const extensionFactories = options.mcp
-		? [createMcpExtension(), createAiadminMcpExtension(options.mcp)]
+		? [
+				createMcpExtension({
+					createTransport: options.mcp.createTransport as never,
+				}),
+				createAiadminMcpExtension(options.mcp),
+			]
 		: [];
 
 	const resourceLoader = new DefaultResourceLoader({
