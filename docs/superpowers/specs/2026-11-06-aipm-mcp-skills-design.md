@@ -234,17 +234,41 @@ skill 是**指令**，不是程序。模型读到 skill 后按其中的步骤**�
 
 ⇒ 「复合命令」（先查后写）**不需要新机制**，skill 里写步骤即可。
 
-### 6.5 破坏性操作「先问人」（**推迟到阶段 4**）
+### 6.5 破坏性操作「先问人」：**新增放行，修改要人点头**（用户已定）
 
-- 机制上可行：pi 的 **extension hook** `pi.on("tool_call", handler)` 返回
-  `{block: true, reason}` 即拦截（`dist/core/extensions/types.d.ts:1108`）。
-- ⚠️ **但第一版不需要**：后端 MCP 的 method 白名单是 `get,post,put,patch`，
-  **不含 delete** ⇒ 破坏性的删除压根不会变成工具。
-  ⇒ 第一版只做「**更新/改状态**要不要先问人」的产品决策（§9 待确认），不写代码。
-- 真要做时：拦截 ⇒ 写 `ai_pending_action`（**表已经在了**）⇒ 通过 SSE 推
-  `pending` 事件 ⇒ 前端现有的「待确认」页签就能看到。
-- ⚠️ **前端还没有「确认/执行」的入口**（`GET /api/pending` 是只读的）⇒
-  「确认后执行」这条链路是**另一个任务**（§8）。
+**口径**（2026-11-06 用户定）：
+
+| 操作 | 处理 |
+| ---- | ---- |
+| **新增**（create / 建任务） | 直接执行，不问 |
+| **修改**（update / 改状态 / 改字段） | **拦下来，等人点头** |
+
+⚠️ 后端 MCP 的 method 白名单是 `get,post,put,patch`（**不含 delete**）⇒
+删除不会变成工具 ⇒ 第一版要拦的只有「改已有数据」这一类。
+
+**机制**（pi 官方 hook）：
+
+1. `pi.on("tool_call", handler)` —— 命中「修改类工具」⇒
+   - 把 `(conversationId, toolName, args, userId)` 写进 **`ai_pending_action`**
+     （表已经在了：`command` = 工具名、`args` = 工具参数、`preview` = 给人看的摘要、
+     `status=PENDING`、`expiresAt`）；
+   - 返回 `{block: true, reason: '这个操作需要人工确认'}` ⇒ pi 不执行它。
+2. 通过 SSE 推一个 `pending` 事件 ⇒ 前端现有的「待确认」页签就能看到
+   （`GET /api/pending` 已经能读）。
+3. 用户点「同意」⇒ 新增端点 `POST /api/agent/pending/:id/approve`（与 `/reject`）⇒
+   AI 服务用**当前用户的 token** 执行那个工具 ⇒ 把结果**注回会话** ⇒ 模型继续。
+4. 「谁批准的」记在 `ai_pending_action.resolvedBy`（审计）。
+
+⚠️ **「注回会话」的机制需要验证**（§9）：
+- 候选 A：执行后用 `session.prompt('[系统] 用户已批准并执行了…')` 把结果当一轮新输入
+  ⇒ 模型能接着说，但会把系统消息当用户输入；
+- 候选 B：用 pi 的 `followUp()` / `steer()` 插进当前轮；
+- 候选 C：`session.agent.state.messages` 追加一条（**文档说赋值不替换持久化上下文，
+  追加是否有效需验**）。
+⇒ 实现时先验 A，最差也能用 A（能用就行，模型能理解）。
+
+⚠️ **前端还缺「同意/拒绝」入口**（现在 `GET /api/pending` 是只读的）⇒
+这是阶段 3 的一部分（前端 + 后端端点）。
 
 ### 6.6 审计与写前快照：归后端
 
@@ -277,7 +301,7 @@ SSE 的 8 种事件、快照、回放窗口、`agent_settled` 都不动。
 
 | # | 风险 / 依赖 | 影响 | 应对 |
 | - | ----------- | ---- | ---- |
-| 1 | **后端 MCP 未部署**（线上 `/api/v1/mcp` 404） | **整条路径不可用** | 硬前置：先合并部署 `module_mcp`；本设计的阶段 2 之前必须有 |
+| 1 | **后端 MCP 未部署**（线上 `/api/v1/mcp` 404） | **整条路径不可用** | ⚠️ **用户负责部署**（2026-11-06 确认）⇒ 阶段 1 之前必须有；**不阻塞**阶段 2（skill 部分可用现有代码工具当底座先跑通） |
 | 2 | 后端 MCP 默认只暴露「任务模块」 | 里程碑/项目/风险没有工具 | 扩 `MCP_INCLUDE_TAGS`（配置项，不用改代码） |
 | 3 | 61 个工具全 `direct` ⇒ 模型选错 | 体验差、误调用 | 用 `"exposure": "deferred"` + `createToolSearchExtension()`；或按 tag 拆多个 server |
 | 4 | 后端 MCP 未做审计 | AI 的写操作没有审计 | 后端补（§6.6）；过渡期保留代码工具 |
@@ -289,8 +313,9 @@ SSE 的 8 种事件、快照、回放窗口、`agent_settled` 都不动。
 
 ## 8. 阶段与验收
 
-### 阶段 0（后端，前置）
-- 合并部署 `module_mcp`；开 tag 白名单；补 tool 调用的审计。
+### 阶段 0（后端，**用户负责**，2026-11-06 确认）
+- 合并部署 `module_mcp`；**tag 白名单 = 任务模块**（用户定）；
+  补 tool 调用的审计。
 - **验收**：`GET /api/v1/mcp` 能列出任务模块的工具；带用户 JWT 调用 `create_task` 工具成功。
 
 ### 阶段 1（AI 服务：接上 MCP）
@@ -299,18 +324,21 @@ SSE 的 8 种事件、快照、回放窗口、`agent_settled` 都不动。
   用户 JWT 生效（用受限账号调用被拒）。
 
 ### 阶段 2（AI 服务：接上 Skills）
-- `skills.ts` 扫描 + 注入提示词；`skill-reader.ts` 受限读取工具；
-  写 3 个参考 skill（create-task / list-tasks / list-projects）。
+- `skills.ts` 用 `loadSkillsFromDir` 扫描 + 注入提示词段；
+  `skill-reader.ts` 受限的 `load_skill` 工具；
+  **我们代写 3 个样板 skill**（用户定）：
+  `create-task`（新增）/ `list-tasks`（读）/ `list-projects`（读）。
 - **验收**：**不改任何 TS 代码**，只加一个 `.pi/skills/xxx/SKILL.md`，
   模型就能用它完成对应的事。
 
-### 阶段 3（前端，只读）
-- 工作台显示「当前可用技能」清单（从 `GET /api/agent/skills` 读）。
-- **验收**：业务同学能在界面上看到自己写的技能生效了。
+### 阶段 3（AI 服务 + 前端：待确认闭环）
+- `tool_call` hook：修改类工具 ⇒ 挂起 + `ai_pending_action` + SSE `pending` 事件；
+  `POST /api/agent/pending/:id/approve|reject`；前端「待确认」页签加同意/拒绝按钮；
+  再加一个 `update-task` 样板 skill 来验证。
+- **验收**：模型要改任务 ⇒ 界面出现待确认 ⇒ 用户点同意 ⇒ 工具真的执行 ⇒ 模型接着说。
 
-### 阶段 4（闸门与退休，可选）
-- `tool_call` hook 拦「改已有数据」的操作 + 写 `ai_pending_action`；
-  确认入口（前端）；退休 adapter 与代码工具。
+### 阶段 4（可选：退休）
+- 退休 `src/adapter/*` 与代码工具（`create_task`），把审计完全交给后端。
 
 ### 终局验收（这条最重要）
 
@@ -329,23 +357,25 @@ SSE 的 8 种事件、快照、回放窗口、`agent_settled` 都不动。
 | 提示词段自己拼，不用 `formatSkillsForPrompt` | 它的措辞只有 read/bash 两档，我们用的是 `load_skill` |
 | MCP 用 `registerMcpServer` 运行时注册，不写 `.pi/mcp.json` | 静态文件表达不了「每个用户不同的 token」 |
 | 新增环境变量 `AIADMIN_MCP_URL`（缺省 `${AIADMIN_BASE_URL}/mcp`） | 本地后端端口与线上不同，要能单独配 |
-| 第一版 `exposure: "direct"`，工具数 > 15 就切 `"deferred"` + tool_search | 工具少时 direct 最好用；多了模型会选错 |
-| 「先问人」闸门推迟到阶段 4 | 后端 MCP 的 method 白名单不含 delete ⇒ 第一版没有真正的破坏性操作 |
+| 第一版 `exposure: "direct"`，工具数 > 15 就切 `"deferred"` + tool_search | tag 白名单只开任务模块（工具数个位数）⇒ direct 最好用 |
 | skill 生效方式第一版是「重启」 | 热加载需要重建所有 pi 会话，收益低；后面再说 |
+| **修改类工具一律挂起等人点头**（用户定） | 已写进 §6.5；「新增」不拦 |
+| **MCP tag 白名单 = 任务模块**（用户定） | 先小范围验证整条链路 |
+| **第一批 3 个样板 skill 由我们代写**（用户定） | 当业务同学的模板 |
 
-### 需要你回答（只有你能定）
+### 需要你回答的（已答完，2026-11-06）
 
-1. **后端 MCP 谁在做、何时能部署？**
-   ⇒ 整个时间线取决于它。`module_mcp` 现在是 AiAdmin 仓里**未提交的工作区改动**，
-   线上 `/api/v1/mcp` 还是 404。
-2. **MCP 的 tag 白名单开多大？**
-   ⇒ 「任务模块」只有 8 个工具（好用但能力窄）；全开是 61 个（模型容易选错）。
-   这是「AI 能干什么」的业务决定。
-3. **哪些操作要「先问人」？**
-   ⇒ 「改任务状态 / 改项目」要不要人点头？（删除本来就不在白名单里。）
-4. **第一批参考 skill 谁写？**
-   ⇒ 我们代写 3 个（create-task / list-tasks / list-projects）当样板，
-   还是业务同学直接上手？前者多花我们一天，后者需要他们先会用 frontmatter。
+1. ~~后端 MCP 谁在做、何时能部署？~~ → **用户自己部署，完成后通知**。
+2. ~~MCP 的 tag 白名单开多大？~~ → **任务模块**。
+3. ~~哪些操作要「先问人」？~~ → **新增放行，修改要点头**。
+4. ~~第一批参考 skill 谁写？~~ → **我们写 3 个样板**。
+
+### 还需要验证的三件事（实现阶段的头半天）
+
+1. `registerMcpServer` 同名再注册后，**连接**是否重建（决定 token 轮换的实现方式）；
+2. inline extension（`extensionFactories` 里的闭包工厂）在 `session_start` 注册
+   MCP server 后，**每个 pi 会话能带不同的 token**；
+3. 「挂起 → 批准 → 执行 → 注回会话」的**注回方式**（§6.5 的候选 A/B/C）。
 
 - 精确的 SDK 用法与文件落点见 §6；实现时以 `node_modules/@earendil-works/pi-coding-agent/dist`
   的类型声明为准（本文引用的行号会漂移）。
