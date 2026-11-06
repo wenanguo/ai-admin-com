@@ -11,7 +11,7 @@ import type React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-react';
-import { AiWorkspaceLayout } from './AiWorkspaceLayout';
+import { AiWorkspaceShell } from './AiWorkspaceShell';
 import { WORKSPACE_STORAGE_KEY } from './storage';
 
 const mocks = vi.hoisted(() => ({
@@ -23,8 +23,14 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@umijs/max', () => ({
-  // 布局外壳要知道当前路由（全宽页上不挂侧栏）⇒ 这里给一个固定的路径。
-  useLocation: () => ({ pathname: '/' }),
+  // 外壳要知道当前路由（全宽页上不挂侧栏）⇒ 给一个固定的路径。
+  //
+  // ⚠️ 用的是 `history` 而不是 `useLocation`：这个外壳挂在 `rootContainer` 上，
+  // 不在 React Router 的上下文里 ⇒ `useLocation` 那套 hook 用不了。
+  history: {
+    location: { pathname: '/' },
+    listen: () => () => undefined,
+  },
   // 侧栏头部有进全宽页的入口（一个 `Link`）。
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
     <a href={to}>{children}</a>
@@ -90,9 +96,9 @@ describe('AI 工作台布局外壳', () => {
 
   it('侧栏是常驻的一列：展开 400px、折叠 40px', async () => {
     const { container } = await render(
-      <AiWorkspaceLayout>
+      <AiWorkspaceShell>
         <div>主内容</div>
-      </AiWorkspaceLayout>,
+      </AiWorkspaceShell>,
     );
 
     expect(sider(container).style.width).toBe('400px');
@@ -110,9 +116,9 @@ describe('AI 工作台布局外壳', () => {
 
   it('⌘B / Ctrl+B 能折叠与展开', async () => {
     const { container } = await render(
-      <AiWorkspaceLayout>
+      <AiWorkspaceShell>
         <div>主内容</div>
-      </AiWorkspaceLayout>,
+      </AiWorkspaceShell>,
     );
 
     await vi.waitFor(() => {
@@ -136,9 +142,9 @@ describe('AI 工作台布局外壳', () => {
 
   it('输入框里不劫持快捷键（那里 Ctrl+B 是加粗）', async () => {
     const { container } = await render(
-      <AiWorkspaceLayout>
+      <AiWorkspaceShell>
         <input aria-label="普通输入框" />
-      </AiWorkspaceLayout>,
+      </AiWorkspaceShell>,
     );
 
     const input = container.querySelector<HTMLInputElement>('input');
@@ -170,9 +176,9 @@ describe('AI 工作台布局外壳', () => {
 
   it('折叠状态写进 localStorage，刷新后还在', async () => {
     const { container } = await render(
-      <AiWorkspaceLayout>
+      <AiWorkspaceShell>
         <div>主内容</div>
-      </AiWorkspaceLayout>,
+      </AiWorkspaceShell>,
     );
 
     window.dispatchEvent(
@@ -184,9 +190,9 @@ describe('AI 工作台布局外壳', () => {
 
     // 再挂一次（相当于刷新页面）⇒ 仍然是折叠的
     const second = await render(
-      <AiWorkspaceLayout>
+      <AiWorkspaceShell>
         <div>主内容</div>
-      </AiWorkspaceLayout>,
+      </AiWorkspaceShell>,
     );
     expect(sider(second.container).style.width).toBe('40px');
     expect(sider(container).style.width).toBe('40px');

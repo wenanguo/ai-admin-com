@@ -9,6 +9,7 @@
  * ⚠️ 侧栏**不是 Drawer**（规格 §3.1 明确否决了抽屉）——
  * 挂进布局是下一刀的事（`Layout.Sider`，宽 400，可折叠到 40）。
  */
+import { FullscreenOutlined, RightOutlined } from '@ant-design/icons';
 import { Link } from '@umijs/max';
 import { Button, Tabs, Tag, theme } from 'antd';
 import type React from 'react';
@@ -32,6 +33,12 @@ export interface AiWorkspaceProps {
    * ⚠️ 不传 ⇒ 用**存储里那个**（规格 §3.1 / U2：页签要持久化）。
    */
   defaultTab?: WorkspaceTab;
+  /**
+   * 「收起面板」的回调（外壳传进来）。
+   *
+   * 给 ⇒ 头部右上角出那个「收起」按钮。
+   */
+  onCollapse?: () => void;
 }
 
 /**
@@ -50,6 +57,7 @@ function readStoredTab(): WorkspaceTab {
  */
 export function AiWorkspace({
   defaultTab,
+  onCollapse,
 }: AiWorkspaceProps): React.ReactElement {
   const { token } = theme.useToken();
   const [activeTab, setActiveTab] = useState<WorkspaceTab>(
@@ -79,13 +87,16 @@ export function AiWorkspace({
       <div
         style={{
           padding: `${token.paddingSM}px ${token.padding}px`,
-          // ⚠️ 右边留出 40px：折叠按钮（`AiWorkspaceLayout` 里那个绝对定位的按钮）
-          // 就在这一块的右上角 ⇒ 不留白的话链接会被它压住。
-          paddingRight: 40,
           background: token.colorPrimary,
           color: token.colorTextLightSolid,
         }}
       >
+        {/*
+          ⚠️ 头部只留**两个按钮**：左边「全宽页」、右边「收起」。
+
+          之前这里还有一行副标题（「对话 · 待确认 · 审计 ｜ 命令层受控写入」）
+          ⇒ 白占一条高度，把消息区挤没了。功能一样，只是不写了。
+        */}
         <div
           style={{
             display: 'flex',
@@ -94,6 +105,24 @@ export function AiWorkspace({
             gap: token.sizeXS,
           }}
         >
+          {/*
+            进全宽页的入口（规格 §4）：侧栏只有 400px，
+            「规则与 AI 的分工」的双栏与意图卡片墙在那边放不下。
+          */}
+          <Link
+            to={AI_WORKSPACE_PAGE_PATH}
+            data-role="ai-workspace-full-page-link"
+            title="全宽页"
+            aria-label="全宽页"
+            style={{ display: 'inline-flex', color: token.colorTextLightSolid }}
+          >
+            <Button
+              type="text"
+              size="small"
+              icon={<FullscreenOutlined />}
+              style={{ color: token.colorTextLightSolid }}
+            />
+          </Link>
           <span
             style={{
               display: 'flex',
@@ -119,23 +148,17 @@ export function AiWorkspace({
               </Tag>
             ) : null}
           </span>
-          {/*
-            进全宽页的入口（规格 §4）：侧栏只有 400px，
-            「规则与 AI 的分工」的双栏与意图卡片墙在那边放不下。
-          */}
-          <Link
-            to={AI_WORKSPACE_PAGE_PATH}
-            data-role="ai-workspace-full-page-link"
-            style={{
-              color: token.colorTextLightSolid,
-              fontSize: token.fontSizeSM,
-            }}
-          >
-            全宽页
-          </Link>
-        </div>
-        <div style={{ fontSize: token.fontSizeSM, opacity: 0.85 }}>
-          对话 · 待确认 · 审计 ｜ 命令层受控写入
+          {onCollapse ? (
+            <Button
+              type="text"
+              size="small"
+              aria-label="收起 AI 工作台"
+              title="收起 AI 工作台（⌘B）"
+              icon={<RightOutlined />}
+              onClick={onCollapse}
+              style={{ color: token.colorTextLightSolid }}
+            />
+          ) : null}
         </div>
       </div>
       {/*

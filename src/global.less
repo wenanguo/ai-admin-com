@@ -90,3 +90,115 @@ ol {
     }
   }
 }
+
+/**
+ * ProLayout 的「设置」浮动把手（贴视口右边缘的那个蓝齿轮）。
+ *
+ * 它是 `SettingDrawer` 内部渲染的 `position: fixed` 元素 ⇒ 会被右侧常驻的
+ * AI 工作台面板（400px 宽、也是 `position: fixed`）**整个盖住**，
+ * 用户再也开不了「界面布局与主题」。
+ *
+ * ⇒ 隐藏它，改由**顶栏**里的按钮打开同一个抽屉（见 `app.tsx` 的
+ * `SettingToggleButton`）。抽屉本身 `closable: false`，所以那个按钮是**切换**。
+ */
+.ant-pro-setting-drawer-handle {
+  display: none !important;
+}
+
+/**
+ * AI 工作台消息区的滚动条：**细条，且悬停才显形**。
+ *
+ * 面板是固定的一列、消息区在**列内**滚；不处理的话，页面（主内容）一条滚动条、
+ * 面板里又一条，两条紧挨着 ⇒ 看着像「两个滚动条」（用户报过这个问题）。
+ *
+ * ⇒ 平时把它藏起来（鼠标滚轮依然能滚），悬停时才出现一根 6px 的细条。
+ */
+.ai-workspace-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+
+  &:hover {
+    scrollbar-color: rgba(0, 0, 0, 0.25) transparent;
+  }
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 3px;
+  }
+
+  &:hover::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.25);
+  }
+}
+
+/**
+ * **应用壳（app shell）**：整页固定高，**页面本身不滚**。
+ *
+ * 这是「AI 工作台用真正的右 `Layout.Sider`」的前提：
+ *
+ * - 外层 `Layout` 锁 `100vh` + `overflow: hidden` ⇒ 浏览器窗口没有滚动条；
+ * - ProLayout 的内容区自己滚 ⇒ 主内容滚在自己的容器里；
+ * - 右边的 AI 工作台是**布局的一列**（不是 `position: fixed` 的浮层）
+ *   ⇒ 它的��度就是视口高，天然是「框架的右边」，
+ *   而且**不会盖住** ProLayout 挂在视口右边缘的浮动按钮。
+ *
+ * ⇒ 屏幕上只有**一条**滚动条（主内容那条），不再是「页面一条 + 面板一条」。
+ */
+.ant-pro-layout,
+.ant-pro-layout > .ant-layout-has-sider,
+.ant-pro-layout > .ant-layout-has-sider > .ant-pro-layout-container {
+  height: 100%;
+}
+
+/* 主内容：自己滚（`flex: auto` 是 antd Content 自带的，这里补 `min-height: 0`） */
+.ant-pro-layout-content {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/**
+ * **应用壳（app shell）**：内容区是一个满高的 flex 行。
+ *
+ * 这是「AI 工作台用真正的右 `Layout.Sider`」的前提：
+ *
+ * - 内容区 = `display: flex` 的**一行**：左边是主内容（**自己滚**），
+ *   右边是 AI 工作台那个 `Sider`；
+ * - 内容区满高（容器 `100vh`）⇒ `Sider` 满高 ⇒ 它是「框架的右边」，
+ *   而且**不会盖住** ProLayout 挂在视口右边缘的浮动按钮；
+ * - 页面本身不滚 ⇒ 屏幕上只有**一条**滚动条（主内容那条）。
+ *
+ * ⚠️ 内容区的内边距挪到了主内容那一格（`AiWorkspaceShell` 里），
+ *    否则侧栏会被这圈内边距挤开、贴不到视口右边缘。
+ */
+.ant-pro-layout-content {
+  /* ⚠️ `!important`：ProLayout 的这些样式是 cssinjs 在运行时注入的
+     （排在全局样式之后）⇒ 同优先级会输给它。 */
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: stretch !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  min-height: 0;
+}
+
+/**
+ * 整页高度链：`html → body → #root → .ant-app → ProLayout` 一直到 `100vh`。
+ *
+ * ⚠️ 不做这一步，ProLayout 的高度是「内容多高就多高」⇒ 窗口照样滚，
+ *   右侧那个 `Sider` 就不是满高的（内容一长它就被顶下去了）。
+ */
+html,
+body,
+#root,
+.ant-app {
+  height: 100%;
+}

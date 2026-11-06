@@ -1,11 +1,23 @@
 /**
- * AI 工作台的**布局外壳**（规格 §3.1）。
+ * AI 工作台的**应用外壳**：整个应用的右边一列。
  *
- * ## 为什么不是抽屉
+ * ## 为什么是 `Layout` 的右 `Sider`，而不是内容区里的一个浮层
  *
- * 规格 §3.1 明确否决了 `Drawer`：抽屉盖住主内容，而且「任务栏宽度不可控」。
- * ⇒ 这里用 antd 的 `Layout.Sider`：**常驻的一列**。
- * 折叠时收成 40px 的竖条，**主内容跟着收窄**（不是盖一块上去）。
+ * 用户看得很准：**左侧菜单栏是「框架的一条边」，右边的 AI 工具栏却像贴在
+ * 中间内容上的一块浮板**。差别不在样式，在**结构**：
+ *
+ * - 左侧菜单是 ProLayout 自己 `Layout` 里的一个 `Sider` ⇒ 它是布局的一列，
+ *   天然贴着视口左边缘、与主内容并列；
+ * - 之前 AI 工作台是塞在**内容区里面**的（`childrenRender` 里包一层），
+ *   只能靠 `position: fixed` 硬凑 ⇒ 一旦内容变高就会和内容「粘」在一起。
+ *
+ * ⇒ 现在把它提到**应用壳**这一层：`<Layout>` 里左边是 ProLayout、右边是
+ * 这个 `Sider`，两边**平级**。于是：
+ *
+ * - 它就是框架的右边，和左边菜单对称；
+ * - 主内容滚在自己的容器里（见 `global.less` 的 app shell）⇒ 页面不滚
+ *   ⇒ 屏幕上只有**一条**滚动条（主内容那条），不再是「页面一条 + 面板一条」；
+ * - 不需要 `position: fixed`，也就不会盖住 ProLayout 挂在右边缘的浮动按钮。
  *
  * ## 折叠状态
  *
@@ -19,23 +31,12 @@
  * ⇒ 用 antd 自己的 `Layout.Sider` 的 `breakpoint`（`xl` = 1200px）：
  * 视口窄于 1200px 时**自动收成 40px 的竖条**，主内容不被挤扁；
  * 用户仍然可以随时点竖条把它展开（展开只是这一次的内容被挤扁）。
- *
- * ## 为什么单独一个组件
- *
- * `src/app.tsx` 的 `childrenRender` 只负责「把它挂上去」，
- * 折叠、快捷键、持久化这些逻辑都在这里 —— 于是它们可以被单测钉住。
  */
-import { RightOutlined, RobotOutlined } from '@ant-design/icons';
-import { useLocation } from '@umijs/max';
-import { Button, Layout, theme } from 'antd';
+import { RobotOutlined } from '@ant-design/icons';
+import { history } from '@umijs/max';
+import { Layout, theme } from 'antd';
 import type React from 'react';
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AiWorkspace } from './index';
 import { AI_WORKSPACE_PAGE_PATH } from './paths';
 import { readWorkspaceStorage, writeWorkspaceStorage } from './storage';
@@ -126,22 +127,29 @@ function CollapsedStrip({ onExpand }: CollapsedStripProps): React.ReactElement {
   );
 }
 
-/** 布局外壳的 props。 */
-export interface AiWorkspaceLayoutProps {
-  /** 主内容（页面）。 */
+/** 应用外壳的 props。 */
+export interface AiWorkspaceShellProps {
+  /** 整个应用（ProLayout 渲染出来的东西）。 */
   children?: React.ReactNode;
+  /**
+   * 页脚（渲染在主内容那一格里面，跟着内容一起滚）。
+   *
+   * ⚠️ 由调用方传进来，而不是外壳自己 import：
+   *   页脚用了构建期的 `__APP_VERSION__`，外壳自己 import 会让单测挂掉。
+   */
+  footer?: React.ReactNode;
 }
 
 /**
- * AI 工作台的布局外壳：主内容左边，AI 工作台常驻右边。
+ * 应用外壳：左边是主应用，右边是常驻的 AI 工作台。
  *
- * @param props 主内容。
+ * @param props 主应用与页脚。
  */
-export function AiWorkspaceLayout({
+export function AiWorkspaceShell({
   children,
-}: AiWorkspaceLayoutProps): React.ReactElement {
+  footer,
+}: AiWorkspaceShellProps): React.ReactElement {
   const { token } = theme.useToken();
-  const location = useLocation();
   /**
    * 全宽页上**不挂侧栏**。
    *
@@ -149,30 +157,33 @@ export function AiWorkspaceLayout({
    *
    * 1. **宽度**：这一页要放「规则与 AI 的分工」的双栏、意图卡片墙与宽版对话，
    *    400px 的侧栏会把它们挤扁（规格 §4 的落点就是「侧栏装不下」）。
-   * 2. **会话不打架**：侧栏是常驻在**整个布局**上的（`src/app.tsx` 的
-   *    `childrenRender`）⇒ 侧栏与页面各挂一个 `useWorkspace` 时，
-   *    两个实例会**各建一个会话**（两边界面各说各话，还会在
-   *    `localStorage` 里互相覆盖）。
+   * 2. **会话不打架**：侧栏是常驻在**整个应用**上的 ⇒ 侧栏与页面各挂一个
+   *    `useWorkspace` 时，两个实例会**各建一个会话**（两边界面各说各话，
+   *    还会在 `localStorage` 里互相覆盖）。
    *    侧栏让开 ⇒ 这一页上只有一个会话实例。
    *
    * ⚠️ 会话**仍然是同一个**：页面用的也是 `aipm.workspace` 这个存储键 ⇒
    * 在别的页面用侧栏聊的会话，切到这一页还在（反之亦然）。
+   *
+   * 用 `history.listen` 而不是 `useLocation`：这个外壳挂在 `rootContainer` 上，
+   * 不在 React Router 的上下文里 ⇒ `useLocation` 那套 hook 用不了。
    */
-  const isFullWidthPage = location.pathname === AI_WORKSPACE_PAGE_PATH;
+  const [pathname, setPathname] = useState<string>(
+    () => history.location?.pathname ?? '/',
+  );
+  useEffect(() => {
+    const unlisten = history.listen(({ location }) => {
+      setPathname(location.pathname);
+    });
+    return () => {
+      unlisten();
+    };
+  }, []);
+  const isFullWidthPage = pathname === AI_WORKSPACE_PAGE_PATH;
+
   const [collapsed, setCollapsed] = useState<boolean>(
     () => readWorkspaceStorage().collapsed === true,
   );
-  /** 内容区顶边离视口顶边的距离（侧栏要钉在固定头部下面）。 */
-  const [stickyTop, setStickyTop] = useState(0);
-  /**
-   * 视口右边缘到**内容区**右边缘的距离（ProLayout 的右内边距，实测 40px）。
-   *
-   * 侧栏是 `position: fixed` ⇒ 它的 `right: 0` 是相对**视口**的，
-   * 而主内容的右边缘在**内容区**的右边缘 ⇒ 直接 `right: 0` 会在两者之间
-   * 空出一个内边距那么宽的缝（实测 40px）。⇒ 侧栏要按这个内边距往左让。
-   */
-  const [rightInset, setRightInset] = useState(0);
-  const rowRef = useRef<HTMLDivElement>(null);
   /**
    * 组件挂载了吗（用来分辨 antd 的「挂载时对齐断点」与「真的跨过断点」）。
    *
@@ -192,32 +203,6 @@ export function AiWorkspaceLayout({
       writeWorkspaceStorage({ collapsed: next });
       return next;
     });
-  }, []);
-
-  // 侧栏钉在**固定头部**下面：量出内容区顶边离视口顶边有多远。
-  //
-  // ⚠️ 用文档坐标（rect.top + scrollY）而不是视口坐标 ——
-  // 页面滚动过时视口坐标会变成负数，侧栏就会钻到头部上面去。
-  useLayoutEffect(() => {
-    const update = (): void => {
-      const node = rowRef.current;
-      if (!node) {
-        return;
-      }
-      const rect = node.getBoundingClientRect();
-      // 顶边：用文档坐标（rect.top + scrollY），页面滚动过时视口坐标会变成负数
-      const top = rect.top + window.scrollY;
-      setStickyTop(Math.max(0, Math.round(top)));
-      // 右边：内容区右边缘离视口右边缘有多远（ProLayout 的右内边距）
-      const documentWidth = document.documentElement.clientWidth;
-      const rowRight = rect.right + window.scrollX;
-      setRightInset(Math.max(0, Math.round(documentWidth - rowRight)));
-    };
-    update();
-    window.addEventListener('resize', update);
-    return () => {
-      window.removeEventListener('resize', update);
-    };
   }, []);
 
   // ⌘B / Ctrl+B 切换
@@ -263,37 +248,42 @@ export function AiWorkspaceLayout({
   );
 
   return (
-    <div
-      ref={rowRef}
-      style={{ display: 'flex', alignItems: 'flex-start', width: '100%' }}
-    >
-      {/*
-        主内容：侧栏收窄时这一列跟着窄。
+    /*
+      ⚠️ **应用壳**：内容区是一个满高的 flex 行。
 
-        ⚠️ `overflowX: 'auto'`：表格比这一列宽时（列很多的老页面），
-        在**这一列里**横向滚动 —— 不能让它溢出到 AI 侧栏底下，
-        那样「操作」列的按钮就点不到了。
-      */}
+      - 左边是主内容（**自己滚**），右边是 AI 工作台那个 `Sider`（满高）；
+      - 两侧都是 `Layout` 里的**并列一列** ⇒ 和左侧菜单栏对称，
+        AI 工作台就是「框架的右边」，而不是贴在内容上的浮板。
+    */
+    <>
       <div
         data-testid="ai-workspace-content"
         style={{
           flex: 1,
           minWidth: 0,
-          overflowX: 'auto',
+          height: '100%',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
           /*
-            ⚠️ 侧栏是 `position: fixed`（**脱离了文档流**）⇒ 主内容要**自己让出**
-            它的宽度，否则会滑到侧栏底下去。
+            ⚠️ 内容区自己的内边距（ProLayout 的 `32px 40px`）挪到这里。
 
-            折叠时让出的是 40px（竖条）；全宽页上根本不挂侧栏 ⇒ 让出 0。
+            因为内容区现在是一个**横向 flex 行**（右边是 AI 工作台那个 `Sider`）
+            ⇒ 内边距留在内容区上，会把侧栏挤开、贴不到视口右边缘。
           */
-          marginRight: isFullWidthPage
-            ? 0
-            : collapsed
-              ? AI_WORKSPACE_COLLAPSED_WIDTH
-              : AI_WORKSPACE_WIDTH,
+          padding: '32px 40px',
         }}
       >
         {children}
+        {/*
+          页脚。
+
+          ⚠️ 为什么在这里而不用 ProLayout 的 `footerRender`：
+          `footerRender` 渲染出来的东西是**内容区的另一个 flex 子项** ⇒
+          在「内容区 = 横向 flex 行」的新结构里，它会被挤到 AI 侧栏右边去。
+          ⇒ 放回主内容那一格，跟着内容一起滚（位置和以前一样：在页面内容下面）。
+        */}
+        {footer}
       </div>
       {isFullWidthPage ? null : (
         <Sider
@@ -310,57 +300,33 @@ export function AiWorkspaceLayout({
           breakpoint={AI_WORKSPACE_BREAKPOINT}
           style={{
             /*
-              ⚠️ **`position: fixed`，不是 `sticky`**。
+              ⚠️ 这一列是**布局的一列**，不是 `position: fixed` 的浮层。
 
-              这和**左侧菜单栏**是同一套做法：一列钉在视口里，**不随主内容上下滚**。
-
-              为什么不能用 `sticky`：`sticky` 的活动范围被**父容器的高度**限制 ——
-              父容器（那行 flex）只有主内容那么高（实测 993px），侧栏自己 680px
-              ⇒ 最多粘 313px，再往下就跟着滚上去了（实测滚 419px 后侧栏 top 从 88 变成 -18）。
-              `fixed` 没有这个限制。
-
-              代价：`fixed` 脱离了文档流 ⇒ **主内容要自己让出这 400px**
-              （见上面那个 `marginRight`）。
-
-              消息多的时候，消息区在**列内**滚（`ChatPanel` 里 `flex:1 + overflow-y:auto`），
-              输入区固定在列底 ⇒ **发送按钮永远在视口里**，不用先滚一屏才找得到它。
+              所以它：
+              - 高度就是内容区的高度（视口高 - 顶栏）⇒ 永远是「框架的右边」；
+              - **不会盖住** ProLayout 挂在视口右边缘的浮动按钮；
+              - 折叠/展开时**主内容跟着变宽**（flex 布局自动重排）。
             */
-            position: 'fixed',
-            top: stickyTop,
-            // ⚠️ 不是 `right: 0`：那是相对**视口**的，而主内容的右边缘在**内容区**的
-            // 右边缘 ⇒ 直接 0 会在两者之间空出一个内边距那么宽的缝（实测 40px）。
-            // `rightInset` 就是那个内边距（实测出来的，不是写死的）。
-            right: rightInset,
-            height: `calc(100vh - ${stickyTop}px)`,
-            zIndex: 10,
-            borderInlineStart: `1px solid ${token.colorBorderSecondary}`,
+            height: '100%',
+            overflow: 'hidden',
+            // 左边框用 `colorBorder`（看得见的灰）而不是 `colorBorderSecondary`
+            // （几乎透明的浅灰）⇒ 面板与内容之间有一道**明确的分界**，
+            // 读起来像「框架的一条边」，而不是内容的一部分。
+            borderInlineStart: `1px solid ${token.colorBorder}`,
             background: token.colorBgContainer,
           }}
         >
           {collapsed ? (
             <CollapsedStrip onExpand={toggle} />
           ) : (
-            <>
-              <AiWorkspace />
-              <Button
-                type="text"
-                size="small"
-                aria-label="收起 AI 工作台"
-                title="收起 AI 工作台（⌘B）"
-                icon={<RightOutlined />}
-                onClick={toggle}
-                style={{
-                  position: 'absolute',
-                  top: 10,
-                  right: 8,
-                  zIndex: 2,
-                  color: token.colorTextLightSolid,
-                }}
-              />
-            </>
+            /*
+              ⚠️ 「收起」按钮在**头部里面**（右上角）——
+              之前它是一个绝对定位在面板右上角的浮层，会压住头部内容。
+            */
+            <AiWorkspace onCollapse={toggle} />
           )}
         </Sider>
       )}
-    </div>
+    </>
   );
 }

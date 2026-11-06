@@ -199,7 +199,10 @@ export function AuditPanel({
         minHeight: 0,
       }}
     >
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+      <div
+        className="ai-workspace-scroll"
+        style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
+      >
         {renderBody()}
       </div>
       <div

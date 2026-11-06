@@ -337,12 +337,15 @@ test.describe('AI 工作台侧栏', () => {
     }
     expect(tableBox.x + tableBox.width).toBeLessThanOrEqual(siderBox.x);
 
-    // 主内容的右边缘**贴着**侧栏的左边缘（既没有空档，也没有被盖住）
+    // 主内容与侧栏之间只留一道**缝**（内容区自己的右内边距），
+    // 既没有被侧栏盖住，也没有多出一大块空白
     const contentBox = await content(page).boundingBox();
     if (!contentBox) {
       throw new Error('主内容没有布局盒');
     }
-    expect(contentBox.x + contentBox.width).toBeCloseTo(siderBox.x, 0);
+    const gutter = siderBox.x - (contentBox.x + contentBox.width);
+    expect(gutter).toBeGreaterThanOrEqual(0);
+    expect(gutter).toBeLessThanOrEqual(48);
 
     // 请求走的是**独立前缀** `/ai-api/`（不能是 AiAdmin 的 `/api/`）
     //
@@ -399,8 +402,10 @@ test.describe('AI 工作台侧栏', () => {
     expect(contentAfter.width - contentBefore.width).toBeCloseTo(360, 0);
     expect(tableAfter.width - tableBefore.width).toBeCloseTo(360, 0);
 
-    // 主内容的右边缘**贴着**侧栏的左边缘（没有空档）
-    expect(contentAfter.x + contentAfter.width).toBeCloseTo(siderAfter.x, 0);
+    // 主内容与侧栏之间只留一道缝（内容区自己的右内边距）
+    const gutter = siderAfter.x - (contentAfter.x + contentAfter.width);
+    expect(gutter).toBeGreaterThanOrEqual(0);
+    expect(gutter).toBeLessThanOrEqual(48);
     // 表格也没有被侧栏盖住
     expect(tableAfter.x + tableAfter.width).toBeLessThanOrEqual(siderAfter.x);
 
@@ -430,9 +435,11 @@ test.describe('AI 工作台侧栏', () => {
     await expect(sider(page)).toBeVisible();
 
     // 说一句话
-    await page.getByPlaceholder('说点什么…').fill(USER_TEXT);
+    await page.getByPlaceholder('输入消息').fill(USER_TEXT);
     // ⚠️ antd 会在两个汉字之间插一个空格 ⇒ 按钮的可访问名是「发 送」
-    await page.getByRole('button', { name: /发\s*送/ }).click();
+    // ⚠️ `exact: true`：输入区左下角那个「发送图片（暂未开放）」图标按钮
+    //    的可访问名里也带「发送」⇒ 不加 exact 会命中两个元素。
+    await page.getByRole('button', { name: /^发\s*送$/ }).click();
 
     // 用户自己的话先上屏（乐观上屏）
     await expect(page.locator('[data-role="user"]')).toContainText(
@@ -679,8 +686,11 @@ test.describe('窄屏（< 1200px）', () => {
     }
     // 侧栏**没有**把主内容挤到 ProTable 搜索表单的断点（576px）以下
     expect(contentNarrow.width).toBeGreaterThan(576);
-    // 主内容的右边缘贴着竖条的左边缘（没有空档）
-    expect(contentNarrow.x + contentNarrow.width).toBeCloseTo(siderNarrow.x, 0);
+    // 主内容与竖条之间只留一道缝（内容区自己的右内边距）
+    const narrowGutter =
+      siderNarrow.x - (contentNarrow.x + contentNarrow.width);
+    expect(narrowGutter).toBeGreaterThanOrEqual(0);
+    expect(narrowGutter).toBeLessThanOrEqual(48);
 
     // 用户仍然可以把它展开（展开后主内容才会被挤窄）
     await page.getByTestId('ai-workspace-strip').click();
@@ -733,6 +743,37 @@ test.describe('侧栏的留白与固定', () => {
     expect(gap!).toBeGreaterThanOrEqual(8);
   });
 
+  test('侧栏贴死视口右边缘,和左侧菜单栏一样是「框架的一条边」', async ({
+    page,
+  }) => {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+    await expect(sider(page)).toBeVisible();
+
+    const viewport = page.viewportSize();
+    const box = await sider(page).boundingBox();
+    expect(viewport).not.toBeNull();
+    expect(box).not.toBeNull();
+
+    // ⚠️ **贴死右边缘**（和左侧菜单贴死左边缘一样）。
+    // 中间试过把它往里缩 40px 来对齐内容区 ⇒ 面板悬在内容里，
+    // 看着像「和中间的内容整合在一起」而不是「框架的右边」。
+    expect(box!.x + box!.width).toBeCloseTo(viewport!.width, 0);
+
+    // 竖向：从固定头部下面一直到视口底部
+    expect(box!.y).toBeGreaterThan(0);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height + 1);
+  });
+
   test('侧栏不随主内容滚,发送按钮一直在视口里', async ({ page }) => {
     await setupAiService(page);
     await setupModulePage(page, {
@@ -748,8 +789,8 @@ test.describe('侧栏的留白与固定', () => {
     await expect(sider(page)).toBeVisible();
 
     // 说一句话（让侧栏里有内容）
-    await page.getByPlaceholder('说点什么…').fill(USER_TEXT);
-    await page.getByRole('button', { name: /发\s*送/ }).click();
+    await page.getByPlaceholder('输入消息').fill(USER_TEXT);
+    await page.getByRole('button', { name: /^发\s*送$/ }).click();
     await expect(page.locator('[data-role="assistant"]').last()).toContainText(
       '已在 PRJ-2026-Q3-001 下建好任务',
     );
@@ -770,7 +811,7 @@ test.describe('侧栏的留白与固定', () => {
 
     // 发送按钮在视口里（不用先滚一屏才找得到它）
     const sendBox = await page
-      .getByRole('button', { name: /发\s*送/ })
+      .getByRole('button', { name: /^发\s*送$/ })
       .boundingBox();
     expect(sendBox).not.toBeNull();
     expect(sendBox!.y + sendBox!.height).toBeLessThanOrEqual(viewportHeight);

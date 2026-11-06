@@ -8,7 +8,7 @@ import {
   ProFormTextArea,
 } from '@ant-design/pro-components';
 import type React from 'react';
-import { DictSelect } from '@/components/pm/DictSelect';
+import { toProSelectRequest } from '@/components/pm/useDictOptions';
 import { listProjects } from '@/services/api/pm/project';
 import type { RiskCreateParams, RiskOut } from '@/services/api/pm/risk';
 import { listUsers } from '@/services/api/system/user';
@@ -238,6 +238,16 @@ const RiskModalForm: React.FC<RiskModalProps> = ({
       // antd v6 里 destroyOnClose 已废弃,用 destroyOnHidden
       // 顺带保证每次打开都是一张干净的表单(不会带上一次的残留值)
       modalProps={{ destroyOnHidden: true }}
+      // 两列布局（字段多，一列排下来要滚很久）
+      width={920}
+      grid
+      rowProps={{ gutter: 16 }}
+      colProps={{ span: 12 }}
+      // 标签在左边（原型就是左标签）：ProForm v3 默认竖排
+      layout="horizontal"
+      labelCol={{ span: 5 }}
+      wrapperCol={{ span: 19 }}
+      labelAlign="left"
       // 表单值直接来自列表行(编辑)或空(新增)—— 同步就有,不用等详情
       initialValues={toFormValues(record)}
       onOpenChange={onOpenChange}
@@ -272,16 +282,21 @@ const RiskModalForm: React.FC<RiskModalProps> = ({
       <ProFormTextArea
         name="description"
         label="风险描述"
+        colProps={{ span: 24 }}
         fieldProps={{ rows: 3, placeholder: '支持 Markdown' }}
       />
-      <ProForm.Item
+      {/*
+        字典下拉。
+
+        ⚠️ 用 `ProFormSelect` + `toProSelectRequest`，**不用 `ProForm.Item`**：
+        `ProForm.Item` 不是 `ProFormField`，它不参与栅格 ⇒ 会被压成一条窄缝。
+      */}
+      <ProFormSelect
         name="category_code"
         label="分类"
+        request={toProSelectRequest('module_pm_risk_category')}
         rules={[{ required: true, message: '请选择分类' }]}
-      >
-        {/* value/onChange 都是线上码(dict_value),提交「进度」后端就是 422 */}
-        <DictSelect dictType="module_pm_risk_category" />
-      </ProForm.Item>
+      />
       {/* 概率与影响都是 1-5:用下拉,免得填出后端不认的值 */}
       <ProFormSelect
         name="probability"
@@ -297,13 +312,12 @@ const RiskModalForm: React.FC<RiskModalProps> = ({
         fieldProps={{ placeholder: '选择影响(1-5)' }}
         rules={[{ required: true, message: '请选择影响' }]}
       />
-      <ProForm.Item
+      <ProFormSelect
         name="status_code"
         label="状态"
+        request={toProSelectRequest('module_pm_risk_status')}
         rules={[{ required: true, message: '请选择状态' }]}
-      >
-        <DictSelect dictType="module_pm_risk_status" />
-      </ProForm.Item>
+      />
       <ProFormSelect
         name="owner_id"
         label="负责人"
@@ -318,11 +332,13 @@ const RiskModalForm: React.FC<RiskModalProps> = ({
       <ProFormTextArea
         name="mitigation_plan"
         label="缓解措施"
+        colProps={{ span: 24 }}
         fieldProps={{ rows: 2 }}
       />
       <ProFormTextArea
         name="contingency_plan"
         label="应急计划"
+        colProps={{ span: 24 }}
         fieldProps={{ rows: 2 }}
       />
       {/* ModalForm 默认 dateFormatter='string',提交的就是 YYYY-MM-DD 字符串 */}

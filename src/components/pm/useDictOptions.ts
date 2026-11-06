@@ -145,12 +145,22 @@ export function useDictOptions(dictType: string): DictOptionsResult {
  * />
  * ```
  *
+ * `excludeValues`：**剔掉**某些线上码再给出去（如规则独占的 `at_risk`/`missed`
+ * 不许人手工设，INV-13）—— 与 `DictSelect` 的同名参数同一个口径。
+ *
  * 失败语义与 useDictOptions 一致:返回空数组、warn 一条、不抛 ——
  * request 一旦 reject,ProFormSelect 所在表单的渲染就挂了。
  * 与 hook 共享同一份模块级缓存:字典已被表格拉过时,这里直接命中,不再发请求。
  */
 export function toProSelectRequest(
   dictType: string,
+  excludeValues?: string[],
 ): () => Promise<{ label: string; value: string }[]> {
-  return () => fetchDictOptions(dictType);
+  return async () => {
+    const options = await fetchDictOptions(dictType);
+    if (!excludeValues?.length) {
+      return options;
+    }
+    return options.filter((option) => !excludeValues.includes(option.value));
+  };
 }

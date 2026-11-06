@@ -1,9 +1,13 @@
-import { LinkOutlined } from '@ant-design/icons';
+import {
+  CloseOutlined,
+  LinkOutlined,
+  SettingOutlined,
+} from '@ant-design/icons';
 import type { Settings as LayoutSettings } from '@ant-design/pro-components';
 import { SettingDrawer } from '@ant-design/pro-components';
 import type { RequestConfig, RunTimeLayoutConfig } from '@umijs/max';
 import { getIntl, history, Link } from '@umijs/max';
-import { App } from 'antd';
+import { App, Button } from 'antd';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import React from 'react';
@@ -18,7 +22,7 @@ import {
   OfflineBanner,
   VersionDropdown,
 } from '@/components';
-import { AiWorkspaceLayout } from '@/components/ai-workspace/AiWorkspaceLayout';
+import { AiWorkspaceShell } from '@/components/ai-workspace/AiWorkspaceShell';
 import type { BackendMenu } from '@/menu/adapter';
 import {
   buildMenuItems,
@@ -97,6 +101,40 @@ export async function getInitialState(): Promise<
   return { ...base, ...userState };
 }
 
+/**
+ * 顶栏里的「设置」按钮（界面布局 / 主题）。
+ *
+ * ⚠️ 为什么不用 ProLayout 自带的浮动齿轮：
+ * 那个把手是 `SettingDrawer` 内部渲染的 `position: fixed` 元素，
+ * **贴视口右边缘** ⇒ 会被右侧常驻的 AI 工作台面板盖住 ⇒ 用户开不了设置。
+ * 而且那个抽屉 `closable: false`，**唯一的关闭入口就是那个把手**
+ * ⇒ 所以这个按钮必须是**切换**，不能只“开”。
+ */
+function SettingToggleButton({
+  open,
+  onToggle,
+}: {
+  open: boolean;
+  onToggle: () => void;
+}): React.ReactElement {
+  return (
+    /*
+      ⚠️ 用**原生 `title`** 而不是 antd 的 `Tooltip`：
+      `Tooltip` 会在按钮上方浮一个覆盖层，鼠标一移上去它就挡住按钮自己
+      ⇒ 第一次点击被它吃掉（e2e 里表现为 click 超时）。
+      原生 `title` 不产生覆盖层，行为正常。
+    */
+    <Button
+      type="text"
+      aria-label={open ? '关闭设置' : '界面布局与主题'}
+      title={open ? '关闭设置' : '界面布局与主题'}
+      data-testid="app-setting-toggle"
+      icon={open ? <CloseOutlined /> : <SettingOutlined />}
+      onClick={onToggle}
+    />
+  );
+}
+
 // ProLayout 支持的api https://procomponents.ant.design/components/layout
 export const layout: RunTimeLayoutConfig = ({
   initialState,
@@ -131,6 +169,29 @@ export const layout: RunTimeLayoutConfig = ({
       return [
         <VersionDropdown key="version" />,
         localeEnabled && <LangDropdown key="lang" />,
+        /*
+          设置（界面布局 / 主题）。
+
+          ⚠️ 为什么不用 ProLayout 自带的那个浮动齿轮：
+          它是 `SettingDrawer` 内部渲染的一个 `position: fixed` 的把手，
+          **贴视口右边缘**（实测 48×48，x=1872、y=240）⇒ 会被右侧常驻的
+          AI 工作台面板（400px 宽，也是 `position: fixed`）**整个盖住**，
+          用户就再也开不了「布局与主题」了。
+
+          ⇒ 隐藏那个浮动把手（见 `global.less`），改成顶栏里的这个按钮。
+          抽屉本身 `closable: false`，**唯一的关闭入口就是那个把手**
+          ⇒ 所以这个按钮必须是**切换**（开着就关、关着就开），不能只开。
+        */
+        <SettingToggleButton
+          key="setting"
+          open={initialState?.settingDrawerOpen === true}
+          onToggle={() => {
+            setInitialState((s) => ({
+              ...s,
+              settingDrawerOpen: !s?.settingDrawerOpen,
+            }));
+          }}
+        />,
       ].filter(Boolean);
     },
     avatarProps: {
@@ -150,7 +211,16 @@ export const layout: RunTimeLayoutConfig = ({
     // waterMarkProps: {
     //   content: initialState?.currentUser?.name,
     // },
-    footerRender: () => <Footer />,
+    /*
+      ⚠️ 页脚**不在这里**渲染。
+
+      内容区现在是一个**横向的 flex 行**（左边主内容、右边 AI 工作台那个
+      `Sider`）⇒ `footerRender` 渲染出来的东西会变成内容区的第三个 flex 子项，
+      被挤到 AI 侧栏右边去。
+      ⇒ 页脚改由 AI 工作台那个外壳渲染在**主内容那一格里面**
+      （见 `AiWorkspaceShell`）—— 跟着内容一起滚，位置和以前一样。
+    */
+    footerRender: () => null,
     onPageChange: () => {
       const { location } = history;
       // 如果没有登录，重定向到 login
@@ -205,10 +275,14 @@ export const layout: RunTimeLayoutConfig = ({
       return (
         <>
           {/*
-            AI 工作台：常驻在主内容右边的一列（不是抽屉 —— 规格 §3.1）。
-            折叠与快捷键的逻辑在组件里，这里只负责「挂上去」。
+            AI 工作台：主内容右边的一列，**用 antd 的 `Layout.Sider`**。
+
+            ⚠️ 不是内容区里的浮层（`position: fixed`）—— 那样它会变成
+            「贴在中间内容上的一块浮板」，而不是「框架的一条边」。
+            ⇒ 内容区本身是一个满高的 flex 行（见 `global.less` 的 app shell）：
+            左边是主内容（自己滚），右边是这个 `Sider`（满高）。
           */}
-          <AiWorkspaceLayout>{children}</AiWorkspaceLayout>
+          <AiWorkspaceShell footer={<Footer />}>{children}</AiWorkspaceShell>
           <SettingDrawer
             disableUrlParams
             enableDarkTheme

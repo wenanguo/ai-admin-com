@@ -73,6 +73,7 @@ export function ChatPanel({
     >
       <div
         ref={listRef}
+        className="ai-workspace-scroll"
         style={{
           // 消息区在**列内**滚（侧栏固定高度 ⇒ 滚不动就得在列内滚）
           flex: 1,

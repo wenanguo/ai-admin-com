@@ -12,6 +12,7 @@ import { useModel } from '@umijs/max';
 import { Alert, Spin } from 'antd';
 import type React from 'react';
 import { DictSelect } from '@/components/pm/DictSelect';
+import { toProSelectRequest } from '@/components/pm/useDictOptions';
 import { listMilestones } from '@/services/api/pm/milestone';
 import type {
   TaskCreateParams,
@@ -239,6 +240,9 @@ function toCreatePayload(
   };
 }
 
+/** 整行字段（标题/描述这类长文本）：占满一行。 */
+const FULL_WIDTH = { span: 24 } as const;
+
 /**
  * 任务表单。
  *
@@ -253,6 +257,12 @@ function toCreatePayload(
  * - `estimate_hours` / `actual_hours` 是数字(后端是 Decimal)
  * - `reporter_id` / `sort_order` / `created_via_code` 不在表单里:
  *   新增时按固定规则补齐,更新时一个都不带
+ *
+ * ## 布局：两列
+ *
+ * 字段有十多个，一列排下来要滚很久 ⇒ 用 `ProForm` 自带的栅格
+ * （`grid` + `rowProps` + `colProps`）排成**两列**，标题/描述这类长字段占整行。
+ * 标签在**左边**（`labelCol`/`wrapperCol`），和原型一致。
  */
 const TaskModalForm: React.FC<TaskModalProps> = ({
   open,
@@ -282,12 +292,23 @@ const TaskModalForm: React.FC<TaskModalProps> = ({
     <ModalForm<TaskFormValues>
       title={editing ? '编辑任务' : '新增任务'}
       open={open}
+      // 两列布局 ⇒ 弹窗要宽一点,否则每列挤得没法看
+      width={920}
       // antd v6 里 destroyOnClose 已废弃,用 destroyOnHidden
       // 顺带保证每次打开都是一张干净的表单(不会带上一次的残留值)
       modalProps={{
         destroyOnHidden: true,
         okButtonProps: { disabled: !formReady },
       }}
+      // 两列栅格：默认每格半宽,单个字段可以用 `colProps` 改成整行
+      grid
+      rowProps={{ gutter: 16 }}
+      colProps={{ span: 12 }}
+      // 标签在**左边**（原型就是左标签）：ProForm v3 默认是竖排，要显式改
+      layout="horizontal"
+      labelCol={{ span: 5 }}
+      wrapperCol={{ span: 19 }}
+      labelAlign="left"
       // 表单值直接来自列表行(编辑)或空(新增)—— 同步就有,不用等详情
       initialValues={toFormValues(record)}
       onOpenChange={onOpenChange}
@@ -305,6 +326,13 @@ const TaskModalForm: React.FC<TaskModalProps> = ({
     >
       {formReady ? (
         <>
+          {/* 标题占整行 */}
+          <ProFormText
+            name="title"
+            label="任务标题"
+            colProps={FULL_WIDTH}
+            rules={[{ required: true, message: '请输入任务标题' }]}
+          />
           <ProFormSelect
             name="project_id"
             label="所属项目"
@@ -395,38 +423,32 @@ const TaskModalForm: React.FC<TaskModalProps> = ({
               />
             )}
           </ProFormDependency>
-          <ProFormText
-            name="title"
-            label="任务标题"
-            rules={[{ required: true, message: '请输入任务标题' }]}
-          />
-          <ProFormTextArea
-            name="description"
-            label="任务描述"
-            fieldProps={{ rows: 3, placeholder: '支持 Markdown' }}
-          />
-          <ProForm.Item
+          {/*
+            字典下拉（类型 / 状态 / 优先级）。
+
+            ⚠️ 用 `ProFormSelect` + `toProSelectRequest`，**不用 `ProForm.Item`**：
+            `ProForm.Item` 不是 `ProFormField`，它不会渲染栅格的 `Col`
+            ⇒ 直接躺在 `Row` 里会被压成一条窄缝（实测宽度只剩 60px）。
+            `toProSelectRequest` 与 `DictSelect` 共用同一份字典缓存。
+          */}
+          <ProFormSelect
             name="type_code"
             label="类型"
+            request={toProSelectRequest('module_pm_task_type')}
             rules={[{ required: true, message: '请选择类型' }]}
-          >
-            {/* value/onChange 都是线上码(dict_value),提交「功能」后端就是 422 */}
-            <DictSelect dictType="module_pm_task_type" />
-          </ProForm.Item>
-          <ProForm.Item
+          />
+          <ProFormSelect
             name="status_code"
             label="状态"
+            request={toProSelectRequest('module_pm_task_status')}
             rules={[{ required: true, message: '请选择状态' }]}
-          >
-            <DictSelect dictType="module_pm_task_status" />
-          </ProForm.Item>
-          <ProForm.Item
+          />
+          <ProFormSelect
             name="priority_code"
             label="优先级"
+            request={toProSelectRequest('module_pm_priority')}
             rules={[{ required: true, message: '请选择优先级' }]}
-          >
-            <DictSelect dictType="module_pm_priority" />
-          </ProForm.Item>
+          />
           <ProFormSelect
             name="assignee_id"
             label="负责人"
@@ -469,6 +491,7 @@ const TaskModalForm: React.FC<TaskModalProps> = ({
           <ProFormTextArea
             name="labels"
             label="标签"
+            colProps={FULL_WIDTH}
             fieldProps={{
               rows: 2,
               placeholder: '标签的 JSON 数组,如 ["财务","合规"]',
@@ -478,7 +501,14 @@ const TaskModalForm: React.FC<TaskModalProps> = ({
           <ProFormTextArea
             name="blocked_reason"
             label="阻塞原因"
+            colProps={FULL_WIDTH}
             fieldProps={{ rows: 2 }}
+          />
+          <ProFormTextArea
+            name="description"
+            label="任务描述"
+            colProps={FULL_WIDTH}
+            fieldProps={{ rows: 3, placeholder: '支持 Markdown' }}
           />
         </>
       ) : (

@@ -7,10 +7,10 @@ import {
   ProFormText,
   ProFormTextArea,
 } from '@ant-design/pro-components';
-import { Tooltip } from 'antd';
+import { Col, Tooltip } from 'antd';
 import type React from 'react';
-import { DictSelect } from '@/components/pm/DictSelect';
 import { DictTag } from '@/components/pm/DictTag';
+import { toProSelectRequest } from '@/components/pm/useDictOptions';
 import type {
   MilestoneCreateParams,
   MilestoneOut,
@@ -141,6 +141,16 @@ const MilestoneModalForm: React.FC<MilestoneModalProps> = ({
       }}
       // antd v6 里 destroyOnClose 已废弃,用 destroyOnHidden
       modalProps={{ destroyOnHidden: true }}
+      // 两列布局（字段多，一列排下来要滚很久）
+      width={920}
+      grid
+      rowProps={{ gutter: 16 }}
+      colProps={{ span: 12 }}
+      // 标签在左边（原型就是左标签）：ProForm v3 默认竖排
+      layout="horizontal"
+      labelCol={{ span: 5 }}
+      wrapperCol={{ span: 19 }}
+      labelAlign="left"
       onOpenChange={onOpenChange}
       onFinish={async (values) => {
         // 交付物:JSON 文本 → dict(后端是 JSON 列)
@@ -199,6 +209,7 @@ const MilestoneModalForm: React.FC<MilestoneModalProps> = ({
       <ProFormTextArea
         name="description"
         label="里程碑描述"
+        colProps={{ span: 24 }}
         fieldProps={{ rows: 3 }}
       />
       {/* ModalForm 默认 dateFormatter='string',提交的就是 YYYY-MM-DD 字符串 */}
@@ -218,37 +229,48 @@ const MilestoneModalForm: React.FC<MilestoneModalProps> = ({
           刻意**不给 name**:不注册成表单字段,就没有「人挑的值」可言。
           Tooltip 的子元素要能接收事件与 ref(DictTag 是函数组件、不透传
           未知属性),所以外面包一层 span(与列表页 StatusCell 同款做法)。
+
+          ⚠️ `ProForm.Item` 不是 `ProFormField`,它不参与栅格(不会渲染 `Col`)
+          ⇒ 直接躺在 `Row` 里会被压成一条窄缝 ⇒ 外面手写一个 `Col`。
         */
-        <ProForm.Item label="状态">
-          <Tooltip title={RULE_ENGINE_TOOLTIP}>
-            <span>
-              <DictTag
-                dictType="module_pm_milestone_status"
-                value={ruleEngineStatus}
-              />
-            </span>
-          </Tooltip>
-        </ProForm.Item>
+        <Col span={12}>
+          <ProForm.Item label="状态">
+            <Tooltip title={RULE_ENGINE_TOOLTIP}>
+              <span>
+                <DictTag
+                  dictType="module_pm_milestone_status"
+                  value={ruleEngineStatus}
+                />
+              </span>
+            </Tooltip>
+          </ProForm.Item>
+        </Col>
       ) : (
-        <ProForm.Item
+        /*
+          字典下拉。
+
+          ⚠️ 用 `ProFormSelect` + `toProSelectRequest`，**不用 `ProForm.Item`**：
+          `ProForm.Item` 不参与栅格 ⇒ 会被压成一条窄缝。
+          规则独占的状态（`at_risk`/`missed`）在**选项里**就剔掉（INV-13）。
+        */
+        <ProFormSelect
           name="status_code"
           label="状态"
+          request={toProSelectRequest(
+            'module_pm_milestone_status',
+            RULE_ENGINE_STATUSES,
+          )}
           rules={[
             { required: true, message: '请选择状态' },
             // 兜底:规则独占的状态不许手工设(INV-13)
             { validator: rejectRuleEngineStatus },
           ]}
-        >
-          {/* value/onChange 都是线上码(dict_value),提交「进行中」后端就是 422 */}
-          <DictSelect
-            dictType="module_pm_milestone_status"
-            excludeValues={RULE_ENGINE_STATUSES}
-          />
-        </ProForm.Item>
+        />
       )}
       <ProFormTextArea
         name="deliverables"
         label="交付物"
+        colProps={{ span: 24 }}
         fieldProps={{
           rows: 3,
           placeholder: '交付物的 JSON 对象,如 {"doc":"需求规格说明书"}',

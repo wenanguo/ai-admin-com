@@ -60,6 +60,14 @@ vi.mock('@ant-design/icons', () => ({
   // 少了任何一个，这个 mock 就会让整个模块导入失败。
   RightOutlined: () => null,
   RobotOutlined: () => null,
+  // 顶栏的「设置」按钮（布局与主题）。
+  SettingOutlined: () => null,
+  CloseOutlined: () => null,
+  // AI 工作台头部左边的「全宽页」按钮。
+  FullscreenOutlined: () => null,
+  // 输入区左下角那两个图标（图片 / 表情）。
+  PictureOutlined: () => null,
+  SmileOutlined: () => null,
 }));
 
 vi.mock('./requestErrorConfig', () => ({

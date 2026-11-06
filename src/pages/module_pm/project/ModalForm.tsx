@@ -7,7 +7,7 @@ import {
   ProFormTextArea,
 } from '@ant-design/pro-components';
 import type React from 'react';
-import { DictSelect } from '@/components/pm/DictSelect';
+import { toProSelectRequest } from '@/components/pm/useDictOptions';
 import type {
   ProjectCreateParams,
   ProjectOut,
@@ -69,6 +69,16 @@ const ProjectModalForm: React.FC<ProjectModalProps> = ({
       }}
       // antd v6 里 destroyOnClose 已废弃,用 destroyOnHidden
       modalProps={{ destroyOnHidden: true }}
+      // 两列布局（字段多，一列排下来要滚很久）
+      width={920}
+      grid
+      rowProps={{ gutter: 16 }}
+      colProps={{ span: 12 }}
+      // 标签在左边（原型就是左标签）：ProForm v3 默认竖排
+      layout="horizontal"
+      labelCol={{ span: 5 }}
+      wrapperCol={{ span: 19 }}
+      labelAlign="left"
       onOpenChange={onOpenChange}
       onFinish={async (values) => {
         // 成功提示由请求层统一弹(后端信封里的 msg),这里返回 true/false 决定是否关闭弹窗
@@ -96,6 +106,7 @@ const ProjectModalForm: React.FC<ProjectModalProps> = ({
       <ProFormTextArea
         name="description"
         label="项目描述"
+        colProps={{ span: 24 }}
         fieldProps={{ rows: 3 }}
       />
       <ProFormSelect
@@ -146,28 +157,31 @@ const ProjectModalForm: React.FC<ProjectModalProps> = ({
           ];
         }}
       />
-      <ProForm.Item
+      {/*
+        字典下拉。
+
+        ⚠️ 用 `ProFormSelect` + `toProSelectRequest`，**不用 `ProForm.Item`**：
+        `ProForm.Item` 不是 `ProFormField`，它不会渲染栅格的 `Col`
+        ⇒ 直接躺在 `Row` 里会被压成一条窄缝。
+      */}
+      <ProFormSelect
         name="status_code"
         label="状态"
+        request={toProSelectRequest('module_pm_project_status')}
         rules={[{ required: true, message: '请选择状态' }]}
-      >
-        {/* value/onChange 都是线上码(dict_value),提交「规划中」后端就是 422 */}
-        <DictSelect dictType="module_pm_project_status" />
-      </ProForm.Item>
-      <ProForm.Item
+      />
+      <ProFormSelect
         name="priority_code"
         label="优先级"
+        request={toProSelectRequest('module_pm_priority')}
         rules={[{ required: true, message: '请选择优先级' }]}
-      >
-        <DictSelect dictType="module_pm_priority" />
-      </ProForm.Item>
-      <ProForm.Item
+      />
+      <ProFormSelect
         name="visibility_code"
         label="可见性"
+        request={toProSelectRequest('module_pm_visibility')}
         rules={[{ required: true, message: '请选择可见性' }]}
-      >
-        <DictSelect dictType="module_pm_visibility" />
-      </ProForm.Item>
+      />
       {/* ModalForm 默认 dateFormatter='string',提交的就是 YYYY-MM-DD 字符串 */}
       <ProFormDatePicker
         name="start_date"

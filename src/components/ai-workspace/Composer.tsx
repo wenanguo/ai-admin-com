@@ -1,10 +1,22 @@
 /**
- * 输入区：单行输入 + 发送按钮 + 空对话时的快捷 chips。
+ * 输入区：多行输入框 + 下方一行（左边两个图标、右边发送）+ 空对话时的快捷 chips。
  *
- * ⚠️ 快捷 chips **只填输入框**，不直接发送 ——
+ * ## 形态
+ *
+ * 按原型改：一个**多行**输入框（占位「输入消息」），下面一行左边放两个
+ * 图标按钮、右边放「发送」。
+ *
+ * ⚠️ 左下角那两个图标（图片 / 表情）**还没有对应能力**
+ *    ⇒ 画成禁用的，并标「暂未开放」——
+ *    与「意图卡片」「快捷 chip」同一个口径（服务端做不到的就不许假装能做）。
+ *
+ * ## 快捷 chips
+ *
+ * 快捷 chips **只填输入框**，不直接发送 ——
  * 让人先看一眼自己要点的那句话，再决定发不发。
  */
-import { Button, Input, Tag, theme } from 'antd';
+import { PictureOutlined, SmileOutlined } from '@ant-design/icons';
+import { Button, Input, Tag, Tooltip, theme } from 'antd';
 import type React from 'react';
 
 /**
@@ -55,7 +67,7 @@ export interface ComposerProps {
   busy?: boolean;
   /** 空对话时显示快捷 chips。 */
   showChips?: boolean;
-  /** 输入框的占位文案（缺省「说点什么…」）。 */
+  /** 输入框的占位文案（缺省「输入消息」）。 */
   placeholder?: string;
 }
 
@@ -68,7 +80,7 @@ export function Composer({
   onSend,
   busy,
   showChips,
-  placeholder = '说点什么…',
+  placeholder = '输入消息',
 }: ComposerProps): React.ReactElement {
   const { token } = theme.useToken();
 
@@ -115,14 +127,59 @@ export function Composer({
           本轮进行中…
         </div>
       ) : null}
-      <div style={{ display: 'flex', gap: token.sizeSM }}>
-        <Input
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onPressEnter={onSend}
-          placeholder={placeholder}
-          disabled={busy}
-        />
+      {/*
+        输入框：**多行**。
+
+        ⚠️ 回车发送、Shift+回车换行（聊天框的惯例）。
+           `onPressEnter` 不分修饰键 ⇒ 这里自己判 Shift。
+      */}
+      <Input.TextArea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onPressEnter={(event) => {
+          if (event.shiftKey) {
+            return;
+          }
+          event.preventDefault();
+          onSend();
+        }}
+        placeholder={placeholder}
+        disabled={busy}
+        autoSize={{ minRows: 3, maxRows: 8 }}
+        style={{ resize: 'none' }}
+      />
+      {/* 下面一行：左边两个图标（暂未开放），右边发送 */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: token.sizeXS,
+          marginTop: token.sizeXS,
+        }}
+      >
+        <Tooltip title="图片消息暂未开放（AI 服务还没有对应的命令）">
+          <span>
+            <Button
+              type="text"
+              size="small"
+              aria-label="发送图片（暂未开放）"
+              icon={<PictureOutlined />}
+              disabled
+            />
+          </span>
+        </Tooltip>
+        <Tooltip title="表情暂未开放（AI 服务还没有对应的命令）">
+          <span>
+            <Button
+              type="text"
+              size="small"
+              aria-label="插入表情（暂未开放）"
+              icon={<SmileOutlined />}
+              disabled
+            />
+          </span>
+        </Tooltip>
+        <div style={{ flex: 1 }} />
         <Button
           type="primary"
           onClick={onSend}
