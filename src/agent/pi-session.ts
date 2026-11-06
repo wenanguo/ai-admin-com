@@ -15,12 +15,14 @@
 import { join } from "node:path";
 import {
 	createAgentSession,
+	createMcpExtension,
 	DefaultResourceLoader,
 	ModelRuntime,
 	SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import { env } from "../env";
 import type { CommandTool } from "../tools/types";
+import { createAiadminMcpExtension } from "./mcp";
 import { buildSystemPrompt, createProjectSkillsOverride } from "./skills";
 import { createLoadSkillTool } from "./skill-tools";
 import { buildSessionEntries } from "./session-entries";
@@ -64,6 +66,13 @@ export interface PiSessionOptions {
 	 *    事件外发（见 `event-mapper.ts`）。
 	 */
 	thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+	/**
+	 * AiAdmin 的 MCP 服务器（**不给就不接 MCP**）。
+	 *
+	 * ⚠️ token 是**这次调用方**的 ⇒ 每个会话一份（后端靠它做权限码校验）。
+	 * ⚠️ 后端还没部署 MCP 时**不给这一项**即可 ⇒ 会话照常能用（只是没有那些工具）。
+	 */
+	mcp?: { url: string; token: string };
 }
 
 /**
@@ -122,8 +131,15 @@ export async function createPiSession(
 	// pi 发现的技能（名字 → 文件位置）
 	const skills = discoveryLoader.getSkills().skills;
 
+	// ⚠️ **MCP 扩展只挂在最终的 loader 上**（发现用的那个不需要它）：
+	//    扩展工厂在 reload 时会跑 ⇒ 挂两个就会注册两次（多跑一遍）。
+	const extensionFactories = options.mcp
+		? [createMcpExtension(), createAiadminMcpExtension(options.mcp)]
+		: [];
+
 	const resourceLoader = new DefaultResourceLoader({
 		...loaderOptions,
+		extensionFactories,
 		// 系统提示词 = 基础提示词 + 技能段（模型据此知道有哪些技能、怎么加载）
 		systemPrompt: buildSystemPrompt(options.systemPrompt, skills),
 	});
@@ -155,5 +171,11 @@ export async function createPiSession(
 		// 持久化归我们（ai_message 表），pi 这边只管「这一轮对话的上下文」。
 		sessionManager: SessionManager.inMemory(cwd, { id: options.conversationId }, entries),
 	});
+
+	// ⚠️ **必须 bindExtensions**：它才发 `session_start` ⇒ MCP 服务器这时才连。
+	//    没这一步 ⇒ 扩展加载了但连接不会建立 ⇒ 模型看不到任何 MCP 工具。
+	//    （pi 自己的 headless print 模式也是这么调的：`mode: "print"`。）
+	await session.bindExtensions({ mode: "print" });
+
 	return session;
 }

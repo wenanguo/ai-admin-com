@@ -30,6 +30,13 @@ export interface Env {
 	AI_THINKING_LEVEL: ThinkingLevelSetting;
 	/** AiAdmin 后端地址（base 里已含 `/api/v1`）。 */
 	AIADMIN_BASE_URL: string;
+	/**
+	 * AiAdmin 的 MCP 地址（**工具的来源**）。
+	 *
+	 * ⚠️ **缺省** `${AIADMIN_BASE_URL}/mcp` ⇒ 一般不用单独配；
+	 *    本地后端端口与线上不同时才需要显式写。
+	 */
+	AIADMIN_MCP_URL?: string;
 	/** AiAdmin 的 MySQL 连接串（`ai_*` 元数据表与业务表同库）。 */
 	DATABASE_URL: string;
 	/** 允许跨域的前端源（至少一个），回具体的源，不用 `*`。 */
@@ -57,6 +64,8 @@ const envSchema = z.object({
 		.string()
 		.min(1, "不能为空")
 		.refine((value) => /^https?:\/\/\S+$/.test(value), "必须是 http(s) 开头的 URL"),
+	// ⚠️ 缺省不配 ⇒ 运行时用 `${AIADMIN_BASE_URL}/mcp`
+	AIADMIN_MCP_URL: z.string().optional(),
 	DATABASE_URL: z.string().min(1, "不能为空"),
 	// 校验放在「切完之后」：空串、纯空白、只有空段，切完都是 [] —— 全算没配，启动即失败，
 	// 不能只挡空串（一个空格能过 min(1)，却会静默变成空的白名单）

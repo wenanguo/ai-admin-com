@@ -28,11 +28,15 @@ const skillsMock = vi.hoisted(() => ({
 	],
 }));
 
+/** session.bindExtensions 的记录（它才发 session_start ⇒ MCP 才连）。 */
+const bindExtensions = vi.hoisted(() => vi.fn(async () => undefined));
+
 vi.mock("@earendil-works/pi-coding-agent", () => ({
 	createAgentSession: vi.fn(async () => ({
-		session: { dispose: () => {} },
+		session: { dispose: () => {}, bindExtensions },
 		extensionsResult: {},
 	})),
+	createMcpExtension: vi.fn(() => ({ name: "mcp", factory: () => undefined })),
 	DefaultResourceLoader: class {
 		constructor(public readonly options: unknown) {}
 		async reload(): Promise<void> {}
@@ -82,6 +86,7 @@ const fakeTool = {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	bindExtensions.mockClear();
 	// 技能表回到默认（一两个用例会改成空）
 	skillsMock.value = [
 		{
@@ -218,5 +223,40 @@ describe("pi 会话 · 没有技能时", () => {
 		expect(names).not.toContain("load_skill");
 		// 业务命令还在
 		expect(names).toContain("create_task");
+	});
+});
+
+describe("pi 会话 · MCP", () => {
+	it("挂了 MCP 扩展并把扩展绑定上（bindExtensions 才会触发 session_start ⇒ 连接才建）", async () => {
+		await createPiSession({
+			tools: [fakeTool],
+			systemPrompt: "你是助手。",
+			conversationId: "conv-1",
+			history: [],
+			model: "minimax-cn/MiniMax-M3.1-Flash",
+			mcp: { url: "https://example.test/api/v1/mcp", token: "user-jwt" },
+		});
+
+		const loader = vi.mocked(createAgentSession).mock.calls[0]?.[0]?.resourceLoader as {
+			options?: { extensionFactories?: unknown[] };
+		};
+		expect(loader.options?.extensionFactories?.length).toBeGreaterThanOrEqual(2);
+		// ⚠️ bindExtensions 必须被调用：它才发 session_start ⇒ MCP 才连
+		expect(bindExtensions).toHaveBeenCalled();
+	});
+
+	it("没给 mcp ⇒ 不挂 MCP 扩展（后端没部署时也要能用）", async () => {
+		await createPiSession({
+			tools: [fakeTool],
+			systemPrompt: "你是助手。",
+			conversationId: "conv-1",
+			history: [],
+			model: "minimax-cn/MiniMax-M3.1-Flash",
+		});
+
+		const loader = vi.mocked(createAgentSession).mock.calls[0]?.[0]?.resourceLoader as {
+			options?: { extensionFactories?: unknown[] };
+		};
+		expect(loader.options?.extensionFactories ?? []).toHaveLength(0);
 	});
 });
