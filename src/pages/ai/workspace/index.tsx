@@ -244,6 +244,30 @@ export default function AiWorkspacePage(): React.ReactElement {
         />
       ) : null}
 
+      {/*
+        宽版对话。
+
+        ⚠️ **对话区放在三视图上面**：这一页的主用途是**聊天**，
+        而三视图（待确认 / 审计 / 规则分工）只是参考。先把对话放在前面，
+        **打开就能聊** —— 发送按钮不用先滚过一屏才能看到。
+        对话区自己有个视口相对的高度（`min(560px, 55vh)`，见 `WideChat`），
+        消息在里面滚，输入区固定在面板底部 ⇒ 面板里只有一个滚动条。
+      */}
+      <div ref={chatRef}>
+        <WideChat
+          messages={workspace.messages}
+          draft={draft}
+          onDraftChange={setDraft}
+          onSend={handleSend}
+          streaming={workspace.streaming}
+          sending={workspace.sending}
+          sendError={workspace.sendError}
+          onRetry={() => {
+            void workspace.retry();
+          }}
+        />
+      </div>
+
       {/* 工作台视图：待确认 / 审计 / 规则与 AI 的分工 */}
       <Tabs
         activeKey={view}
@@ -301,22 +325,6 @@ export default function AiWorkspacePage(): React.ReactElement {
 
       {/* 10 类意图 */}
       <IntentGallery onPick={pickIntent} />
-
-      {/* 宽版对话 */}
-      <div ref={chatRef}>
-        <WideChat
-          messages={workspace.messages}
-          draft={draft}
-          onDraftChange={setDraft}
-          onSend={handleSend}
-          streaming={workspace.streaming}
-          sending={workspace.sending}
-          sendError={workspace.sendError}
-          onRetry={() => {
-            void workspace.retry();
-          }}
-        />
-      </div>
     </div>
   );
 }

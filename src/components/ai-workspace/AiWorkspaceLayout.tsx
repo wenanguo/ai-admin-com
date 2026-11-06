@@ -29,13 +29,7 @@ import { RightOutlined, RobotOutlined } from '@ant-design/icons';
 import { useLocation } from '@umijs/max';
 import { Button, Layout, theme } from 'antd';
 import type React from 'react';
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AiWorkspace } from './index';
 import { AI_WORKSPACE_PAGE_PATH } from './paths';
 import { readWorkspaceStorage, writeWorkspaceStorage } from './storage';
@@ -162,9 +156,6 @@ export function AiWorkspaceLayout({
   const [collapsed, setCollapsed] = useState<boolean>(
     () => readWorkspaceStorage().collapsed === true,
   );
-  /** 内容区顶边离视口顶边的距离（侧栏要钉在固定头部下面）。 */
-  const [stickyTop, setStickyTop] = useState(0);
-  const rowRef = useRef<HTMLDivElement>(null);
   /**
    * 组件挂载了吗（用来分辨 antd 的「挂载时对齐断点」与「真的跨过断点」）。
    *
@@ -184,26 +175,6 @@ export function AiWorkspaceLayout({
       writeWorkspaceStorage({ collapsed: next });
       return next;
     });
-  }, []);
-
-  // 侧栏钉在**固定头部**下面：量出内容区顶边离视口顶边有多远。
-  //
-  // ⚠️ 用文档坐标（rect.top + scrollY）而不是视口坐标 ——
-  // 页面滚动过时视口坐标会变成负数，侧栏就会钻到头部上面去。
-  useLayoutEffect(() => {
-    const update = (): void => {
-      const node = rowRef.current;
-      if (!node) {
-        return;
-      }
-      const top = node.getBoundingClientRect().top + window.scrollY;
-      setStickyTop(Math.max(0, Math.round(top)));
-    };
-    update();
-    window.addEventListener('resize', update);
-    return () => {
-      window.removeEventListener('resize', update);
-    };
   }, []);
 
   // ⌘B / Ctrl+B 切换
@@ -249,10 +220,7 @@ export function AiWorkspaceLayout({
   );
 
   return (
-    <div
-      ref={rowRef}
-      style={{ display: 'flex', alignItems: 'flex-start', width: '100%' }}
-    >
+    <div style={{ display: 'flex', alignItems: 'flex-start', width: '100%' }}>
       {/*
         主内容：侧栏收窄时这一列跟着窄。
 
@@ -280,11 +248,23 @@ export function AiWorkspaceLayout({
           // ⚠️ 自动收起**不写进 localStorage** —— 那是响应式行为，不是用户的选择。
           breakpoint={AI_WORKSPACE_BREAKPOINT}
           style={{
-            // 常驻的一列：跟着页面滚，但自己钉在固定头部下面，
-            // 高度取「视口高 - 顶边距离」⇒ 输入区永远落在视口内。
-            position: 'sticky',
-            top: stickyTop,
-            height: `calc(100vh - ${stickyTop}px)`,
+            /*
+              ⚠️ **不锁高度**。
+
+              之前这里是 `height: calc(100vh - ${stickyTop}px)`：侧栏是**固定高度**的一列，
+              消息区在里面自己滚 ⇒ 屏幕上有**两个滚动条**（页面滚主内容 + 侧栏滚消息），
+              操作感受很差；而且消息一多，那个内层滚动条就变得很必要、很显眼。
+
+              现在：侧栏**跟着内容长高**（消息多就长高），页面滚一次就够 ⇒ **只有一个滚动条**。
+              输入区在侧栏内部 **sticky 在视口底部**（见 `ChatPanel` 的注释）⇒
+              发送按钮永远在视口里，**不用先滚一屏才找得到它**。
+
+              ⇒ 侧栏也不再 `position: sticky`：一个比视口高的 sticky 元素，底部是够不到的
+              （经典的 sticky 陷阱），而且它的 sticky 会让内部那个 sticky-bottom 的参照系变复杂。
+              侧栏就当一个普通的 flex 列：它在文档流里，跟主内容一起滚。
+            */
+            alignSelf: 'stretch',
+            height: 'auto',
             borderInlineStart: `1px solid ${token.colorBorderSecondary}`,
             background: token.colorBgContainer,
           }}

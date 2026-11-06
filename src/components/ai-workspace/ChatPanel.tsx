@@ -66,16 +66,16 @@ export function ChatPanel({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        height: '100%',
+        // ⚠️ **不锁高度**：消息区跟着内容长高，页面滚一次就够。
+        // 之前这里锁成 `height: 100%` + 消息区 `flex:1 + overflow-y:auto`
+        // ⇒ 侧栏里多出一层滚动条（页面一个、侧栏一个）。
         minHeight: 0,
       }}
     >
       <div
         ref={listRef}
         style={{
-          flex: 1,
-          minHeight: 0,
-          overflowY: 'auto',
+          // 消息区跟着内容长高（不自己滚）
           display: 'flex',
           flexDirection: 'column',
           gap: token.sizeSM,
@@ -86,29 +86,51 @@ export function ChatPanel({
           <MessageBubble key={message.id} message={message} />
         ))}
       </div>
-      {sendError ? (
-        <div style={{ marginBottom: token.sizeSM }}>
-          <Alert
-            type="error"
-            showIcon
-            title={sendError}
-            action={
-              onRetry ? (
-                <Button size="small" onClick={onRetry}>
-                  重试
-                </Button>
-              ) : undefined
-            }
-          />
-        </div>
-      ) : null}
-      <Composer
-        value={value}
-        onChange={setValue}
-        onSend={handleSend}
-        busy={busy}
-        showChips={messages.length === 0}
-      />
+      {/*
+        ⚠️ **输入区粘在视口底部**。
+
+        侧栏不再锁高度、消息区不再自己滚 ⇒ 页面滚一次就能看完全部消息。
+        但那样输入框会跑到页面很下面去 ⇒ 每次要滚一屏才找得到发送按钮。
+        ⇒ 把输入区 `sticky` 在视口底部：消息往上滚，输入框**一直挂在屏幕底部**。
+        （`zIndex` 与不透明背景：否则消息会从输入框底下透出来。）
+
+        失败提示也放进来：它说的是「刚才那次发送失败了」，得跟发送按钮待在一处，
+        滚走了就没人看见了。
+      */}
+      <div
+        style={{
+          position: 'sticky',
+          bottom: 0,
+          zIndex: 1,
+          background: token.colorBgContainer,
+          borderTop: `1px solid ${token.colorBorderSecondary}`,
+          paddingTop: token.sizeSM,
+        }}
+      >
+        {sendError ? (
+          <div style={{ marginBottom: token.sizeSM }}>
+            <Alert
+              type="error"
+              showIcon
+              title={sendError}
+              action={
+                onRetry ? (
+                  <Button size="small" onClick={onRetry}>
+                    重试
+                  </Button>
+                ) : undefined
+              }
+            />
+          </div>
+        ) : null}
+        <Composer
+          value={value}
+          onChange={setValue}
+          onSend={handleSend}
+          busy={busy}
+          showChips={messages.length === 0}
+        />
+      </div>
     </div>
   );
 }

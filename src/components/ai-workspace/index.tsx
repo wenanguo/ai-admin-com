@@ -69,7 +69,8 @@ export function AiWorkspace({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        height: '100%',
+        // ⚠️ **不锁高度**：侧栏跟着内容长高（消息多就长高），
+        // 页面滚一次就够 ⇒ 不会出现「页面一个滚动条 + 侧栏一个滚动条」两个滚动条。
         minHeight: 0,
         background: token.colorBgContainer,
       }}
@@ -180,10 +181,26 @@ export function AiWorkspace({
           //    刷新页面后还停在刚才那个页签，不要每次都跳回「对话」。
           writeWorkspaceStorage({ tab });
         }}
-        style={{ flex: 1, minHeight: 0 }}
+        style={{ flex: 'none', minHeight: 0 }}
         styles={{
-          content: { height: '100%', overflow: 'hidden' },
-          body: { height: '100%' },
+          /*
+            ⚠️ 页签条要**自己留左右内边距**。
+            antd 的 Tabs 根节点没有内边距 ⇒ 实测 `.ant-tabs-nav` 的
+            padding-left = 0，三个页签的标题会**贴着 Sider 的左边缘**，
+            看上去像没渲染完（实测三个页签的 x 分别是 1458 / 1518 / 1592，
+            而 Sider 的 x = 1457 —— 第一个页签正好压在线上）。
+            `header` 落到的就是 `.ant-tabs-nav`。
+          */
+          header: { paddingInline: token.paddingSM },
+          /*
+            高度链（实测出来的）：
+              .ant-tabs → .ant-tabs-body-holder → .ant-tabs-body → .ant-tabs-content
+            这里**不再**给 `body` / `content` 锁高度、也不再 `overflow: hidden` ——
+            侧栏要跟着消息长高；锁了高度就会把内容挤进一个内层滚动条（两个滚动条）。
+            消息区自己长高，页面滚；输入区在 ChatPanel 里 sticky 在视口底部。
+          */
+          content: { height: 'auto', overflow: 'visible' },
+          body: { height: 'auto' },
         }}
         items={[
           {

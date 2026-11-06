@@ -692,3 +692,105 @@ test.describe('窄屏（< 1200px）', () => {
     expect(contentExpanded.width).toBeCloseTo(contentNarrow.width - 360, 0);
   });
 });
+
+/**
+ * 侧栏的**留白**与**滚动**。
+ *
+ * 这两条是真实用户报出来的两个体验问题，钉在这里防回退：
+ * 1. 三个页签曾经**贴着侧栏的左边缘**（antd 的 Tabs 根节点没有内边距）；
+ * 2. 侧栏曾经是**固定高度**的一列、消息区在里面自己滚 ⇒ 屏幕上有**两个滚动条**，
+ *    而且消息一多，那个内层滚动条就变得很显眼、很难受。
+ */
+test.describe('侧栏的留白与滚动', () => {
+  test('三个页签不贴着侧栏的左边缘', async ({ page }) => {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+    await expect(sider(page)).toBeVisible();
+
+    // 第一个页签的左边缘离侧栏左边缘至少 8px
+    const gap = await page.evaluate(() => {
+      const side = document.querySelector('[data-testid=ai-workspace-sider]');
+      const tab = side?.querySelector('.ant-tabs-tab');
+      if (!side || !tab) {
+        return null;
+      }
+      return Math.round(
+        tab.getBoundingClientRect().x - side.getBoundingClientRect().x,
+      );
+    });
+    expect(gap).not.toBeNull();
+    expect(gap!).toBeGreaterThanOrEqual(8);
+  });
+
+  test('侧栏里没有第二个滚动条,发送按钮一直在视口里', async ({ page }) => {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+    await expect(sider(page)).toBeVisible();
+
+    // 说一句话（让侧栏长高）
+    await page.getByPlaceholder('说点什么…').fill(USER_TEXT);
+    await page.getByRole('button', { name: /发\s*送/ }).click();
+    await expect(page.locator('[data-role="assistant"]').last()).toContainText(
+      '已在 PRJ-2026-Q3-001 下建好任务',
+    );
+
+    // 侧栏内部**没有**可滚动的容器（否则就是第二个滚动条）
+    const inner = await page.evaluate(() => {
+      const side = document.querySelector('[data-testid=ai-workspace-sider]');
+      if (!side) {
+        return null;
+      }
+      return [...side.querySelectorAll('*')]
+        .filter(
+          (element) =>
+            element.scrollHeight > element.clientHeight + 2 &&
+            getComputedStyle(element).overflowY !== 'visible',
+        )
+        .map((element) =>
+          typeof element.className === 'string'
+            ? element.className.slice(0, 40)
+            : '',
+        );
+    });
+    expect(inner).toEqual([]);
+
+    // 发送按钮在视口里（不用先滚一屏才找得到它）
+    const viewportHeight = page.viewportSize()?.height ?? 0;
+    const sendBox = await page
+      .getByRole('button', { name: /发\s*送/ })
+      .boundingBox();
+    expect(sendBox).not.toBeNull();
+    expect(sendBox!.y + sendBox!.height).toBeLessThanOrEqual(viewportHeight);
+
+    // 滚到底之后它仍然在视口里
+    await page.evaluate(() => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+    await page.waitForTimeout(300);
+    const afterScroll = await page
+      .getByRole('button', { name: /发\s*送/ })
+      .boundingBox();
+    expect(afterScroll).not.toBeNull();
+    expect(afterScroll!.y + afterScroll!.height).toBeLessThanOrEqual(
+      viewportHeight,
+    );
+  });
+});

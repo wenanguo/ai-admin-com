@@ -86,12 +86,23 @@ export function WideChat({
           borderRadius: token.borderRadiusLG,
           overflow: 'hidden',
           background: token.colorBgContainer,
+          /*
+            ⚠️ **对话区要有确定的高度**，否则它会跟着消息一起长高，
+            把页面顶到很下面去 —— 于是每次都要先滚一屏才找得到输入框的发送按钮。
+            `min(560px, 55vh)`：窗口矮时按视口比例收，窗口高时不超过 560px。
+            里面的消息列表自己滚（`flex:1 + overflow-y:auto`），输入区固定在底部
+            ⇒ **面板里只有一个滚动条**，页面那个是给下面的意图卡片墙用的。
+          */
+          display: 'flex',
+          flexDirection: 'column',
+          height: 'min(560px, 55vh)',
         }}
       >
         <div
           ref={listRef}
           style={{
-            height: 320,
+            flex: '1 1 0%',
+            minHeight: 0,
             overflowY: 'auto',
             display: 'flex',
             flexDirection: 'column',
@@ -116,7 +127,12 @@ export function WideChat({
           ))}
         </div>
         {sendError ? (
-          <div style={{ padding: `${token.paddingSM}px ${token.padding}px 0` }}>
+          <div
+            style={{
+              flexShrink: 0,
+              padding: `${token.paddingSM}px ${token.padding}px 0`,
+            }}
+          >
             <Alert
               type="error"
               showIcon
@@ -133,6 +149,7 @@ export function WideChat({
         ) : null}
         <div
           style={{
+            flexShrink: 0,
             padding: token.padding,
             borderTop: `1px solid ${token.colorBorderSecondary}`,
           }}
