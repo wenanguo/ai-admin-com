@@ -12,7 +12,10 @@ import { useProjectNames } from './useProjectNames';
  *
  * 三条纪律:
  * 1. **一次一页**:后端 page_size 上限 100,一次拉满一页;后端给的总数比
- *    画出来的任务行数多 ⇒ `truncated` 为 true,**不静默丢**(页面据此提示)。
+ *    **本次取回的条数**多 ⇒ `truncated` 为 true,**不静默丢**(页面据此提示)。
+ *    ⚠️ 截断是**分页口径**:`total > items.length`。「因缺起止日期画不出条形」
+ *    由 `mapping.excludedCount` 单独表达 —— 两者不重叠,页面不会同时弹
+ *    「被截断」和「N 个任务未显示」两条互相矛盾的提示。
  * 2. **名字靠侧载**:任务响应里没有 project_by / milestone_by,项目名与
  *    里程碑名走 `useProjectNames` 的侧载映射 —— 不自己再造一套请求。
  * 3. **写回只管成败**:拖拽后整对象 PUT(后端没有 PATCH);失败返回 false,
@@ -34,7 +37,12 @@ export interface UseGanttTasksResult {
   loading: boolean;
   /** 后端一共多少个任务 */
   total: number;
-  /** 后端总数大于画出来的任务行数 ⇒ 甘特只看到了一部分 */
+  /**
+   * 后端总数大于**本次取回的条数** ⇒ 甘特只看到了一部分。
+   *
+   * 口径是**分页**:`total > items.length`。「因缺日期画不出条形」不算截断,
+   * 那由 `mapping.excludedCount` 单独表达。
+   */
   truncated: boolean;
   /**
    * 拖拽写回:成功 true / 失败 false。
@@ -145,8 +153,11 @@ export function useGanttTasks(options?: {
     mapping,
     loading,
     total,
-    // 后端给的总数超过画出来的任务行数 ⇒ 只看到了一部分
-    truncated: total > mapping.taskCount,
+    // 后端给的总数超过本次取回的条数 ⇒ 只看到了一部分(分页口径)。
+    // ⚠️ 不能拿 mapping.taskCount 比:taskCount 只数**画进了甘特**的任务,
+    // 「缺日期被排除」的任务会让它偏小 ⇒ 明明一页取完了却报截断,
+    // 与 excludedCount 的提示互相矛盾。
+    truncated: total > tasks.length,
     applyDateChange,
     reload,
   };

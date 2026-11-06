@@ -9,7 +9,8 @@ import { useGanttTasks } from './useGanttTasks';
  * 钉死六件事:
  * 1. 取数:一次拉一页(后端 page_size 上限 100),给了项目就带上 project_id;
  * 2. 映射:行来自映射层,分组行用侧载的项目/里程碑名;
- * 3. 截断:后端总数大于画出来的任务行数 ⇒ truncated(不静默丢);
+ * 3. 截断:**分页口径** —— 后端总数大于本次取回的条数 ⇒ truncated;
+ *    「缺日期被排除」不算截断(由 excludedCount 单独表达,两条提示不重叠);
  * 4. 写回:拖拽后整对象 PUT,**只有起止两个日期变了**,其余字段原样带回;
  * 5. 失败与无效输入都解析成 false(不抛给调用方,错误提示由请求层统一弹);
  * 6. reload 重新取数。
@@ -150,6 +151,74 @@ describe('useGanttTasks 甘特数据', () => {
         expect(result.current.total).toBe(5);
       });
       expect(result.current.truncated).toBe(true);
+    });
+
+    it('截断是分页口径:后端总数大于本次取回的条数 ⇒ truncated', async () => {
+      // 本页只回了 2 条,后端一共 5 条 ⇒ 确实还有 3 条没取到
+      mocks.listTasks.mockResolvedValue(
+        envelope(page([makeTask({ id: 10 }), makeTask({ id: 11 })], 5)),
+      );
+
+      const { result } = await renderHook(() => useGanttTasks());
+
+      await vi.waitFor(() => {
+        expect(result.current.total).toBe(5);
+      });
+      expect(result.current.truncated).toBe(true);
+    });
+
+    it('缺日期被排除 ≠ 截断:total 等于取回条数时 truncated 为 false', async () => {
+      // 后端一共 5 条,本页 5 条全回来了 —— 什么都没被截断;
+      // 但其中 1 条缺 start_date ⇒ 画不进甘特,只该由 excludedCount 表达
+      mocks.listTasks.mockResolvedValue(
+        envelope(
+          page(
+            [
+              makeTask({ id: 10 }),
+              makeTask({ id: 11 }),
+              makeTask({ id: 12 }),
+              makeTask({ id: 13 }),
+              makeTask({ id: 14, start_date: undefined }),
+            ],
+            5,
+          ),
+        ),
+      );
+
+      const { result } = await renderHook(() => useGanttTasks());
+
+      await vi.waitFor(() => {
+        expect(result.current.mapping.excludedCount).toBe(1);
+      });
+      expect(result.current.total).toBe(5);
+      expect(result.current.truncated).toBe(false);
+      // 被排除的任务由 excludedCount 单独表达,两条提示不重叠
+      expect(result.current.mapping.excludedCount).toBe(1);
+      expect(result.current.mapping.taskCount).toBe(4);
+    });
+
+    it('既分页截断又有缺日期 ⇒ truncated 为 true 且 excludedCount 大于 0', async () => {
+      mocks.listTasks.mockResolvedValue(
+        envelope(
+          page(
+            [
+              makeTask({ id: 10 }),
+              makeTask({ id: 11 }),
+              makeTask({ id: 12, start_date: undefined }),
+            ],
+            8,
+          ),
+        ),
+      );
+
+      const { result } = await renderHook(() => useGanttTasks());
+
+      await vi.waitFor(() => {
+        expect(result.current.mapping.excludedCount).toBe(1);
+      });
+      expect(result.current.total).toBe(8);
+      expect(result.current.truncated).toBe(true);
+      expect(result.current.mapping.excludedCount).toBeGreaterThan(0);
     });
 
     it('reload 重新取数', async () => {
