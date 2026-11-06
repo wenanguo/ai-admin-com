@@ -21,7 +21,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { env } from "../env";
 import type { CommandTool } from "../tools/types";
-import { buildSystemPrompt } from "./skills";
+import { buildSystemPrompt, createProjectSkillsOverride } from "./skills";
 import { createLoadSkillTool } from "./skill-tools";
 import { buildSessionEntries } from "./session-entries";
 import type { AgentSessionLike } from "./session-registry";
@@ -93,6 +93,10 @@ export async function createPiSession(
 	//    「先发现技能，再定提示词」。而 loader 的 systemPrompt 是**构造时**定的
 	//    ⇒ 先用一个 loader 把技能发现出来，再用带技能段的提示词建**最终**那个。
 	//    （建会话是懒的、每会话一次 ⇒ 多发现一次的开销可以忽略。）
+	// ⚠️ **项目技能目录**：只有这里的技能算数。
+	//    pi 还会扫用户家目录的 `~/.agents/skills/` ⇒ 会被过滤掉（见 skills.ts）。
+	const projectSkillsDir = join(cwd, ".pi", "skills");
+
 	const loaderOptions = {
 		cwd,
 		agentDir: join(AGENT_DIR, "agent"),
@@ -106,6 +110,8 @@ export async function createPiSession(
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
+		// ⚠️ 只留项目技能目录里的（用户家目录的那一堆与本服务无关）
+		skillsOverride: createProjectSkillsOverride(projectSkillsDir),
 	};
 
 	const discoveryLoader = new DefaultResourceLoader({

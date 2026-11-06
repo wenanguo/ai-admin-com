@@ -14,7 +14,14 @@
  * 别的 Agent 宿主也能认），措辞指向 `load_skill`。
  */
 
-import type { Skill } from "@earendil-works/pi-coding-agent";
+import { resolve, sep } from "node:path";
+import type { ResourceDiagnostic, Skill } from "@earendil-works/pi-coding-agent";
+
+/** 技能表的形状（pi 的 `loadSkills` 的返回）。 */
+export interface SkillsResult {
+	skills: Skill[];
+	diagnostics: ResourceDiagnostic[];
+}
 
 /** XML 转义（与 pi 的实现一致）。 */
 function escapeXml(value: string): string {
@@ -57,6 +64,35 @@ export function renderSkillsSection(skills: readonly Skill[]): string {
 	}
 	lines.push("</available_skills>");
 	return lines.join("\n");
+}
+
+/**
+ * 把技能表**限定在项目的技能目录内**。
+ *
+ * ## 为什么需要它
+ *
+ * pi 的 loader 除了项目的 `.pi/skills/`，**还会扫用户家目录的 `~/.agents/skills/`**
+ * （Agent Skills 的标准位置）—— 实测：开发机上它会把用户自己的二十多个技能
+ * 一并带进来。
+ *
+ * ⇒ 那些技能与本服务无关，却会占系统提示词，还可能让模型去读用户目录里的文件
+ * ⇒ 用 pi 的官方钩子 `skillsOverride` 把技能**过滤到我们自己的目录**。
+ * （钩子在 loader 内部生效 ⇒ 去重与诊断仍然是 pi 做的，我们只做最后一道过滤。）
+ *
+ * @param rootDir 项目技能目录（通常是 `<cwd>/.pi/skills`）。
+ */
+export function createProjectSkillsOverride(
+	rootDir: string,
+): (base: SkillsResult) => SkillsResult {
+	const root = resolve(rootDir) + sep;
+	const inside = (path: string): boolean => resolve(path).startsWith(root);
+	return (base) => ({
+		skills: base.skills.filter((skill) => inside(skill.filePath)),
+		// 诊断也只留我们目录里的（别人的技能撞名与本服务无关）
+		diagnostics: base.diagnostics.filter((diagnostic) =>
+			diagnostic.path === undefined ? false : inside(diagnostic.path),
+		),
+	});
 }
 
 /**
