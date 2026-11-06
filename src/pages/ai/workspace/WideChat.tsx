@@ -19,6 +19,12 @@ import type { ChatMessage } from '@/components/ai-workspace/useAgentStream';
 export interface WideChatProps {
   /** 气泡列表。 */
   messages: ChatMessage[];
+  /**
+   * 模型当前的思考内容（思考级别开了才有）。
+   *
+   * ⚠️ **不是对话内容** ⇒ 显示在输入区上方，不进气泡。
+   */
+  thinking?: string;
   /** 输入框里的内容（外部受控）。 */
   draft: string;
   /** 输入内容变了。 */
@@ -46,6 +52,7 @@ export interface WideChatProps {
  */
 export function WideChat({
   messages,
+  thinking,
   draft,
   onDraftChange,
   onSend,
@@ -160,6 +167,30 @@ export function WideChat({
             borderTop: `1px solid ${token.colorBorderSecondary}`,
           }}
         >
+          {thinking ? (
+            <div
+              data-role="ai-thinking"
+              style={{
+                display: 'flex',
+                alignItems: 'baseline',
+                gap: token.sizeXS,
+                marginBottom: token.sizeSM,
+                fontSize: token.fontSizeSM,
+                color: token.colorTextTertiary,
+              }}
+            >
+              <span style={{ flexShrink: 0 }}>思考中…</span>
+              <span
+                style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {thinking.slice(-200)}
+              </span>
+            </div>
+          ) : null}
           <Composer
             value={draft}
             onChange={onDraftChange}

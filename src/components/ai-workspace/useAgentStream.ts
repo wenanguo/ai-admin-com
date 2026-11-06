@@ -99,6 +99,13 @@ export interface AgentStream {
   connected: boolean;
   /** 当前模型（快照里的 `model`；服务端**没有**模型列表端点 ⇒ 只有这一个）。 */
   model?: string;
+  /**
+   * 模型当前的「思考」内容（思考级别开了才有）。
+   *
+   * ⚠️ **不是对话内容** ⇒ 不进气泡，只在输入区上方显示「思考中…」。
+   *    一旦有正文（`text_delta`）或本轮结束，就清掉。
+   */
+  thinking?: string;
   /** 追加一条用户气泡（发送时乐观上屏）。 */
   appendUserMessage: (text: string) => void;
   /** 用一份**已经拿到的**快照重建界面（刷新页面恢复历史）。 */
@@ -127,6 +134,8 @@ interface StreamState {
   streaming: boolean;
   /** 当前模型（快照里的 `model`；快照没有就是 undefined）。 */
   model?: string;
+  /** 当前的思考内容（不是对话内容）。 */
+  thinking: string;
 }
 
 /**
@@ -233,7 +242,11 @@ const REPLAY_SETTLE_MS = 1000;
 const REPLAY_MAX_WINDOW_MS = 4000;
 
 /** 初始状态。 */
-const EMPTY_STATE: StreamState = { messages: [], streaming: false };
+const EMPTY_STATE: StreamState = {
+  messages: [],
+  streaming: false,
+  thinking: '',
+};
 
 /** 全局自增序号（气泡与卡片都用它做 id）。 */
 let idSeed = 0;
@@ -345,6 +358,8 @@ export function applyAiEvent(state: StreamState, event: AiEvent): StreamState {
         messages: [...state.messages, message],
         activeId: message.id,
         streaming: true,
+        // ⚠️ 开始说话了 ⇒ 思考阶段结束
+        thinking: '',
       };
     }
     case 'text_delta':
@@ -352,6 +367,12 @@ export function applyAiEvent(state: StreamState, event: AiEvent): StreamState {
         ...message,
         text: message.text + event.delta,
       }));
+    case 'thinking_delta':
+      // ⚠️ 思考**不进气泡**（不是助手说的话）⇒ 只记在这儿，供界面显示「思考中…」
+      return {
+        ...state,
+        thinking: state.thinking + event.delta,
+      };
     case 'message_end':
       return withActiveMessage(state, (message) => ({
         ...message,
@@ -380,7 +401,7 @@ export function applyAiEvent(state: StreamState, event: AiEvent): StreamState {
       }));
     case 'agent_settled':
       // 本轮结束：输入解禁，下一段 delta 另开一个气泡
-      return { ...state, activeId: undefined, streaming: false };
+      return { ...state, activeId: undefined, streaming: false, thinking: '' };
     default:
       // 不认识的事件（服务端以后加的）⇒ 原样不动，不崩
       return state;
@@ -665,6 +686,8 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
           streaming,
           // 当前模型：服务端只有这一个（没有模型列表端点）
           model: snapshot.model,
+          // 重建界面 ⇒ 思考阶段已经过去了
+          thinking: '',
         };
       });
     },
@@ -993,6 +1016,7 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
     streaming: state.streaming,
     connected,
     model: state.model,
+    thinking: state.thinking,
     appendUserMessage,
     restore,
     resync,

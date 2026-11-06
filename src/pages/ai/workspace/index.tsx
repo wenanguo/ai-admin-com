@@ -256,6 +256,7 @@ export default function AiWorkspacePage(): React.ReactElement {
       <div ref={chatRef}>
         <WideChat
           messages={workspace.messages}
+          thinking={workspace.thinking}
           draft={draft}
           onDraftChange={setDraft}
           onSend={handleSend}

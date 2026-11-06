@@ -44,6 +44,12 @@ export interface Workspace {
   model?: string;
   /** 气泡列表。 */
   messages: ChatMessage[];
+  /**
+   * 模型当前的思考内容（思考级别开了才有）。
+   *
+   * ⚠️ **不是对话内容** ⇒ 只在输入区上方显示「思考中…」。
+   */
+  thinking?: string;
   /** 本轮是否在进行中。 */
   streaming: boolean;
   /** 事件流是不是连着的。 */
@@ -157,6 +163,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     streaming,
     connected,
     model,
+    thinking,
     appendUserMessage,
     restore,
     settle,
@@ -359,6 +366,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     conversationId,
     model,
     messages,
+    thinking,
     streaming,
     connected,
     aiUnavailable,

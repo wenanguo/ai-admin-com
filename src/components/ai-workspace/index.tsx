@@ -233,6 +233,7 @@ export function AiWorkspace({
             children: (
               <ChatPanel
                 messages={workspace.messages}
+                thinking={workspace.thinking}
                 streaming={workspace.streaming}
                 sending={workspace.sending}
                 sendError={workspace.sendError}

@@ -117,7 +117,7 @@ describe('AI 事件流订阅', () => {
   it('不认识的事件名被忽略', async () => {
     stubFetch([
       streamOf(
-        frame('thinking_delta', { conversationId: 'c1', thought: '想一下' }) +
+        frame('unknown_event', { conversationId: 'c1', thought: '想一下' }) +
           frame('agent_settled', { conversationId: 'c1' }),
       ),
     ]);
@@ -127,6 +127,25 @@ describe('AI 事件流订阅', () => {
 
     await vi.waitFor(() => expect(events).toHaveLength(1));
     expect(events[0]).toEqual({ type: 'agent_settled' });
+    cancel();
+  });
+
+  it('thinking_delta 被映射成思考事件', async () => {
+    // ⚠️ 思考级别默认 `off` ⇒ 服务端平时不发这个事件；
+    //    开了思考才会来 ⇒ 前端要认它（否则界面看上去就是卡住）。
+    stubFetch([
+      streamOf(
+        frame('thinking_delta', { conversationId: 'c1', delta: '先想想…' }) +
+          frame('agent_settled', { conversationId: 'c1' }),
+      ),
+    ]);
+    const events: AiEvent[] = [];
+
+    const cancel = subscribeAiEvents('c1', (event) => events.push(event));
+
+    await vi.waitFor(() => expect(events).toHaveLength(2));
+    expect(events[0]).toEqual({ type: 'thinking_delta', delta: '先想想…' });
+    expect(events[1]).toEqual({ type: 'agent_settled' });
     cancel();
   });
 

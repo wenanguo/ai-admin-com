@@ -56,16 +56,23 @@ export interface AiState {
 /**
  * SSE 事件（服务端 `src/agent/events.ts` 的 `SSE_EVENTS`）。
  *
- * ⚠️ **服务端实际只发这 7 种**：`connected` `message_start` `text_delta`
- * `message_end` `tool_call` `tool_result` `agent_settled`。
- * 设计里的 `thinking_delta` / `action_request` / `state_dirty` / `auth_expired` /
- * `heartbeat` **还没实现** ⇒ 不写进这个联合类型。
+ * ⚠️ **服务端实际只发这 8 种**：`connected` `message_start` `text_delta`
+ * `thinking_delta` `message_end` `tool_call` `tool_result` `agent_settled`。
+ * 设计里的 `action_request` / `state_dirty` / `auth_expired` / `heartbeat`
+ * **还没实现** ⇒ 不写进这个联合类型。
  * 解析器遇到不认识的事件名会**忽略**它（服务端以后加事件，前端不会崩）。
  */
 export type AiEvent =
   | { type: 'connected'; conversationId: string; isStreaming: boolean }
   | { type: 'message_start'; role: string }
   | { type: 'text_delta'; delta: string }
+  /**
+   * 思考增量（模型的「心里话」）。
+   *
+   * ⚠️ **默认收不到**：服务端的思考级别默认 `off` ⇒ 压根不产生这个事件。
+   *    开了思考才会来 ⇒ 前端要能显示「思考中…」，否则界面看上去就是卡住了。
+   */
+  | { type: 'thinking_delta'; delta: string }
   /**
    * 一条助手消息结束。
    *

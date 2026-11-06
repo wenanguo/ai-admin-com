@@ -204,6 +204,10 @@ export function toAiEvent(frame: SseFrame): AiEvent | undefined {
       return { type: 'message_start', role: readString(payload, 'role') };
     case 'text_delta':
       return { type: 'text_delta', delta: readString(payload, 'delta') };
+    case 'thinking_delta':
+      // ⚠️ 服务端的思考级别默认 `off` ⇒ 这个事件平时不来；
+      //    开了思考才会来 ⇒ 前端显示「思考中…」。
+      return { type: 'thinking_delta', delta: readString(payload, 'delta') };
     case 'message_end':
       // ⚠️ `error` 失败时才有（服务端 `src/agent/events.ts` 的 MessageEndPayload）——
       // 丢掉它，界面就没办法把失败的那一轮标出来

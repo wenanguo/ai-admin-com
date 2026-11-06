@@ -16,6 +16,12 @@ import type { ChatMessage } from './useAgentStream';
 export interface ChatPanelProps {
   /** 气泡列表。 */
   messages: ChatMessage[];
+  /**
+   * 模型当前的思考内容（思考级别开了才有）。
+   *
+   * ⚠️ **不是对话内容** ⇒ 显示在输入区上方，不进气泡。
+   */
+  thinking?: string;
   /** 本轮进行中（禁用输入）。 */
   streaming?: boolean;
   /** 命令还在发出去。 */
@@ -37,6 +43,7 @@ export interface ChatPanelProps {
  */
 export function ChatPanel({
   messages,
+  thinking,
   streaming,
   sending,
   sendError,
@@ -127,6 +134,34 @@ export function ChatPanel({
                 ) : undefined
               }
             />
+          </div>
+        ) : null}
+        {thinking ? (
+          /*
+            ⚠️ **「思考中…」**：模型的思考不是对话内容 ⇒ 不进气泡，
+            只在输入区上方显示一行（否则用户只看到界面卡住）。
+          */
+          <div
+            data-role="ai-thinking"
+            style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              gap: token.sizeXS,
+              marginBottom: token.sizeSM,
+              fontSize: token.fontSizeSM,
+              color: token.colorTextTertiary,
+            }}
+          >
+            <span style={{ flexShrink: 0 }}>思考中…</span>
+            <span
+              style={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {thinking.slice(-200)}
+            </span>
           </div>
         ) : null}
         <Composer

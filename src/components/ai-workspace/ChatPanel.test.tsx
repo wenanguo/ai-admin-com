@@ -165,6 +165,28 @@ describe('AI 对话页签', () => {
     });
   });
 
+  it('思考中时显示一行「思考中…」（思考不是对话内容，不进气泡）', async () => {
+    const { container, getByText } = await render(
+      <ChatPanel
+        messages={[]}
+        thinking="先想想该建哪个项目…"
+        onSend={() => undefined}
+      />,
+    );
+
+    await expect.element(getByText('思考中…')).toBeVisible();
+    // ⚠️ 思考**不是**助手说的话 ⇒ 消息区里不该多出气泡
+    expect(container.querySelector('[data-role="assistant"]')).toBeNull();
+  });
+
+  it('没有思考内容时不显示「思考中…」', async () => {
+    const { container } = await render(
+      <ChatPanel messages={[]} onSend={() => undefined} />,
+    );
+
+    expect(container.querySelector('[data-role="ai-thinking"]')).toBeNull();
+  });
+
   it('不进行中时没有「停止生成」按钮', async () => {
     const { container } = await render(
       <ChatPanel

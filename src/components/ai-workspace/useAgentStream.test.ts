@@ -77,6 +77,46 @@ describe('AI 流式状态机', () => {
     expect(result.current.messages[0].text).toBe('你好，世界');
   });
 
+  it('thinking_delta 累积成「思考中」,但**不开气泡**', async () => {
+    const { captured, subscribe } = fakeSubscribe();
+
+    const { act, result } = await renderHook(() =>
+      useAgentStream({
+        conversationId: 'c1',
+        subscribe,
+        loadState: async () => SNAPSHOT,
+      }),
+    );
+
+    await act(async () => {
+      captured.onEvent?.({ type: 'thinking_delta', delta: '先想想…' });
+      captured.onEvent?.({ type: 'thinking_delta', delta: ' 该建哪个项目？' });
+    });
+
+    // 思考**不是对话内容** ⇒ 不进气泡
+    expect(result.current.messages).toHaveLength(0);
+    expect(result.current.thinking).toBe('先想想… 该建哪个项目？');
+  });
+
+  it('开始说话后思考内容被清掉(它已经想完了)', async () => {
+    const { captured, subscribe } = fakeSubscribe();
+
+    const { act, result } = await renderHook(() =>
+      useAgentStream({
+        conversationId: 'c1',
+        subscribe,
+        loadState: async () => SNAPSHOT,
+      }),
+    );
+
+    await act(async () => {
+      captured.onEvent?.({ type: 'thinking_delta', delta: '先想想…' });
+      captured.onEvent?.({ type: 'message_start', role: 'assistant' });
+    });
+
+    expect(result.current.thinking).toBe('');
+  });
+
   it('tool_call 追加一张卡片', async () => {
     const { captured, subscribe } = fakeSubscribe();
 

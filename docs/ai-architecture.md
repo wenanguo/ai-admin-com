@@ -211,7 +211,8 @@ agent_start → turn_start → message_start → message_update* → message_end
 | ------- | -------- | ---- | ---- |
 | — | `connected` | `{conversationId, isStreaming}` | 连接建立的第一帧 |
 | `message_start` | `message_start` | `{role:"assistant"}` | **推迟到第一条文本增量才发** |
-| `message_update` | `text_delta` | `{delta}` | 只留文本增量，`thinking_delta` 不外发 |
+| `message_update` | `text_delta` | `{delta}` | 文本增量 |
+| `message_update` | `thinking_delta` | `{delta}` | 思考增量（**只在思考级别不为 `off` 时才有**） |
 | `message_end` | `message_end` | `{text, error?}` | `text` 是**完整正文**，`error` 仅失败时有 |
 | `tool_execution_start` | `tool_call` | `{toolName, args}` | |
 | `tool_execution_end` | `tool_result` | `{toolName, status, summary, details}` | |
@@ -234,6 +235,7 @@ agent_start → turn_start → message_start → message_update* → message_end
 | `connected` | 打开**回放窗口**，拉快照 | 「AI 服务不可用」标签消失 |
 | `message_start` | 新建一个助手气泡，`activeId` 指向它 | 出现一个空的助手气泡占位 |
 | `text_delta` | 累积进 `activeId` 气泡的 `text` | 气泡里的字逐字出现 |
+| `thinking_delta` | 累积进 `thinking`（**不进气泡**） | 输入区上方一行「思考中…」 |
 | `message_end` | 收尾：正文空则用 `text` 补；`serverText` 另存一份；`error` 标失败 | 气泡正文定格；失败轮次带错误提示 |
 | `tool_call` | 往该轮的 `commands` 里追加一张 `running` 卡片 | 命令卡片「执行中」 |
 | `tool_result` | 回填到**最后一张同名且 running** 的卡片；找不到就补一张已完成的 | 命令卡片「已执行 / 失败」 |
@@ -396,12 +398,12 @@ src/pages/ai/workspace/    ← 全宽页
 
 | 项 | 状态 |
 | -- | ---- |
-| `thinking_delta` / `action_request` / `state_dirty` / `auth_expired` / `heartbeat` 事件 | 设计里有，**服务端未实现** ⇒ 前端联合类型里没有，遇到会忽略 |
+| `action_request` / `state_dirty` / `auth_expired` / `heartbeat` 事件 | 设计里有，**服务端未实现** ⇒ 前端联合类型里没有，遇到会忽略 |
 | 待确认的**写入口**（确认 / 撤销） | 服务端没有 ⇒ 前端只读 |
 | 模型列表 / 配额端点 | 没有 ⇒ 只显示当前模型，不画配额条 |
 | 命令类型 | 服务端当前只有 `create_task` 一条（设计里最终约 40 条） |
 | `Last-Event-ID` 断点续传 | 服务端帧不带对外序号 ⇒ 实际从未生效（代码里留着接口） |
-| pi 的 `thinking` 输出 | 收敛时丢弃，不外发（`thinkingLevel` 固定 `off`） |
+| pi 的 `thinking` 输出 | **可选**：思考级别由 `AI_THINKING_LEVEL` 控制（默认 `off` ⇒ 压根不产生）；开了则以 `thinking_delta` 外发，前端显示「思考中…」 |
 | 「待确认」的**写入口**（确认/撤销） | 服务端没有 ⇒ 前端只读 |
 | 凭证失效的 HTTP 状态 | 必须是 **401**（前端据此刷新 token）；⚠️ 服务端曾因跨 chunk 的 `instanceof` 失效而误返 500，已修 |
 
