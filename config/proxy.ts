@@ -70,13 +70,52 @@ const AI_SERVICE_TARGET = 'http://localhost:3100';
  * 去掉前缀后变成 `http://localhost:3100/api/agent/x`。
  * 前缀由 `config/config.ts` 的 `define` 注入（`AI_API_BASE_URL`）。
  */
-const aiServiceProxy = {
-  '/ai-api/': {
-    target: AI_SERVICE_TARGET,
-    changeOrigin: true,
-    pathRewrite: { '^/ai-api': '' },
-  },
+/**
+ * 是否**注册** `/ai-api/` 代理规则(默认注册 = 照常代理到 AI 服务)。
+ *
+ * ⚠️ 为什么需要这个开关:
+ * e2e 套件**不该依赖一个在线的 AI 服务**。
+ * 预览服务器把 `/ai-api/**` 代理到 AI 服务后,AI 服务会拿浏览器带来的
+ * AiAdmin token 去问后端 `/system/user/current/info` 验真 ⇒ e2e 的**假 token**
+ * (`e2e-mock-access-token`)在后端是 401 ⇒ AI 服务如实回 401 ⇒
+ * 前端共享请求层对 401 走「静默刷新 token + 重放」⇒ 刷新也失败 ⇒
+ * **全局登出** ⇒ 页面跳到 `/user/login` ⇒ 所有「等表格渲染」的断言超时。
+ *
+ * 把它关掉之后,e2e 里的 `/ai-api/**` 打到静态服务器 ⇒ 返回 404/HTML
+ * (**不是 401**)⇒ 不触发登出。
+ *
+ * ⚠️ AI 相关的 e2e 用例**自己 mock 了 AI 服务**
+ * (见 `e2e/ai-workspace.spec.ts` 的 `setupAiService`,它在浏览器侧拦截
+ * `/ai-api/api/**`)⇒ 它们不依赖这条代理规则 ⇒ 关掉不影响它们。
+ *
+ * ⚠️ 只写 `off` / `false` / `0` 才关闭;写别的值(包括空)都当「照常代理」。
+ */
+const PROXY_AI_API_OFF = ['off', 'false', '0'].includes(
+  (process.env.PROXY_AI_API || '').trim().toLowerCase(),
+);
+
+/** 一条代理规则(http-proxy-middleware 的 Options 子集)。 */
+type ProxyRule = {
+  target: string;
+  changeOrigin: boolean;
+  pathRewrite?: Record<string, string>;
 };
+
+/**
+ * AI 服务的代理规则(可能被开关整个去掉)。
+ *
+ * ⚠️ 显式标注类型:关掉开关时它是**空对象**,不标注的话 TS 会推成
+ * 「`/ai-api/` 可选」的联合类型 ⇒ 赋给 umi 的 proxy 字段时报错。
+ */
+const aiServiceProxy: Record<string, ProxyRule> = PROXY_AI_API_OFF
+  ? {}
+  : {
+      '/ai-api/': {
+        target: AI_SERVICE_TARGET,
+        changeOrigin: true,
+        pathRewrite: { '^/ai-api': '' },
+      },
+    };
 
 /** AiAdmin 的代理规则（三个环境段一样）。 */
 const aiadminProxy = {

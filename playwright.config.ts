@@ -53,5 +53,19 @@ export default defineConfig({
     url: 'http://localhost:8010',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    // ⚠️ 为什么 e2e 要把 AI 服务的代理关掉(PROXY_AI_API=off):
+    // 预览服务器默认会把 `/ai-api/**` 代理到**在线的 AI 服务**(3100),
+    // 而 AI 服务会拿浏览器带来的 AiAdmin token 去后端验真 ⇒ e2e 的假 token
+    // (`e2e-mock-access-token`)是 401 ⇒ AI 服务如实回 401 ⇒ 前端共享请求层
+    // 对 401 走「静默刷新 token + 重放」⇒ 刷新也失败 ⇒ **全局登出**
+    // ⇒ 页面跳到 /user/login ⇒ 所有「等表格渲染」的断言超时。
+    //
+    // 关掉之后 `/ai-api/**` 打到静态服务器 ⇒ 404/HTML(**不是 401**)
+    // ⇒ 不触发登出。
+    //
+    // ⚠️ AI 相关的用例**自己 mock 了 AI 服务**
+    // (e2e/ai-workspace.spec.ts 的 setupAiService,在浏览器侧拦截)⇒ 不受影响。
+    // ⚠️ 本地开发(`npm run dev`)不设这个变量 ⇒ 照常代理到 AI 服务。
+    env: { ...process.env, PROXY_AI_API: 'off' },
   },
 });
