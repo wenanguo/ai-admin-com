@@ -1,0 +1,145 @@
+/**
+ * 甘特图皮肤。
+ *
+ * ⚠️ **这个文件里没有一个色值**:颜色全是 `var(--pm-gantt-*)`,由
+ * `GanttChart` 组件用 antd 的 `theme.useToken()` 注入到根元素上 ⇒
+ * 主题切换(亮/暗)自动跟上,前端也不需要为字典的每个状态码写一份配色。
+ *
+ * dhtmlx 自带的样式也是 CSS 变量(`--dhx-gantt-*`)⇒ 这里把 antd 的
+ * token 转译过去,不需要 `!important` 硬压。
+ */
+
+/* 根容器:把 dhtmlx 的变量接到我们的 token 变量上 */
+.pm-gantt-root {
+  --dhx-gantt-font-family: inherit;
+  --dhx-gantt-font-size: 13px;
+
+  --dhx-gantt-base-colors-background: var(--pm-gantt-bg);
+  --dhx-gantt-base-colors-text-base: var(--pm-gantt-text);
+  --dhx-gantt-base-colors-text-light: var(--pm-gantt-text-light);
+  --dhx-gantt-base-colors-border: var(--pm-gantt-border);
+  --dhx-gantt-base-colors-border-light: var(--pm-gantt-border);
+  --dhx-gantt-base-colors-primary: var(--pm-gantt-primary);
+
+  --dhx-gantt-container-background: var(--pm-gantt-bg);
+  --dhx-gantt-container-color: var(--pm-gantt-text);
+
+  --dhx-gantt-scale-background: var(--pm-gantt-head-bg);
+  --dhx-gantt-scale-color: var(--pm-gantt-text);
+  --dhx-gantt-scale-border-horizontal: var(--pm-gantt-border);
+  --dhx-gantt-scale-border-vertical: var(--pm-gantt-border);
+
+  --dhx-gantt-grid-scale-background: var(--pm-gantt-head-bg);
+  --dhx-gantt-grid-scale-color: var(--pm-gantt-text);
+  --dhx-gantt-grid-cell-border: var(--pm-gantt-border);
+  --dhx-gantt-grid-row-border: var(--pm-gantt-border);
+
+  --dhx-gantt-timeline-scale-background: var(--pm-gantt-head-bg);
+  --dhx-gantt-timeline-scale-color: var(--pm-gantt-text);
+  --dhx-gantt-timeline-scale-border-vertical: var(--pm-gantt-border);
+
+  --dhx-gantt-task-border-radius: var(--pm-gantt-radius);
+  --dhx-gantt-task-color: var(--pm-gantt-on-solid);
+  --dhx-gantt-task-line-text: var(--pm-gantt-on-solid);
+}
+
+/* 表头里的刻度文字:不要被 dhtmlx 默认的 uppercase 弄成大写 */
+.pm-gantt-root .gantt_scale_cell {
+  text-transform: none;
+}
+
+/* 时间轴刻度区:今天线要绝对定位在它里面 */
+.pm-gantt-root .gantt_task_scale {
+  position: relative;
+}
+
+/**
+ * 今天线。
+ *
+ * 社区版没有 `addMarker`(Pro 能力)⇒ 自己画一条线:位置由组件按
+ * `posFromDate` 换算后写在 `left` 上。
+ */
+.pm-gantt-today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--pm-gantt-today);
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* 状态/优先级标签:深底浅字(白字压在浅底预设色上看不清,所以不用那种色) */
+.pm-gantt-tag {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 6px;
+  border-radius: var(--pm-gantt-radius);
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--pm-gantt-on-solid);
+  background: var(--pm-gantt-info);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-gantt-tag--primary {
+  background: var(--pm-gantt-primary);
+}
+
+.pm-gantt-tag--success {
+  background: var(--pm-gantt-success);
+}
+
+.pm-gantt-tag--warning {
+  background: var(--pm-gantt-warning);
+}
+
+.pm-gantt-tag--error {
+  background: var(--pm-gantt-error);
+}
+
+.pm-gantt-tag--info {
+  background: var(--pm-gantt-info);
+}
+
+.pm-gantt-tag--muted {
+  background: var(--pm-gantt-muted);
+}
+
+/* 条形:状态语义色(class 由组件按状态码算出来) */
+.pm-gantt-root .gantt_task_line.pm-gantt-bar--primary {
+  background: var(--pm-gantt-primary);
+  border-color: var(--pm-gantt-primary);
+}
+
+.pm-gantt-root .gantt_task_line.pm-gantt-bar--success {
+  background: var(--pm-gantt-success);
+  border-color: var(--pm-gantt-success);
+}
+
+.pm-gantt-root .gantt_task_line.pm-gantt-bar--warning {
+  background: var(--pm-gantt-warning);
+  border-color: var(--pm-gantt-warning);
+}
+
+.pm-gantt-root .gantt_task_line.pm-gantt-bar--error {
+  background: var(--pm-gantt-error);
+  border-color: var(--pm-gantt-error);
+}
+
+.pm-gantt-root .gantt_task_line.pm-gantt-bar--info {
+  background: var(--pm-gantt-info);
+  border-color: var(--pm-gantt-info);
+}
+
+.pm-gantt-root .gantt_task_line.pm-gantt-bar--muted {
+  background: var(--pm-gantt-muted);
+  border-color: var(--pm-gantt-muted);
+}
+
+/* 条上的文字:深底 ⇒ 浅字 */
+.pm-gantt-root .gantt_task_line .gantt_task_content {
+  color: var(--pm-gantt-on-solid);
+}
