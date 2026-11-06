@@ -327,7 +327,7 @@ THIRD-PARTY-NOTICES.md                  # MIT 声明
     mapping: GanttMapping;
     loading: boolean;
     total: number;          // 后端返回的总数
-    truncated: boolean;     // total > 实际显示条数
+    truncated: boolean;     // 分页口径：total > 本次取回的条数
     applyDateChange: (rowId: string, change: TaskDateChange) => Promise<boolean>;
     reload: () => void;
   }
