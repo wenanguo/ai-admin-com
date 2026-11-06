@@ -205,6 +205,36 @@ PM 的 6 个路由在 `config/routes.ts` 注册,侧边栏里也有入口。
 > 任务看板拖拽写的是 `…:update`(不是 `…:patch`),两种码都要给。
 > (这几条是**重新种种子**时的记账口径:现有种子就是这么写的。)
 
+## AI 部分架构
+
+AI 是**独立服务**（`D:/project/ai-admin-ai`，Next.js，端口 3100），与 AiAdmin 后端平行：
+
+- **框架：pi agent**（`@earendil-works/pi-coding-agent`）—— 不是 Claude Code / Anthropic SDK
+- **模型：MiniMax-M3.1-Flash**（`minimax-cn` provider，经 pi 的 `ModelRuntime` 解析）
+- pi 的 coding 内置工具（read/bash/edit/write）**全部禁用**（`noTools: "builtin"`），
+  只注册业务命令（当前仅 `create_task`）
+- 命令经适配层（鉴权透传 / 字段映射 / 错误归一 / 幂等）落到 AiAdmin 后端，**每次写都留审计**
+
+传输层要点：
+
+| 事项 | 约定 |
+| ---- | ---- |
+| 前缀 | 浏览器侧用 `/ai-api`（AI 路径也是 `/api/agent/...`，直接打会被 AiAdmin 的代理接走） |
+| 认证 | **复用 AiAdmin 的 token**，AI 服务透传给 AiAdmin 校验 ⇒ 用户权限 = AI 的权限 |
+| 事件 | REST（快照/命令/审计/待确认）+ SSE（7 种事件），心跳 15s |
+| 真相 | **快照为真相**（`GET /api/agent/:cid/state`），SSE 只是增量 |
+
+前端这一侧的设计要点（都在 `src/services/api/ai/` 与 `src/components/ai-workspace/`）：
+
+- **手写 SSE 客户端**：原生 `EventSource` 不能自定义请求头 ⇒ 带不了 `Authorization` ⇒ 用
+  `fetch` + `ReadableStream` 自己拆帧
+- **回放窗口**：服务端连上会立刻回放整段历史，与快照请求赛跑 ⇒ 前端用回放窗口消解，
+  否则历史会被渲染两遍
+- **命令 id 幂等**：重试必须复用同一个 id，否则命令会真的再执行一遍
+- **AI 挂了不瘫**：错误只显示在面板里（不弹全局提示）、待确认/审计按需读、没有数据源就不画配额条
+
+完整链路图与事件映射全表：**[`docs/ai-architecture.md`](docs/ai-architecture.md)**
+
 ## 当前状态与已知限制
 
 - **系统管理侧已经打通**:9 个页面全部走真实后端,列表 / 搜索 / 分页 / 新增 / 编辑 /
@@ -242,6 +272,45 @@ PM 的 6 个路由在 `config/routes.ts` 注册,侧边栏里也有入口。
   纯网络故障则不登出,只把错误抛给调用方
 - **新建用户要选角色**:后端 `UserCreateSchema.role_ids` 默认是 `[]`,
   没有角色的账号登录后是空的(既没有菜单也没有权限码)
+
+## 项目目录结构（总览）
+
+> 完整版（含每个目录的职责说明）：[`docs/directory-structure.md`](docs/directory-structure.md)
+
+```
+ai-admin-com/
+├── src/                  # ★ 业务源码，日常只改这里
+│   ├── app.tsx           # 应用入口 / 运行时配置
+│   ├── access.ts         # 权限定义
+│   ├── requestErrorConfig.ts  # 全局请求与错误处理
+│   ├── auth/             # token 存取与会话
+│   ├── services/         # ★ 唯一访问真实后端的地方
+│   │   ├── api/system/   # 系统管理接口
+│   │   ├── api/pm/       # 项目管理接口
+│   │   ├── api/ai/       # AI 接口（含 SSE 流式）
+│   │   └── demo/         # 演示页专用 mock
+│   ├── pages/
+│   │   ├── module_system/  # 系统管理 9 页
+│   │   ├── module_pm/      # 项目管理 6 路由
+│   │   ├── ai/workspace/   # AI 工作台
+│   │   └── ...             # Pro 模板示例页
+│   ├── components/
+│   │   ├── CrudTable/          # 共享 CRUD 脚手架
+│   │   ├── DeptTreeSelect/     # 部门树选择器
+│   │   ├── MenuPermissionTree/ # 菜单权限树
+│   │   ├── pm/                 # PM 专用共享件
+│   │   └── ai-workspace/       # AI 工作台组件族
+│   ├── menu/adapter.ts   # 后端菜单 → ProLayout 菜单的唯一转换处
+│   ├── locales/          # 中英文国际化
+│   └── utils/            # 通用工具
+├── config/               # Umi 配置：config.ts / routes.ts / proxy.ts / defaultSettings.ts
+├── mock/                 # 本地 Mock（仅演示页）
+├── cloudflare-worker/    # 独立的 Cloudflare Worker Mock API 服务
+├── e2e/                  # Playwright 端到端用例
+├── tests/                # Vitest 全局 setup 与通用 mock
+├── types/ scripts/ public/ docs/
+└── dist/ dist-dev/       # 构建产物（勿手改）
+```
 
 ## 目录约定
 
@@ -328,4 +397,6 @@ PM 的 6 个路由在 `config/routes.ts` 注册,侧边栏里也有入口。
 - PM 页面的实现计划:`docs/superpowers/plans/2026-11-03-aipm-frontend-pm-pages.md`
 - 修复记录:`docs/superpowers/plans/2026-10-31-ai-admin-frontend-template-fix-wave.md`、
   `docs/superpowers/plans/2026-10-31-ai-admin-frontend-template-review-round.md`
+- **目录结构总览**:`docs/directory-structure.md`
+- **AI 部分架构**:`docs/ai-architecture.md`
 - 上游说明:`README.ant-design-pro.md`
