@@ -23,6 +23,7 @@ npm run dev               # http://localhost:3100
 | --- | --- | --- |
 | `MINIMAX_CN_API_KEY` | minimax-cn 的 api key（pi SDK 只靠这个环境变量鉴权） | 是 |
 | `AI_MODEL` | 模型标识，如 `minimax-cn/MiniMax-M3.1-Flash` | 是 |
+| `AI_THINKING_LEVEL` | 思考级别（`off` / `minimal` / `low` / `medium` / `high` / `xhigh` / `max`），**缺省 `off`** | 否 |
 | `AIADMIN_BASE_URL` | AiAdmin 后端地址，base 里已含 `/api/v1` | 是 |
 | `DATABASE_URL` | AiAdmin 的 MySQL 连接串（`ai_*` 元数据表与业务表**同库**） | 是 |
 | `ALLOWED_ORIGINS` | 允许跨域的前端源，逗号分隔（回具体的源，不用 `*`） | 是 |
@@ -37,6 +38,8 @@ npm run dev               # http://localhost:3100
   真要把校验推迟到运行时，得改用 `instrumentation.ts`（本仓不这么做）。
 - 端口**不走环境变量**：钉在 `package.json` 的脚本里（`next dev -p 3100` /
   `next start -p 3100`），要换端口改 scripts。
+- ⚠️ **`AI_THINKING_LEVEL` 默认 `off`**：开了思考 ⇒ 模型**先想再写** ⇒ 用户等得更久。
+  开了它，服务端会把思考增量以 `thinking_delta` 事件外发 ⇒ 前端显示「思考中…」。
 
 ## 命令
 
@@ -129,6 +132,7 @@ npm run dev               # http://localhost:3100
 | --- | --- |
 | `connected` | `{conversationId, isStreaming}` |
 | `message_start` / `text_delta` / `message_end` | 助手说的话（`message_start` 在第一条文本增量到来时才发 ⇒ 没有空气泡） |
+| `thinking_delta` | 模型的思考增量（**只在 `AI_THINKING_LEVEL` 不为 `off` 时才有**；思考不是对话内容 ⇒ 前端显示「思考中…」而不是进气泡） |
 | `tool_call` | `{toolName, args}` |
 | `tool_result` | `{toolName, status:'ok'|'error', summary, details}` |
 | `agent_settled` | 一轮结束 |

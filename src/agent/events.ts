@@ -13,6 +13,13 @@ export const SSE_EVENTS = {
 	MESSAGE_START: "message_start",
 	/** 增量文本。 */
 	TEXT_DELTA: "text_delta",
+	/**
+	 * 思考增量（模型的「心里话」）。
+	 *
+	 * ⚠️ **默认不外发**（思考级别默认 `off` ⇒ 服务端压根不会产生它）。
+	 *    开了思考才会发 ⇒ 前端要能展示「思考中…」，否则界面就是卡住。
+	 */
+	THINKING_DELTA: "thinking_delta",
 	/** 一条助手消息结束（带完整文本）。 */
 	MESSAGE_END: "message_end",
 	/** 模型要调工具了。 */
@@ -57,6 +64,12 @@ export interface TextDeltaPayload {
 	delta: string;
 }
 
+/** `thinking_delta` 的载荷。 */
+export interface ThinkingDeltaPayload {
+	conversationId: string;
+	delta: string;
+}
+
 /** `message_end` 的载荷。 */
 export interface MessageEndPayload {
 	conversationId: string;
@@ -91,6 +104,7 @@ export type SsePayload =
 	| ConnectedPayload
 	| MessageStartPayload
 	| TextDeltaPayload
+	| ThinkingDeltaPayload
 	| MessageEndPayload
 	| ToolCallPayload
 	| ToolResultPayload

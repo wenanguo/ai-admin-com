@@ -6,8 +6,9 @@
  * `message_end` → `tool_execution_start` → `tool_execution_end` → … →
  * `turn_end` → `agent_end` → `agent_settled`
  *
- * 前端只认六种事件（见 `events.ts`），所以这里做一次收敛：
- * - `message_update` 只留 `text_delta`（思考增量 `thinking_delta` 不给前端）；
+ * 前端只认七种事件（见 `events.ts`），所以这里做一次收敛：
+ * - `message_update` 只留 `text_delta` 与 `thinking_delta`
+ *   （其它子事件不对前端有意义）；
  * - 助手的消息才发 `message_start` / `message_end`（用户那条不回显）；
  * - `agent_start` / `turn_*` / `agent_end` 不外发（对前端没意义）。
  *
@@ -107,6 +108,15 @@ export class AgentEventMapper {
 			}
 			case "message_update": {
 				const inner = event.assistantMessageEvent;
+				if (inner.type === "thinking_delta") {
+					// ⚠️ 思考增量**不开泡**：思考不是「助手说的话」，
+					//    只是「它还在想」⇒ 前端自己显示「思考中…」。
+					frames.push({
+						event: SSE_EVENTS.THINKING_DELTA,
+						payload: { conversationId, delta: inner.delta },
+					});
+					break;
+				}
 				if (inner.type !== "text_delta") {
 					break;
 				}

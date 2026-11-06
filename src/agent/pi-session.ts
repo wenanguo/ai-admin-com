@@ -54,6 +54,14 @@ export interface PiSessionOptions {
 	cwd?: string;
 	/** 模型标识（默认取环境变量里的）。 */
 	model?: string;
+	/**
+	 * 思考级别（缺省取环境变量 `AI_THINKING_LEVEL`，再缺省就是 `off`）。
+	 *
+	 * ⚠️ 开了思考 ⇒ 模型**先想再写** ⇒ 用户等得更久 ⇒ 前端得能展示
+	 *    「思考中…」（否则就是界面卡住）。思考增量会以 `thinking_delta`
+	 *    事件外发（见 `event-mapper.ts`）。
+	 */
+	thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 }
 
 /**
@@ -104,7 +112,7 @@ export async function createPiSession(
 		model, // 对象，不是字符串
 		modelRuntime,
 		resourceLoader,
-		thinkingLevel: "off",
+		thinkingLevel: options.thinkingLevel ?? env.AI_THINKING_LEVEL,
 		// 关掉 pi 的 coding 内置工具（read/bash/edit/write）——
 		// 它们能在服务器上乱跑，本服务只给模型业务命令。
 		noTools: "builtin",

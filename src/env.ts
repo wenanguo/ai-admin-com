@@ -1,11 +1,33 @@
 import { z } from "zod";
 
+/**
+ * 思考级别（与 pi SDK 的 `ThinkingLevel` 一致）。
+ *
+ * ⚠️ **默认 `off`**：思考内容会让用户等更久（要先想再写），
+ *    而且现在的前端还没接「思考中」的展示 ⇒ 默认不开。
+ *    要开就把环境变量设成 `low` / `medium` / `high`。
+ */
+export const THINKING_LEVELS = [
+	"off",
+	"minimal",
+	"low",
+	"medium",
+	"high",
+	"xhigh",
+	"max",
+] as const;
+
+/** 思考级别。 */
+export type ThinkingLevelSetting = (typeof THINKING_LEVELS)[number];
+
 /** 本服务需要的全部环境变量（单租户，没有租户维度）。 */
 export interface Env {
 	/** minimax-cn 的 api key；pi SDK 只靠这个环境变量鉴权。 */
 	MINIMAX_CN_API_KEY: string;
 	/** 模型标识，形如 `minimax-cn/MiniMax-M3.1-Flash`。 */
 	AI_MODEL: string;
+	/** 思考级别（缺省 `off`）。 */
+	AI_THINKING_LEVEL: ThinkingLevelSetting;
 	/** AiAdmin 后端地址（base 里已含 `/api/v1`）。 */
 	AIADMIN_BASE_URL: string;
 	/** AiAdmin 的 MySQL 连接串（`ai_*` 元数据表与业务表同库）。 */
@@ -25,6 +47,12 @@ function splitOrigins(value: string): string[] {
 const envSchema = z.object({
 	MINIMAX_CN_API_KEY: z.string().min(1, "不能为空"),
 	AI_MODEL: z.string().min(1, "不能为空"),
+	// ⚠️ **缺省 `off`**：思考会让用户等更久，而现在的前端还没接「思考中」展示。
+	AI_THINKING_LEVEL: z
+		.string()
+		.optional()
+		.transform((value) => value ?? "off")
+		.pipe(z.enum(THINKING_LEVELS)),
 	AIADMIN_BASE_URL: z
 		.string()
 		.min(1, "不能为空")

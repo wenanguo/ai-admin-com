@@ -28,6 +28,20 @@ function textDelta(delta: string): AgentSessionEvent {
 	} as unknown as AgentSessionEvent;
 }
 
+/** 造一个 message_update（思考增量）事件。 */
+function thinkingDelta(delta: string): AgentSessionEvent {
+	return {
+		type: "message_update",
+		message: assistantMessage(),
+		assistantMessageEvent: {
+			type: "thinking_delta",
+			contentIndex: 0,
+			delta,
+			partial: { role: "assistant", content: [] },
+		},
+	} as unknown as AgentSessionEvent;
+}
+
 describe("事件映射", () => {
 	it("只带工具调用、没有正文的那一轮 ⇒ 一个气泡都不开", () => {
 		const mapper = new AgentEventMapper();
@@ -42,6 +56,16 @@ describe("事件映射", () => {
 			message: assistantMessage(),
 		} as unknown as AgentSessionEvent);
 		expect(endFrames).toEqual([]);
+	});
+
+	it("思考增量 ⇒ 单独发 thinking_delta（**不开泡**：思考不是助手说的话）", () => {
+		const mapper = new AgentEventMapper();
+		const frames = mapper.map(CID, thinkingDelta("先想想…"));
+
+		expect(frames.map((frame) => frame.event)).toEqual(["thinking_delta"]);
+		expect(frames[0]?.payload).toMatchObject({ conversationId: CID, delta: "先想想…" });
+		// ⚠️ 思考**不能**触发 message_start（否则前端多出一个空气泡）
+		expect(frames.some((frame) => frame.event === "message_start")).toBe(false);
 	});
 
 	it("有正文的那一轮 ⇒ message_start → text_delta* → message_end", () => {
