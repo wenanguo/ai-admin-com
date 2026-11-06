@@ -146,7 +146,11 @@ export async function createPiSession(
 		// 它们能在服务器上乱跑，本服务只给模型业务命令。
 		noTools: "builtin",
 		// 业务命令 + `load_skill`（读技能文件；只读技能目录内的）
-		customTools: [...options.tools, createLoadSkillTool(skills)],
+		// ⚠️ **没有技能时就不注册它** ⇒ 别给模型一个必然失败的工具。
+		customTools:
+			skills.length > 0
+				? [...options.tools, createLoadSkillTool(skills)]
+				: options.tools,
 		// 内存态会话，但**带着我们还原出来的历史**：
 		// 持久化归我们（ai_message 表），pi 这边只管「这一轮对话的上下文」。
 		sessionManager: SessionManager.inMemory(cwd, { id: options.conversationId }, entries),

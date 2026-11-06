@@ -319,8 +319,46 @@ src/pending-query.ts              待确认的**读侧**（只看自己的行 + 
 src/tools/                        命令目录（create_task 一个命令 + 闸门形状）
 src/http/                         HTTP 通用件（cors / respond 信封 / auth 取 token / sse 帧格式 / errors 错误映射）
 src/app/                          Route Handler（/api/agent/** 、/api/audit 与 /api/pending；尖峰路由已删）
+.pi/skills/<name>/SKILL.md        ★ 技能（**加 AI 能力不用改代码**；见下面那节）
 spike/                            Task 1 的风险尖峰（一次性，结论在 spike/FINDINGS.md）
 ```
+
+## 技能（SKILL.md）：加 AI 能力不用改代码
+
+**一句话**：加一条 AI 能力 = 在 `.pi/skills/<名字>/SKILL.md` 放一个 markdown 文件，
+**不用写 TypeScript、不用改本仓的代码**。
+
+```markdown
+---
+name: create-task
+description: 在 AiAdmin 的项目下新建一条任务。用户说「建个任务」时用。
+---
+
+# 建任务
+
+1. 先用你工具里那个**列项目**的工具按编码找到项目 id；找不到 ⇒ 问用户，不要编。
+2. 再用你工具里那个**建任务**的工具建任务（project_id / title / reporter_id …）。
+3. 回报：任务标题、所属项目、状态、任务 key。
+```
+
+- **两个必填字段**：`name`（小写字母数字与连字符）与 `description`
+  （**路由依据** —— 模型靠它决定要不要加载这个技能 ⇒ 写清「什么时候用」）。
+- 正文是**给模型看的操作说明**：写「先做什么、再做什么、参数怎么填、
+  什么时候该问用户」。
+- **不要写死工具名**（工具名会随后端 MCP 接入而变）⇒ 写「你工具里那个…的工具」，
+  并补一句「工具里没有它 ⇒ 直接说这个能力还没接上，不要瞎编工具名」。
+- 附属文件（参考资料等）可以放在技能目录里，模型用 `load_skill` 读。
+
+### 生效方式与边界
+
+| 事项 | 现状 |
+| ---- | ---- |
+| 生效 | **重启服务**（pi 的 `/reload` 只在交互式会话里可用） |
+| 技能来源 | **只有 `.pi/skills/`**（用户家目录的 `~/.agents/skills` 会被过滤掉） |
+| 模型能读什么 | **只有技能目录内的文件**（pi 的 `read`/`bash` 工具是关着的） |
+| 三个样板 | `create-task`（用现有的 `create_task` 工具，**现在就能用**）、`list-tasks` / `list-projects`（**格式样板**：它们要的「列项目 / 列任务」工具要等后端 MCP 接上，见 `docs/superpowers/specs/2026-11-06-aipm-mcp-skills-design.md` 的阶段 1） |
+
+⚠️ 技能内容会进模型上下文 ⇒ **它等同于提示词** ⇒ 走 git 评审（别往里写凭据）。
 
 ### 五张表
 

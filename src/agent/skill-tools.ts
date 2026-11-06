@@ -17,7 +17,7 @@
  * 返回 `isError` 的结果 ⇒ 模型看到的是一句人话（「没有叫 xxx 的技能」）。
  */
 
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
@@ -108,7 +108,8 @@ export function createLoadSkillTool(
 			}
 			let raw: string;
 			try {
-				raw = readFileSync(target, "utf8");
+				// ⚠️ 用**异步**读：这是服务器进程 ⇒ 同步读会卡住事件循环
+				raw = await readFile(target, "utf8");
 			} catch {
 				return failure(`读不到技能文件（${skill.name}）。`);
 			}

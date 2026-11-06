@@ -15,6 +15,19 @@ import { createPiSession } from "./pi-session";
 import type { MessageRecord } from "./store";
 import type { CommandTool } from "../tools/types";
 
+/** mock 的 loader 返回的技能（测试可改 ⇒ 验「没有技能」那条路）。 */
+const skillsMock = vi.hoisted(() => ({
+	value: [
+		{
+			name: "create-task",
+			description: "在 AiAdmin 里建任务。",
+			filePath: "/repo/.pi/skills/create-task/SKILL.md",
+			baseDir: "/repo/.pi/skills/create-task",
+			disableModelInvocation: false,
+		},
+	],
+}));
+
 vi.mock("@earendil-works/pi-coding-agent", () => ({
 	createAgentSession: vi.fn(async () => ({
 		session: { dispose: () => {} },
@@ -25,15 +38,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 		async reload(): Promise<void> {}
 		getSkills() {
 			return {
-				skills: [
-					{
-						name: "create-task",
-						description: "在 AiAdmin 里建任务。",
-						filePath: "/repo/.pi/skills/create-task/SKILL.md",
-						baseDir: "/repo/.pi/skills/create-task",
-						disableModelInvocation: false,
-					},
-				],
+				skills: skillsMock.value,
 				diagnostics: [],
 			};
 		}
@@ -77,6 +82,16 @@ const fakeTool = {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	// 技能表回到默认（一两个用例会改成空）
+	skillsMock.value = [
+		{
+			name: "create-task",
+			description: "在 AiAdmin 里建任务。",
+			filePath: "/repo/.pi/skills/create-task/SKILL.md",
+			baseDir: "/repo/.pi/skills/create-task",
+			disableModelInvocation: false,
+		},
+	];
 });
 
 describe("pi 会话构造", () => {
@@ -183,5 +198,25 @@ describe("pi 会话构造", () => {
 				model: "MiniMax-M3.1-Flash",
 			}),
 		).rejects.toThrow(/provider\/model/);
+	});
+});
+
+describe("pi 会话 · 没有技能时", () => {
+	it("不注册 load_skill（没有技能可加载 ⇒ 别给模型一个必然失败的工具）", async () => {
+		skillsMock.value = [];
+
+		await createPiSession({
+			tools: [fakeTool],
+			systemPrompt: "你是助手。",
+			conversationId: "conv-1",
+			history: [],
+			model: "minimax-cn/MiniMax-M3.1-Flash",
+		});
+
+		const options = vi.mocked(createAgentSession).mock.calls[0]?.[0];
+		const names = (options?.customTools ?? []).map((tool) => tool.name);
+		expect(names).not.toContain("load_skill");
+		// 业务命令还在
+		expect(names).toContain("create_task");
 	});
 });
