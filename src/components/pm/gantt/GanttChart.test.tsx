@@ -83,6 +83,8 @@ function simulateDrag(
   start: string,
   end: string,
 ): void {
+  // 真实拖动时 dhtmlx 先问「能不能拖」(组件在这里记下旧日期),再拖
+  inst.callEvent('onBeforeTaskDrag', [id, 'move', new Event('drag')]);
   const task = inst.getTask(id);
   task.start_date = inst.date.parseDate(start, '%Y-%m-%d');
   task.end_date = inst.date.parseDate(end, '%Y-%m-%d');
@@ -516,5 +518,190 @@ describe('GanttChart 今天线与安全', () => {
   it('gantt.css 里没有针对 .gantt_task_scale 的死规则', async () => {
     // 今天线挂在 .gantt_data_area(dhtmlx 自己已经 position: relative)
     expect(ganttCss).not.toMatch(/\.gantt_task_scale\s*\{/);
+  });
+
+  it('左表格的行底色也接管(暗色主题下任务名要看得见)', async () => {
+    // ⚠️ dhtmlx 默认给左表格的行一个**浅灰**底 ⇒ 暗色主题下 antd 的正文色
+    // (白)落在浅灰上 ⇒ 任务名看不见 ⇒ 行底色也得跟着 token 走。
+    expect(ganttCss).toContain('--dhx-gantt-grid-body-background');
+    expect(ganttCss).toContain('var(--pm-gantt-bg)');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* F1:左表格的宽度(标题列可读 + 网格跟着容器走 + 分隔条可拖)          */
+/* ------------------------------------------------------------------ */
+
+/** 起一个指定宽度的宿主容器(量宽度要用) */
+function makeHost(width: string): HTMLDivElement {
+  const host = document.createElement('div');
+  host.style.width = width;
+  host.style.height = '500px';
+  document.body.appendChild(host);
+  return host;
+}
+
+/** 标题列表头的实际宽度(px) */
+function titleColumnWidth(host: HTMLElement): number {
+  const cell = host.querySelector('.gantt_grid_head_cell') as HTMLElement;
+  return cell?.offsetWidth ?? 0;
+}
+
+/** 左表格(网格)的实际宽度(px) */
+function gridWidthOf(host: HTMLElement): number {
+  const grid = host.querySelector('.gantt_grid') as HTMLElement;
+  return grid?.offsetWidth ?? 0;
+}
+
+describe('GanttChart 左表格宽度', () => {
+  it('容器再窄,标题列也保住可读的宽度(≥160px)', async () => {
+    // 复现 F1 的现场:容器只有 700px(以前标题列被压成 `AIP...`)
+    const host = makeHost('700px');
+    await render(<GanttChart data={ROWS} />, { container: host });
+
+    expect(titleColumnWidth(host)).toBeGreaterThanOrEqual(160);
+    // 标题列里真的能看到任务名(不是三个点)
+    const cells = [...host.querySelectorAll('.gantt_cell_tree')].map(
+      (cell) => cell.textContent ?? '',
+    );
+    expect(cells.join('|')).toContain('任务甲');
+    host.remove();
+  });
+
+  it('网格总宽跟着容器走(容器变宽 ⇒ 网格变宽)', async () => {
+    const host = makeHost('900px');
+    await render(<GanttChart data={ROWS} />, { container: host });
+
+    const narrow = gridWidthOf(host);
+    expect(narrow).toBeGreaterThan(0);
+
+    host.style.width = '1400px';
+    await vi.waitFor(() => {
+      expect(gridWidthOf(host)).toBeGreaterThan(narrow);
+    });
+    host.remove();
+  });
+
+  it('分隔条:拖动能调左表格的总宽', async () => {
+    const host = makeHost('1200px');
+    await render(<GanttChart data={ROWS} />, { container: host });
+
+    const handle = host.querySelector('.pm-gantt-splitter') as HTMLElement;
+    expect(handle).toBeTruthy();
+
+    const before = gridWidthOf(host);
+    handle.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, clientX: 500 }),
+    );
+    window.dispatchEvent(
+      new PointerEvent('pointermove', { bubbles: true, clientX: 600 }),
+    );
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+
+    await vi.waitFor(() => {
+      expect(gridWidthOf(host)).toBeGreaterThan(before);
+    });
+    host.remove();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* F2:分组行不可拖                                                     */
+/* ------------------------------------------------------------------ */
+
+describe('GanttChart 分组行不可拖', () => {
+  it('项目/里程碑行:onBeforeTaskDrag 返回 false(拖不动)', async () => {
+    const onTaskDragEnd = vi.fn();
+    const { container } = await render(
+      <GanttChart data={ROWS} onTaskDragEnd={onTaskDragEnd} />,
+    );
+    const inst = getInstance(container);
+
+    // 分组行(项目 p-1 / 里程碑 m-1)⇒ 取消拖动
+    expect(
+      inst.callEvent('onBeforeTaskDrag', ['p-1', 'move', new Event('drag')]),
+    ).toBe(false);
+    expect(
+      inst.callEvent('onBeforeTaskDrag', ['m-1', 'move', new Event('drag')]),
+    ).toBe(false);
+    // 缩放汇总条也不行
+    expect(
+      inst.callEvent('onBeforeTaskDrag', ['p-1', 'resize', new Event('drag')]),
+    ).toBe(false);
+    // 任务行照旧可以拖
+    expect(
+      inst.callEvent('onBeforeTaskDrag', ['t-10', 'move', new Event('drag')]),
+    ).not.toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* F3:写失败回滚在 data 换身份后仍然有效                               */
+/* ------------------------------------------------------------------ */
+
+describe('GanttChart 回滚与数据刷新', () => {
+  it('拖动后 data 换了身份(内容一样)⇒ 仍能回滚到拖动前', async () => {
+    const ref: RefObject<GanttChartHandle | null> = { current: null };
+    const { container, rerender } = await render(
+      <GanttChart ref={ref} data={ROWS} onTaskDragEnd={vi.fn()} />,
+    );
+    const inst = getInstance(container);
+
+    simulateDrag(inst, 't-10', '2026-09-03', '2026-09-14');
+
+    // 侧载名字晚到 ⇒ mapping 重算 ⇒ **新的 data 身份**(内容一样)
+    await rerender(
+      <GanttChart
+        ref={ref}
+        data={ROWS.map((row) => ({ ...row }))}
+        onTaskDragEnd={vi.fn()}
+      />,
+    );
+
+    // 写回还在飞:条形**保持用户拖到的位置**(不被新数据弹回)
+    expect(inst.getTask('t-10').start_date).toEqual(
+      inst.date.parseDate('2026-09-03', '%Y-%m-%d'),
+    );
+
+    // 写失败 ⇒ 回滚仍然有效(旧实现在这里把快照整表清了 ⇒ 静默不回滚)
+    ref.current?.revertTask('t-10');
+    expect(inst.getTask('t-10').start_date).toEqual(
+      inst.date.parseDate('2026-09-01', '%Y-%m-%d'),
+    );
+    expect(inst.getTask('t-10').end_date).toEqual(
+      inst.date.parseDate('2026-09-12', '%Y-%m-%d'),
+    );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* F4:条形的 tooltip 给完整日期                                        */
+/* ------------------------------------------------------------------ */
+
+describe('GanttChart 条形 tooltip', () => {
+  it('悬停条形 ⇒ tooltip 里是完整日期(不是列里的 MM-DD)', async () => {
+    const { container } = await render(<GanttChart data={ROWS} />);
+
+    const bars = [...container.querySelectorAll('.gantt_task_line')];
+    const bar = bars.find((element) =>
+      element.textContent?.includes('任务甲'),
+    ) as HTMLElement;
+    expect(bar).toBeTruthy();
+
+    bar.dispatchEvent(
+      new MouseEvent('mousemove', {
+        bubbles: true,
+        clientX: 120,
+        clientY: 120,
+      }),
+    );
+
+    await vi.waitFor(() => {
+      const tooltip = container.querySelector('.pm-gantt-tooltip');
+      expect(tooltip?.textContent).toContain('任务甲');
+      // 完整日期(列里只显示 MM-DD)
+      expect(tooltip?.textContent).toContain('2026-09-01');
+      expect(tooltip?.textContent).toContain('2026-09-12');
+    });
   });
 });
