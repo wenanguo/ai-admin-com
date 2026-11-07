@@ -81,20 +81,34 @@ const AI_SERVICE_TARGET = 'http://localhost:3100';
  * 前端共享请求层对 401 走「静默刷新 token + 重放」⇒ 刷新也失败 ⇒
  * **全局登出** ⇒ 页面跳到 `/user/login` ⇒ 所有「等表格渲染」的断言超时。
  *
- * 把它关掉之后,e2e 里的 `/ai-api/**` 打到静态服务器 ⇒ 返回 404/HTML
- * (**不是 401**)⇒ 不触发登出。
+ * 把它关掉之后,e2e 里的 `/ai-api/**` 打到静态服务器 ⇒ umi preview 的 SPA
+ * fallback 返回**首页 index.html(200, `content-type: text/html`)**
+ * (**不是 401**)⇒ 前端不会触发「刷新 token ⇒ 登出」。
  *
  * ⚠️ AI 相关的 e2e 用例**自己 mock 了 AI 服务**
  * (见 `e2e/ai-workspace.spec.ts` 的 `setupAiService`,它在浏览器侧拦截
  * `/ai-api/api/**`)⇒ 它们不依赖这条代理规则 ⇒ 关掉不影响它们。
  *
- * ⚠️ 只写 `off` / `false` / `0` 才关闭;写别的值(包括空)都当「照常代理」。
+ * ⚠️ **取值语义(与 `PROXY_INSECURE_TLS` 相反,别互相抄错)**:
+ * - 本开关 `PROXY_AI_API`:**只有** `off` / `false` / `0` 才**关闭**代理;
+ *   写别的值(包括空字符串、`true`、`1`、`no`)都当「照常代理」。
+ * - `PROXY_INSECURE_TLS`:**只有** `true` 才**开启**(跳过证书校验);
+ *   写别的值(包括空)都当「不跳过」。
+ * 即一个是「关掉才生效」,一个是「打开才生效」,极性相反。
  */
 const PROXY_AI_API_OFF = ['off', 'false', '0'].includes(
   (process.env.PROXY_AI_API || '').trim().toLowerCase(),
 );
 
-/** 一条代理规则(http-proxy-middleware 的 Options 子集)。 */
+/**
+ * 一条代理规则(http-proxy-middleware 的 Options 子集)。
+ *
+ * ⚠️ 这只是 **AiAdmin 那条规则之外的子集**:只覆盖 AI 服务规则用到的字段
+ * (`target` / `changeOrigin` / `pathRewrite`)。
+ * AiAdmin 的 `/api/` 规则多一个 `secure` 字段(证书校验),
+ * 而本类型**没有** `secure` ⇒ 本类型**不能**用来标注 `aiadminProxy`,
+ * 也不该随手给它加上 `secure`(AI 服务走 http,加了就多余)。
+ */
 type ProxyRule = {
   target: string;
   changeOrigin: boolean;
