@@ -171,6 +171,13 @@ export default [
         component: './module_pm/task/board',
       },
       {
+        // 任务甘特页:按计划起止日期排期,拖拽改期只改 start_date/due_date
+        path: '/pm/task/gantt',
+        name: 'taskGantt',
+        icon: 'barChart',
+        component: './module_pm/task/gantt',
+      },
+      {
         // 风险登记册页:上面是 5×5 热力图(横轴影响、纵轴概率,点格子过滤),
         // 下面是风险列表;等级是派生量(后端只有 score)
         path: '/pm/risk',

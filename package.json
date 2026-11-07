@@ -16,7 +16,7 @@
     "biome": "biome check --write",
     "prepare": "npx husky && max setup",
     "preview": "cross-env UMI_OUTPUT_PATH=dist max preview --port 8000",
-    "preview:e2e": "cross-env UMI_OUTPUT_PATH=dist max preview --port 8010",
+    "preview:e2e": "cross-env UMI_OUTPUT_PATH=dist PROXY_AI_API=off max preview --port 8010",
     "preview:build": "cross-env UMI_OUTPUT_PATH=dist max build && cross-env UMI_OUTPUT_PATH=dist max preview --port 8000",
     "record": "cross-env NODE_ENV=development UMI_ENV=test max record --scene=login",
     "simple": "node scripts/simple.js",

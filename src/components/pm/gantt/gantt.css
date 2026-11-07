@@ -1,0 +1,261 @@
+/**
+ * 甘特图皮肤。
+ *
+ * ⚠️ **这个文件里没有一个色值**:颜色全是 `var(--pm-gantt-*)`,由
+ * `GanttChart` 组件用 antd 的 `theme.useToken()` 注入到根元素上 ⇒
+ * 主题切换(亮/暗)自动跟上,前端也不需要为字典的每个状态码写一份配色。
+ *
+ * dhtmlx 自带的样式也是 CSS 变量(`--dhx-gantt-*`)⇒ 这里把 antd 的
+ * token 转译过去,不需要 `!important` 硬压。
+ *
+ * ## 线上码 → 颜色的对照表**只在这里**
+ *
+ * 组件(TSX)不造任何码表:状态只把映射层给的 `statusCssClass(status_code)`
+ * 发出来(形如 `pm-gantt-in_progress`),下面按 `.pm-gantt-<线上码>` 选择器
+ * 上色 ⇒ **加一个状态码只要在这里加一条规则,不用改 TS**。
+ * 已知码之外的(字典新增的码)走兜底规则,落默认色。
+ */
+
+/* 根容器:把 dhtmlx 的变量接到我们的 token 变量上 */
+.pm-gantt-root {
+  --dhx-gantt-font-family: inherit;
+  --dhx-gantt-font-size: 13px;
+
+  --dhx-gantt-base-colors-background: var(--pm-gantt-bg);
+  --dhx-gantt-base-colors-text-base: var(--pm-gantt-text);
+  --dhx-gantt-base-colors-text-light: var(--pm-gantt-text-light);
+  --dhx-gantt-base-colors-border: var(--pm-gantt-border);
+  --dhx-gantt-base-colors-border-light: var(--pm-gantt-border);
+  --dhx-gantt-base-colors-primary: var(--pm-gantt-primary);
+
+  --dhx-gantt-container-background: var(--pm-gantt-bg);
+  --dhx-gantt-container-color: var(--pm-gantt-text);
+
+  --dhx-gantt-scale-background: var(--pm-gantt-head-bg);
+  --dhx-gantt-scale-color: var(--pm-gantt-text);
+  --dhx-gantt-scale-border-horizontal: var(--pm-gantt-border);
+  --dhx-gantt-scale-border-vertical: var(--pm-gantt-border);
+
+  --dhx-gantt-grid-scale-background: var(--pm-gantt-head-bg);
+  --dhx-gantt-grid-scale-color: var(--pm-gantt-text);
+  --dhx-gantt-grid-cell-border: var(--pm-gantt-border);
+  --dhx-gantt-grid-row-border: var(--pm-gantt-border);
+  /* 左表格的行底色:不接管的话 dhtmlx 用自己的浅灰 ⇒ 暗色主题下
+     「白字 + 浅灰底」⇒ 任务名看不见 */
+  --dhx-gantt-grid-body-background: var(--pm-gantt-bg);
+  /*
+    ⚠️ 这两个**必须在这里重新声明**,不能只靠 dhtmlx 的 :root:
+    dhtmlx 在 `:root` 上写的是 `--dhx-gantt-task-row-background:
+    var(--dhx-gantt-container-background)` —— CSS 自定义属性的替换发生在
+    **声明它的那一层** ⇒ 在 :root 上就被替换成了 dhtmlx 的默认白色,
+    后面再改 `--dhx-gantt-container-background` 也影响不到它
+    ⇒ 暗色主题下左表格的行还是白底 + 白字(任务名看不见)。
+    在我们自己的根元素上重新声明 ⇒ 替换发生在这一层 ⇒ 跟着 token 走。
+  */
+  --dhx-gantt-task-row-background: var(--pm-gantt-bg);
+  --dhx-gantt-task-row-background--odd: var(--pm-gantt-bg);
+  --dhx-gantt-task-row-border: 1px solid var(--pm-gantt-border);
+
+  --dhx-gantt-timeline-scale-background: var(--pm-gantt-head-bg);
+  --dhx-gantt-timeline-scale-color: var(--pm-gantt-text);
+  --dhx-gantt-timeline-scale-border-vertical: var(--pm-gantt-border);
+
+  --dhx-gantt-task-border-radius: var(--pm-gantt-radius);
+  /* 条上的文字:底色是浅色调 ⇒ 用主题正文色(亮/暗都够对比) */
+  --dhx-gantt-task-color: var(--pm-gantt-text);
+  --dhx-gantt-task-line-text: var(--pm-gantt-text);
+}
+
+/* 表头里的刻度文字:不要被 dhtmlx 默认的 uppercase 弄成大写 */
+.pm-gantt-root .gantt_scale_cell {
+  text-transform: none;
+}
+
+/**
+ * 今天线。
+ *
+ * 社区版没有 `addMarker`(Pro 能力)⇒ 自己画一条线:位置由组件按
+ * `posFromDate` 换算后写在 `left` 上。
+ *
+ * 挂点是 `.gantt_data_area` —— dhtmlx 自己已经给它 `position: relative`
+ * ⇒ 这里**不需要**再给 `.gantt_task_scale` 加定位(那是条死规则)。
+ */
+.pm-gantt-today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--pm-gantt-today);
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* ------------------------------------------------------------------
+ * 状态线上码 → 语义色(本文件是**唯一**的码表)
+ *
+ * 每个码给三档:
+ * - `--pm-gantt-state`        实色(边框/强调)
+ * - `--pm-gantt-state-bg`     浅色底(标签底色)
+ * - `--pm-gantt-state-border` 中间色(条形底色)
+ * 文字一律用 `--pm-gantt-text`(主题正文色)⇒ 亮/暗主题下都够对比,
+ * 不会出现「浅底浅字」。
+ * ------------------------------------------------------------------ */
+.pm-gantt-root .pm-gantt-done {
+  --pm-gantt-state: var(--pm-gantt-success);
+  --pm-gantt-state-bg: var(--pm-gantt-success-bg);
+  --pm-gantt-state-border: var(--pm-gantt-success-border);
+}
+
+.pm-gantt-root .pm-gantt-in_progress {
+  --pm-gantt-state: var(--pm-gantt-primary);
+  --pm-gantt-state-bg: var(--pm-gantt-primary-bg);
+  --pm-gantt-state-border: var(--pm-gantt-primary-border);
+}
+
+.pm-gantt-root .pm-gantt-review {
+  --pm-gantt-state: var(--pm-gantt-warning);
+  --pm-gantt-state-bg: var(--pm-gantt-warning-bg);
+  --pm-gantt-state-border: var(--pm-gantt-warning-border);
+}
+
+.pm-gantt-root .pm-gantt-blocked {
+  --pm-gantt-state: var(--pm-gantt-error);
+  --pm-gantt-state-bg: var(--pm-gantt-error-bg);
+  --pm-gantt-state-border: var(--pm-gantt-error-border);
+}
+
+.pm-gantt-root .pm-gantt-todo {
+  --pm-gantt-state: var(--pm-gantt-info);
+  --pm-gantt-state-bg: var(--pm-gantt-info-bg);
+  --pm-gantt-state-border: var(--pm-gantt-info-border);
+}
+
+.pm-gantt-root .pm-gantt-backlog {
+  --pm-gantt-state: var(--pm-gantt-muted);
+  --pm-gantt-state-bg: var(--pm-gantt-muted-bg);
+  --pm-gantt-state-border: var(--pm-gantt-muted-border);
+}
+
+.pm-gantt-root .pm-gantt-cancelled {
+  --pm-gantt-state: var(--pm-gantt-muted);
+  --pm-gantt-state-bg: var(--pm-gantt-muted-bg);
+  --pm-gantt-state-border: var(--pm-gantt-muted-border);
+}
+
+/**
+ * 兜底:字典里新增的、这里没配过的状态码 ⇒ 落默认色。
+ *
+ * 用 `:where()` 压低优先级(0,1,0)⇒ 上面按线上码的规则(0,2,0)照样赢。
+ */
+:where(.pm-gantt-root) :is(.gantt_task_line, .pm-gantt-tag) {
+  --pm-gantt-state: var(--pm-gantt-info);
+  --pm-gantt-state-bg: var(--pm-gantt-info-bg);
+  --pm-gantt-state-border: var(--pm-gantt-info-border);
+}
+
+/* 状态/优先级标签:浅底 + 语义色边框 + 主题正文色文字 */
+.pm-gantt-root .pm-gantt-tag {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 6px;
+  border: 1px solid var(--pm-gantt-state);
+  border-radius: var(--pm-gantt-radius);
+  background: var(--pm-gantt-state-bg);
+  color: var(--pm-gantt-text);
+  font-size: 12px;
+  line-height: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 优先级:中性(后端优先级码无从得知,规格也没要求语义色) */
+.pm-gantt-root .pm-gantt-tag--neutral {
+  --pm-gantt-state: var(--pm-gantt-muted);
+  --pm-gantt-state-bg: var(--pm-gantt-muted-bg);
+  --pm-gantt-state-border: var(--pm-gantt-muted-border);
+}
+
+/* 条形:中间色底 + 语义色边框(分组行的汇总条没有状态 class ⇒ 走 dhtmlx 默认) */
+.pm-gantt-root .gantt_task_line[class*="pm-gantt-"] {
+  background: var(--pm-gantt-state-border);
+  border-color: var(--pm-gantt-state);
+}
+
+/* 条上的文字:主题正文色(浅底 ⇒ 不用浅色字) */
+.pm-gantt-root .gantt_task_line .gantt_task_content {
+  color: var(--pm-gantt-text);
+}
+
+/**
+ * 外层壳:撑高度 + 给分隔条一个定位参照。
+ *
+ * ⚠️ dhtmlx 的 init 目标(`.pm-gantt-root`)必须**满高**⇒ 高度给外层,
+ * 内层 100%。
+ */
+.pm-gantt-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.pm-gantt-root {
+  width: 100%;
+  height: 100%;
+}
+
+/**
+ * 分隔条:左表格(网格)↔ 时间轴。
+ *
+ * ⚠️ 社区版**没有**这个分隔条(PRO 才有)⇒ 自己放一个把手:
+ * 拖动时改左表格的总宽(各列宽跟着重算,标题列的最小宽度优先保住)。
+ */
+.pm-gantt-splitter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  /* 压在网格的右边缘上(不占时间轴的宽度) */
+  margin-left: -4px;
+  margin-block: 0;
+  padding: 0;
+  border: none;
+  cursor: col-resize;
+  z-index: 5;
+  background: transparent;
+  touch-action: none;
+}
+
+.pm-gantt-splitter:hover,
+.pm-gantt-splitter:focus-visible {
+  background: var(--pm-gantt-primary);
+  outline: none;
+}
+
+/**
+ * 条形的 tooltip(自己实现的,不用 dhtmlx 的 tooltip 扩展)。
+ *
+ * ⚠️ tooltip 挂在 `document.body` 下 ⇒ 拿不到 `.pm-gantt-root` 上的变量
+ * ⇒ 颜色变量由组件挂在 `document.documentElement` 上(见 GanttChart)。
+ */
+.pm-gantt-tooltip {
+  position: absolute;
+  z-index: 20;
+  padding: 6px 10px;
+  border: 1px solid var(--pm-gantt-border);
+  border-radius: var(--pm-gantt-radius);
+  background: var(--pm-gantt-bg);
+  color: var(--pm-gantt-text);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.pm-gantt-tooltip-title {
+  font-weight: 600;
+}
+
+.pm-gantt-tooltip-dates {
+  color: var(--pm-gantt-text-light);
+}

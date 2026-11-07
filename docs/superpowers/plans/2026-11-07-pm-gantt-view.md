@@ -327,7 +327,7 @@ THIRD-PARTY-NOTICES.md                  # MIT 声明
     mapping: GanttMapping;
     loading: boolean;
     total: number;          // 后端返回的总数
-    truncated: boolean;     // total > 实际显示条数
+    truncated: boolean;     // 分页口径：total > 本次取回的条数
     applyDateChange: (rowId: string, change: TaskDateChange) => Promise<boolean>;
     reload: () => void;
   }
@@ -359,9 +359,11 @@ THIRD-PARTY-NOTICES.md                  # MIT 声明
   - `applyDateChange`：按行 id 找到原始 `TaskOut` ⇒ `buildDateUpdatePayload` ⇒
     `null` 就直接返回 `false`（不发注定 422 的请求）⇒ 否则 `await updateTask(payload)`，
     成功返回 `true`，失败 catch 后返回 `false`（**错误提示由请求层统一弹**）。
-  - `truncated`：`total > mapping.data.filter(是任务行).length`。
-    ⇒ 需要一个「哪些行是任务行」的判据 ⇒ `mapping` 里补一个 `taskCount` 字段
-    （在 Task 1 的 `GanttMapping` 上加 `taskCount: number`），实现时同步改 Task 1 的接口与测试。
+  - `truncated`：**分页口径** —— `total > 本次取回的条数`（后端还有没取到的任务）。
+    ⚠️ **不要**用 `total > taskCount`：`taskCount` 只数进了甘特的任务，
+    「因缺起止日期被排除的任务」也会被算进去 ⇒ 页面会同时显示「被截断」和
+    「N 个任务未显示」两条互相矛盾的提示。缺日期的排除由 `mapping.excludedCount` 单独表达。
+    （`GanttMapping.taskCount` 仍保留：它给「实际显示了多少条任务」用。）
 
 - [ ] **Step 4: 跑测试确认它通过**
 
@@ -471,6 +473,9 @@ THIRD-PARTY-NOTICES.md                  # MIT 声明
   ③ Task 2（载荷只改两字段）；④ Task 3（分隔条/网格宽度）+ Task 5（提示 ⌘B）；⑤ Task 3（`readonly`）+ Task 5（权限门控）。
 - **类型一致性**：`GanttRow` / `GanttMapping` / `TaskDateChange` / `GanttChartHandle` 只在 Task 1/2/3 定义一次，
   后续任务按名字引用；Task 4 补 `GanttMapping.taskCount` 时同步回 Task 1 的接口与测试（已在 Task 4 Step 3 写明）。
+- **2026-11-06 订正（Task 4 复审）**：`truncated` 的口径从「`total > taskCount`」改成
+  「`total > 本次取回的条数`」—— 前者把「分页截断」与「缺起止日期被排除」混成一条提示。
+  spec §5.1.1 说的「不静默截断」指的是**分页**，故以 spec 为准。
 - **与 spec 的一处偏差**：spec §5.6 说状态色「与 DictTag 共用同一份口径」——
   实现改为 **`DictTag` 不动**（继续用字典 `list_class`），甘特条形另用一套**语义深色**映射
   （`src/components/pm/gantt/mapping.ts` 的 `statusCssClass` + `gantt.css` 的 token 色）。
