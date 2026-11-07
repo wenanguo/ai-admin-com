@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { GanttMapping } from '@/components/pm/gantt/mapping';
-import { mapTasksToGantt } from '@/components/pm/gantt/mapping';
+import {
+  isTaskRowId,
+  mapTasksToGantt,
+  TASK_ROW_PREFIX,
+} from '@/components/pm/gantt/mapping';
 import type { TaskDateChange } from '@/components/pm/gantt/payload';
 import { buildDateUpdatePayload } from '@/components/pm/gantt/payload';
 import type { TaskOut } from '@/services/api/pm/task';
@@ -25,9 +29,6 @@ import { useProjectNames } from './useProjectNames';
 
 /** 一次拉一页(后端 page_size 的上限就是 100) */
 const GANTT_LIST_PARAMS = { page_no: 1, page_size: 100 } as const;
-
-/** 任务行 id 的前缀(与映射层一致:`t-{id}`) */
-const TASK_ROW_PREFIX = 't-';
 
 /** useGanttTasks 的返回值 */
 export interface UseGanttTasksResult {
@@ -57,7 +58,10 @@ export interface UseGanttTasksResult {
 
 /** 行 id → 任务 id(不是任务行就返回 null) */
 function rowIdToTaskId(rowId: string): number | null {
-  if (!rowId.startsWith(TASK_ROW_PREFIX)) return null;
+  // ⚠️ **分组行(项目/里程碑)直接拒绝**:规格 §6.3 说分组行不可拖,
+  // 它的汇总条只反映子任务窗口;后端也没有「项目行」这种对象 ⇒
+  // 写回去必然 422 ⇒ 直接不发请求(不发就是最快的拒绝)。
+  if (!isTaskRowId(rowId)) return null;
   const id = Number(rowId.slice(TASK_ROW_PREFIX.length));
   return Number.isInteger(id) && id > 0 ? id : null;
 }

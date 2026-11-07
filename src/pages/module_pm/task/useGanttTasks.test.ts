@@ -376,6 +376,28 @@ describe('useGanttTasks 甘特数据', () => {
       expect(mocks.updateTask).not.toHaveBeenCalled();
     });
 
+    /**
+     * 里程碑行(分组行)也一样**直接拒绝**。
+     *
+     * 规格 §6.3:分组行不可拖,汇总条只反映子任务窗口;后端也没有
+     * 「里程碑行」这种可写对象 ⇒ 写回去必然 422 ⇒ 不发请求。
+     */
+    it('里程碑分组行 id ⇒ false,不发请求', async () => {
+      const { result } = await renderHook(() => useGanttTasks());
+
+      await vi.waitFor(() => {
+        expect(result.current.mapping.taskCount).toBe(1);
+      });
+
+      const ok = await result.current.applyDateChange('m-2', {
+        start_date: '2026-09-05',
+        end_date: '2026-09-20',
+      });
+
+      expect(ok).toBe(false);
+      expect(mocks.updateTask).not.toHaveBeenCalled();
+    });
+
     it('日期为空 ⇒ false,不发请求(不发注定 422 的请求)', async () => {
       const { result } = await renderHook(() => useGanttTasks());
 

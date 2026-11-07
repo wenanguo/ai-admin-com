@@ -174,6 +174,28 @@ export function mapTasksToGantt(
 /** 状态 class 前缀:gantt.css 里按 `.pm-gantt-<线上码>` 配 token 色 */
 const STATUS_CLASS_PREFIX = 'pm-gantt-';
 
+/** 任务行的 id 前缀(`t-{id}`) */
+export const TASK_ROW_PREFIX = 't-';
+
+/** 分组行(项目/里程碑)的 id 前缀 */
+const GROUP_ROW_PREFIXES = ['p-', 'm-'] as const;
+
+/**
+ * 这一行是不是**分组行**(项目/里程碑汇总行)。
+ *
+ * 规格 §6.3:分组行**不可拖** —— 汇总条只反映子任务窗口,拖它没有意义;
+ * 而且写回链路会缺该行的字段 ⇒ 整对象 PUT 必然失败 ⇒ 只能「恢复一半」。
+ * ⇒ 视图层(dhtmlx 侧禁拖)与数据层(写回直接拒绝)都靠这个判断。
+ */
+export function isGroupRowId(rowId: string): boolean {
+  return GROUP_ROW_PREFIXES.some((prefix) => rowId.startsWith(prefix));
+}
+
+/** 这一行是不是**任务行**(可拖、可写回) */
+export function isTaskRowId(rowId: string): boolean {
+  return rowId.startsWith(TASK_ROW_PREFIX);
+}
+
 /** 没有状态(未设置/被清空)时的兜底 class —— 有名有姓才能在 css 里接管它 */
 const STATUS_CLASS_NONE = `${STATUS_CLASS_PREFIX}none`;
 
