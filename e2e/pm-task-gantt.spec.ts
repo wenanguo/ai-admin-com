@@ -5,7 +5,12 @@ import {
   PM_PROJECT_PREFIX,
   PM_TASK_PREFIX,
 } from '../src/services/api/pm/paths';
-import { gotoModulePage, mainContent, setupModulePage } from './helpers';
+import {
+  businessErrorBody,
+  gotoModulePage,
+  mainContent,
+  setupModulePage,
+} from './helpers';
 
 /**
  * 任务甘特页(/pm/task/gantt)的前端闭环,接口全部拦截。
@@ -27,6 +32,7 @@ import { gotoModulePage, mainContent, setupModulePage } from './helpers';
 
 const GANTT_PAGE_PATH = '/pm/task/gantt';
 const TASK_LIST_URL = `**/api/v1${PM_TASK_PREFIX}/list**`;
+const TASK_UPDATE_URL = `**/api/v1${PM_TASK_PREFIX}/update/**`;
 const PROJECT_LIST_URL = `**/api/v1${PM_PROJECT_PREFIX}/list**`;
 const MILESTONE_LIST_URL = `**/api/v1${PM_MILESTONE_PREFIX}/list**`;
 /** 字典选项接口(状态/优先级的显示文案) */
@@ -274,6 +280,63 @@ async function setupGanttPage(
   );
 }
 
+/** 甘特上的某条任务条(叶子行,不是分组汇总条) */
+function ganttBar(page: Page, taskId: number): Locator {
+  return page.locator(`.gantt_task_line[data-task-id="t-${taskId}"]`);
+}
+
+/**
+ * 取一条任务条的位置(等图表先稳定下来)。
+ *
+ * ⚠️ dhtmlx 首次布局后还会再算一次左表格的宽度 ⇒ 条形会挪一两像素 ⇒
+ * 这时 `boundingBox()` 可能拿不到(元素正在动)⇒ 等它稳定。
+ */
+async function barBox(
+  page: Page,
+  taskId: number,
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  const bar = ganttBar(page, taskId);
+  await bar.waitFor({ state: 'visible' });
+  let box = await bar.boundingBox();
+  for (let attempt = 0; attempt < 30 && !box; attempt += 1) {
+    await page.waitForTimeout(100);
+    box = await bar.boundingBox();
+  }
+  if (!box) throw new Error('拿不到任务条的位置');
+  return box;
+}
+
+/**
+ * **真的用鼠标**拖一条任务条(规格 §6.5:拖拽写回的是整对象 PUT)。
+ *
+ * ⚠️ 不能用接口层模拟:dhtmlx 的拖拽是靠 mousedown/mousemove/mouseup
+ * 做的,只有真拖才会触发 `onBeforeTaskDrag` / `onAfterTaskDrag`
+ * ⇒ 写回链路(整对象 PUT + 失败回滚)才会被真正走到。
+ */
+async function dragTaskBar(
+  page: Page,
+  taskId: number,
+  deltaX: number,
+): Promise<void> {
+  const box = await barBox(page, taskId);
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  // 分几步移:dhtmlx 的拖拽按 mousemove 的位移累积
+  await page.mouse.move(startX + deltaX, startY, { steps: 12 });
+  await page.mouse.up();
+}
+
+/** 写操作成功后的信封(提示文案由请求层统一弹,这里只让 promise 落地) */
+const okResponse = {
+  code: 0,
+  msg: '操作成功',
+  data: null,
+  status_code: 200,
+  success: true,
+};
+
 test.describe('任务甘特页', () => {
   test('渲染出甘特容器,行数 = 任务条数 + 分组行数', async ({ page }) => {
     await setupGanttPage(page);
@@ -472,5 +535,150 @@ test.describe('任务甘特页', () => {
     // 宽视口 ⇒ 提示不在
     await page.setViewportSize({ width: 2200, height: 900 });
     await expect(hint).toHaveCount(0);
+  });
+});
+
+/**
+ * 规格 §6.5:e2e 要覆盖「拖拽写回的是**整对象 PUT**」与「写失败回滚」。
+ *
+ * 这两条是甘特与看板**同一套纪律**的落点:
+ * - 拖一次 ⇒ 请求体是**整个任务对象**(后端没有 PATCH,少一个必填字段就 422),
+ *   且**只有两个日期字段变了**(不动状态、负责人、优先级);
+ * - 写失败 ⇒ 条形**回到拖动前的位置**(界面上不许留下一个假的成功)。
+ */
+test.describe('甘特拖拽写回', () => {
+  test('拖动任务条 ⇒ 写回的是整对象 PUT(只有两个日期字段变了)', async ({
+    page,
+  }) => {
+    const updateRequests: { method: string; url: string; body: unknown }[] = [];
+
+    await setupGanttPage(page);
+
+    await page.route(TASK_UPDATE_URL, (route) => {
+      const request = route.request();
+      updateRequests.push({
+        method: request.method(),
+        url: request.url(),
+        body: request.postDataJSON(),
+      });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(okResponse),
+      });
+    });
+
+    await dragTaskBar(page, 32, 80);
+
+    await expect.poll(() => updateRequests.length).toBe(1);
+    const request = updateRequests[0];
+
+    // 整对象 PUT(后端没有 PATCH)
+    expect(request.method).toBe('PUT');
+    expect(request.url).toContain(`${PM_TASK_PREFIX}/update/32`);
+
+    const body = request.body as Record<string, unknown>;
+
+    // 必填字段一个都不能少(少一个就是 422)
+    expect(body).toMatchObject({
+      project_id: 1,
+      milestone_id: 11,
+      title: '搭建脚手架',
+      type_code: 'feature',
+      status_code: 'in_progress',
+      priority_code: 'P1',
+      assignee_id: 1,
+      estimate_hours: 8,
+    });
+
+    // **只有两个日期字段变了**:其余字段与拖动前完全一致
+    const before = datedTasks[1];
+    expect(body.start_date).not.toBe(before.start_date);
+    expect(body.due_date).not.toBe(before.due_date);
+    // 整对象 PUT 携带的字段(载荷层会原样搬回来的那些)一个都不能变
+    for (const key of [
+      'project_id',
+      'milestone_id',
+      'parent_id',
+      'title',
+      'description',
+      'type_code',
+      'status_code',
+      'priority_code',
+      'estimate_hours',
+      'actual_hours',
+      'assignee_id',
+      'reviewers',
+      'labels',
+      'blocked_reason',
+    ]) {
+      expect(body[key]).toEqual(before[key as keyof typeof before]);
+    }
+
+    // 不是用户可编辑的三列(与看板页同一口径)
+    expect(body).not.toHaveProperty('reporter_id');
+    expect(body).not.toHaveProperty('sort_order');
+    expect(body).not.toHaveProperty('created_via_code');
+  });
+
+  test('写失败 ⇒ 条形回到拖动前的位置', async ({ page }) => {
+    const updateRequests: unknown[] = [];
+
+    await setupGanttPage(page);
+
+    await page.route(TASK_UPDATE_URL, (route) => {
+      updateRequests.push(route.request().postDataJSON());
+      return route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify(businessErrorBody('保存失败,请重试')),
+      });
+    });
+
+    const bar = ganttBar(page, 32);
+    const before = await barBox(page, 32);
+
+    await dragTaskBar(page, 32, 80);
+
+    await expect.poll(() => updateRequests.length).toBe(1);
+
+    // 条形回到拖动前的位置(界面上不许留下一个假的成功)
+    await expect
+      .poll(async () => (await bar.boundingBox())?.x ?? 0)
+      .toBeCloseTo(before.x, 0);
+
+    // 错误提示由请求层统一弹(页面自己不弹 message)
+    await expect(page.getByText('保存失败,请重试')).toBeVisible();
+  });
+
+  /**
+   * 规格 §5.5:**页面本身不滚**(沿用 app shell 的满高布局)⇒
+   * 图表高度跟着可用高度走,滚动条只在左表格/时间轴里。
+   */
+  test('页面自己不滚(图表高度跟着可用高度走)', async ({ page }) => {
+    await setupGanttPage(page);
+
+    await expect(page.locator('.gantt_container')).toBeVisible();
+
+    // 内容区(自己滚的那一层)不该有溢出 ⇒ 页面不滚
+    const overflow = await page.evaluate(() => {
+      const area = document.querySelector(
+        '[data-testid="ai-workspace-content"]',
+      ) as HTMLElement | null;
+      if (!area) return null;
+      return area.scrollHeight - area.clientHeight;
+    });
+    expect(overflow).not.toBeNull();
+    // 允许 1px 的取整误差,不许出现滚动条
+    expect(overflow ?? 0).toBeLessThanOrEqual(1);
+
+    // 图表的高度 ≈ 内容区剩下的高度(不是写死的 520)
+    const chartHeight = await page.evaluate(() => {
+      const chart = document.querySelector(
+        '[data-testid="pm-gantt-box"]',
+      ) as HTMLElement | null;
+      return chart?.clientHeight ?? 0;
+    });
+    expect(chartHeight).toBeGreaterThan(300);
   });
 });
