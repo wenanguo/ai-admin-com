@@ -20,7 +20,10 @@ description: 在 AiAdmin 的项目下新建一条任务。用户说「建个任�
    - `priority_code`：`p0` / `p1` / `p2` / `p3`
    - 可选：`description`（Markdown）、`assignee_id`、`milestone_id`、`parent_id`、
      `estimate_hours`、`start_date` / `due_date`
-   - ⚠️ `reporter_id` / `sort_order` / `created_via_code` **不用传**（后端自动填）
+   - ⚠️ **一定要传** `created_via_code="nl_chat"`（=「自然语言对话建的」）
+     —— 这是「来源标记」字段，不传后端会当成人工建的（manual），前端就看不出
+     这条任务是 AI 建的。
+   - ⚠️ `reporter_id` / `sort_order` **不用传**（后端自动填）
    - ⚠️ 这些码是**小写的字典码**（`feature` / `todo` / `p0`），
      不是 `FEATURE` / `TODO` / `P0` 那种大写名
 
