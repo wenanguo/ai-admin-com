@@ -384,7 +384,28 @@ description: 在 AiAdmin 的项目下新建一条任务。用户说「建个任�
 | 生效 | **重启服务**（pi 的 `/reload` 只在交互式会话里可用） |
 | 技能来源 | **只有 `.pi/skills/`**（用户家目录的 `~/.agents/skills` 会被过滤掉） |
 | 模型能读什么 | **只有技能目录内的文件**（pi 的 `read`/`bash` 工具是关着的） |
-| 三个样板 | `create-task`（用现有的 `create_task` 工具，**现在就能用**）、`list-tasks` / `list-projects`（**格式样板**：它们要的「列项目 / 列任务」工具要等后端 MCP 接上，见 `docs/superpowers/specs/2026-11-06-aipm-mcp-skills-design.md` 的阶段 1） |
+| 三个样板 | `create-task` / `list-tasks` / `update-task`（**都已按真实 MCP 工具写准**，2026-11-07 真实后端跑通） |
+
+### 验收记录（2026-11-07，真实后端）
+
+后端 `module_mcp` 上线后，用真账号跑通了完整链路：
+
+```
+用户：在项目 6 建一个任务，标题写「【AI 验收】冒烟测试」，类型 feature，优先级 p2
+  ↓ 模型先 load_skill(create-task) → 再调 mcp__aiadmin__create_task
+  ↓ 参数：{"project_id":6,"title":"【AI 验收】冒烟测试","type_code":"feature","status_code":"todo","priority_code":"p2"}
+  ↓ 后端：创建任务成功 ⇒ 落库核对 id=117
+助手：任务已创建：ID 117，「【AI 验收】冒烟测试」，项目 6，类型 feature，优先级 p2，状态 todo。
+```
+
+⇒ **业务同学写 markdown 就能加能力**，这条主张已被真实后端证明。
+
+⚠️ 真实工具的口径（样板里已写进去）：
+
+- 工具名 = `mcp__aiadmin__` + 后端 operation_id（`list_tasks` / `get_task_detail` / `create_task` / `update_task` / `patch_task_status`）
+- **码是小写字典码**（`feature` / `todo` / `p0`），不是 `FEATURE` / `TODO` / `P0`
+- `create_task` 的 `reporter_id` / `sort_order` / `created_via_code` **不用传**（后端自动填）
+- `update_task` 是 **PUT 全量更新**：缺任一必填字段就 422 ⇒ 先 `get_task_detail` 再整体提交；只改状态用 `patch_task_status`
 
 ⚠️ 技能内容会进模型上下文 ⇒ **它等同于提示词** ⇒ 走 git 评审（别往里写凭据）。
 
