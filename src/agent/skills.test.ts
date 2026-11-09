@@ -64,7 +64,9 @@ describe("样板技能", () => {
 			source: "project",
 		});
 		const names = result.skills.map((skill) => skill.name).sort();
-		expect(names).toEqual(["create-task", "list-projects", "list-tasks"]);
+		// ⚠️ 三个样板都对应**真实存在的** MCP 工具：
+		//    create_task / list_tasks / update_task（后端「任务模块」白名单里的五个之一）
+		expect(names).toEqual(["create-task", "list-tasks", "update-task"]);
 		for (const skill of result.skills) {
 			expect(skill.description.length).toBeGreaterThan(0);
 			expect(skill.description.length).toBeLessThanOrEqual(1024);

@@ -5,21 +5,24 @@ description: 在 AiAdmin 的项目下新建一条任务。用户说「建个任�
 
 # 建任务
 
-1. **先找项目**
+工具：`mcp__aiadmin__create_task`（后端任务模块的创建接口）
+
+1. **先确认项目**
    - 用户通常给的是**项目编码**（形如 `PRJ-2026-Q3-001`）。
-   - 用项目列表命令按编码过滤，找到对应的项目 id。
-   - 找不到 ⇒ **问用户**要编码，**绝不**自己编一个项目编码。
+   - ⚠️ 任务接口要的是 **project_id（数字）**，不是编码 ⇒ 先用项目列表接口把编码换成 id。
+   - 换不到 ⇒ **问用户**要编码，**绝不**自己编一个 id。
 
-2. **建任务**
-   - 调用你工具里那个**建任务**的工具，参数：
-     - `project_id` = 上一步找到的项目 id
-     - `title` = 一句话，动宾结构，不超过 60 字
-     - `created_via_code` = `nl_chat`（自然语言对话建的）
-     - `reporter_id` = 当前登录用户的 id
-     - 其余字段按用户的原话填，**用户没说的不要瞎填**
-   - ⚠️ 你的工具里**没有**建任务这个工具 ⇒ 直接告诉用户「这个能力还没接上」，
-     **不要瞎编一个工具名**。
+2. **建任务**：调用 `mcp__aiadmin__create_task`，**必填五项**：
+   - `project_id`（数字 id）
+   - `title`（一句话，动宾结构，不超过 60 字）
+   - `type_code`：`feature` / `bug` / `ops` / `research` / `spike`
+   - `status_code`：`todo` / `doing` / `done`（新建一般给 `todo`）
+   - `priority_code`：`p0` / `p1` / `p2` / `p3`
+   - 可选：`description`（Markdown）、`assignee_id`、`milestone_id`、`parent_id`、
+     `estimate_hours`、`start_date` / `due_date`
+   - ⚠️ `reporter_id` / `sort_order` / `created_via_code` **不用传**（后端自动填）
+   - ⚠️ 这些码是**小写的字典码**（`feature` / `todo` / `p0`），
+     不是 `FEATURE` / `TODO` / `P0` 那种大写名
 
-3. **回报给用户**
-   - 任务标题、所属项目、状态（新建后是 backlog）、任务 key（形如 `task:321`）。
-   - 工具失败时把失败原因讲清楚（项目不存在、缺参数、权限不足），并说明下一步怎么办。
+3. **回报给用户**：任务标题、所属项目、状态、任务 id。
+   - 工具失败时把失败原因讲清楚（项目不存在、参数不对、权限不足），并说明下一步怎么办。
