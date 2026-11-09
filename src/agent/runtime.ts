@@ -112,12 +112,15 @@ export interface AgentRuntimeOptions {
 	/** 审计去处（生产用 `PrismaAuditWriter`，测试用假实现）。 */
 	audit?: AuditWriter;
 	/**
-	 * AiAdmin 的 MCP 地址（**不给就不接 MCP**）。
+	 * AiAdmin 的 MCP 地址。
+	 *
+	 * - `undefined`（不给）⇒ 取环境变量 `AIADMIN_MCP_URL`；
+	 * - `null` ⇒ **显式不接 MCP**（测试用；否则会被环境变量带偏）。
 	 *
 	 * ⚠️ **缺省不接**：后端的 MCP 还没上线 ⇒ 接了只会每次建会话都连接失败
 	 * （噪音 + 延迟）⇒ 显式配上才接。
 	 */
-	mcpUrl?: string;
+	mcpUrl?: string | null;
 	/** 每个会话最多记多少个命令 id（测试用；生产用默认上限）。 */
 	maxTrackedCommands?: number;
 }
@@ -147,7 +150,8 @@ export class AgentRuntime {
 		this.#createSession = options.createSession ?? createPiSession;
 		this.#model = options.model ?? env.AI_MODEL;
 		this.#audit = options.audit ?? new PrismaAuditWriter();
-		this.#mcpUrl = options.mcpUrl ?? env.AIADMIN_MCP_URL;
+		this.#mcpUrl =
+			options.mcpUrl === null ? undefined : (options.mcpUrl ?? env.AIADMIN_MCP_URL);
 		this.#maxTrackedCommands = options.maxTrackedCommands ?? MAX_TRACKED_COMMANDS_PER_CONVERSATION;
 
 		const client = new AadminClient({ baseUrl: env.AIADMIN_BASE_URL });

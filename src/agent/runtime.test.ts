@@ -525,7 +525,7 @@ describe("运行时 · 告警去处", () => {
  */
 describe("运行时 · token 轮换（P4）", () => {
 	/** 造一个能记录 createSession 参数的运行时。 */
-	function makeRuntimeWithMcp(mcpUrl: string | undefined): {
+	function makeRuntimeWithMcp(mcpUrl: string | null): {
 		runtime: AgentRuntime;
 		created: PiSessionOptions[];
 	} {
@@ -585,7 +585,8 @@ describe("运行时 · token 轮换（P4）", () => {
 	});
 
 	it("没配 MCP 地址 ⇒ 不接 MCP（后端还没部署时零噪音）", async () => {
-		const { runtime, created } = makeRuntimeWithMcp(undefined);
+		// ⚠️ `null` = **显式不接**（不给会取环境变量，而 .env 里可能已经配了）
+		const { runtime, created } = makeRuntimeWithMcp(null);
 
 		await runtime.submitCommand({ ...command("cmd-1"), token: "token-a" });
 		await waitFor(() => created.length >= 1);
