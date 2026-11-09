@@ -351,6 +351,33 @@ spike/                            Task 1 的风险尖峰（一次性，结论在
 
 ---
 
+## 待确认（修改已有数据要人点头）
+
+**口径**：**新增放行、修改要点头**（`update_*` / `patch_*` 类的工具要等人在界面上点「同意」）。
+
+机制：pi 的 `tool_call` hook（**async 且被 await**）里**同步等批准** ⇒
+批准后 **pi 照常执行原工具调用** ⇒ **模型那一轮不打断**（不用往会话里注入系统消息）。
+
+```
+用户：把任务 117 的标题改成「…」
+  ↓ 模型先 get_task_detail（读，不拦）
+  ↓ 模型调 update_task（改）⇒ **挂起**
+  ↓ SSE 推 pending 事件 ⇒ 界面出现「⏳ 等待你确认」
+  ↓ 用户在「待确认」页签点「同意」⇒ hook 放行 ⇒ 原调用执行
+助手：改好了。任务 117 的标题：「…」→「…」，其余字段保持不变。
+```
+
+| 事项 | 说明 |
+| ---- | ---- |
+| 拦哪些 | 工具名里的 `update_` / `patch_`（`create_` / `list_` / `get_` 一律放行） |
+| 挂起存哪 | **进程内存**（一个 await）⇒ 进程重启会丢掉 ⇒ DB 里那条 `ai_pending_action` 会停在 PENDING（靠 `expiresAt` 兜底） |
+| 超时 | 缺省 5 分钟 ⇒ 超时按「拒绝」处理（宁可不做） |
+| 端点 | `POST /api/agent/pending/:id/approve` 与 `/reject`（**只有发起这次对话的用户能批**；重复批准不会重复执行） |
+| 审计 | 「谁批准的」记在 `ai_pending_action.resolvedBy` |
+
+⚠️ **实测出来的坑**：`tool.execute(...)` 是**直接调工具** ⇒ 绕过整条流水线 ⇒
+`tool_call` hook **不会触发** ⇒ 真链路里要过 `session.agent.beforeToolCall(...)`。
+
 ## 技能（SKILL.md）：加 AI 能力不用改代码
 
 **一句话**：加一条 AI 能力 = 在 `.pi/skills/<名字>/SKILL.md` 放一个 markdown 文件，
