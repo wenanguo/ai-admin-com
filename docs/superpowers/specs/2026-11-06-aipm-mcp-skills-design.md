@@ -246,26 +246,34 @@ skill 是**指令**，不是程序。模型读到 skill 后按其中的步骤**�
 ⚠️ 后端 MCP 的 method 白名单是 `get,post,put,patch`（**不含 delete**）⇒
 删除不会变成工具 ⇒ 第一版要拦的只有「改已有数据」这一类。
 
-**机制**（pi 官方 hook）：
+**机制：pi 的 `tool_call` hook 同步挂起**（2026-11-07 读 SDK 源码后定的）
 
-1. `pi.on("tool_call", handler)` —— 命中「修改类工具」⇒
+SDK 源码里 `AgentSession._beforeToolCall` 是 **async 且被 await**
+（`await runner.emitToolCall(...)`）⇒ **hook 里可以 await** ⇒
+可以「**在 hook 里等用户批准**」，而不是拦下后另行「注回会话」。
+
+流程：
+
+1. `pi.on("tool_call", handler)` —— 命中「修改类工具」（名字匹配 `update_*` / `patch_*`）⇒
    - 把 `(conversationId, toolName, args, userId)` 写进 **`ai_pending_action`**
      （表已经在了：`command` = 工具名、`args` = 工具参数、`preview` = 给人看的摘要、
      `status=PENDING`、`expiresAt`）；
-   - 返回 `{block: true, reason: '这个操作需要人工确认'}` ⇒ pi 不执行它。
-2. 通过 SSE 推一个 `pending` 事件 ⇒ 前端现有的「待确认」页签就能看到
-   （`GET /api/pending` 已经能读）。
-3. 用户点「同意」⇒ 新增端点 `POST /api/agent/pending/:id/approve`（与 `/reject`）⇒
-   AI 服务用**当前用户的 token** 执行那个工具 ⇒ 把结果**注回会话** ⇒ 模型继续。
+   - 通过 SSE 推一个 **`pending`** 事件（新增的第 9 种）⇒ 前端「待确认」页签就能看到；
+   - **await 一个「批准信号」**（进程内存里的等待者注册表：`pendingId → resolve`）。
+2. 用户点「同意」⇒ `POST /api/agent/pending/:id/approve` ⇒ resolve ⇒
+   hook 返回 `undefined`（**不 block**）⇒ **pi 照常执行原工具调用**
+   ⇒ 模型拿到正常结果 ⇒ **那一轮不中断、不需要「注回会话」** ✓
+3. 用户点「拒绝」，或等待超时（缺省 5 分钟）⇒ hook 返回
+   `{block: true, reason: "用户拒绝了这次修改"}` ⇒
+   模型收到一个 error tool_result（SDK 把 `reason` 当错误内容给模型）⇒
+   **它会自己告诉用户被拒了** ✓
 4. 「谁批准的」记在 `ai_pending_action.resolvedBy`（审计）。
 
-⚠️ **「注回会话」的机制需要验证**（§9）：
-- 候选 A：执行后用 `session.prompt('[系统] 用户已批准并执行了…')` 把结果当一轮新输入
-  ⇒ 模型能接着说，但会把系统消息当用户输入；
-- 候选 B：用 pi 的 `followUp()` / `steer()` 插进当前轮；
-- 候选 C：`session.agent.state.messages` 追加一条（**文档说赋值不替换持久化上下文，
-  追加是否有效需验**）。
-⇒ 实现时先验 A，最差也能用 A（能用就行，模型能理解）。
+⇒ **比「拦下后注回会话」好在哪**：模型那一轮**不被打断**、不需要往会话里注入系统消息
+（那会污染对话）、也就不用验证「注回」的三种机制。
+
+⚠️ **代价**：那一轮会一直挂着（模型在等）⇒ 前端要显示「等待确认」；
+且**服务端进程重启会丢掉挂起的 await**（那一轮就断了）⇒ 挂起只存内存（与 token 同规矩）。
 
 ⚠️ **前端还缺「同意/拒绝」入口**（现在 `GET /api/pending` 是只读的）⇒
 这是阶段 3 的一部分（前端 + 后端端点）。
