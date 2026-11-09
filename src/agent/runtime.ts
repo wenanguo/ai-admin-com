@@ -30,6 +30,9 @@ import { setEnumWarningSink, standardEnumWarningSink } from "../adapter/enums";
 import { SSE_EVENTS, type SseEventName, type SsePayload } from "./events";
 import { AgentEventMapper, extractAssistantText, isAssistantMessage } from "./event-mapper";
 import { CurrentUserResolver, type CurrentUser } from "./identity";
+import { createGateExtension } from "./gate";
+import { createAiadminMcpExtension } from "./mcp";
+import { pendingWaiters } from "./pending-waiters";
 import { createPiSession, type PiSessionOptions } from "./pi-session";
 import { PM_AGENT_PROMPT } from "./prompt";
 import {
@@ -248,11 +251,15 @@ export class AgentRuntime {
 		);
 
 		// 发起这一轮（排队语义见 `CommandType`）
-		void this.#dispatchTurn(channel, message, request.type ?? "prompt", userMessage.id).catch(
-			(error: unknown) => {
-				this.#publishTurnError(channel, error);
-			},
-		);
+		void this.#dispatchTurn(
+			channel,
+			message,
+			request.type ?? "prompt",
+			userMessage.id,
+			request.userId,
+		).catch((error: unknown) => {
+			this.#publishTurnError(channel, error);
+		});
 
 		const ack: CommandAck = { id: request.commandId, type: "response", success: true };
 		this.#rememberAck(request.conversationId, request.commandId, ack);
@@ -407,8 +414,9 @@ export class AgentRuntime {
 		message: string,
 		type: CommandType,
 		currentMessageId: string,
+		userId: string,
 	): Promise<void> {
-		const session = await this.#ensureSession(channel, currentMessageId);
+		const session = await this.#ensureSession(channel, currentMessageId, userId);
 
 		// 已经有轮次在跑 ⇒ 走 pi 的排队语义
 		if (session.isStreaming && (await this.#queueInto(channel, session, message, type))) {
@@ -456,6 +464,7 @@ export class AgentRuntime {
 	async #ensureSession(
 		channel: ConversationChannel,
 		currentMessageId?: string,
+		userId?: string,
 	): Promise<AgentSessionLike> {
 		if (channel.session !== undefined) {
 			return channel.session;
@@ -489,6 +498,26 @@ export class AgentRuntime {
 				this.#mcpUrl === undefined
 					? undefined
 					: { url: this.#mcpUrl, token: channel.token ?? "" },
+			// ⚠️ **闸门**：修改已有数据要等人点头（用户 2026-11-06 定的口径）。
+			//    挂起时推一个 `pending` 事件 ⇒ 前端「待确认」页签能看到。
+			gate:
+				userId === undefined
+					? undefined
+					: createGateExtension({
+							waiters: pendingWaiters,
+							context: () => ({
+								conversationId: channel.conversationId,
+								userId: userId as string,
+								onPending: (row) => {
+									this.#publish(channel, SSE_EVENTS.PENDING, {
+										conversationId: channel.conversationId,
+										id: row.id,
+										command: row.command,
+										args: row.args,
+									});
+								},
+							}),
+						}),
 		});
 		channel.session = session;
 		channel.unsubscribe = session.subscribe((event) => {

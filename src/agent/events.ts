@@ -28,6 +28,13 @@ export const SSE_EVENTS = {
 	TOOL_RESULT: "tool_result",
 	/** 一轮结束，模型闲置了。 */
 	AGENT_SETTLED: "agent_settled",
+	/**
+	 * **挂起中**：模型想改已有数据，等人点头。
+	 *
+	 * ⚠️ 这是**我们自己**发的事件（不是 pi 的）⇒ 与 pi 事件分开。
+	 *    前端拿到它 ⇒ 「待确认」页签出现一条，界面上显示「等待确认」。
+	 */
+	PENDING: "pending",
 } as const;
 
 /** 事件名的联合类型。 */
@@ -99,6 +106,17 @@ export interface AgentSettledPayload {
 	conversationId: string;
 }
 
+/** `pending` 的载荷（挂起等人点头）。 */
+export interface PendingPayload {
+	conversationId: string;
+	/** 待确认行的 id（批准/拒绝时用它）。 */
+	id: string;
+	/** 命令（工具）名。 */
+	command: string;
+	/** 参数（原样透出，给界面显示）。 */
+	args: Record<string, unknown>;
+}
+
 /** 载荷的联合类型。 */
 export type SsePayload =
 	| ConnectedPayload
@@ -108,4 +126,5 @@ export type SsePayload =
 	| MessageEndPayload
 	| ToolCallPayload
 	| ToolResultPayload
-	| AgentSettledPayload;
+	| AgentSettledPayload
+	| PendingPayload;

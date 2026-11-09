@@ -72,3 +72,20 @@ export class PendingWaiterRegistry {
 		return [...this.#waiters.keys()];
 	}
 }
+
+/**
+ * 进程级的等待者注册表。
+ *
+ * ⚠️ **运行时与批准/拒绝端点必须共用同一份** ⇒ 否则端点叫不醒 hook。
+ * （与 `agentRuntime` 一样挂在 globalThis 上 ⇒ dev 热重载不丢。）
+ */
+const globalForPending = globalThis as unknown as {
+	pendingWaiters?: PendingWaiterRegistry;
+};
+
+export const pendingWaiters: PendingWaiterRegistry =
+	globalForPending.pendingWaiters ?? new PendingWaiterRegistry();
+
+if (process.env.NODE_ENV !== "production") {
+	globalForPending.pendingWaiters = pendingWaiters;
+}

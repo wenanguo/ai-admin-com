@@ -19,6 +19,7 @@ import {
 	DefaultResourceLoader,
 	ModelRuntime,
 	SessionManager,
+	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import { env } from "../env";
 import type { CommandTool } from "../tools/types";
@@ -83,6 +84,13 @@ export interface PiSessionOptions {
 		 */
 		createTransport?: (entry: unknown, cwd: string, authProvider: unknown) => unknown;
 	};
+	/**
+	 * 闸门扩展（**修改已有数据要人点头**；不给就不拦）。
+	 *
+	 * ⚠️ 闸门是 pi 的 `tool_call` hook ⇒ 必须跟 MCP 扩展一样挂在 **loader** 上
+	 *    （挂 `createAgentSession` 会被静默忽略 ⇒ 扩展根本不加载）。
+	 */
+	gate?: (pi: ExtensionAPI) => void;
 }
 
 /**
@@ -145,14 +153,18 @@ export async function createPiSession(
 	//    扩展工厂在 reload 时会跑 ⇒ 挂两个就会注册两次（多跑一遍）。
 	// ⚠️ `extensionFactories` 是 **loader** 的选项（不是 `createAgentSession` 的）
 	//    —— 给错了会被静默忽略 ⇒ 扩展根本没加载 ⇒ 一个 MCP 工具都不出现。
-	const extensionFactories = options.mcp
-		? [
-				createMcpExtension({
-					createTransport: options.mcp.createTransport as never,
-				}),
-				createAiadminMcpExtension(options.mcp),
-			]
-		: [];
+	const extensionFactories = [
+		...(options.mcp
+			? [
+					createMcpExtension({
+						createTransport: options.mcp.createTransport as never,
+					}),
+					createAiadminMcpExtension(options.mcp),
+				]
+			: []),
+		// 闸门（修改类工具要人点头）
+		...(options.gate === undefined ? [] : [options.gate]),
+	];
 
 	const resourceLoader = new DefaultResourceLoader({
 		...loaderOptions,
