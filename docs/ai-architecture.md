@@ -405,6 +405,23 @@ src/pages/ai/workspace/    ← 全宽页
 | 真实 HTTP 上的 JWT 透传 | ✅ `Authorization: Bearer <调用方 token>` |
 | 真实调用 `list_tasks` | ✅ 返回真实数据（total 90） |
 | 走本服务的完整对话 | ✅ 模型先 `load_skill(list-tasks)` → 再 `mcp__aiadmin__list_tasks` → 回答 |
+| **真的建出任务** | ✅ 用户说「在项目 6 建一个任务…」→ 模型调 `create_task` → 后端 `创建任务成功` → 落库核对 `id=117` |
+
+**建任务那次，模型自己传的参数**（没人告诉它）：
+
+```json
+{"project_id": 6, "title": "【AI 验收】冒烟测试",
+ "type_code": "feature", "status_code": "todo", "priority_code": "p2"}
+```
+
+⇒ 小写字典码 ✓ · 数字 `project_id` ✓ · 必填五项齐全 ✓ · **没多传**后端自动填的字段 ✓
+
+⚠️ **发现的两个后端问题**（2026-11-07）：
+
+| 问题 | 现象 | 修法 |
+| ---- | ---- | ---- |
+| `created_via_code` 没自动填充 | 工具描述说「不传时后端自动填充」，实际落库是 `null` ⇒ **AI 建的任务丢了来源标记** | 后端自动填充时填 `nl_chat` |
+| `patch_task_status` 的 schema 与描述矛盾 | 描述说「`status_code` 取字典值（todo/doing/done）」，schema 却是 **`status: integer`** ⇒ 按描述传字符串大概率 422 | 后端把两边对齐（工具描述是模型唯一的使用依据） |
 
 **真实工具清单**（工具名 = `mcp__aiadmin__` + 后端 operation_id）：
 
