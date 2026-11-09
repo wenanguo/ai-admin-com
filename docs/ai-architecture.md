@@ -235,8 +235,7 @@ agent_start → turn_start → message_start → message_update* → message_end
 | `connected` | 打开**回放窗口**，拉快照 | 「AI 服务不可用」标签消失 |
 | `message_start` | 新建一个助手气泡，`activeId` 指向它 | 出现一个空的助手气泡占位 |
 | `text_delta` | 累积进 `activeId` 气泡的 `text` | 气泡里的字逐字出现 |
-| `thinking_delta` | 累积进 `thinking`（**不进气泡**） | 输入区上方一行「思考中…」 |
-| `message_end` | 收尾：正文空则用 `text` 补；`serverText` 另存一份；`error` 标失败 | 气泡正文定格；失败轮次带错误提示 |
+| `thinking_delta` | 累积进 `thinking`（**不进气泡**） | 输入区上方一行「思考中…」 || `message_end` | 收尾：正文空则用 `text` 补；`serverText` 另存一份；`error` 标失败 | 气泡正文定格；失败轮次带错误提示 |
 | `tool_call` | 往该轮的 `commands` 里追加一张 `running` 卡片 | 命令卡片「执行中」 |
 | `tool_result` | 回填到**最后一张同名且 running** 的卡片；找不到就补一张已完成的 | 命令卡片「已执行 / 失败」 |
 | `agent_settled` | `activeId` 清空、`streaming=false` | 输入框解禁 |
@@ -391,6 +390,34 @@ src/pages/ai/workspace/    ← 全宽页
 | 读失败不许崩 | `useAiLists.ts` | 失败只落到一个错误提示里 |
 | 没有数据源就不画 | 全宽页 | 服务端无配额端点 ⇒ **不画配额条**；无依赖图 ⇒ ETA 只写 burndown |
 | 前端不做业务判定 | 全部 | 命令危不危险、能不能撤销、状态怎么算 ⇒ 都是命令层与服务端的事 |
+
+---
+
+## 8.5 真实后端验收结果（2026-11-07）
+
+后端 `module_mcp` 已上线（`https://www.pmdict.cn/api/v1/mcp`，tag 白名单=任务模块），
+本仓与真后端跑通了完整链路：
+
+| 检查 | 结果 |
+| ---- | ---- |
+| `initialize` | ✅ `serverInfo: {"name":"AiAdmin PM API"}` |
+| `tools/list` | ✅ 5 个工具（见下） |
+| 真实 HTTP 上的 JWT 透传 | ✅ `Authorization: Bearer <调用方 token>` |
+| 真实调用 `list_tasks` | ✅ 返回真实数据（total 90） |
+| 走本服务的完整对话 | ✅ 模型先 `load_skill(list-tasks)` → 再 `mcp__aiadmin__list_tasks` → 回答 |
+
+**真实工具清单**（工具名 = `mcp__aiadmin__` + 后端 operation_id）：
+
+| 工具 | 语义 | 备注 |
+| ---- | ---- | ---- |
+| `list_tasks` | 分页查询 | 过滤：`project_id` / `status_code` / `priority_code` / `title` / `assignee_id` |
+| `get_task_detail` | 按 `id` 查详情 | |
+| `create_task` | 新建 | 必填 `project_id` / `title` / `type_code` / `status_code` / `priority_code`；`reporter_id` / `sort_order` / `created_via_code` **不用传**（后端自动填） |
+| `update_task` | 改任务 | ⚠️ **PUT 全量更新**：缺任一必填字段就 422 ⇒ 先 `get_task_detail` 再整体提交 |
+| `patch_task_status` | 只改状态（批量） | 首选；⚠️ 描述说字典码、schema 却是 `integer`（**待后端对齐**） |
+
+⚠️ **码是小写字典码**（`feature` / `todo` / `p0`），不是 `FEATURE` / `TODO` / `P0`。
+⚠️ 工具输出**会被截断**（一次 20 条任务就有 990 行）⇒ 技能里要建议小 `page_size`。
 
 ---
 
