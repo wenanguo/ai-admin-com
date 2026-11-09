@@ -64,3 +64,9 @@ e2e-out
 
 # macOS 垃圾文件
 .DS_Store
+
+# 本地一次性探针脚本（不入库）
+login.cjs
+probe-crud*.cjs
+probe-crud*.png
+.scratch/

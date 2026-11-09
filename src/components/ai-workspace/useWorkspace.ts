@@ -16,13 +16,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   abortAiConversation,
+  approveAiPending,
   createAiCommandId,
   createAiConversation,
   getAiState,
+  rejectAiPending,
   sendAiCommand,
 } from '@/services/api/ai/client';
 import { readWorkspaceStorage, writeWorkspaceStorage } from './storage';
-import type { ChatMessage } from './useAgentStream';
+import type { AiPendingItem, ChatMessage } from './useAgentStream';
 import { useAgentStream } from './useAgentStream';
 
 /** hook 的入参。 */
@@ -50,6 +52,13 @@ export interface Workspace {
    * ⚠️ **不是对话内容** ⇒ 只在输入区上方显示「思考中…」。
    */
   thinking?: string;
+  /**
+   * 当前**挂起中**的修改（等用户点头）。
+   *
+   * ⚠️ 服务端在 `tool_call` hook 里同步挂起 ⇒ 那一轮在等 ⇒
+   *    界面上要显示「等待你确认」（不然看起来像卡死）。
+   */
+  pendingItems: AiPendingItem[];
   /** 本轮是否在进行中。 */
   streaming: boolean;
   /** 事件流是不是连着的。 */
@@ -111,6 +120,18 @@ export interface Workspace {
   aborting: boolean;
   /** 中止失败的原因。 */
   abortError?: string;
+  /**
+   * **批准**一条挂起的修改（服务端会放行原工具调用 ⇒ 模型接着说）。
+   *
+   * @param id 待确认行的 id。
+   */
+  approvePending: (id: string) => Promise<void>;
+  /**
+   * **拒绝**一条挂起的修改（服务端会 block 掉 ⇒ 模型告诉用户这次没做成）。
+   *
+   * @param id 待确认行的 id。
+   */
+  rejectPending: (id: string) => Promise<void>;
 }
 
 /** 未知错误转成一句话。 */
@@ -164,6 +185,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     connected,
     model,
     thinking,
+    pendingItems,
     appendUserMessage,
     restore,
     settle,
@@ -362,11 +384,30 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     }
   }, [settle]);
 
+  /** 批准一条挂起的修改。 */
+  const approvePending = useCallback(async (id: string): Promise<void> => {
+    try {
+      await approveAiPending(id);
+    } catch (error) {
+      setSendError(toMessage(error));
+    }
+  }, []);
+
+  /** 拒绝一条挂起的修改。 */
+  const rejectPending = useCallback(async (id: string): Promise<void> => {
+    try {
+      await rejectAiPending(id);
+    } catch (error) {
+      setSendError(toMessage(error));
+    }
+  }, []);
+
   return {
     conversationId,
     model,
     messages,
     thinking,
+    pendingItems,
     streaming,
     connected,
     aiUnavailable,
@@ -381,5 +422,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     abort,
     aborting,
     abortError,
+    approvePending,
+    rejectPending,
   };
 }

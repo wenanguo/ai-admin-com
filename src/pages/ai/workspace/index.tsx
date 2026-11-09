@@ -257,6 +257,7 @@ export default function AiWorkspacePage(): React.ReactElement {
         <WideChat
           messages={workspace.messages}
           thinking={workspace.thinking}
+          pendingItems={workspace.pendingItems}
           draft={draft}
           onDraftChange={setDraft}
           onSend={handleSend}
@@ -296,6 +297,16 @@ export default function AiWorkspacePage(): React.ReactElement {
                   items={lists.pending}
                   loading={lists.pendingLoading}
                   error={lists.pendingError}
+                  onApprove={(id) => {
+                    void workspace.approvePending(id).then(() => {
+                      lists.reload();
+                    });
+                  }}
+                  onReject={(id) => {
+                    void workspace.rejectPending(id).then(() => {
+                      lists.reload();
+                    });
+                  }}
                 />
               </div>
             ),

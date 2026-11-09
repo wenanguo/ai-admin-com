@@ -191,6 +191,36 @@ export async function abortAiConversation(
   );
 }
 
+/**
+ * 批准一条挂起的修改。
+ *
+ * ⚠️ 服务端在 `tool_call` hook 里同步挂起 ⇒ 批准 ⇒ **原工具调用照常执行**
+ *   （那一轮不打断）⇒ 模型接着说。
+ *
+ * @param id 待确认行的 id。
+ */
+export async function approveAiPending(id: string): Promise<void> {
+  await aiRequest<{ id: string; status: string }>(
+    `/api/agent/pending/${id}/approve`,
+    { method: 'POST' },
+  );
+}
+
+/**
+ * 拒绝一条挂起的修改。
+ *
+ * ⚠️ 拒绝 ⇒ 服务端把工具调用 block 掉 ⇒ 模型收到「被拒绝」的错误 ⇒
+ *   **它会自己告诉用户这次没做成**。
+ *
+ * @param id 待确认行的 id。
+ */
+export async function rejectAiPending(id: string): Promise<void> {
+  await aiRequest<{ id: string; status: string }>(
+    `/api/agent/pending/${id}/reject`,
+    { method: 'POST' },
+  );
+}
+
 /** 审计流水的筛选条件（服务端只认这几个，其余参数静默忽略）。 */
 export interface AiAuditQuery {
   actor?: 'AI' | 'USER';

@@ -18,6 +18,12 @@ export interface PendingPanelProps {
   loading?: boolean;
   /** 读失败了（AI 服务不可达之类）。 */
   error?: string;
+  /** 批准一条（服务端放行原工具调用）。 */
+  onApprove?: (id: string) => void;
+  /** 拒绝一条（服务端 block 掉）。 */
+  onReject?: (id: string) => void;
+  /** 正在处理某一条（按 id）。 */
+  busyId?: string;
 }
 
 /**
@@ -27,6 +33,9 @@ export function PendingPanel({
   items,
   loading,
   error,
+  onApprove,
+  onReject,
+  busyId,
 }: PendingPanelProps): React.ReactElement {
   const { token } = theme.useToken();
 
@@ -72,7 +81,13 @@ export function PendingPanel({
         }}
       >
         {items.map((item) => (
-          <PendingCard key={item.id} item={item} />
+          <PendingCard
+            key={item.id}
+            item={item}
+            onApprove={onApprove}
+            onReject={onReject}
+            busy={busyId === item.id}
+          />
         ))}
       </div>
     );

@@ -633,3 +633,32 @@ describe('AI 流式状态机', () => {
     expect(commands[0].status).toBe('ok');
   });
 });
+
+describe('挂起中的修改', () => {
+  it('pending 事件 ⇒ 记下「在等用户点头」', async () => {
+    const { captured, subscribe } = fakeSubscribe();
+
+    const { act, result } = await renderHook(() =>
+      useAgentStream({
+        conversationId: 'c1',
+        subscribe,
+        loadState: async () => SNAPSHOT,
+      }),
+    );
+
+    await act(async () => {
+      captured.onEvent?.({
+        type: 'pending',
+        id: 'p1',
+        command: 'mcp__aiadmin__update_task',
+        args: { id: 117 },
+      });
+    });
+
+    // ⚠️ 服务端在等批准 ⇒ 界面要能显示「等待你确认」
+    expect(result.current.pendingItems).toHaveLength(1);
+    expect(result.current.pendingItems[0]?.command).toBe(
+      'mcp__aiadmin__update_task',
+    );
+  });
+});

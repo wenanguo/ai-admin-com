@@ -106,6 +106,13 @@ export interface AgentStream {
    *    一旦有正文（`text_delta`）或本轮结束，就清掉。
    */
   thinking?: string;
+  /**
+   * 当前**挂起中**的修改（等用户点头）。
+   *
+   * ⚠️ 服务端在 `tool_call` hook 里同步挂起 ⇒ 那一轮在等 ⇒
+   *    界面上要显示「等待你确认」（不然看起来像卡死）。
+   */
+  pendingItems: AiPendingItem[];
   /** 追加一条用户气泡（发送时乐观上屏）。 */
   appendUserMessage: (text: string) => void;
   /** 用一份**已经拿到的**快照重建界面（刷新页面恢复历史）。 */
@@ -122,6 +129,16 @@ export interface AgentStream {
   settle: () => void;
 }
 
+/** 一个挂起中的修改。 */
+export interface AiPendingItem {
+  /** 待确认行的 id（批准/拒绝时用它）。 */
+  id: string;
+  /** 命令（工具）名。 */
+  command: string;
+  /** 参数。 */
+  args: Record<string, unknown>;
+}
+
 /** 内部状态。 */
 interface StreamState {
   /** 这份状态属于哪个会话（换会话时要清空旧的）。 */
@@ -136,6 +153,8 @@ interface StreamState {
   model?: string;
   /** 当前的思考内容（不是对话内容）。 */
   thinking: string;
+  /** 当前挂起中的修改（等用户点头）。 */
+  pendingItems: AiPendingItem[];
 }
 
 /**
@@ -246,6 +265,7 @@ const EMPTY_STATE: StreamState = {
   messages: [],
   streaming: false,
   thinking: '',
+  pendingItems: [],
 };
 
 /** 全局自增序号（气泡与卡片都用它做 id）。 */
@@ -402,6 +422,15 @@ export function applyAiEvent(state: StreamState, event: AiEvent): StreamState {
     case 'agent_settled':
       // 本轮结束：输入解禁，下一段 delta 另开一个气泡
       return { ...state, activeId: undefined, streaming: false, thinking: '' };
+    case 'pending':
+      // ⚠️ 挂起中：服务端在等用户点头 ⇒ 记下来（界面显示「等待你确认」）
+      return {
+        ...state,
+        pendingItems: [
+          ...state.pendingItems.filter((item) => item.id !== event.id),
+          { id: event.id, command: event.command, args: event.args },
+        ],
+      };
     default:
       // 不认识的事件（服务端以后加的）⇒ 原样不动，不崩
       return state;
@@ -688,6 +717,8 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
           model: snapshot.model,
           // 重建界面 ⇒ 思考阶段已经过去了
           thinking: '',
+          // 重建界面 ⇒ 挂起中的修改也会重新收到 pending 事件（不保留旧的）
+          pendingItems: [],
         };
       });
     },
@@ -1017,6 +1048,7 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
     connected,
     model: state.model,
     thinking: state.thinking,
+    pendingItems: state.pendingItems,
     appendUserMessage,
     restore,
     resync,

@@ -234,6 +234,7 @@ export function AiWorkspace({
               <ChatPanel
                 messages={workspace.messages}
                 thinking={workspace.thinking}
+                pendingItems={workspace.pendingItems}
                 streaming={workspace.streaming}
                 sending={workspace.sending}
                 sendError={workspace.sendError}
@@ -258,6 +259,16 @@ export function AiWorkspace({
                 items={lists.pending}
                 loading={lists.pendingLoading}
                 error={lists.pendingError}
+                onApprove={(id) => {
+                  void workspace.approvePending(id).then(() => {
+                    lists.reload();
+                  });
+                }}
+                onReject={(id) => {
+                  void workspace.rejectPending(id).then(() => {
+                    lists.reload();
+                  });
+                }}
               />
             ),
           },

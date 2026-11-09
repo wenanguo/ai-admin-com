@@ -13,7 +13,10 @@ import type React from 'react';
 import { useEffect, useRef } from 'react';
 import { Composer } from '@/components/ai-workspace/Composer';
 import { MessageBubble } from '@/components/ai-workspace/MessageBubble';
-import type { ChatMessage } from '@/components/ai-workspace/useAgentStream';
+import type {
+  AiPendingItem,
+  ChatMessage,
+} from '@/components/ai-workspace/useAgentStream';
 
 /** 宽版对话的 props。 */
 export interface WideChatProps {
@@ -25,6 +28,13 @@ export interface WideChatProps {
    * ⚠️ **不是对话内容** ⇒ 显示在输入区上方，不进气泡。
    */
   thinking?: string;
+  /**
+   * 当前**挂起中**的修改（等用户点头）。
+   *
+   * ⚠️ 服务端在 `tool_call` hook 里同步挂起 ⇒ 那一轮在等 ⇒
+   *    不显示的话，用户会以为卡死了。
+   */
+  pendingItems?: AiPendingItem[];
   /** 输入框里的内容（外部受控）。 */
   draft: string;
   /** 输入内容变了。 */
@@ -53,6 +63,7 @@ export interface WideChatProps {
 export function WideChat({
   messages,
   thinking,
+  pendingItems,
   draft,
   onDraftChange,
   onSend,
@@ -188,6 +199,25 @@ export function WideChat({
                 }}
               >
                 {thinking.slice(-200)}
+              </span>
+            </div>
+          ) : null}
+          {pendingItems && pendingItems.length > 0 ? (
+            <div
+              data-role="ai-pending-hint"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: token.sizeXS,
+                marginBottom: token.sizeSM,
+                fontSize: token.fontSizeSM,
+                color: token.colorWarning,
+              }}
+            >
+              <span>⏳ 等待你确认</span>
+              <span style={{ color: token.colorTextSecondary }}>
+                {pendingItems.map((item) => item.command).join('、')}
+                （去「待确认」页签点头）
               </span>
             </div>
           ) : null}

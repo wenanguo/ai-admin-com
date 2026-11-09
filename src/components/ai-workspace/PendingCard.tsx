@@ -136,12 +136,29 @@ function hitKey(itemId: string, hit: PendingHit): string {
 export interface PendingCardProps {
   /** 要渲染的那一行。 */
   item: AiPendingRow;
+  /**
+   * 批准（服务端会放行原工具调用 ⇒ 模型接着说）。
+   *
+   * ⚠️ **不给就不给按钮**（旧行为：三个按钮禁用并说「该能力尚未开放」）。
+   */
+  onApprove?: (id: string) => void;
+  /**
+   * 拒绝（服务端会 block 掉 ⇒ 模型告诉用户这次没做成）。
+   */
+  onReject?: (id: string) => void;
+  /** 正在处理这一条（按钮转圈）。 */
+  busy?: boolean;
 }
 
 /**
  * 一张待确认卡片。
  */
-export function PendingCard({ item }: PendingCardProps): React.ReactElement {
+export function PendingCard({
+  item,
+  onApprove,
+  onReject,
+  busy,
+}: PendingCardProps): React.ReactElement {
   const { token } = theme.useToken();
   const preview = toPendingPreview(item.preview);
   const tag = statusTag(item.status);
@@ -280,20 +297,43 @@ export function PendingCard({ item }: PendingCardProps): React.ReactElement {
           ⚠️ 禁用按钮不派发鼠标事件 ⇒ Tooltip 必须挂在**外面那层 span** 上，
           否则鼠标移上去什么都不显示。
         */}
-        <Tooltip title="该能力尚未开放">
-          <span data-role="pending-action">
-            <Button size="small" type="primary" disabled>
-              确认执行
-            </Button>
-          </span>
-        </Tooltip>
-        <Tooltip title="该能力尚未开放">
-          <span data-role="pending-action">
-            <Button size="small" disabled>
-              取消
-            </Button>
-          </span>
-        </Tooltip>
+        {onApprove ? (
+          <Button
+            size="small"
+            type="primary"
+            loading={busy === true}
+            data-role="pending-approve"
+            onClick={() => onApprove(item.id)}
+          >
+            确认执行
+          </Button>
+        ) : (
+          <Tooltip title="该能力尚未开放">
+            <span data-role="pending-action">
+              <Button size="small" type="primary" disabled>
+                确认执行
+              </Button>
+            </span>
+          </Tooltip>
+        )}
+        {onReject ? (
+          <Button
+            size="small"
+            loading={busy === true}
+            data-role="pending-reject"
+            onClick={() => onReject(item.id)}
+          >
+            取消
+          </Button>
+        ) : (
+          <Tooltip title="该能力尚未开放">
+            <span data-role="pending-action">
+              <Button size="small" disabled>
+                取消
+              </Button>
+            </span>
+          </Tooltip>
+        )}
         <Tooltip title="该能力尚未开放">
           <span data-role="pending-action">
             <Button size="small" disabled>

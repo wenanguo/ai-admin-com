@@ -232,6 +232,17 @@ export function toAiEvent(frame: SseFrame): AiEvent | undefined {
       };
     case 'agent_settled':
       return { type: 'agent_settled' };
+    case 'pending':
+      // ⚠️ 服务端在 tool_call hook 里挂起 ⇒ 这一轮在等人点头
+      return {
+        type: 'pending',
+        id: readString(payload, 'id'),
+        command: readString(payload, 'command'),
+        args:
+          typeof payload.args === 'object' && payload.args !== null
+            ? (payload.args as Record<string, unknown>)
+            : {},
+      };
     default:
       // ⚠️ 服务端以后加新事件时，前端不会崩（这一帧被丢掉）
       return undefined;

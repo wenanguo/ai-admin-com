@@ -10,7 +10,7 @@ import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Composer } from './Composer';
 import { MessageBubble } from './MessageBubble';
-import type { ChatMessage } from './useAgentStream';
+import type { AiPendingItem, ChatMessage } from './useAgentStream';
 
 /** 对话页签的 props。 */
 export interface ChatPanelProps {
@@ -22,6 +22,13 @@ export interface ChatPanelProps {
    * ⚠️ **不是对话内容** ⇒ 显示在输入区上方，不进气泡。
    */
   thinking?: string;
+  /**
+   * 当前**挂起中**的修改（等用户点头）。
+   *
+   * ⚠️ 服务端在 `tool_call` hook 里同步挂起 ⇒ 那一轮在等 ⇒
+   *    不显示的话，用户会以为卡死了。
+   */
+  pendingItems?: AiPendingItem[];
   /** 本轮进行中（禁用输入）。 */
   streaming?: boolean;
   /** 命令还在发出去。 */
@@ -44,6 +51,7 @@ export interface ChatPanelProps {
 export function ChatPanel({
   messages,
   thinking,
+  pendingItems,
   streaming,
   sending,
   sendError,
@@ -161,6 +169,29 @@ export function ChatPanel({
               }}
             >
               {thinking.slice(-200)}
+            </span>
+          </div>
+        ) : null}
+        {pendingItems && pendingItems.length > 0 ? (
+          /*
+            ⚠️ **「等待你确认」**：服务端把修改挂起了 ⇒ 那一轮在等
+            ⇒ 不显示的话用户会以为卡死了。
+          */
+          <div
+            data-role="ai-pending-hint"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: token.sizeXS,
+              marginBottom: token.sizeSM,
+              fontSize: token.fontSizeSM,
+              color: token.colorWarning,
+            }}
+          >
+            <span>⏳ 等待你确认</span>
+            <span style={{ color: token.colorTextSecondary }}>
+              {pendingItems.map((item) => item.command).join('、')}
+              （去「待确认」页签点头）
             </span>
           </div>
         ) : null}

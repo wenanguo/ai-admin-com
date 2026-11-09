@@ -33,6 +33,8 @@ vi.mock('@/services/api/ai/client', () => ({
   listAiAudit: vi.fn(),
   listAiPending: vi.fn(),
   listAiConversations: vi.fn(),
+  approveAiPending: vi.fn(),
+  rejectAiPending: vi.fn(),
 }));
 
 vi.mock('@/services/api/ai/sse', () => ({

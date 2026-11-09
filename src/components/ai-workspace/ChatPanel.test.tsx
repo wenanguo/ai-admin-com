@@ -215,3 +215,35 @@ describe('AI 对话页签', () => {
     });
   });
 });
+
+describe('等待确认的提示', () => {
+  it('⭐ 有挂起的修改 ⇒ 显示「等待你确认」', async () => {
+    const { container } = await render(
+      <ChatPanel
+        messages={[]}
+        pendingItems={[
+          {
+            id: 'p1',
+            command: 'mcp__aiadmin__update_task',
+            args: { id: 117 },
+          },
+        ]}
+        onSend={() => undefined}
+      />,
+    );
+
+    const hint = container.querySelector('[data-role="ai-pending-hint"]');
+    expect(hint).not.toBeNull();
+    // ⚠️ getByText 是**精确匹配** ⇒ 这里查内容而不是查文本节点
+    expect(hint?.textContent).toContain('等待你确认');
+    expect(hint?.textContent).toContain('mcp__aiadmin__update_task');
+  });
+
+  it('没有挂起 ⇒ 不显示那个提示', async () => {
+    const { container } = await render(
+      <ChatPanel messages={[]} onSend={() => undefined} />,
+    );
+
+    expect(container.querySelector('[data-role="ai-pending-hint"]')).toBeNull();
+  });
+});

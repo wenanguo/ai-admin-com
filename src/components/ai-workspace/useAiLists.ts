@@ -18,7 +18,7 @@
  *
  * ⇒ 只在**页签真的被打开**时读（`enabled`）。
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { listAiAudit, listAiPending } from '@/services/api/ai/client';
 import type { AiAuditRow, AiPendingRow } from '@/services/api/ai/types';
 
@@ -44,6 +44,8 @@ export interface AiLists {
   auditLoading: boolean;
   /** 审计读失败了。 */
   auditError?: string;
+  /** **重读**两个列表（批准/拒绝之后要刷新）。 */
+  reload: () => void;
 }
 
 /** 未知错误转成一句话。 */
@@ -74,6 +76,13 @@ export function useAiLists({
   const [audit, setAudit] = useState<AiAuditRow[]>([]);
   const [auditLoaded, setAuditLoaded] = useState(false);
   const [auditError, setAuditError] = useState<string | undefined>(undefined);
+  /** 重读的触发器（批准/拒绝之后要刷新列表）。 */
+  const [reloadToken, setReloadToken] = useState(0);
+
+  /** 重读两个列表。 */
+  const reload = useCallback(() => {
+    setReloadToken((previous) => previous + 1);
+  }, []);
 
   useEffect(() => {
     if (!pendingEnabled) {
@@ -101,7 +110,7 @@ export function useAiLists({
     return () => {
       disposed = true;
     };
-  }, [pendingEnabled]);
+  }, [pendingEnabled, reloadToken]);
 
   useEffect(() => {
     if (!auditEnabled) {
@@ -129,7 +138,7 @@ export function useAiLists({
     return () => {
       disposed = true;
     };
-  }, [auditEnabled]);
+  }, [auditEnabled, reloadToken]);
 
   return {
     pending,
@@ -138,5 +147,6 @@ export function useAiLists({
     audit,
     auditLoading: auditEnabled && !auditLoaded,
     auditError,
+    reload,
   };
 }

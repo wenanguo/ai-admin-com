@@ -57,7 +57,7 @@ export interface AiState {
  * SSE 事件（服务端 `src/agent/events.ts` 的 `SSE_EVENTS`）。
  *
  * ⚠️ **服务端实际只发这 8 种**：`connected` `message_start` `text_delta`
- * `thinking_delta` `message_end` `tool_call` `tool_result` `agent_settled`。
+ * `thinking_delta` `message_end` `tool_call` `tool_result` `agent_settled` `pending`。
  * 设计里的 `action_request` / `state_dirty` / `auth_expired` / `heartbeat`
  * **还没实现** ⇒ 不写进这个联合类型。
  * 解析器遇到不认识的事件名会**忽略**它（服务端以后加事件，前端不会崩）。
@@ -89,7 +89,19 @@ export type AiEvent =
       summary?: string;
       details?: unknown;
     }
-  | { type: 'agent_settled' };
+  | { type: 'agent_settled' }
+  /**
+   * **挂起中**：模型想改已有数据，等人点头。
+   *
+   * ⚠️ 服务端在 `tool_call` hook 里同步挂起 ⇒ 这一轮在等 ⇒
+   *    界面上要显示「等待你确认」（不然看起来像卡死）。
+   */
+  | {
+      type: 'pending';
+      id: string;
+      command: string;
+      args: Record<string, unknown>;
+    };
 
 /** 一条审计（服务端 `src/audit-query.ts` 的 `AuditItem`）。 */
 export interface AiAuditRow {
