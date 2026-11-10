@@ -25,17 +25,17 @@ npm start        # 带 antd-pro 演示页 mock
 > 代理按环境挑选是靠 `config/config.ts` 里的 `proxy: proxy[UMI_ENV]` 这一行实现的,
 > 改代理时不要动它。
 
-### 后端证书过期时的本地临时开关（`PROXY_INSECURE_TLS`）
+### 后端证书出问题时用的本地开关（`PROXY_INSECURE_TLS`）
 
-线上后端的 TLS 证书已于 **2026-11-04 23:59:59 过期**,证书校验失败会让**所有**
-本地请求 502。`NODE_TLS_REJECT_UNAUTHORIZED=0` 对这条代理**无效**
-（http-proxy 会显式把 `rejectUnauthorized` 设成 `true`）,
-所以 `config/proxy.ts` 里留了一个**默认关闭**的开关:
+⚠️ **线上后端的 TLS 证书已于 2026-11-06 续签**（有效期至 2027-02-03）⇒
+**本地默认就是校验证书**，不需要任何开关。
+
+`config/proxy.ts` 里仍留着一个**默认关闭**的开关，作为将来证书再出问题时的兜底手段：
 
 ```bash
 # .env.local（不入库）
 PROXY_TARGET=https://www.pmdict.cn
-PROXY_INSECURE_TLS=true
+PROXY_INSECURE_TLS=true   # ← 只有证书真的出问题时才加这一行
 ```
 
 | 变量                 | 默认值   | 作用                                                               |
@@ -43,12 +43,15 @@ PROXY_INSECURE_TLS=true
 | `PROXY_TARGET`       | 线上后端 | 代理目标（`/api/` 规则）                                           |
 | `PROXY_INSECURE_TLS` | `false`  | **`true` = 跳过后端证书校验**（只影响 `/api/` 规则，其它行为不变） |
 
-⚠️ 这个开关的名字里带 "INSECURE" 是故意的：它关掉的是 **TLS 校验**,
-等于把通道降级成「不验证对端身份」。它**只在本地临时用**,
+⚠️ 这个开关的名字里带 "INSECURE" 是故意的：它关掉的是 **TLS 校验**，
+等于把通道降级成「不验证对端身份」。它**只在本地临时用**，
 打开时 dev server 启动日志里会打一条醒目的警告。
 
-**证书续签之后**:把 `.env.local` 里的 `PROXY_INSECURE_TLS` 那一行**删掉**即可
-（默认值就是校验证书，不需要改 `config/proxy.ts`；`PROXY_TARGET` 那行也可以一并删掉）。
+**它对 `NODE_TLS_REJECT_UNAUTHORIZED=0` 无效**：http-proxy 会**显式**把
+`rejectUnauthorized` 设成 `true` ⇒ 这条代理只能靠这个开关绕。
+
+证书恢复之后：把 `.env.local` 里的 `PROXY_INSECURE_TLS` 那一行**删掉**即可
+（默认值就是校验证书，不需要改 `config/proxy.ts`）。
 
 ### 构建产物目录
 
