@@ -114,8 +114,8 @@ const ZOOM_LEVELS: ZoomLevel[] = [
   },
 ];
 
-/** 行操作:编辑 / 删除 */
-export type GanttRowAction = 'edit' | 'delete';
+/** 行操作:编辑 / 删除 / 与 AI 讨论 */
+export type GanttRowAction = 'edit' | 'delete' | 'discuss';
 
 /** 操作列的权限(能不能渲染编辑 / 删除按钮) */
 export interface GanttActionPermissions {
@@ -123,6 +123,8 @@ export interface GanttActionPermissions {
   canEdit: boolean;
   /** 能不能删除 */
   canDelete: boolean;
+  /** 能不能「与 AI 讨论」 */
+  canDiscuss: boolean;
 }
 
 /**
@@ -195,6 +197,8 @@ export interface GanttChartProps {
   canEdit?: boolean;
   /** 能不能删除(不能就不渲染「删除」按钮) */
   canDelete?: boolean;
+  /** 能不能「与 AI 讨论」(不能就不渲染那个按钮) */
+  canDiscuss?: boolean;
 }
 
 /** 默认高度 */
@@ -345,6 +349,7 @@ export const GanttChart = forwardRef<GanttChartHandle, GanttChartProps>(
       onRowAction,
       canEdit = false,
       canDelete = false,
+      canDiscuss = false,
     },
     ref,
   ) {
@@ -359,6 +364,7 @@ export const GanttChart = forwardRef<GanttChartHandle, GanttChartProps>(
     const actionPermsRef = useRef<GanttActionPermissions>({
       canEdit,
       canDelete,
+      canDiscuss,
     });
     /** 行操作回调(同样存 ref) */
     const onRowActionRef = useRef(onRowAction);
@@ -425,7 +431,7 @@ export const GanttChart = forwardRef<GanttChartHandle, GanttChartProps>(
       readOnlyRef.current = readOnly;
       onDragEndRef.current = onTaskDragEnd;
       onRowActionRef.current = onRowAction;
-      actionPermsRef.current = { canEdit, canDelete };
+      actionPermsRef.current = { canEdit, canDelete, canDiscuss };
     });
 
     // 挂载:建实例 → 设全部 config → 建缩放扩展 → init → 挂事件
@@ -1014,6 +1020,11 @@ function actionsHtml(task: Task, permissions: GanttActionPermissions): string {
   if (permissions.canDelete) {
     buttons.push(
       `<button type="button" class="pm-gantt-action pm-gantt-action--danger" data-pm-action="delete" data-pm-row="${escapeHtml(rowId)}">删除</button>`,
+    );
+  }
+  if (permissions.canDiscuss) {
+    buttons.push(
+      `<button type="button" class="pm-gantt-action" data-pm-action="discuss" data-pm-row="${escapeHtml(rowId)}">讨论</button>`,
     );
   }
   return buttons.join('');

@@ -1,11 +1,26 @@
-import { Link, useAccess } from '@umijs/max';
-import { Alert, Avatar, Card, Col, Empty, Row, Spin, theme } from 'antd';
+import { CommentOutlined } from '@ant-design/icons';
+import { Link, useAccess, useModel } from '@umijs/max';
+import {
+  Alert,
+  Avatar,
+  Button,
+  Card,
+  Col,
+  Empty,
+  Row,
+  Spin,
+  theme,
+} from 'antd';
 import dayjs from 'dayjs';
 import type React from 'react';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
+import { buildAiTaskContext, mergeDictLabels } from '@/components/pm/aiContext';
 import { DictTag } from '@/components/pm/DictTag';
+import { useAiTaskUpdate } from '@/components/pm/useAiTaskUpdate';
+import { useDictOptions } from '@/components/pm/useDictOptions';
 import type { TaskOut } from '@/services/api/pm/task';
 import { type BoardStatus, useBoardColumns } from './useBoardColumns';
+import { useProjectNames } from './useProjectNames';
 
 /**
  * 任务看板页 —— 路由 /pm/task/board。
@@ -46,6 +61,7 @@ function TaskCard({
   dragging,
   onDragStart,
   onDragEnd,
+  onDiscuss,
 }: {
   task: TaskOut;
   /** 能不能拖(没有 update 权限就不给拖) */
@@ -54,6 +70,9 @@ function TaskCard({
   dragging: boolean;
   onDragStart: (task: TaskOut, event: React.DragEvent<HTMLDivElement>) => void;
   onDragEnd: () => void;
+  /** 「与 AI 讨论」
+   */
+  onDiscuss?: (task: TaskOut) => void;
 }) {
   const { token } = theme.useToken();
   const assignee = task.assignee_by?.name ?? null;
@@ -89,6 +108,22 @@ function TaskCard({
               {task.due_date}
             </span>
           ) : null}
+          {onDiscuss ? (
+            <Button
+              type="link"
+              size="small"
+              icon={<CommentOutlined />}
+              className="ml-auto"
+              // ⚠️ **别让这次按下变成拖拽**:卡片整体是 draggable 的
+              //   ⇒ 按下按钮也会开始拖 ⇒ 松手就变成「改状态」了
+              onMouseDown={(event) => {
+                event.stopPropagation();
+              }}
+              onClick={() => onDiscuss(task)}
+            >
+              讨论
+            </Button>
+          ) : null}
         </div>
       </div>
     </Card>
@@ -104,7 +139,45 @@ function TaskCard({
  */
 const TaskBoard: React.FC = () => {
   const access = useAccess();
-  const { columns, loading, total, truncated, moveTask } = useBoardColumns();
+  const { columns, loading, total, truncated, moveTask, reload } =
+    useBoardColumns();
+  /** AI 工作台 ↔ 主工作区的桥 */
+  const aiBridge = useModel('ai-bridge');
+  /** 侧载的项目/里程碑名字（讨论上下文里要带「所属项目 / 所属里程碑」） */
+  const { projectNames, milestoneNames } = useProjectNames();
+  /** 状态字典（上下文里要给「线上码（中文）」） */
+  const { options: statusOptions } = useDictOptions('module_pm_task_status');
+
+  /**
+   * 「与 AI 讨论」：把这一张卡片设为当前讨论对象。
+   *
+   * ⚠️ 上下文由前端组装（不发请求）—— 卡片上的数据就是用户看到的那份。
+   */
+  const discussTask = useCallback(
+    (task: TaskOut) => {
+      const context = buildAiTaskContext({
+        task,
+        projectName:
+          task.project_id == null
+            ? undefined
+            : projectNames.get(task.project_id),
+        milestoneName:
+          task.milestone_id == null
+            ? undefined
+            : milestoneNames.get(task.milestone_id),
+        labels: mergeDictLabels(statusOptions),
+      });
+      if (!context) {
+        return;
+      }
+      aiBridge.setContext(context);
+      aiBridge.requestExpand();
+    },
+    [aiBridge, milestoneNames, projectNames, statusOptions],
+  );
+
+  /** AI 写回成功 ⇒ 刷新看板 */
+  const { rowClassName } = useAiTaskUpdate(reload);
 
   // 拖拽要 update 权限
   const canDrag = access.hasPermission('module_pm_project:pm_task:update');
@@ -204,6 +277,7 @@ const TaskBoard: React.FC = () => {
                         dragging={draggingId === task.id}
                         onDragStart={handleDragStart}
                         onDragEnd={handleDragEnd}
+                        onDiscuss={discussTask}
                       />
                     ))
                   )}

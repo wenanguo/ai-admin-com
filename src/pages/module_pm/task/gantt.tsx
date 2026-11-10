@@ -1,9 +1,10 @@
 import { PlusOutlined } from '@ant-design/icons';
-import { Link, useAccess } from '@umijs/max';
+import { Link, useAccess, useModel } from '@umijs/max';
 import { Alert, App, Button, Empty, Segmented, Select, Spin } from 'antd';
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCrudTable } from '@/components/CrudTable';
+import { buildAiTaskContext, mergeDictLabels } from '@/components/pm/aiContext';
 import type {
   GanttChartHandle,
   GanttRowAction,
@@ -14,6 +15,7 @@ import {
   NARROW_TIMELINE_WIDTH,
 } from '@/components/pm/gantt/layout';
 import type { TaskDateChange } from '@/components/pm/gantt/payload';
+import { useAiTaskUpdate } from '@/components/pm/useAiTaskUpdate';
 import { useDictOptions } from '@/components/pm/useDictOptions';
 import type {
   TaskCreateParams,
@@ -117,6 +119,8 @@ const TaskGantt: React.FC = () => {
   const access = useAccess();
   /** 二次确认弹窗(用 App 的实例,主题才跟着) */
   const { modal } = App.useApp();
+  /** AI 工作台 ↔ 主工作区的桥(讨论上下文 / 写回信号 / 展开侧栏) */
+  const aiBridge = useModel('ai-bridge');
 
   /** 按项目筛选(后端列表接口的 project_id 参数) */
   const [projectId, setProjectId] = useState<number | undefined>(undefined);
@@ -133,6 +137,8 @@ const TaskGantt: React.FC = () => {
     tasks,
     projectOptions,
     optionsLoading,
+    projectNames,
+    milestoneNames,
   } = useGanttTasks({ projectId });
 
   /** 甘特图的命令式句柄(回滚 / 缩放 / 滚动) */
@@ -158,6 +164,7 @@ const TaskGantt: React.FC = () => {
   // 状态/优先级的显示文案:查字典(线上码 → 中文);查不到就回退线上码
   const { options: statusOptions } = useDictOptions('module_pm_task_status');
   const { options: priorityOptions } = useDictOptions('module_pm_priority');
+  const { options: typeOptions } = useDictOptions('module_pm_task_type');
 
   const labels = useMemo(
     () => ({
@@ -271,6 +278,9 @@ const TaskGantt: React.FC = () => {
    * 在这儿是空转 ⇒ 必须把自己的刷新回调(`reload`,重新取数)传进去,
    * 否则新建/编辑/删除之后页面纹丝不动 ⇒ 看着像「没生效」。
    */
+  /** AI 写回成功 ⇒ 重新取数(甘特上的条形与日期要跟着变) */
+  useAiTaskUpdate(reload);
+
   const crud = useCrudTable<TaskOut, TaskCreateParams | TaskUpdateParams>({
     create: createTask,
     update: updateTask,
@@ -300,6 +310,26 @@ const TaskGantt: React.FC = () => {
         return;
       }
 
+      if (action === 'discuss') {
+        // 「与 AI 讨论」：把这一行设为当前讨论对象(上下文由前端组装)
+        const context = buildAiTaskContext({
+          task,
+          projectName:
+            task.project_id == null
+              ? undefined
+              : projectNames.get(task.project_id),
+          milestoneName:
+            task.milestone_id == null
+              ? undefined
+              : milestoneNames.get(task.milestone_id),
+          labels: mergeDictLabels(statusOptions, typeOptions, priorityOptions),
+        });
+        if (!context) return;
+        aiBridge.setContext(context);
+        aiBridge.requestExpand();
+        return;
+      }
+
       modal.confirm({
         title: '确认删除该任务?',
         content: `「${task.title ?? '该任务'}」删除后不可恢复。`,
@@ -312,7 +342,17 @@ const TaskGantt: React.FC = () => {
         },
       });
     },
-    [crud, modal, tasks],
+    [
+      aiBridge,
+      crud,
+      milestoneNames,
+      modal,
+      priorityOptions,
+      projectNames,
+      statusOptions,
+      tasks,
+      typeOptions,
+    ],
   );
 
   /** 本次取回的任务条数(画进甘特的 + 因缺日期被排除的) */
@@ -448,6 +488,7 @@ const TaskGantt: React.FC = () => {
             height={chartHeight}
             canEdit={canUpdate}
             canDelete={canDelete}
+            canDiscuss
             onRowAction={handleRowAction}
             onTaskDragEnd={(rowId, change) => {
               void handleTaskDragEnd(rowId, change);

@@ -13,6 +13,8 @@
  * ⚠️ 服务端按命令 id 去重 ⇒ **重试必须复用同一个 id**，
  * 换一个新 id 会让同一条命令真的再执行一遍（见 `retry`）。
  */
+
+import { useModel } from '@umijs/max';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   abortAiConversation,
@@ -149,6 +151,9 @@ function toMessage(error: unknown): string {
  */
 export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
   const storageKey = options.storageKey;
+  // ⚠️ **当前讨论的上下文**是全局的（任务页点「与 AI 讨论」时设的）
+  //    ⇒ 发消息时带上它，服务端才知道 AI 在聊哪条任务。
+  const aiContext = useModel('ai-bridge');
   const [conversationId, setConversationId] = useState<string | undefined>(
     undefined,
   );
@@ -191,6 +196,8 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     settle,
   } = useAgentStream({
     conversationId,
+    // 写回成功 ⇒ 广播（任务页据此刷新 + 高亮那一行）
+    onEntityUpdated: aiContext.notifyUpdate,
   });
 
   /**
@@ -278,14 +285,19 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
       setSendError(undefined);
       setSending(true);
       try {
-        await sendAiCommand(conversation, text, { id });
+        // ⚠️ **每条消息都带上下文**（不是只在会话创建时带）：
+        //    上下文是「此刻在聊哪条任务」⇒ 用户换了任务，下一句就换。
+        await sendAiCommand(conversation, text, {
+          id,
+          ...(aiContext.context ? { context: aiContext.context } : {}),
+        });
       } catch (error) {
         setSendError(toMessage(error));
       } finally {
         setSending(false);
       }
     },
-    [],
+    [aiContext.context],
   );
 
   /** 发送一句话（用户说的立刻上屏，服务端受理之后再走事件流）。 */

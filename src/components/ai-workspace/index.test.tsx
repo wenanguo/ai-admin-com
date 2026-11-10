@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
   subscribeAiEvents: vi.fn(() => () => undefined),
   listAiAudit: vi.fn(async () => ({ total: 0, items: [] })),
   listAiPending: vi.fn(async () => []),
+  approveAiPending: vi.fn(async () => undefined),
+  /** 全局 model 的「写回广播」—— 批准后它应该被叫到。 */
+  notifyUpdate: vi.fn(),
   /** 事件流订阅的回调（测试自己往里喂「连上了」与「断了」）。 */
   stream: {
     onEvent: undefined as ((event: unknown) => void) | undefined,
@@ -23,6 +26,16 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@umijs/max', () => ({
+  // 全局 model（AI 工作台 ↔ 主工作区的桥）
+  useModel: () => ({
+    context: null,
+    setContext: vi.fn(),
+    clearContext: vi.fn(),
+    lastUpdate: null,
+    notifyUpdate: mocks.notifyUpdate,
+    expandSignal: 0,
+    requestExpand: vi.fn(),
+  }),
   // 侧栏头部有进全宽页的入口（一个 `Link`）。
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
     <a href={to}>{children}</a>
@@ -40,7 +53,7 @@ vi.mock('@/services/api/ai/client', () => ({
   listAiAudit: mocks.listAiAudit,
   listAiPending: mocks.listAiPending,
   listAiConversations: vi.fn(),
-  approveAiPending: vi.fn(),
+  approveAiPending: mocks.approveAiPending,
   rejectAiPending: vi.fn(),
 }));
 
@@ -124,6 +137,48 @@ describe('AI 工作台侧栏', () => {
     });
     // 待确认还没打开 ⇒ 不读
     expect(mocks.listAiPending).not.toHaveBeenCalled();
+  });
+
+  it('批准一条挂起的修改 ⇒ 广播「哪条任务变了」（左边据此刷新+高亮）', async () => {
+    mocks.createAiConversation.mockResolvedValue({
+      conversationId: 'c1',
+      title: '新对话',
+    });
+    mocks.getAiState.mockResolvedValue({
+      conversationId: 'c1',
+      messages: [],
+      isStreaming: false,
+    });
+    mocks.listAiPending.mockResolvedValue([
+      {
+        id: 'p1',
+        command: 'mcp__aiadmin__update_task',
+        args: { id: 6, status_code: 'done' },
+        status: 'PENDING',
+      },
+    ]);
+
+    const { getByRole, getByText } = await render(<AiWorkspace />);
+    await getByRole('tab', { name: '待确认' }).click();
+    await expect.element(getByText(/mcp__aiadmin__update_task/)).toBeVisible();
+
+    await getByRole('button', { name: /确认执行/ }).click();
+
+    await vi.waitFor(() => {
+      expect(mocks.approveAiPending).toHaveBeenCalledWith('p1');
+    });
+    // ⚠️ 批准只是**唤醒**闸门 ⇒ 写还没落库 ⇒ 刷新信号要**延迟**发
+    //    （立刻发的话，左边查到的还是旧值）
+    await vi.waitFor(
+      () => {
+        expect(mocks.notifyUpdate).toHaveBeenCalledWith({
+          entityType: 'task',
+          entityId: 6,
+          fields: [],
+        });
+      },
+      { timeout: 3000 },
+    );
   });
 
   it('AI 服务连不上时在面板里说一声（不靠全局提示）', async () => {

@@ -26,6 +26,7 @@ import type {
   AiEnvelope,
   AiPendingRow,
   AiState,
+  AiTaskContext,
 } from './types';
 
 /**
@@ -141,6 +142,13 @@ export interface AiCommandOptions {
    * ⚠️ **重试时必须把上次返回的 id 原样传回来** —— 服务端按它去重。
    */
   id?: string;
+  /**
+   * 当前讨论的上下文（点「与 AI 讨论」时带上）。
+   *
+   * ⚠️ **每条消息都带**（不是只在会话创建时带）：上下文是「此刻在聊哪条任务」，
+   *    用户随时可能换一条任务继续聊。
+   */
+  context?: AiTaskContext;
 }
 
 /** 命令的受理结果（`success` 的意思是「已受理并排队」，不是「这一轮跑完了」）。 */
@@ -165,7 +173,17 @@ export async function sendAiCommand(
   const id = options?.id ?? createAiCommandId();
   const ack = await aiRequest<{ id: string; type: string; success: boolean }>(
     `/api/agent/${conversationId}/command`,
-    { method: 'POST', data: { id, type: 'prompt', message } },
+    {
+      method: 'POST',
+      // ⚠️ `context` 没有上下文时**不要发**这个键（别发 null：
+      //    服务端把「没有上下文」与「上下文不合法」都当成「没有」）。
+      data: {
+        id,
+        type: 'prompt',
+        message,
+        ...(options?.context ? { context: options.context } : {}),
+      },
+    },
   );
   // ⚠️ 返回**发出去的那个** id（不是服务端回显的）—— 重试要复用的一定是它。
   return { id, success: ack?.success === true };

@@ -22,6 +22,19 @@ const mocks = vi.hoisted(() => ({
   subscribeAiEvents: vi.fn(() => () => undefined),
 }));
 
+// 全局 model（AI 工作台 ↔ 主工作区的桥）
+vi.mock('@umijs/max', () => ({
+  useModel: () => ({
+    context: null,
+    setContext: vi.fn(),
+    clearContext: vi.fn(),
+    lastUpdate: null,
+    notifyUpdate: vi.fn(),
+    expandSignal: 0,
+    requestExpand: vi.fn(),
+  }),
+}));
+
 vi.mock('@/services/api/ai/client', () => ({
   AI_API_BASE_URL: '/ai-api',
   aiUrl: (path: string) => `/ai-api${path}`,

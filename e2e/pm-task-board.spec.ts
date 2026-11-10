@@ -1,6 +1,10 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { PM_TASK_PREFIX } from '../src/services/api/pm/paths';
+import {
+  PM_MILESTONE_PREFIX,
+  PM_PROJECT_PREFIX,
+  PM_TASK_PREFIX,
+} from '../src/services/api/pm/paths';
 import {
   businessErrorBody,
   gotoModulePage,
@@ -30,6 +34,14 @@ const BOARD_PAGE_PATH = '/pm/task/board';
 const TASK_LIST_URL = `**/api/v1${PM_TASK_PREFIX}/list**`;
 const TASK_DETAIL_URL = `**/api/v1${PM_TASK_PREFIX}/detail/**`;
 const TASK_UPDATE_URL = `**/api/v1${PM_TASK_PREFIX}/update/**`;
+/**
+ * 侧载的项目/里程碑列表。
+ *
+ * ⚠️ 看板页也要侧载它们（「与 AI 讨论」的上下文里要带所属项目/里程碑）
+ *    ⇒ **不拦就会打到真实后端** ⇒ 假 token 拿到 401 ⇒ 全局登出 ⇒ 页面跳登录页。
+ */
+const PROJECT_LIST_URL = `**/api/v1${PM_PROJECT_PREFIX}/list**`;
+const MILESTONE_LIST_URL = `**/api/v1${PM_MILESTONE_PREFIX}/list**`;
 /** 字典选项接口(列标题的任务状态 + 卡片上的优先级标签) */
 const dictDataUrl = (dictType: string) =>
   `**/api/v1/system/dict/data/info/${dictType}**`;
@@ -274,6 +286,46 @@ async function setupBoardPage(
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify(priorityDictResponse),
+    }),
+  );
+
+  // 侧载的项目/里程碑名字(不拦 ⇒ 打到真实后端 ⇒ 401 ⇒ 登出)
+  await page.route(PROJECT_LIST_URL, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        msg: '查询项目列表成功',
+        data: {
+          items: [{ id: 1, name: '财务对账系统升级' }],
+          total: 1,
+          page_no: 1,
+          page_size: 100,
+          has_next: false,
+        },
+        status_code: 200,
+        success: true,
+      }),
+    }),
+  );
+  await page.route(MILESTONE_LIST_URL, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        msg: '查询里程碑列表成功',
+        data: {
+          items: [{ id: 11, name: 'M1 需求' }],
+          total: 1,
+          page_no: 1,
+          page_size: 100,
+          has_next: false,
+        },
+        status_code: 200,
+        success: true,
+      }),
     }),
   );
 

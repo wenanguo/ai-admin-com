@@ -10,10 +10,14 @@
  * 挂进布局是下一刀的事（`Layout.Sider`，宽 400，可折叠到 40）。
  */
 import { FullscreenOutlined, RightOutlined } from '@ant-design/icons';
-import { Link } from '@umijs/max';
+import { Link, useModel } from '@umijs/max';
 import { Button, Tabs, Tag, theme } from 'antd';
 import type React from 'react';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  pendingChangedFields,
+  pendingTaskId,
+} from '@/services/api/ai/pendingArgs';
 import { AuditPanel } from './AuditPanel';
 import { ChatPanel } from './ChatPanel';
 import { PendingPanel } from './PendingPanel';
@@ -24,6 +28,14 @@ import { useWorkspace } from './useWorkspace';
 
 /** 页签。 */
 export type WorkspaceTab = 'chat' | 'pending' | 'audit';
+
+/**
+ * 批准之后**多久**通知任务页刷新（毫秒）。
+ *
+ * ⚠️ 不能是 0 —— 批准只是唤醒闸门，工具随后才执行、才落库
+ *    ⇒ 立刻查列表会读到**旧值**。
+ */
+const APPROVE_REFRESH_DELAY_MS = 800;
 
 /** 侧栏的 props。 */
 export interface AiWorkspaceProps {
@@ -64,6 +76,8 @@ export function AiWorkspace({
     () => defaultTab ?? readStoredTab(),
   );
   const workspace = useWorkspace();
+  // 当前讨论的上下文（任务页点「与 AI 讨论」时设的）
+  const aiContext = useModel('ai-bridge');
   // ⚠️ **按需读**：页签没打开就不读那两个列表 ——
   // 侧栏挂在整个布局上（Task 4），一挂上就发请求会让 AI 服务不可达时
   // 用户在别的页面上莫名其妙看到报错。
@@ -71,6 +85,58 @@ export function AiWorkspace({
     pending: activeTab === 'pending',
     audit: activeTab === 'audit',
   });
+
+  /**
+   * **新的待确认到达 ⇒ 列表要重读**。
+   *
+   * ⚠️ 待确认列表是「页签打开时读一次」⇒ 页签一直开着时，AI 新挂起的
+   *   那一条**不会自己出现** ⇒ 用户看不到「等待你确认」。
+   * ⇒ SSE 推来 pending 事件时（pendingItems 变了）就重读一次。
+   */
+  const pendingCount = workspace.pendingItems.length;
+  useEffect(() => {
+    if (pendingCount === 0) {
+      return;
+    }
+    lists.reload();
+  }, [pendingCount, lists.reload]);
+
+  /**
+   * 批准一条挂起的修改 ⇒ **确定**要刷新哪一行。
+   *
+   * ## 为什么不能只靠服务端的 `entity_updated`
+   *
+   * 那个事件走 SSE ⇒ 断线重连时**不会重放** ⇒ 可能丢
+   * ⇒ 用户看到的是「AI 说改好了，左边却没动」。
+   * ⇒ 而「用户点了确认执行」这件事是**确定**的 ⇒ 由前端自己发刷新信号。
+   *
+   * ## 为什么还要延迟一下
+   *
+   * 批准只是**唤醒**闸门里的等待者 ⇒ 工具随后才真正执行 ⇒ 写还没落库
+   * ⇒ 立刻查列表会读到旧值 ⇒ 延迟 {@link APPROVE_REFRESH_DELAY_MS} 再通知。
+   */
+  const refreshAfterApprove = useCallback(
+    (id: string) => {
+      const item = lists.pending.find((row) => row.id === id);
+      const args = item?.args as Record<string, unknown> | undefined;
+      const taskId = pendingTaskId({ command: item?.command, args });
+      if (taskId === undefined) {
+        return;
+      }
+      const fields = pendingChangedFields(
+        { command: item?.command, args },
+        aiContext.context?.task,
+      );
+      setTimeout(() => {
+        aiContext.notifyUpdate({
+          entityType: 'task',
+          entityId: taskId,
+          fields,
+        });
+      }, APPROVE_REFRESH_DELAY_MS);
+    },
+    [aiContext, lists.pending],
+  );
 
   return (
     <div
@@ -233,6 +299,8 @@ export function AiWorkspace({
             children: (
               <ChatPanel
                 messages={workspace.messages}
+                context={aiContext.context}
+                onClearContext={aiContext.clearContext}
                 thinking={workspace.thinking}
                 pendingItems={workspace.pendingItems}
                 streaming={workspace.streaming}
@@ -262,6 +330,7 @@ export function AiWorkspace({
                 onApprove={(id) => {
                   void workspace.approvePending(id).then(() => {
                     lists.reload();
+                    refreshAfterApprove(id);
                   });
                 }}
                 onReject={(id) => {

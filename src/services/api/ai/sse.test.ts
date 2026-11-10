@@ -193,6 +193,39 @@ describe('AI 事件流订阅', () => {
     expect(event).toEqual({ type: 'message_end', text: '好的' });
   });
 
+  it('entity_updated 被映射成写回信号（少了它 ⇒ 左边列表不刷新）', () => {
+    const event = toAiEvent({
+      event: 'entity_updated',
+      data: JSON.stringify({
+        conversationId: 'c1',
+        entityType: 'task',
+        entityId: 6,
+        fields: ['status_code', 'actual_hours'],
+      }),
+    });
+
+    expect(event).toEqual({
+      type: 'entity_updated',
+      entityType: 'task',
+      entityId: 6,
+      fields: ['status_code', 'actual_hours'],
+    });
+  });
+
+  it('entity_updated 的 id 是字符串也能转成数字（不然永远匹配不上一行）', () => {
+    const event = toAiEvent({
+      event: 'entity_updated',
+      data: JSON.stringify({ entityId: '6', fields: 'not-an-array' }),
+    });
+
+    expect(event).toEqual({
+      type: 'entity_updated',
+      entityType: 'task',
+      entityId: 6,
+      fields: [],
+    });
+  });
+
   it('断线后重连', async () => {
     const { mock } = stubFetch([
       streamOf(frame('agent_settled', { conversationId: 'c1' })),

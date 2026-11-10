@@ -33,7 +33,7 @@
  * 用户仍然可以随时点竖条把它展开（展开只是这一次的内容被挤扁）。
  */
 import { RobotOutlined } from '@ant-design/icons';
-import { history } from '@umijs/max';
+import { history, useModel } from '@umijs/max';
 import { Layout, theme } from 'antd';
 import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -195,6 +195,15 @@ export function AiWorkspaceShell({
   useEffect(() => {
     mountedRef.current = true;
   }, []);
+
+  // 「请把侧栏展开」的信号（任务页点「与 AI 讨论」时发的）
+  const aiBridge = useModel('ai-bridge');
+  useEffect(() => {
+    if (aiBridge.expandSignal === 0) {
+      return;
+    }
+    setCollapsed(false);
+  }, [aiBridge.expandSignal]);
 
   /** 折叠 / 展开，并把状态写进 localStorage。 */
   const toggle = useCallback((): void => {

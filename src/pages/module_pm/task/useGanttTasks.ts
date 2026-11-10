@@ -72,6 +72,10 @@ export interface UseGanttTasksResult {
   projectOptions: ProjectOption[];
   /** 侧载是否还在途(表单的下拉在途时是空的) */
   optionsLoading: boolean;
+  /** 项目 id → 项目名(讨论上下文里要带「所属项目」) */
+  projectNames: Map<number, string>;
+  /** 里程碑 id → 里程碑名(讨论上下文里要带「所属里程碑」) */
+  milestoneNames: Map<number, string>;
 }
 
 /** 行 id → 任务 id(不是任务行就返回 null) */
@@ -205,5 +209,7 @@ export function useGanttTasks(options?: {
     tasks,
     projectOptions,
     optionsLoading,
+    projectNames,
+    milestoneNames,
   };
 }

@@ -54,6 +54,32 @@ export interface AiState {
 }
 
 /**
+ * **讨论上下文**：当前正在跟 AI 聊的那条任务。
+ *
+ * ⚠️ **跨仓契约**（与服务端 `src/agent/context.ts` 一一对应）：
+ * 前端把「用户点的那一行」原样发过去 ⇒ 服务端不自己查库
+ * （查详情要 `…:detail` 权限，只有列表权限的角色会 403）。
+ *
+ * - `task` 是**回填基线**：后端 `update_task` 是**整对象 PUT**
+ *   （缺 `project_id/title/type_code/status_code/priority_code` 就 422）
+ *   ⇒ 基线必须带齐，服务端只在它之上改**允许改的那三个字段**。
+ * - `labels` 是「线上码 → 中文」：服务端渲染成「in_progress（进行中）」
+ *   ⇒ 模型照抄线上码就不会写出不存在的状态（线上码里**没有** `doing`）。
+ */
+export interface AiTaskContext {
+  /** 任务对象（后端 update 的载荷形状）。 */
+  task: Record<string, unknown> & { id: number };
+  /** 字典中文名（线上码 → 中文）：状态/优先级/类型。 */
+  labels?: Record<string, string>;
+  /** 人名（负责人/报告人）。 */
+  names?: { assignee?: string; reporter?: string };
+  /** 所属项目。 */
+  project?: { id: number; name: string };
+  /** 所属里程碑。 */
+  milestone?: { id: number; name: string };
+}
+
+/**
  * SSE 事件（服务端 `src/agent/events.ts` 的 `SSE_EVENTS`）。
  *
  * ⚠️ **服务端实际只发这 8 种**：`connected` `message_start` `text_delta`
@@ -101,6 +127,18 @@ export type AiEvent =
       id: string;
       command: string;
       args: Record<string, unknown>;
+    }
+  /**
+   * **写回成功**：AI 真的改了某条任务。
+   *
+   * ⚠️ 服务端只在「写操作成功」时发 ⇒ 前端拿它把左边的列表/看板/甘特
+   *    刷新一遍，并把那一行高亮（否则用户不知道写回落到哪了）。
+   */
+  | {
+      type: 'entity_updated';
+      entityType: 'task';
+      entityId: number;
+      fields: string[];
     };
 
 /** 一条审计（服务端 `src/audit-query.ts` 的 `AuditItem`）。 */

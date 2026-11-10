@@ -1,20 +1,23 @@
 import {
   AppstoreOutlined,
   BarChartOutlined,
+  CommentOutlined,
   PlusOutlined,
 } from '@ant-design/icons';
 import { type ProColumns, ProTable } from '@ant-design/pro-components';
-import { useAccess, useNavigate } from '@umijs/max';
+import { useAccess, useModel, useNavigate } from '@umijs/max';
 import { Alert, Button } from 'antd';
 import type React from 'react';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   CRUD_PAGINATION,
   useCrudColumns,
   useCrudTable,
 } from '@/components/CrudTable';
+import { buildAiTaskContext, mergeDictLabels } from '@/components/pm/aiContext';
 import { DictTag } from '@/components/pm/DictTag';
 import { toValueEnum } from '@/components/pm/toValueEnum';
+import { useAiTaskUpdate } from '@/components/pm/useAiTaskUpdate';
 import { useDictOptions } from '@/components/pm/useDictOptions';
 import type {
   TaskCreateParams,
@@ -59,6 +62,8 @@ function lookupName(names: Map<number, string>, id?: number | null): string {
 const TaskManagement: React.FC = () => {
   const access = useAccess();
   const navigate = useNavigate();
+  /** AI 工作台 ↔ 主工作区的桥（讨论上下文 / 写回信号 / 展开侧栏） */
+  const aiBridge = useModel('ai-bridge');
 
   // 载荷有两种形状:新增带创建三列,更新不带 —— 见 services/api/pm/task.ts
   const crud = useCrudTable<TaskOut, TaskCreateParams | TaskUpdateParams>({
@@ -94,8 +99,70 @@ const TaskManagement: React.FC = () => {
     [priorityOptions],
   );
 
+  /**
+   * 「与 AI 讨论」：把**这一行**设为当前讨论对象。
+   *
+   * ⚠️ 上下文由**前端**组装（不发请求）：列表页手上就有这一行，
+   *    而且聊的就是用户看到的这一行（服务端去查详情还要 `…:detail` 权限，
+   *    只有列表权限的角色会被 403）。
+   */
+  const discussTask = useCallback(
+    (record: TaskOut) => {
+      const context = buildAiTaskContext({
+        task: record,
+        projectName:
+          record.project_id == null
+            ? undefined
+            : projectNames.get(record.project_id),
+        milestoneName:
+          record.milestone_id == null
+            ? undefined
+            : milestoneNames.get(record.milestone_id),
+        // 字典中文名：服务端渲染成「in_progress（进行中）」
+        // ⇒ 模型照抄线上码就不会写出不存在的状态
+        labels: mergeDictLabels(statusOptions, typeOptions, priorityOptions),
+      });
+      if (!context) {
+        return;
+      }
+      aiBridge.setContext(context);
+      // 面板可能是收着的 ⇒ 展开它（不然用户看不到「正在讨论 #123」）
+      aiBridge.requestExpand();
+    },
+    [
+      aiBridge,
+      milestoneNames,
+      priorityOptions,
+      projectNames,
+      statusOptions,
+      typeOptions,
+    ],
+  );
+
   const columns: ProColumns<TaskOut>[] = [
     { title: 'ID', dataIndex: 'id', width: 80, search: false },
+    {
+      /**
+       * 「与 AI 讨论」入口。
+       *
+       * ⚠️ 放在**操作列前面**、单独一列：讨论**不改数据** ⇒ 不该跟
+       *    「编辑/删除」挤在一起（那两个是有破坏性的）。
+       */
+      title: '与 AI 讨论',
+      dataIndex: 'id',
+      width: 110,
+      search: false,
+      render: (_, record) => (
+        <Button
+          type="link"
+          size="small"
+          icon={<CommentOutlined />}
+          onClick={() => discussTask(record)}
+        >
+          讨论
+        </Button>
+      ),
+    },
     {
       title: '任务标题',
       dataIndex: 'title',
@@ -257,6 +324,17 @@ const TaskManagement: React.FC = () => {
     entityName: '任务',
   });
 
+  /**
+   * AI 写回成功 ⇒ 刷新表格 + 高亮那一行。
+   *
+   * ⚠️ 不刷新的话，用户看到的是「AI 说改好了，可我这边还是旧数据」
+   *    ⇒ 看着像没生效。
+   */
+  const reloadTasks = useCallback(() => {
+    crud.actionRef.current?.reload();
+  }, [crud.actionRef]);
+  const { rowClassName } = useAiTaskUpdate(reloadTasks);
+
   /*
     侧载有上限(后端 page_size 最大 100):项目与里程碑都会越攒越多,
     侧载到的是最新的 100 条 ⇒ 更早的实体在表格里查不到名字(显示为 -)。
@@ -300,6 +378,8 @@ const TaskManagement: React.FC = () => {
         // 列多的时候横向滚动,不要把表头挤成竖排的一列字
         // (内容区被右侧的 AI 工作台占掉一块,列宽被压到最小就会这样)
         scroll={{ x: 'max-content' }}
+        // AI 写回成功 ⇒ 刚改的那一行高亮一下
+        rowClassName={rowClassName}
         // 错误提示由请求层统一弹,这里只需阻止 ProTable 把 rejection 重新抛出
         // (ProComponents v3 在 onRequestError 未定义时会 rethrow,产生未捕获的 promise rejection)
         onRequestError={() => {}}

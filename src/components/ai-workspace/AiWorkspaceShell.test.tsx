@@ -23,6 +23,16 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@umijs/max', () => ({
+  // 全局 model（AI 工作台 ↔ 主工作区的桥）
+  useModel: () => ({
+    context: null,
+    setContext: vi.fn(),
+    clearContext: vi.fn(),
+    lastUpdate: null,
+    notifyUpdate: vi.fn(),
+    expandSignal: 0,
+    requestExpand: vi.fn(),
+  }),
   // 外壳要知道当前路由（全宽页上不挂侧栏）⇒ 给一个固定的路径。
   //
   // ⚠️ 用的是 `history` 而不是 `useLocation`：这个外壳挂在 `rootContainer` 上，

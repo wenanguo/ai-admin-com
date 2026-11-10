@@ -87,6 +87,17 @@ export interface UseAgentStreamOptions {
    *    窗口不能一直开着 —— 开着就会把实时帧一直攒着不上屏。
    */
   replayWindowMs?: number;
+  /**
+   * **写回成功**的回调（AI 真的改了某条任务时）。
+   *
+   * ⚠️ 这不是界面状态，是**副作用**（要让左边的列表/看板/甘特刷新+高亮）
+   *    ⇒ 不能塞进 `StreamState` ⇒ 走回调。
+   */
+  onEntityUpdated?: (update: {
+    entityType: 'task';
+    entityId: number;
+    fields: string[];
+  }) => void;
 }
 
 /** hook 的返回值。 */
@@ -626,6 +637,11 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
   // 订阅与快照读取也放进 ref —— 换引用不该让事件流断开重连
   const subscribeRef = useRef<AiEventSubscriber>(defaultSubscribe);
   const loadStateRef = useRef<(id: string) => Promise<AiState>>(getAiState);
+  // 写回成功的回调（换引用不该让事件流断开重连 ⇒ 放 ref）
+  const onEntityUpdatedRef = useRef(options.onEntityUpdated);
+  useEffect(() => {
+    onEntityUpdatedRef.current = options.onEntityUpdated;
+  }, [options.onEntityUpdated]);
   // 乐观上屏、还没落库的用户消息（重连快照里没有它们时要留住）
   const pendingUserMessagesRef = useRef<string[]>([]);
   // 回放窗口（服务端连上后会**立刻**回放整段历史 ⇒ 它与快照赛跑）
@@ -978,6 +994,17 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
           return;
         }
         const window = replayRef.current;
+        // ⚠️ **写回成功** ⇒ 这是**副作用**（左边要刷新+高亮），不是界面状态
+        //    ⇒ **不能被回放窗口吞掉**：窗口开着的时候（刚连上 / 断线重连），
+        //    写回事件会落到窗口里只做缓冲 ⇒ 表现为“写回了但列表不刷新”。
+        //    ⇒ 副作用一律先发，再谈上屏。
+        if (event.type === 'entity_updated') {
+          onEntityUpdatedRef.current?.({
+            entityType: event.entityType,
+            entityId: event.entityId,
+            fields: event.fields,
+          });
+        }
         if (window.open) {
           // 回放中的帧：**不上屏**（快照会覆盖它），
           // 但要攒着 —— 里面的**命令卡片**快照里没有。
@@ -990,6 +1017,8 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
           tryCloseReplayWindow();
           return;
         }
+        // ⚠️ **写回成功** ⇒ 这是**副作用**（左边要刷新+高亮），不是界面状态
+        //    （上面已经发过副作用了 ⇒ 这里只管界面状态）
         setState((previous) => applyAiEvent(previous, event));
       },
       () => {

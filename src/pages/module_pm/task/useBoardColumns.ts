@@ -74,6 +74,8 @@ export interface BoardColumns {
   truncated: boolean;
   /** 把卡片挪到目标列:乐观更新 + 写失败回滚 */
   moveTask: (taskId: number, target: BoardStatus) => Promise<void>;
+  /** 重新取数（AI 写回成功后刷新看板用） */
+  reload: () => void;
 }
 
 /**
@@ -135,6 +137,8 @@ export function useBoardColumns(): BoardColumns {
   const [tasks, setTasks] = useState<TaskOut[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  // 重新取数的计数器(AI 写回成功后要刷新看板)
+  const [reloadCount, setReloadCount] = useState(0);
 
   // 列标题取字典(字典 module_pm_task_status 有七态,看板只用其中六态)
   const { options: statusOptions } = useDictOptions('module_pm_task_status');
@@ -159,7 +163,7 @@ export function useBoardColumns(): BoardColumns {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadCount]);
 
   const columns = useMemo<BoardColumn[]>(
     () =>
@@ -215,5 +219,9 @@ export function useBoardColumns(): BoardColumns {
     // 后端给的总数超过一页的容量 ⇒ 看板看到的是「前 100 个」
     truncated: total > BOARD_LIST_PARAMS.page_size,
     moveTask,
+    // 重新取数(AI 写回成功后用)
+    reload: useCallback(() => {
+      setReloadCount((count) => count + 1);
+    }, []),
   };
 }

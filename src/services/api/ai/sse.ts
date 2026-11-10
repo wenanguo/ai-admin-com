@@ -187,6 +187,36 @@ function readOptionalString(
 }
 
 /**
+ * 读一个数字字段（读不到或不是有限数字 ⇒ 0）。
+ *
+ * ⚠️ `entityId` 必须是**数字** —— 页面靠它匹配要高亮的那一行
+ *   （字符串会永远匹配不上 ⇒ 表现为“写回了但没高亮”）。
+ */
+function readNumber(payload: Record<string, unknown>, key: string): number {
+  const value = payload[key];
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+/** 读一个字符串数组字段（不是数组 ⇒ 空数组）。 */
+function readStringArray(
+  payload: Record<string, unknown>,
+  key: string,
+): string[] {
+  const value = payload[key];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === 'string');
+}
+
+/**
  * 把一帧映射成业务事件。
  *
  * @returns 认识的事件；**不认识的事件名 ⇒ undefined（忽略）**。
@@ -232,6 +262,15 @@ export function toAiEvent(frame: SseFrame): AiEvent | undefined {
       };
     case 'agent_settled':
       return { type: 'agent_settled' };
+    case 'entity_updated':
+      // ⚠️ **写回成功** ⇒ 左边要刷新 + 高亮那一行
+      //    （漏了这个 case ⇒ 事件被当成“不认识”丢掉 ⇒ 表现为“写回了但列表不刷新”）
+      return {
+        type: 'entity_updated',
+        entityType: 'task',
+        entityId: readNumber(payload, 'entityId'),
+        fields: readStringArray(payload, 'fields'),
+      };
     case 'pending':
       // ⚠️ 服务端在 tool_call hook 里挂起 ⇒ 这一轮在等人点头
       return {

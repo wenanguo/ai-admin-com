@@ -202,3 +202,14 @@ body,
 .ant-app {
   height: 100%;
 }
+
+/**
+ * AI 写回成功 ⇒ 刚改的那一行高亮一下。
+ *
+ * ⚠️ 用 antd 的语义色变量 ⇒ 亮/暗主题都跟得上；
+ *    高亮是**瞬时反馈**（几秒后 class 被去掉）⇒ 不是状态。
+ */
+.pm-ai-updated-row > td {
+  background: var(--ant-color-primary-bg) !important;
+  transition: background 0.3s ease;
+}
