@@ -35,6 +35,14 @@ export const SSE_EVENTS = {
 	 *    前端拿到它 ⇒ 「待确认」页签出现一条，界面上显示「等待确认」。
 	 */
 	PENDING: "pending",
+	/**
+	 * **写回成功**：AI 真的改了某条任务。
+	 *
+	 * ⚠️ 这是**我们自己**发的事件（不是 pi 的）⇒ 前端拿到它就把
+	 *    左边的列表/看板/甘特刷新一遍，并把那一条高亮一下
+	 *    （否则用户不知道写回落到哪一行了）。
+	 */
+	ENTITY_UPDATED: "entity_updated",
 } as const;
 
 /** 事件名的联合类型。 */
@@ -117,6 +125,17 @@ export interface PendingPayload {
 	args: Record<string, unknown>;
 }
 
+/** `entity_updated` 的载荷（写回成功）。 */
+export interface EntityUpdatedPayload {
+	conversationId: string;
+	/** 实体类型（现在只有任务）。 */
+	entityType: "task";
+	/** 实体的 id（前端拿它高亮那一行）。 */
+	entityId: number;
+	/** 被改的字段名（前端可以顺带提示「状态已改为完成」）。 */
+	fields: string[];
+}
+
 /** 载荷的联合类型。 */
 export type SsePayload =
 	| ConnectedPayload
@@ -127,4 +146,5 @@ export type SsePayload =
 	| ToolCallPayload
 	| ToolResultPayload
 	| AgentSettledPayload
-	| PendingPayload;
+	| PendingPayload
+	| EntityUpdatedPayload;

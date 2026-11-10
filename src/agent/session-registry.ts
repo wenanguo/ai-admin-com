@@ -15,6 +15,7 @@
  */
 
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { AiTaskContext } from "./context";
 import { FrameBuffer, type StreamFrame } from "./frame-buffer";
 
 /** SSE 订阅者：收到一帧就被叫一次。 */
@@ -62,6 +63,32 @@ export interface ConversationChannel {
 	readonly backlog: FrameBuffer;
 	/** 调用方的 token（**只在内存**；刷新命令时会被新的 token 覆盖）。 */
 	token: string | undefined;
+	/**
+	 * 当前登录用户的 id（**只在内存**）。
+	 *
+	 * ⚠️ 写审计要记「谁干的」⇒ 这里存一下（运行时 submitCommand 时写进去）。
+	 */
+	userId: string | undefined;
+	/**
+	 * 当前讨论的上下文（**只在内存**）。
+	 *
+	 * ⚠️ 每次带上下文的消息都会覆盖它 ⇒ 它表示「**此刻**在聊哪条任务」。
+	 *    没有上下文的对话（用户没点「与 AI 讨论」）⇒ 它是 undefined。
+	 */
+	taskContext: AiTaskContext | undefined;
+	/**
+	 * 最近一次**写操作**（工具开始执行时记下，成功后用来发 entity_updated）。
+	 */
+	lastWrite: { toolName: string; entityId: number; fields: string[] } | undefined;
+	/**
+	 * 最近一次**MCP 写操作**的参数（用来写审计行）。
+	 *
+	 * ⚠️ MCP 的写（update_task / patch_task_status）**不走**我们自己的工具
+	 *    ⇒ 不写审计就没人知道「这条任务是谁改的」⇒ 这里记一份。
+	 */
+	lastMcpWrite:
+		| { toolName: string; args: Record<string, unknown> }
+		| undefined;
 	/** pi 会话（懒创建）。 */
 	session: AgentSessionLike | undefined;
 	/** 退订函数（关会话时调用）。 */
@@ -127,6 +154,10 @@ export class SessionRegistry {
 			subscribers: new Set<ChannelSubscriber>(),
 			backlog: new FrameBuffer(),
 			token: undefined,
+			userId: undefined,
+			taskContext: undefined,
+			lastWrite: undefined,
+			lastMcpWrite: undefined,
 			session: undefined,
 			unsubscribe: undefined,
 			isStreaming: false,

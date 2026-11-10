@@ -66,6 +66,9 @@ export async function POST(
 	const id = typeof record["id"] === "string" ? record["id"] : "";
 	const type = typeof record["type"] === "string" ? record["type"] : "";
 	const message = typeof record["message"] === "string" ? record["message"] : "";
+	// ⚠️ **上下文**（当前讨论的是哪条任务）: 可选。
+	//    解析与校验在 `agent/context.ts` 里做 ⇒ 这里只负责**原样带过去**。
+	const context = record["context"];
 
 	if (id.length === 0) {
 		return errorEnvelope(request, 400, "命令 id 不能为空", 400);
@@ -95,6 +98,7 @@ export async function POST(
 			commandId: id,
 			userId: String(user.id),
 			type: type as CommandType,
+			context,
 		});
 		return okEnvelope(request, ack);
 	} catch (error) {

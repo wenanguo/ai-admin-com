@@ -13,13 +13,14 @@ description: 列出任务。用户问「这个项目还有哪些任务」「哪�
 
 2. **列任务**：调用 `mcp__aiadmin__list_tasks`，常用参数：
    - `project_id`（数字 id）
-   - `status_code`（`todo` / `doing` / `done` …）
-   - `priority_code`（`p0` ~ `p3`）
+   - `status_code`（`todo` / `in_progress` / `done` / `backlog` / `review` / `blocked` …）
+   - `priority_code`（`P0` ~ `P3`，**大写 P**）
    - `type_code`（`feature` / `bug` / `ops` …）
    - `title`（标题关键词，模糊匹配）
    - `assignee_id`（负责人 id）
    - `page_no` / `page_size`（**单页上限 100**）
-   - ⚠️ 状态 / 类型 / 优先级都是**小写的字典码**
+   - ⚠️ 状态 / 类型是小写字典码（`todo` / `in_progress` / `feature`），
+     优先级是**大写 P**（`P0`）—— ⚠️ 不是 `doing`，也不是小写的 `p0`
 
 3. **回报给用户**
    - 按状态分组列出（标题 + 状态 + 优先级），并说明一共多少条。

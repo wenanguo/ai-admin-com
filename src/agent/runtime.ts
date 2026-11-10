@@ -22,6 +22,7 @@ import { AadminClient } from "../aadmin/client";
 import { AadminDataSource } from "../adapter/datasource";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { PrismaAuditWriter, type AuditWriter } from "../audit";
+import { redactAuditArgs } from "../audit-redact";
 import { env } from "../env";
 import { buildFrame } from "../http/sse";
 import type { TaskCreator } from "../tools/create-task";
@@ -29,6 +30,8 @@ import { buildCommandTools } from "../tools";
 import { setEnumWarningSink, standardEnumWarningSink } from "../adapter/enums";
 import { SSE_EVENTS, type SseEventName, type SsePayload } from "./events";
 import { AgentEventMapper, extractAssistantText, isAssistantMessage } from "./event-mapper";
+import type { AiTaskContext } from "./context";
+import { parseAiTaskContext, renderAiTaskContext, writeTargetId, WRITABLE_FIELDS } from "./context";
 import { CurrentUserResolver, type CurrentUser } from "./identity";
 import { createGateExtension } from "./gate";
 import { createAiadminMcpExtension } from "./mcp";
@@ -208,6 +211,8 @@ export class AgentRuntime {
 		userId: string;
 		/** 命令类型（缺省 `prompt`）。 */
 		type?: CommandType;
+		/** 当前讨论的上下文（前端点「与 AI 讨论」时带上）。 */
+		context?: unknown;
 	}): Promise<CommandAck> {
 		const message = request.message.trim();
 		if (message.length === 0) {
@@ -238,6 +243,13 @@ export class AgentRuntime {
 		}
 
 		const channel = this.#registry.ensure(request.conversationId);
+		// ⚠️ **当前用户**：写审计要记「谁干的」。
+		channel.userId = request.userId;
+		// ⚠️ **上下文是「此刻」的**：每条带上下文的消息都会覆盖它 ⇒
+		//    用户换一条任务继续聊 ⇒ 上下文跟着换。
+		//    没有上下文（普通聊天）⇒ 清掉 ⇒ 闸门不再收窄字段。
+		const taskContext = parseAiTaskContext(request.context);
+		channel.taskContext = taskContext ?? undefined;
 		// token 只在内存里；每次命令都刷新（token 轮换后能用新的那个）
 		channel.token = request.token;
 
@@ -251,9 +263,17 @@ export class AgentRuntime {
 		);
 
 		// 发起这一轮（排队语义见 `CommandType`）
+		// ⚠️ **给模型的话** = 上下文块 + 用户的话；**库里存的是用户原话**
+		//    （界面里显示的必须是用户自己打的那句，不能混进系统生成的上下文）。
+		const modelMessage =
+			taskContext == null
+				? message
+				: `${renderAiTaskContext(taskContext)}
+
+${message}`;
 		void this.#dispatchTurn(
 			channel,
-			message,
+			modelMessage,
 			request.type ?? "prompt",
 			userMessage.id,
 			request.userId,
@@ -347,6 +367,37 @@ export class AgentRuntime {
 	}
 
 	/* ------------------------------------------------------------ 内部 */
+
+	/**
+	 * MCP 写成功 ⇒ 落一条审计（`ai_audit_log`）。
+	 *
+	 * ⚠️ **写审计失败不许把已经写下去的东西弄丢** ⇒ 失败只记一条日志。
+	 */
+	#writeAudit(
+		channel: ConversationChannel,
+		write: { toolName: string; args: Record<string, unknown> },
+		event: { result?: unknown },
+	): void {
+		const userId = channel.userId;
+		if (userId === undefined) {
+			return;
+		}
+		void this.#audit
+			.write({
+				actorType: "AI",
+				command: write.toolName.replace(/^mcp__[^_]+__/, ""),
+				args: redactAuditArgs(write.args),
+				// 写前快照：讨论上下文里的基线（没有上下文就没有写前）
+				before: channel.taskContext?.task ?? null,
+				// 写后快照：工具回执（截断，别把整份响应塞进审计表）
+				after: summarizeResult(event.result),
+				userId,
+				model: this.#model,
+			})
+			.catch((error: unknown) => {
+				console.error("[audit] 写 ai_audit_log 失败（数据已写入，不要重试）", error);
+			});
+	}
 
 	/** 取上次这个命令 id 的 ack（没有 ⇒ undefined）。 */
 	#ackOf(conversationId: string, commandId: string): CommandAck | undefined {
@@ -508,6 +559,8 @@ export class AgentRuntime {
 							context: () => ({
 								conversationId: channel.conversationId,
 								userId: userId as string,
+								// ⚠️ 有上下文 ⇒ 闸门把写操作**收窄**到允许回填的字段
+								taskContext: channel.taskContext,
 								onPending: (row) => {
 									this.#publish(channel, SSE_EVENTS.PENDING, {
 										conversationId: channel.conversationId,
@@ -528,6 +581,44 @@ export class AgentRuntime {
 
 	/** pi 事件 → 发布 SSE 帧。 */
 	#handleEvent(channel: ConversationChannel, event: AgentSessionEvent): void {
+		// ⚠️ **写回成功 ⇒ 告诉前端「哪条任务变了」**
+		//    （前端据此刷新左边的列表/看板/甘特，并把那一行高亮）。
+		//    ⚠️ 参数在闸门里被**就地改写过**（收窄成允许回填的字段）⇒
+		//    这里读到的就是**真正写下去的那份**。
+		if (event.type === "tool_execution_start") {
+			const args = (event.args ?? {}) as Record<string, unknown>;
+			// ⚠️ **MCP 的写也要留审计**（我们自己的工具自己写审计）
+			//    ⇒ 这里记一份参数，等执行成功后再落 `ai_audit_log`。
+			if (isMcpWriteTool(event.toolName)) {
+				channel.lastMcpWrite = { toolName: event.toolName, args };
+			}
+			const entityId = writeTargetId(event.toolName, args, channel.taskContext ?? null);
+			if (entityId !== undefined) {
+				channel.lastWrite = {
+					toolName: event.toolName,
+					entityId,
+					fields: changedFields(args, channel.taskContext?.task ?? {}),
+				};
+			}
+		}
+		if (event.type === "tool_execution_end" && event.isError !== true) {
+			const write = channel.lastWrite;
+			// ⚠️ **MCP 写成功 ⇒ 落一条审计**（写前快照用讨论上下文里的基线）
+			const mcpWrite = channel.lastMcpWrite;
+			if (mcpWrite !== undefined && mcpWrite.toolName === event.toolName) {
+				channel.lastMcpWrite = undefined;
+				this.#writeAudit(channel, mcpWrite, event);
+			}
+			if (write !== undefined && write.toolName === event.toolName) {
+				channel.lastWrite = undefined;
+				this.#publish(channel, SSE_EVENTS.ENTITY_UPDATED, {
+					conversationId: channel.conversationId,
+					entityType: "task",
+					entityId: write.entityId,
+					fields: write.fields,
+				});
+			}
+		}
 		if (event.type === "agent_start") {
 			channel.isStreaming = true;
 		}
@@ -590,6 +681,46 @@ export class AgentRuntime {
 	}
 }
 
+/**
+ * 这个工具是不是「**MCP 的写**」（会改数据的那种）。
+ *
+ * ⚠️ 只管 **MCP** 的工具（带 `mcp__<server>__` 前缀）：
+ *    我们自己的工具（create_task 等）**自己写审计** ⇒ 别写两遍。
+ */
+function isMcpWriteTool(toolName: string): boolean {
+	if (!toolName.startsWith("mcp__")) {
+		return false;
+	}
+	const bare = toolName.replace(/^mcp__[^_]+__/, "");
+	return bare.startsWith("create_") || bare.startsWith("update_") || bare.startsWith("patch_");
+}
+
+/** 工具回执 → 一个**短**的写后快照（别把整份响应塞进审计表）。 */
+function summarizeResult(result: unknown): unknown {
+	if (result === undefined || result === null) {
+		return null;
+	}
+	const record = result as { content?: unknown; details?: unknown };
+	const content = record.content;
+	if (Array.isArray(content)) {
+		const text = content
+			.map((part) =>
+				typeof part === "object" && part !== null
+					? String((part as { text?: unknown }).text ?? "")
+					: String(part),
+			)
+			.join("")
+			.trim();
+		if (text.length > 0) {
+			return text.slice(0, 4000);
+		}
+	}
+	if (record.details !== undefined) {
+		return record.details;
+	}
+	return result;
+}
+
 /* ------------------------------------------------------------ 进程级单例 */
 
 const globalForAgent = globalThis as unknown as { agentRuntime?: AgentRuntime };
@@ -599,4 +730,26 @@ export const agentRuntime: AgentRuntime = globalForAgent.agentRuntime ?? new Age
 
 if (process.env.NODE_ENV !== "production") {
 	globalForAgent.agentRuntime = agentRuntime;
+}
+
+/**
+ * 这一轮**实际改了哪几个字段**（与基线比出来的）。
+ *
+ * ⚠️ 不能直接看「参数里有哪些可写字段」—— 整对象 PUT 的参数里**每个**可写字段都在
+ *    （基线带的）⇒ 那样报出来会显得「全都改了」。
+ * ⇒ 与基线逐个比：**值不同**才算改了。
+ */
+function changedFields(args: Record<string, unknown>, baseline: Record<string, unknown>): string[] {
+	const fields: string[] = [];
+	for (const key of WRITABLE_FIELDS) {
+		if (!(key in args)) {
+			continue;
+		}
+		const before = baseline[key];
+		const after = args[key];
+		if (JSON.stringify(before ?? null) !== JSON.stringify(after ?? null)) {
+			fields.push(key);
+		}
+	}
+	return fields;
 }

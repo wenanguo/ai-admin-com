@@ -594,3 +594,92 @@ describe("运行时 · token 轮换（P4）", () => {
 		expect(created[0]?.mcp).toBeUndefined();
 	});
 });
+
+/* ------------------------------------------------------------------ 讨论上下文 */
+
+describe("运行时 · 讨论上下文（与 AI 讨论）", () => {
+	/** 一个前端发来的上下文（任务 + 项目 + 里程碑）。 */
+	const context = {
+		task: {
+			id: 6,
+			project_id: 5,
+			title: "测试333",
+			type_code: "feature",
+			status_code: "in_progress",
+			priority_code: "P1",
+		},
+		labels: { in_progress: "进行中", P1: "高", feature: "功能" },
+		project: { id: 5, name: "财务对账系统升级" },
+		milestone: { id: 5, name: "M5 已延期" },
+	};
+
+	/** 造一个会**记下 prompt 文本**的运行时。 */
+	function makeContextRuntime(): {
+		runtime: AgentRuntime;
+		prompts: string[];
+		appended: MessageRecord[];
+	} {
+		const prompts: string[] = [];
+		const { store, appended } = fakeStore(fakeConversation());
+		const runtime = new AgentRuntime({
+			store,
+			audit: fakeAudit().writer,
+			createSession: async () => ({
+				prompt: async (message: string): Promise<void> => {
+					prompts.push(message);
+				},
+				subscribe: () => () => {},
+				dispose: () => {},
+				isStreaming: false,
+			}),
+			createDataSource: () => ({
+				createTask: async (input: CreateTaskInput) => {
+					void input;
+					return fakeTask();
+				},
+			}),
+			resolveUser: async () => ({ id: 2 }),
+		});
+		return { runtime, prompts, appended };
+	}
+
+	it("给模型的话 = 上下文块 + 用户原话（模型得知道在聊哪条任务）", async () => {
+		const { runtime, prompts } = makeContextRuntime();
+
+		await runtime.submitCommand({
+			...command("cmd-1", "这条做完了"),
+			context,
+		});
+		await waitFor(() => prompts.length >= 1);
+
+		const prompt = prompts[0] ?? "";
+		expect(prompt).toContain("【当前讨论的任务】#6 测试333");
+		expect(prompt).toContain("财务对账系统升级");
+		expect(prompt).toContain("M5 已延期");
+		// 用户那句**原样**在里面（上下文在前，用户的话在后）
+		expect(prompt).toContain("这条做完了");
+	});
+
+	it("⭐ 库里存的仍是用户原话（界面里不能混进系统生成的上下文）", async () => {
+		const { runtime, appended } = makeContextRuntime();
+
+		await runtime.submitCommand({
+			...command("cmd-1", "这条做完了"),
+			context,
+		});
+		await waitFor(() => appended.length >= 1);
+
+		const userMessage = appended.find((row) => row.role === "USER");
+		expect(userMessage?.content).toBe("这条做完了");
+		expect(userMessage?.content).not.toContain("【当前讨论的任务】");
+	});
+
+	it("没有上下文 ⇒ 给模型的就是用户原话（普通聊天）", async () => {
+		const { runtime, prompts } = makeContextRuntime();
+
+		await runtime.submitCommand(command("cmd-1", "你好"));
+		await waitFor(() => prompts.length >= 1);
+
+		expect(prompts[0]).toBe("你好");
+	});
+});
