@@ -272,6 +272,54 @@ describe('CrudTable 共享脚手架', () => {
     });
   });
 
+  /**
+   * **没有 ProTable 的页面**(甘特视图)必须传自己的刷新回调。
+   *
+   * 不传的话 actionRef 上没人调 reload ⇒ 删完/改完页面纹丝不动
+   * ⇒ 看着像「没生效」。
+   */
+  it('给了 reload 就用它刷新(不刷 ProTable)', async () => {
+    const { create, update, remove } = createHarness();
+    remove.mockResolvedValue(undefined);
+    const reload = vi.fn();
+
+    const { result, act } = await renderHook(() =>
+      useCrudTable<DemoRecord, DemoValues>({
+        create,
+        update,
+        remove,
+        reload,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.handleDelete({ id: 7, name: '后端工程师' });
+    });
+
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('提交成功后也走传入的 reload', async () => {
+    const { create, update, remove } = createHarness();
+    create.mockResolvedValue(undefined);
+    const reload = vi.fn();
+
+    const { result, act } = await renderHook(() =>
+      useCrudTable<DemoRecord, DemoValues>({
+        create,
+        update,
+        remove,
+        reload,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.handleSubmit({ name: '后端工程师' });
+    });
+
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
   it('没有编辑记录时提交走 create', async () => {
     const { create, update, remove } = createHarness();
     create.mockResolvedValue(undefined);

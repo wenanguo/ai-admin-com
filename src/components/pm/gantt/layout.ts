@@ -30,6 +30,8 @@ export const COLUMN_SPECS = {
   priority: { width: 72, min: 56, max: 140 },
   /** 起止日期(合并成一列) */
   dates: { width: 112, min: 104, max: 220 },
+  /** 操作列(编辑 / 删除) */
+  actions: { width: 124, min: 116, max: 160 },
 } as const;
 
 /** 列名 */
@@ -121,6 +123,7 @@ export function computeColumnWidths(gridWidth: number): ColumnWidths {
     status: COLUMN_SPECS.status.width,
     priority: COLUMN_SPECS.priority.width,
     dates: COLUMN_SPECS.dates.width,
+    actions: COLUMN_SPECS.actions.width,
   };
   let total = Object.values(widths).reduce((sum, width) => sum + width, 0);
 
@@ -132,6 +135,7 @@ export function computeColumnWidths(gridWidth: number): ColumnWidths {
       'status',
       'assignee',
       'title',
+      'actions',
     ] as const) {
       if (total <= target) break;
       const spec = COLUMN_SPECS[key];
@@ -147,6 +151,7 @@ export function computeColumnWidths(gridWidth: number): ColumnWidths {
       'status',
       'assignee',
       'priority',
+      'actions',
     ] as const) {
       if (total >= target) break;
       const spec = COLUMN_SPECS[key];

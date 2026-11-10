@@ -1,8 +1,13 @@
+import { PlusOutlined } from '@ant-design/icons';
 import { Link, useAccess } from '@umijs/max';
-import { Alert, Button, Empty, Segmented, Select, Spin } from 'antd';
+import { Alert, App, Button, Empty, Segmented, Select, Spin } from 'antd';
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { GanttChartHandle } from '@/components/pm/gantt/GanttChart';
+import { useCrudTable } from '@/components/CrudTable';
+import type {
+  GanttChartHandle,
+  GanttRowAction,
+} from '@/components/pm/gantt/GanttChart';
 import { GanttChart } from '@/components/pm/gantt/GanttChart';
 import {
   computeTimelineWidth,
@@ -10,8 +15,14 @@ import {
 } from '@/components/pm/gantt/layout';
 import type { TaskDateChange } from '@/components/pm/gantt/payload';
 import { useDictOptions } from '@/components/pm/useDictOptions';
-import { useGanttTasks } from './useGanttTasks';
-import { useProjectNames } from './useProjectNames';
+import type {
+  TaskCreateParams,
+  TaskOut,
+  TaskUpdateParams,
+} from '@/services/api/pm/task';
+import { createTask, deleteTasks, updateTask } from '@/services/api/pm/task';
+import TaskModalForm from './ModalForm';
+import { rowIdToTaskId, useGanttTasks } from './useGanttTasks';
 
 /**
  * 任务甘特页 —— 路由 /pm/task/gantt。
@@ -104,15 +115,25 @@ function spaceBelow(page: HTMLElement, scrollParent: HTMLElement): number {
 /** 甘特页 */
 const TaskGantt: React.FC = () => {
   const access = useAccess();
+  /** 二次确认弹窗(用 App 的实例,主题才跟着) */
+  const { modal } = App.useApp();
 
   /** 按项目筛选(后端列表接口的 project_id 参数) */
   const [projectId, setProjectId] = useState<number | undefined>(undefined);
   /** 缩放级别(「日/周/月」 */
   const [zoom, setZoom] = useState<ZoomLevel>('week');
 
-  const { mapping, loading, total, truncated, applyDateChange } = useGanttTasks(
-    { projectId },
-  );
+  const {
+    mapping,
+    loading,
+    total,
+    truncated,
+    applyDateChange,
+    reload,
+    tasks,
+    projectOptions,
+    optionsLoading,
+  } = useGanttTasks({ projectId });
 
   /** 甘特图的命令式句柄(回滚 / 缩放 / 滚动) */
   const chartRef = useRef<GanttChartHandle | null>(null);
@@ -129,11 +150,10 @@ const TaskGantt: React.FC = () => {
 
   // 项目筛选的候选:侧载的项目列表(不自己发请求)
   //
-  // ⚠️ 这里与 useGanttTasks 内部的侧载是**两份**:钩子要项目/里程碑的名字
-  // (分组行的标题),页面要项目的 id + 名字(筛选下拉的候选)。
-  // useProjectNames 没有模块级缓存 ⇒ 多两次列表请求;换来的是
-  // 「筛选下拉能列出所有项目」而不是「只列当前结果里的项目」。
-  const { projectOptions } = useProjectNames();
+  // ⚠️ 项目/里程碑的侧载在 useGanttTasks 内部已经做过了 ⇒ 这里直接用
+  // 钩子透出来的选项,**不再单独调一次 useProjectNames**(那会把侧载
+  // 请求发两遍 —— 项目、里程碑各两遍)。
+  // 里程碑名在分组行的标题上,由钩子内部的映射提供。
 
   // 状态/优先级的显示文案:查字典(线上码 → 中文);查不到就回退线上码
   const { options: statusOptions } = useDictOptions('module_pm_task_status');
@@ -239,6 +259,61 @@ const TaskGantt: React.FC = () => {
 
   /** 拖拽改期要 update 权限;没有就只能看 */
   const canUpdate = access.hasPermission('module_pm_project:pm_task:update');
+  /** 新建任务要 create 权限 */
+  const canCreate = access.hasPermission('module_pm_project:pm_task:create');
+  /** 删除任务要 delete 权限 */
+  const canDelete = access.hasPermission('module_pm_project:pm_task:delete');
+
+  /**
+   * 增删改:甘特页也有这三个动作。
+   *
+   * ⚠️ 甘特页**没有 ProTable** ⇒ `useCrudTable` 的默认刷新(刷 ProTable)
+   * 在这儿是空转 ⇒ 必须把自己的刷新回调(`reload`,重新取数)传进去,
+   * 否则新建/编辑/删除之后页面纹丝不动 ⇒ 看着像「没生效」。
+   */
+  const crud = useCrudTable<TaskOut, TaskCreateParams | TaskUpdateParams>({
+    create: createTask,
+    update: updateTask,
+    remove: deleteTasks,
+    reload,
+  });
+
+  /**
+   * 行操作(操作列的「编辑」/「删除」按钮点一下)。
+   *
+   * ⚠️ **编辑要用原始任务行**:后端更新是**整对象 PUT**(缺必填字段就 422)
+   * ⇒ 表单必须拿齐类型/优先级/标签等全部字段。甘特行(GanttRow)只有展示
+   * 用的那几个 ⇒ 这里用行 id 反查原始行。
+   *
+   * ⚠️ 删除要有二次确认:列表页用的是 Popconfirm(在表格单元格里),
+   * 甘特的按钮在 dhtmlx 的网格里 ⇒ 用 antd 的确认弹窗。
+   */
+  const handleRowAction = useCallback(
+    (action: GanttRowAction, rowId: string) => {
+      const taskId = rowIdToTaskId(rowId);
+      if (taskId == null) return;
+      const task = tasks.find((item) => item.id === taskId);
+      if (!task) return;
+
+      if (action === 'edit') {
+        crud.openEdit(task);
+        return;
+      }
+
+      modal.confirm({
+        title: '确认删除该任务?',
+        content: `「${task.title ?? '该任务'}」删除后不可恢复。`,
+        okText: '删除',
+        okButtonProps: { danger: true },
+        cancelText: '取消',
+        onOk: async () => {
+          // 失败提示由请求层统一弹;handleDelete 内部已经吞掉异常
+          await crud.handleDelete(task);
+        },
+      });
+    },
+    [crud, modal, tasks],
+  );
 
   /** 本次取回的任务条数(画进甘特的 + 因缺日期被排除的) */
   const fetched = mapping.taskCount + mapping.excludedCount;
@@ -301,7 +376,7 @@ const TaskGantt: React.FC = () => {
         />
       ) : null}
 
-      {/* 工具栏:项目筛选 + 缩放 + 今天/适应 */}
+      {/* 工具栏:项目筛选 + 缩放 + 今天/适应 + 新增 */}
       <div className="flex flex-wrap items-center gap-3">
         <Select
           allowClear
@@ -338,6 +413,16 @@ const TaskGantt: React.FC = () => {
         >
           适应
         </Button>
+        {/* 新增任务:与列表页的工具栏同一个位置(操作在最后) */}
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          disabled={!canCreate}
+          onClick={crud.openCreate}
+          title="新建的任务要填「计划开始日期」「计划截止日期」才会出现在甘特上"
+        >
+          新增任务
+        </Button>
       </div>
 
       {loading ? (
@@ -361,12 +446,25 @@ const TaskGantt: React.FC = () => {
             readOnly={!canUpdate}
             labels={labels}
             height={chartHeight}
+            canEdit={canUpdate}
+            canDelete={canDelete}
+            onRowAction={handleRowAction}
             onTaskDragEnd={(rowId, change) => {
               void handleTaskDragEnd(rowId, change);
             }}
           />
         </div>
       )}
+
+      {/* 新增/编辑弹窗:与列表页共用同一个表单(后端契约只有一份) */}
+      <TaskModalForm
+        open={crud.modalOpen}
+        record={crud.editing}
+        onOpenChange={crud.closeModal}
+        onSubmit={crud.handleSubmit}
+        projectOptions={projectOptions}
+        optionsLoading={optionsLoading}
+      />
     </div>
   );
 };

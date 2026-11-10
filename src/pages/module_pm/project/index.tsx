@@ -181,6 +181,9 @@ const ProjectManagement: React.FC = () => {
         request={requestProjects}
         search={{ labelWidth: 80 }}
         pagination={CRUD_PAGINATION}
+        // 列多的时候横向滚动,不要把表头挤成竖排的一列字
+        // (内容区被右侧的 AI 工作台占掉一块,列宽被压到最小就会这样)
+        scroll={{ x: 'max-content' }}
         // 错误提示由请求层统一弹,这里只需阻止 ProTable 把 rejection 重新抛出
         // (ProComponents v3 在 onRequestError 未定义时会 rethrow,产生未捕获的 promise rejection)
         onRequestError={() => {}}

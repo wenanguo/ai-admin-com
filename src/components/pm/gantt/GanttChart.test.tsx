@@ -705,3 +705,101 @@ describe('GanttChart 条形 tooltip', () => {
     });
   });
 });
+
+/* ------------------------------------------------------------------ */
+/* 操作列:新增 / 修改 / 删除的入口                                      */
+/* ------------------------------------------------------------------ */
+
+describe('GanttChart 操作列', () => {
+  it('任务行有「编辑」「删除」按钮,分组行没有', async () => {
+    const { container } = await render(
+      <GanttChart data={ROWS} canEdit canDelete />,
+    );
+
+    // 两个任务行 ⇒ 两个编辑 + 两个删除
+    const edits = container.querySelectorAll(
+      '.pm-gantt-action[data-pm-action="edit"]',
+    );
+    const deletes = container.querySelectorAll(
+      '.pm-gantt-action[data-pm-action="delete"]',
+    );
+    expect(edits.length).toBe(2);
+    expect(deletes.length).toBe(2);
+
+    // 分组行(项目 A)不是任务 ⇒ 不给操作按钮
+    const groupRow = [...container.querySelectorAll('.gantt_row')].find((row) =>
+      row.textContent?.includes('项目 A'),
+    ) as HTMLElement;
+    expect(groupRow).toBeTruthy();
+    expect(groupRow.querySelector('.pm-gantt-action')).toBeNull();
+  });
+
+  it('没有权限就不渲染对应按钮', async () => {
+    const { container } = await render(
+      <GanttChart data={ROWS} canEdit={false} canDelete={false} />,
+    );
+    expect(
+      container.querySelector('.pm-gantt-action[data-pm-action="edit"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('.pm-gantt-action[data-pm-action="delete"]'),
+    ).toBeNull();
+  });
+
+  it('点「编辑」⇒ onRowAction 收到 edit 与行 id', async () => {
+    const onRowAction = vi.fn();
+    const { container } = await render(
+      <GanttChart data={ROWS} canEdit canDelete onRowAction={onRowAction} />,
+    );
+
+    const edit = container.querySelector(
+      '.pm-gantt-action[data-pm-action="edit"]',
+    ) as HTMLElement;
+    expect(edit).toBeTruthy();
+    // dhtmlx 会吞掉冒泡阶段的事件 ⇒ 这里必须真的派发到按钮上
+    edit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    edit.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    await vi.waitFor(() => {
+      expect(onRowAction).toHaveBeenCalledWith('edit', 't-10');
+    });
+  });
+
+  it('点「删除」⇒ onRowAction 收到 delete 与行 id', async () => {
+    const onRowAction = vi.fn();
+    const { container } = await render(
+      <GanttChart data={ROWS} canEdit canDelete onRowAction={onRowAction} />,
+    );
+
+    const del = container.querySelector(
+      '.pm-gantt-action[data-pm-action="delete"]',
+    ) as HTMLElement;
+    del.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    del.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    await vi.waitFor(() => {
+      expect(onRowAction).toHaveBeenCalledWith('delete', 't-10');
+    });
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 中文化:时间轴的月份/星期名                                          */
+/* ------------------------------------------------------------------ */
+
+describe('GanttChart 中文本地化', () => {
+  it('时间轴刻度上的月份是中文', async () => {
+    const { container } = await render(
+      <GanttChart data={WIDE_ROWS} height={400} />,
+    );
+    await vi.waitFor(() => {
+      const scales = [
+        ...container.querySelectorAll('.gantt_task_scale .gantt_scale_cell'),
+      ].map((cell) => cell.textContent ?? '');
+      expect(scales.length).toBeGreaterThan(0);
+      // dhtmlx 默认是英文月份(January / Feb)⇒ 这里要是中文
+      expect(scales.join(' ')).toMatch(/[一二三四五六七八九十]+月/);
+      expect(scales.join(' ')).not.toMatch(/January|February|March/);
+    });
+  });
+});

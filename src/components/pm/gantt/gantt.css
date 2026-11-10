@@ -71,6 +71,69 @@
   text-transform: none;
 }
 
+/* ------------------------------------------------------------------
+ * 表格观感:跟现有页面(antd 表格)对齐
+ *
+ * dhtmlx 的网格是它自己的 DOM ⇒ 默认观感与 antd 的表格差一截
+ * (表头没有层次、行没有 hover、字重不区分层级)⇒ 这里补齐。
+ * ------------------------------------------------------------------ */
+
+/* 左表格的表头:antd 表格表头的写法(次级文字 + 半粗) */
+.pm-gantt-root .gantt_grid_scale {
+  font-weight: 600;
+  color: var(--pm-gantt-text-light);
+}
+
+/* 网格里的行:悬浮高亮(与 antd 表格一致) */
+.pm-gantt-root .gantt_row:hover {
+  background: var(--pm-gantt-row-hover);
+}
+
+/* 分组行(项目/里程碑):字重加粗,层级一眼能分出来 */
+.pm-gantt-root .gantt_row.pm-gantt-row--group .gantt_task_cell {
+  font-weight: 600;
+}
+
+/* 树形展开箭头:默认是深色方块,换成主题的主色 */
+.pm-gantt-root .gantt_task_cell i.gantt_grid_icon {
+  color: var(--pm-gantt-primary);
+}
+
+/* ------------------------------------------------------------------
+ * 操作列的按钮(编辑 / 删除)
+ *
+ * dhtmlx 的列模板只能给 HTML 字符串 ⇒ 按钮是原生 button,
+ * 样式在这里用 token 变量补齐,观感与 antd 的 link 按钮一致。
+ * ------------------------------------------------------------------ */
+.pm-gantt-root .pm-gantt-action {
+  padding: 0 6px;
+  margin-right: 4px;
+  border: none;
+  border-radius: var(--pm-gantt-radius);
+  background: transparent;
+  color: var(--pm-gantt-primary);
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.pm-gantt-root .pm-gantt-action:hover {
+  background: var(--pm-gantt-primary-bg);
+}
+
+.pm-gantt-root .pm-gantt-action--danger {
+  color: var(--pm-gantt-error);
+}
+
+.pm-gantt-root .pm-gantt-action--danger:hover {
+  background: var(--pm-gantt-error-bg);
+}
+
+.pm-gantt-root .pm-gantt-action:focus-visible {
+  outline: 2px solid var(--pm-gantt-primary);
+  outline-offset: 1px;
+}
+
 /**
  * 今天线。
  *

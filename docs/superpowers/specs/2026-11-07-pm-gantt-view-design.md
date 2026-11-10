@@ -173,3 +173,70 @@
 
 依赖连线、自动排期、关键路径、资源管理、撤销重做、导出 —— 全部不在这一版。
 后端这一版**一行不改**。
+
+## 8. 补充：甘特视图的增删改 + 中文化（2026-11-10）
+
+第一版甘特只有「读 + 拖拽改期」，用户反馈「甘特图的新增和修改、删除不生效」。
+排查后发现是**两件事**叠在一起：
+
+### 8.1 根因：列表页一直显示「暂无数据」（不是甘特的问题）
+
+`src/services/paginate.ts` 的 `toProTableRequest` 用 `res.success` 判成功：
+
+```ts
+success: res?.success ?? false,   // ← 后端的信封里没有 success 字段
+```
+
+后端的统一响应信封只有 `{ code, msg, data, status_code }` ⇒ `res.success` 永远是
+`undefined` ⇒ `success: false` ⇒ **ProTable 认为每次请求都失败** ⇒ 所有列表页
+（PM 四个 + 系统八个）一律显示「暂无数据」。
+
+⇒ 写进去了、也真的生效了，只是**看不见** ⇒ 看着像「新增不生效」。
+（e2e 抓不到：mock 的响应里带了 `success: true`，与真实后端不一致。）
+
+**改法**：按**业务码**判成功（`code === 0 || code === 200`），复用请求层已有的
+`isSuccess`（`src/services/response.ts`）⇒ 与全局口径一致。
+
+### 8.2 甘特视图补齐增删改
+
+| 动作 | 入口 | 实现 |
+| --- | --- | --- |
+| 新增 | 工具栏「新增任务」按钮 | 复用列表页的 `TaskModalForm` 与 `createTask` |
+| 修改 | 行内「编辑」按钮 | 复用 `TaskModalForm`（编辑态）与 `updateTask` |
+| 删除 | 行内「删除」按钮 | `App.useApp()` 的 `modal.confirm` 二次确认 + `deleteTasks` |
+
+三条纪律：
+
+1. **编辑必须拿原始任务行**：后端更新是**整对象 PUT**（缺必填字段就 422）⇒
+   甘特行（只有标题/日期/状态）不能直接填表 ⇒ 用行 id 反查原始 `TaskOut`。
+2. **分组行（项目/里程碑）没有操作**：它们不是任务对象，后端也没有对应的接口 ⇒
+   不渲染点了必然 404 的按钮。
+3. **没有 ProTable 的页面要自己给刷新回调**：`useCrudTable` 默认刷 ProTable 的
+   actionRef ⇒ 甘特页不传 `reload` 的话，删完/改完页面纹丝不动 ⇒ 看着像「没生效」。
+   ⇒ `useCrudTable` 增加可选的 `reload`，甘特页传 `useGanttTasks` 的 `reload`。
+
+**事件委托的坑**：dhtmlx 在自己的网格上监听 click 并 `stopPropagation` ⇒
+事件到不了 React 根容器 ⇒ React 的 `onClick` 根本不触发。
+⇒ 改用**捕获阶段**的原生监听（`addEventListener(..., true)`），
+并且在 `mousedown` 阶段也拦一道（不然 dhtmlx 会把这次按下当成拖条形的起点，
+拖拽一开始，后续的 click 就不再派发）。
+
+### 8.3 中文化
+
+dhtmlx 的时间轴刻度与内置文案默认是英文（`January`、`Mon`、`Add task`）。
+社区版没有中文语言包（语言包是 PRO 的能力），但留了 `i18n.setLocale()` 这个口子
+⇒ 自己喂一份中文词表（`src/components/pm/gantt/locale.ts`）。
+
+⚠️ **API 是 `gantt.i18n.setLocale(locale)`**，不是 `gantt.setLocale` ——
+社区版的实例上没有后者（`.d.ts` 里那个声明在别的接口上），调用会抛
+`setLocale is not a function`。
+
+### 8.4 样式贴合现有页面
+
+- 左表格表头：次级文字 + 半粗（与 antd 表格一致）；行悬浮有底色；
+  分组行（项目/里程碑）字重加粗，层级一眼能分出来。
+- 操作列的按钮用 token 变量上色（编辑=主色、删除=错误色），观感与 antd 的
+  link 按钮一致。
+- 空值给「-」占位，**不要套标签的边框与底色**（一个「-」会缩成看不出是什么的小方块）。
+- PM 各列表页加 `scroll={{ x: 'max-content' }}`：内容区被右侧 AI 工作台占窄时，
+  列宽被压到最小 ⇒ 表头被挤成竖排的一列字 ⇒ 改成横向滚动。

@@ -1,3 +1,4 @@
+import { isSuccess } from './response';
 import type { ApiResponse, PageQuery, PageResult } from './types';
 
 /** ProTable request 回调收到的参数 */
@@ -46,7 +47,13 @@ export function toProTableRequest<T>(
     return {
       data: res?.data?.items ?? [],
       total: res?.data?.total ?? 0,
-      success: res?.success ?? false,
+      // ⚠️ **按业务码判成功,不按 `success` 字段**:
+      // 后端的统一响应信封(app/common/response.py)只有 { code, msg, data,
+      // status_code },**没有 success 字段** ⇒ 用 `res.success` 判会永远
+      // 拿到 undefined ⇒ success=false ⇒ ProTable 认为每次请求都失败 ⇒
+      // 列表一律显示「暂无数据」(写进去了也看不见,看着像"没生效")。
+      // 成功码以业务码为准(0 / 200),与请求层 isSuccess 同一份口径。
+      success: isSuccess(res),
     };
   };
 }

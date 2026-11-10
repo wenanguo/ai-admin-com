@@ -34,6 +34,16 @@ export interface CrudActions<V> {
   update: (id: number, values: V) => Promise<unknown>;
   /** 删除(批量,请求体是裸数组) */
   remove: (ids: number[]) => Promise<unknown>;
+  /**
+   * 写操作成功后的刷新回调(可选)。
+   *
+   * 不给就刷 **ProTable**(actionRef.reload())—— 列表页不用管。
+   *
+   * ⚠️ **没有 ProTable 的页面必须传**(甘特视图就是):甘特的数据在
+   * `useGanttTasks` 里,ProTable 的 actionRef 根本没人调 ⇒ 不传的话
+   * 删完/改完页面纹丝不动 ⇒ 看着像「没生效」。
+   */
+  reload?: () => void;
 }
 
 /** useCrudTable 的返回值 */
@@ -126,6 +136,15 @@ export function useCrudTable<T extends CrudRecord, V>(
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<T | undefined>(undefined);
 
+  // 刷新:默认刷 ProTable;页面自带数据源(甘特)就用自己的
+  const reload = useCallback(() => {
+    if (actions.reload) {
+      actions.reload();
+      return;
+    }
+    actionRef.current?.reload();
+  }, [actions.reload]);
+
   const openCreate = useCallback(() => {
     setEditing(undefined);
     setModalOpen(true);
@@ -141,7 +160,7 @@ export function useCrudTable<T extends CrudRecord, V>(
   }, []);
 
   // 删除走共享的 useDeleteHandler —— 只有一份实现
-  const handleDelete = useDeleteHandler<T>(remove, actionRef);
+  const handleDelete = useDeleteHandlerCore<T>(remove, reload);
 
   const handleSubmit = useCallback(
     async (values: V) => {
@@ -151,14 +170,14 @@ export function useCrudTable<T extends CrudRecord, V>(
         } else {
           await create(values);
         }
-        actionRef.current?.reload();
+        reload();
         return true;
       } catch {
         // 失败提示由请求层统一弹;返回 false 让弹窗保持打开
         return false;
       }
     },
-    [create, editing, update],
+    [create, editing, reload, update],
   );
 
   return {

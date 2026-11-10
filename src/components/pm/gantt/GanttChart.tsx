@@ -80,8 +80,14 @@ import {
   computeGridWidth,
   maxGridWidth,
 } from './layout';
+import { GANTT_LOCALE_ZH } from './locale';
 import type { GanttRow } from './mapping';
-import { formatRange, isGroupRowId, statusCssClass } from './mapping';
+import {
+  formatRange,
+  isGroupRowId,
+  isTaskRowId,
+  statusCssClass,
+} from './mapping';
 import type { TaskDateChange } from './payload';
 
 /** dhtmlx 的日期格式 —— 与后端契约一致(YYYY-MM-DD) */
@@ -98,7 +104,7 @@ const ZOOM_LEVELS: ZoomLevel[] = [
   {
     name: 'day',
     label: '日',
-    scales: [{ unit: 'day', step: 1, format: '%d' }],
+    scales: [{ unit: 'day', step: 1, format: '%m/%d' }],
   },
   { name: 'week', label: '周', scales: WEEK_SCALES },
   {
@@ -107,6 +113,17 @@ const ZOOM_LEVELS: ZoomLevel[] = [
     scales: [{ unit: 'month', step: 1, format: '%F %Y' }],
   },
 ];
+
+/** 行操作:编辑 / 删除 */
+export type GanttRowAction = 'edit' | 'delete';
+
+/** 操作列的权限(能不能渲染编辑 / 删除按钮) */
+export interface GanttActionPermissions {
+  /** 能不能编辑 */
+  canEdit: boolean;
+  /** 能不能删除 */
+  canDelete: boolean;
+}
 
 /**
  * 灌给 dhtmlx 的行:在 dhtmlx 的行之外带上负责人/状态/优先级与条形 class。
@@ -172,6 +189,12 @@ export interface GanttChartProps {
   height?: number;
   /** 状态/优先级的显示文案(查不到就回退线上码) */
   labels?: GanttChartLabels;
+  /** 行操作(编辑 / 删除)—— 行的 id 原样传出(任务行是 `t-{id}`) */
+  onRowAction?: (action: GanttRowAction, rowId: string) => void;
+  /** 能不能编辑(不能就不渲染「编辑」按钮) */
+  canEdit?: boolean;
+  /** 能不能删除(不能就不渲染「删除」按钮) */
+  canDelete?: boolean;
 }
 
 /** 默认高度 */
@@ -313,7 +336,16 @@ function toGanttTasks(data: GanttRow[]): GanttTaskData[] {
 
 export const GanttChart = forwardRef<GanttChartHandle, GanttChartProps>(
   function GanttChart(
-    { data, readOnly = false, onTaskDragEnd, height = DEFAULT_HEIGHT, labels },
+    {
+      data,
+      readOnly = false,
+      onTaskDragEnd,
+      height = DEFAULT_HEIGHT,
+      labels,
+      onRowAction,
+      canEdit = false,
+      canDelete = false,
+    },
     ref,
   ) {
     const { token } = theme.useToken();
@@ -323,6 +355,13 @@ export const GanttChart = forwardRef<GanttChartHandle, GanttChartProps>(
     const dragSnapshotsRef = useRef(new Map<string, DragSnapshot>());
     /** 最新的 props:模板与事件回调都从这里读,避免重建实例 */
     const labelsRef = useRef<GanttChartLabels | undefined>(labels);
+    /** 操作列的权限(模板拿不到 React 闭包 ⇒ 存 ref) */
+    const actionPermsRef = useRef<GanttActionPermissions>({
+      canEdit,
+      canDelete,
+    });
+    /** 行操作回调(同样存 ref) */
+    const onRowActionRef = useRef(onRowAction);
     const readOnlyRef = useRef(readOnly);
     const onDragEndRef = useRef(onTaskDragEnd);
     /** 当前网格(左表格)总宽(px)—— 分隔条的位置与 dhtmlx 的 grid_width */
@@ -367,7 +406,11 @@ export const GanttChart = forwardRef<GanttChartHandle, GanttChartProps>(
       const inst = instRef.current;
       if (!inst) return;
       const widths = computeColumnWidths(target);
-      inst.config.columns = buildColumns(labelsRef.current, widths);
+      inst.config.columns = buildColumns(
+        labelsRef.current,
+        widths,
+        actionPermsRef.current,
+      );
       inst.config.grid_width = target;
       inst.setSizes();
       gridWidthRef.current = target;
@@ -381,6 +424,8 @@ export const GanttChart = forwardRef<GanttChartHandle, GanttChartProps>(
       labelsRef.current = labels;
       readOnlyRef.current = readOnly;
       onDragEndRef.current = onTaskDragEnd;
+      onRowActionRef.current = onRowAction;
+      actionPermsRef.current = { canEdit, canDelete };
     });
 
     // 挂载:建实例 → 设全部 config → 建缩放扩展 → init → 挂事件
@@ -393,6 +438,15 @@ export const GanttChart = forwardRef<GanttChartHandle, GanttChartProps>(
       const inst = Gantt.getGanttInstance();
       instRef.current = inst;
 
+      // 中文本地化:月份/星期名与 dhtmlx 自带文案
+      //
+      // ⚠️ API 是 `gantt.i18n.setLocale(locale)`,**不是** `gantt.setLocale`
+      // (社区版的实例上没有那个方法,实测会抛 "setLocale is not a function";
+      //  .d.ts 里那个 `setLocale` 声明在别的接口上)。
+      // ⚠️ 必须在 init 之前:setLocale 只换 `gantt.locale`,刻度文案是
+      // 渲染时按 locale 现算的 ⇒ init 之前换掉即可。
+      inst.i18n.setLocale(GANTT_LOCALE_ZH);
+
       const containerWidth = box.clientWidth || 900;
       containerWidthRef.current = containerWidth;
       const target = computeGridWidth(containerWidth);
@@ -403,6 +457,7 @@ export const GanttChart = forwardRef<GanttChartHandle, GanttChartProps>(
       inst.config.columns = buildColumns(
         labelsRef.current,
         computeColumnWidths(target),
+        actionPermsRef.current,
       );
       inst.config.scales = WEEK_SCALES;
       inst.config.row_height = 36;
@@ -425,6 +480,10 @@ export const GanttChart = forwardRef<GanttChartHandle, GanttChartProps>(
       inst.templates.task_class = (_start, _end, task) =>
         (task as GanttTaskData).css ?? '';
 
+      // 分组行(项目/里程碑)加一个 class:字重加粗,层级一眼能分出来
+      inst.templates.grid_row_class = (_start, _end, task) =>
+        isGroupRowId(String(task?.id ?? '')) ? 'pm-gantt-row--group' : '';
+
       // 条形上的文字(= 标题)也要转义:dhtmlx 默认的 task_text 模板直接
       // 把 task.text 塞进 DOM ⇒ 标题里的尖括号会被当 HTML
       inst.templates.task_text = (_start, _end, task) =>
@@ -444,6 +503,10 @@ export const GanttChart = forwardRef<GanttChartHandle, GanttChartProps>(
       inst.init(box);
       gridWidthRef.current = target;
       setGridWidth(target);
+
+      // 操作列的按钮:捕获阶段的原生监听(dhtmlx 会吞掉冒泡阶段的事件)
+      box.addEventListener('mousedown', handleActionMouseDown, true);
+      box.addEventListener('click', handleActionClick, true);
 
       // 拖动前:把旧日期存下来,回滚时用(调用方不用知道旧日期)
       inst.attachEvent('onBeforeTaskDrag', (id) => {
@@ -483,6 +546,9 @@ export const GanttChart = forwardRef<GanttChartHandle, GanttChartProps>(
       return () => {
         inst.destructor();
         instRef.current = null;
+        // 摘掉自己挂的原生监听(dhtmlx 的骨架会被清空,但监听器在 box 上)
+        box.removeEventListener('mousedown', handleActionMouseDown, true);
+        box.removeEventListener('click', handleActionClick, true);
         // dhtmlx 销毁后可能还留着骨架,清干净免得下一个图表被顶掉
         box.innerHTML = '';
       };
@@ -668,6 +734,45 @@ export const GanttChart = forwardRef<GanttChartHandle, GanttChartProps>(
       [],
     );
 
+    /**
+     * 操作列的按钮点一下 ⇒ 告诉页面。
+     *
+     * dhtmlx 的列模板只能返回 HTML 字符串,没法直接挂 React 事件 ⇒
+     * 用**事件委托**:按钮上带 `data-pm-action` / `data-pm-row`,
+     * 这里统一接。
+     *
+     * ⚠️ **必须用原生监听 + 捕获阶段**,不能用 React 的 onClick:
+     * dhtmlx 自己在网格上监听 click 并 `stopPropagation`(它要处理单元格的
+     * 选中/内联编辑)⇒ 事件到不了 React 根容器 ⇒ React 的 onClick 根本不
+     * 触发(实测点「编辑」毫无反应)。捕获阶段在 dhtmlx 的冒泡处理**之前**
+     * 触发 ⇒ 拦得住。
+     *
+     * ⚠️ 还要在 mousedown 阶段拦住:不然 dhtmlx 会把这次按下当成「拖条形」
+     * 的起点 ⇒ 拖拽一旦开始,后续的 click 就不再派发 ⇒ 按钮点了没反应。
+     */
+    const handleActionMouseDown = useCallback((event: Event) => {
+      const target = (event.target as HTMLElement | null)?.closest?.(
+        '[data-pm-action]',
+      );
+      if (!target) return;
+      // 别让 dhtmlx 把这次按下当成拖拽起点
+      event.preventDefault();
+      event.stopPropagation();
+    }, []);
+
+    const handleActionClick = useCallback((event: Event) => {
+      const target = (event.target as HTMLElement | null)?.closest?.(
+        '[data-pm-action]',
+      );
+      if (!target) return;
+      const action = target.getAttribute('data-pm-action');
+      const rowId = target.getAttribute('data-pm-row');
+      if (!action || !rowId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onRowActionRef.current?.(action as GanttRowAction, rowId);
+    }, []);
+
     useImperativeHandle(
       ref,
       () => ({
@@ -772,6 +877,8 @@ function useMemoCssVars(token: ReturnType<typeof theme.useToken>['token']) {
         '--pm-gantt-muted': token.colorTextSecondary,
         '--pm-gantt-muted-bg': token.colorFillQuaternary,
         '--pm-gantt-muted-border': token.colorFillSecondary,
+        // 网格行的悬浮底色(与 antd 表格一致)
+        '--pm-gantt-row-hover': token.colorFillQuaternary,
         '--pm-gantt-today': token.colorError,
         '--pm-gantt-radius': String(token.borderRadius),
         // dhtmlx 的 tooltip 挂在 body 下 ⇒ 变量也得在 documentElement 上
@@ -797,6 +904,7 @@ function useMemoCssVars(token: ReturnType<typeof theme.useToken>['token']) {
 function buildColumns(
   labels: GanttChartLabels | undefined,
   widths: ColumnWidths,
+  permissions: GanttActionPermissions,
 ): GridColumn[] {
   /** 线上码 → 显示文案(查不到就回退线上码) */
   const text = (kind: keyof GanttChartLabels, code?: string): string => {
@@ -823,8 +931,10 @@ function buildColumns(
       width: widths.assignee,
       min_width: COLUMN_SPECS.assignee.min,
       align: 'left',
+      // 分组行(项目/里程碑)没有负责人 ⇒ 给个「-」占位
+      // (空字符串在 dhtmlx 的单元格里会缩成一个看不出是什么的小方块)
       template: (task: Task) =>
-        escapeHtml((task as GanttTaskData).assignee ?? ''),
+        escapeHtml((task as GanttTaskData).assignee ?? '-'),
     },
     {
       name: 'status',
@@ -835,6 +945,9 @@ function buildColumns(
       // class 用映射层的 statusCssClass(带线上码)⇒ 颜色在 gantt.css 里
       template: (task: Task) => {
         const status = (task as GanttTaskData).status;
+        // 分组行(项目/里程碑)没有状态 ⇒ 给个纯文本占位
+        // (套上标签的边框与底色,一个「-」会缩成一个看不出是什么的小方块)
+        if (!status) return '-';
         return tagHtml(text('status', status), statusCssClass(status));
       },
     },
@@ -845,11 +958,12 @@ function buildColumns(
       min_width: COLUMN_SPECS.priority.min,
       align: 'left',
       // 优先级**不做语义色**(后端线上码无从得知,规格也没要求)⇒ 中性标签
-      template: (task: Task) =>
-        tagHtml(
-          text('priority', (task as GanttTaskData).priority),
-          'pm-gantt-tag--neutral',
-        ),
+      template: (task: Task) => {
+        const priority = (task as GanttTaskData).priority;
+        // 分组行没有优先级 ⇒ 纯文本占位(同上)
+        if (!priority) return '-';
+        return tagHtml(text('priority', priority), 'pm-gantt-tag--neutral');
+      },
     },
     {
       name: 'dates',
@@ -865,5 +979,42 @@ function buildColumns(
           ),
         ),
     },
+    {
+      name: 'actions',
+      label: '操作',
+      width: widths.actions,
+      min_width: COLUMN_SPECS.actions.min,
+      align: 'left',
+      // 这一列是按钮,不能进 dhtmlx 的内联编辑
+      // (dhtmlx 的列定义里 `editable` 没进 .d.ts,运行时是支持的)
+      ...({ editable: false } as Record<string, unknown>),
+      template: (task: Task) => actionsHtml(task, permissions),
+    },
   ];
+}
+
+/**
+ * 操作列的 HTML。
+ *
+ * ⚠️ dhtmlx 的列模板返回的是 **HTML 字符串**(而且**不转义**)⇒
+ * 行 id 与文案都要自己转义。
+ *
+ * 分组行(项目/里程碑)**没有操作**:它们不是任务对象,后端也没有对应的
+ * 增删改接口 ⇒ 渲染一个点了必然 404 的按钮是骗人。
+ */
+function actionsHtml(task: Task, permissions: GanttActionPermissions): string {
+  const rowId = String(task.id ?? '');
+  if (!isTaskRowId(rowId)) return '';
+  const buttons: string[] = [];
+  if (permissions.canEdit) {
+    buttons.push(
+      `<button type="button" class="pm-gantt-action" data-pm-action="edit" data-pm-row="${escapeHtml(rowId)}">编辑</button>`,
+    );
+  }
+  if (permissions.canDelete) {
+    buttons.push(
+      `<button type="button" class="pm-gantt-action pm-gantt-action--danger" data-pm-action="delete" data-pm-row="${escapeHtml(rowId)}">删除</button>`,
+    );
+  }
+  return buttons.join('');
 }

@@ -9,6 +9,7 @@ import type { TaskDateChange } from '@/components/pm/gantt/payload';
 import { buildDateUpdatePayload } from '@/components/pm/gantt/payload';
 import type { TaskOut } from '@/services/api/pm/task';
 import { listTasks, updateTask } from '@/services/api/pm/task';
+import type { ProjectOption } from './useProjectNames';
 import { useProjectNames } from './useProjectNames';
 
 /**
@@ -54,10 +55,27 @@ export interface UseGanttTasksResult {
   applyDateChange: (rowId: string, change: TaskDateChange) => Promise<boolean>;
   /** 重新取数 */
   reload: () => void;
+  /**
+   * 后端返回的**原始任务行**(未映射)。
+   *
+   * 给「编辑」用:甘特行(GanttRow)只有标题/日期/状态这些展示字段,
+   * 而编辑表单要的是**完整的任务行**(类型、优先级、标签、负责人…),
+   * 后端更新又是**整对象 PUT**(缺必填字段就 422)⇒ 必须拿原始行填表。
+   */
+  tasks: TaskOut[];
+  /**
+   * 项目下拉选项(筛选与表单共用)。
+   *
+   * 钩子内部本来就侧载了项目/里程碑 ⇒ 这里**透出去**给页面用,
+   * 页面不要再单独调一次 `useProjectNames`(那会把侧载请求发两遍)。
+   */
+  projectOptions: ProjectOption[];
+  /** 侧载是否还在途(表单的下拉在途时是空的) */
+  optionsLoading: boolean;
 }
 
 /** 行 id → 任务 id(不是任务行就返回 null) */
-function rowIdToTaskId(rowId: string): number | null {
+export function rowIdToTaskId(rowId: string): number | null {
   // ⚠️ **分组行(项目/里程碑)直接拒绝**:规格 §6.3 说分组行不可拖,
   // 它的汇总条只反映子任务窗口;后端也没有「项目行」这种对象 ⇒
   // 写回去必然 422 ⇒ 直接不发请求(不发就是最快的拒绝)。
@@ -77,7 +95,12 @@ export function useGanttTasks(options?: {
   const projectId = options?.projectId;
 
   // 项目名/里程碑名:侧载(useProjectNames),不自己发请求
-  const { projectNames, milestoneNames } = useProjectNames();
+  const {
+    projectNames,
+    milestoneNames,
+    projectOptions,
+    loading: optionsLoading,
+  } = useProjectNames();
 
   const [tasks, setTasks] = useState<TaskOut[]>([]);
   const [total, setTotal] = useState(0);
@@ -179,5 +202,8 @@ export function useGanttTasks(options?: {
     truncated: total > tasks.length,
     applyDateChange,
     reload,
+    tasks,
+    projectOptions,
+    optionsLoading,
   };
 }
