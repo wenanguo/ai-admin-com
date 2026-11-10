@@ -29,6 +29,15 @@ function update(entityId: number, fields: string[] = ['status_code']) {
 }
 
 describe('useAiTaskUpdate', () => {
+  /** antd 的 `rowClassName` 是「字符串或函数」⇒ 取函数那一支来调。 */
+  function rowClass(value: unknown): string {
+    if (typeof value === 'function') {
+      const fn = value as (record: { id?: number | null }) => string;
+      return fn({ id: 6 });
+    }
+    return typeof value === 'string' ? value : '';
+  }
+
   it('没有写回信号 ⇒ 不刷新、不高亮', async () => {
     mocks.lastUpdate = null;
     const reload = vi.fn();
@@ -36,7 +45,7 @@ describe('useAiTaskUpdate', () => {
 
     expect(reload).not.toHaveBeenCalled();
     expect(result.current.highlightedId).toBeUndefined();
-    expect(result.current.rowClassName({ id: 6 })).toBe('');
+    expect(rowClass(result.current.rowClassName)).toBe('');
     cleanup();
   });
 
@@ -52,9 +61,12 @@ describe('useAiTaskUpdate', () => {
 
     expect(reload).toHaveBeenCalled();
     expect(result.current.highlightedId).toBe(6);
-    expect(result.current.rowClassName({ id: 6 })).toBe('pm-ai-updated-row');
+    expect(rowClass(result.current.rowClassName)).toBe('pm-ai-updated-row');
     // 别的行不高亮
-    expect(result.current.rowClassName({ id: 7 })).toBe('');
+    const fn = result.current.rowClassName as (record: {
+      id?: number | null;
+    }) => string;
+    expect(fn({ id: 7 })).toBe('');
     cleanup();
   });
 

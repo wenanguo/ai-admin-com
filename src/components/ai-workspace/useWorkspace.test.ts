@@ -31,7 +31,9 @@ vi.mock('@umijs/max', () => ({
     lastUpdate: null,
     notifyUpdate: vi.fn(),
     expandSignal: 0,
+    focusSignal: 0,
     requestExpand: vi.fn(),
+    requestFocus: vi.fn(),
   }),
 }));
 

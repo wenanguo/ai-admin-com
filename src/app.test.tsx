@@ -68,6 +68,8 @@ vi.mock('@ant-design/icons', () => ({
   // 输入区左下角那两个图标（图片 / 表情）。
   PictureOutlined: () => null,
   SmileOutlined: () => null,
+  // 「当前讨论」条上的「结束讨论」按钮。
+  CloseCircleOutlined: () => null,
 }));
 
 vi.mock('./requestErrorConfig', () => ({

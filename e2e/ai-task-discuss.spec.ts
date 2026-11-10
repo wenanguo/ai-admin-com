@@ -86,26 +86,23 @@ function taskListResponse() {
   };
 }
 
-/** 字典信封。 */
+/** 字典信封（⚠️ `data` 是**数组**，与后端 `DictDataOut` 一致）。 */
 function dictResponse(
   items: { dict_label: string; dict_value: string; list_class: string }[],
 ) {
   return {
     code: 0,
-    msg: '获取初始化字典数据成功',
-    data: {
-      items: items.map((item, index) => ({
-        id: index + 1,
-        dict_sort: index + 1,
-        dict_label: item.dict_label,
-        dict_value: item.dict_value,
-        dict_type: 'x',
-        list_class: item.list_class,
-        is_default: false,
-        status: 0,
-      })),
-      total: items.length,
-    },
+    msg: '查询成功',
+    data: items.map((item, index) => ({
+      id: index + 1,
+      dict_sort: index + 1,
+      dict_label: item.dict_label,
+      dict_value: item.dict_value,
+      dict_type: 'x',
+      list_class: item.list_class,
+      is_default: false,
+      status: 0,
+    })),
     status_code: 200,
     success: true,
   };
@@ -349,14 +346,25 @@ test.describe('与 AI 讨论', () => {
 
     await gotoModulePage(page, TASK_PAGE_PATH);
     await expect(page.getByText('输出需求规格说明书').first()).toBeVisible();
+    // ⚠️ 等字典标签渲染出来（状态的中文名来自字典接口）
+    //    ⇒ 上下文里才能带上「进行中（in_progress）」两样。
+    await expect(page.getByText('进行中').first()).toBeVisible();
 
     // 1. 点行内的「讨论」
     const row = tableRows(page).first();
     await row.getByRole('button', { name: /讨论/ }).click();
 
     // 上下文条：说明 AI 现在聊的是哪一条
-    await expect(page.getByText(/正在讨论/)).toBeVisible();
-    await expect(page.getByText(/#21/)).toBeVisible();
+    // ⚠️ 它在**面板头部下面**（不是对话页签里）⇒ 切到哪个页签都看得到。
+    const bar = page.locator('[data-testid="ai-context-bar"]');
+    await expect(bar).toBeVisible();
+    await expect(bar).toContainText('#21');
+    await expect(bar).toContainText('输出需求规格说明书');
+    // 项目与里程碑也要能看到（用户要确认“我聊的是哪条”）
+    await expect(bar).toContainText('所属项目：财务对账系统升级');
+    await expect(bar).toContainText('所属里程碑：M1 需求');
+    // 状态：中文 + 线上码两样
+    await expect(bar).toContainText('进行中（in_progress）');
 
     // 2. 发一句话 ⇒ 命令请求体里带着上下文
     const composer = page.getByPlaceholder('输入消息').first();
@@ -384,5 +392,25 @@ test.describe('与 AI 讨论', () => {
     });
     // 列表确实被重新拉了一次（首屏那一次之外）
     expect(listCalls.length).toBeGreaterThan(1);
+  });
+
+  test('切到「待确认」页签 ⇒ 当前讨论条仍然在', async ({ page }) => {
+    await setupTaskPage(page);
+    await setupAiService(page);
+
+    await gotoModulePage(page, TASK_PAGE_PATH);
+    await expect(page.getByText('输出需求规格说明书').first()).toBeVisible();
+
+    const row = tableRows(page).first();
+    await row.getByRole('button', { name: /讨论/ }).click();
+
+    const bar = page.locator('[data-testid="ai-context-bar"]');
+    await expect(bar).toBeVisible();
+
+    // ⚠️ 停在别的页签上时，**也要看得见**在聊哪条任务
+    //    （之前它只在对话页签里 ⇒ 用户反馈「点了讨论，工作台一点反应都没有」）
+    await page.getByRole('tab', { name: '待确认' }).click();
+    await expect(bar).toBeVisible();
+    await expect(bar).toContainText('输出需求规格说明书');
   });
 });

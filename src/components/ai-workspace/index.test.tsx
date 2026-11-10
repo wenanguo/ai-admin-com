@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   createAiCommandId: vi.fn(),
   subscribeAiEvents: vi.fn(() => () => undefined),
   listAiAudit: vi.fn(async () => ({ total: 0, items: [] })),
-  listAiPending: vi.fn(async () => []),
+  listAiPending: vi.fn(async (): Promise<unknown[]> => []),
   approveAiPending: vi.fn(async () => undefined),
   /** 全局 model 的「写回广播」—— 批准后它应该被叫到。 */
   notifyUpdate: vi.fn(),
@@ -34,7 +34,9 @@ vi.mock('@umijs/max', () => ({
     lastUpdate: null,
     notifyUpdate: mocks.notifyUpdate,
     expandSignal: 0,
+    focusSignal: 0,
     requestExpand: vi.fn(),
+    requestFocus: vi.fn(),
   }),
   // 侧栏头部有进全宽页的入口（一个 `Link`）。
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => (

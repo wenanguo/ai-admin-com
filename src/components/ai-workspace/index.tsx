@@ -20,6 +20,7 @@ import {
 } from '@/services/api/ai/pendingArgs';
 import { AuditPanel } from './AuditPanel';
 import { ChatPanel } from './ChatPanel';
+import { DiscussionBar } from './DiscussionBar';
 import { PendingPanel } from './PendingPanel';
 import { AI_WORKSPACE_PAGE_PATH } from './paths';
 import { readWorkspaceStorage, writeWorkspaceStorage } from './storage';
@@ -100,6 +101,20 @@ export function AiWorkspace({
     }
     lists.reload();
   }, [pendingCount, lists.reload]);
+
+  /**
+   * 「请切到对话页签」的信号（点「与 AI 讨论」时发）。
+   *
+   * ⚠️ 用户点完「讨论」就该**马上能说话** ⇒ 停在「待确认」「审计」页签上
+   *    的话，输入框不在眼前 ⇒ 看起来像「点了没反应」。
+   */
+  useEffect(() => {
+    if (aiContext.focusSignal === 0) {
+      return;
+    }
+    setActiveTab('chat');
+    writeWorkspaceStorage({ tab: 'chat' });
+  }, [aiContext.focusSignal]);
 
   /**
    * 批准一条挂起的修改 ⇒ **确定**要刷新哪一行。
@@ -228,6 +243,18 @@ export function AiWorkspace({
         </div>
       </div>
       {/*
+        「当前讨论」条：**常驻在头部下面**（三个页签都在）。
+
+        ⚠️ 之前它只在**对话**页签里 ⇒ 用户停在「待确认」「审计」页签时
+        完全看不到 ⇒ 表现为「点了讨论，AI 工作台一点反应都没有」。
+      */}
+      <DiscussionBar
+        context={aiContext.context ?? null}
+        onClear={() => {
+          aiContext.clearContext();
+        }}
+      />
+      {/*
         会话建不起来（AI 服务不可达）——**显示在这里**，不弹全局提示：
         侧栏常驻在每个页面上，全局提示会在每个页面上重复出现。
       */}
@@ -299,8 +326,6 @@ export function AiWorkspace({
             children: (
               <ChatPanel
                 messages={workspace.messages}
-                context={aiContext.context}
-                onClearContext={aiContext.clearContext}
                 thinking={workspace.thinking}
                 pendingItems={workspace.pendingItems}
                 streaming={workspace.streaming}

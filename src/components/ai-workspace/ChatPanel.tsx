@@ -8,7 +8,6 @@
 import { Alert, Button, theme } from 'antd';
 import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
-import type { AiTaskContext } from '@/services/api/ai/types';
 import { Composer } from './Composer';
 import { MessageBubble } from './MessageBubble';
 import type { AiPendingItem, ChatMessage } from './useAgentStream';
@@ -44,14 +43,6 @@ export interface ChatPanelProps {
   onStop?: () => void;
   /** 正在中止。 */
   stopping?: boolean;
-  /**
-   * 当前讨论的上下文（用户点了「与 AI 讨论」）。
-   *
-   * ⚠️ 有它 ⇒ 每条消息都会带上它（服务端才知道 AI 在聊哪条任务）。
-   */
-  context?: AiTaskContext | null;
-  /** 清除当前上下文（用户不想接着聊这条了）。 */
-  onClearContext?: () => void;
 }
 
 /**
@@ -68,8 +59,6 @@ export function ChatPanel({
   onRetry,
   onStop,
   stopping,
-  context,
-  onClearContext,
 }: ChatPanelProps): React.ReactElement {
   const { token } = theme.useToken();
   const [value, setValue] = useState('');
@@ -117,60 +106,8 @@ export function ChatPanel({
           padding: token.sizeSM,
         }}
       >
-        {/* 上下文条：正在跟 AI 聊哪条任务 */}
-        {context ? (
-          <div
-            data-testid="ai-context-bar"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: token.sizeXS,
-              flexShrink: 0,
-              padding: `${token.sizeXS}px ${token.sizeSM}px`,
-              borderRadius: token.borderRadius,
-              border: `1px solid ${token.colorBorderSecondary}`,
-              background: token.colorFillQuaternary,
-              fontSize: token.fontSizeSM,
-            }}
-          >
-            <span style={{ color: token.colorTextSecondary, flexShrink: 0 }}>
-              正在讨论
-            </span>
-            <span
-              style={{
-                color: token.colorText,
-                fontWeight: 600,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              #{context.task.id} {String(context.task.title ?? '（无标题）')}
-            </span>
-            {context.project ? (
-              <span
-                style={{
-                  color: token.colorTextSecondary,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                · {context.project.name}
-              </span>
-            ) : null}
-            {onClearContext ? (
-              <Button
-                size="small"
-                type="link"
-                onClick={onClearContext}
-                style={{ marginLeft: 'auto', flexShrink: 0, padding: 0 }}
-              >
-                结束讨论
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
+        {/* ⚠️ 「当前讨论」条**不在这里** —— 它在面板头部下面（`DiscussionBar`），
+            这样停在「待确认」「审计」页签时也看得到在聊哪条任务。 */}
         {messages.map((message) => (
           <MessageBubble key={message.id} message={message} />
         ))}

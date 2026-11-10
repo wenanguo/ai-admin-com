@@ -128,6 +128,8 @@ const TaskManagement: React.FC = () => {
       aiBridge.setContext(context);
       // 面板可能是收着的 ⇒ 展开它（不然用户看不到「正在讨论 #123」）
       aiBridge.requestExpand();
+      // ⚠️ 顺便切到「对话」页签：点完「讨论」就该**马上能说话**
+      aiBridge.requestFocus();
     },
     [
       aiBridge,

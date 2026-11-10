@@ -63,12 +63,23 @@ export interface AiContextModel {
   expandSignal: number;
   /** 请求展开右侧 AI 工作台（点「与 AI 讨论」时调）。 */
   requestExpand: () => void;
+  /**
+   * 「请切到**对话**页签」的信号（每次 +1）。
+   *
+   * ⚠️ 点「讨论」之后，用户应该**马上能说话** ⇒ 如果他停在「待确认」「审计」
+   *    页签上，输入框不在眼前 ⇒ 看起来像「点了没反应」。
+   *    ⇒ 页签也归这个信号管。
+   */
+  focusSignal: number;
+  /** 请求切到「对话」页签（点「与 AI 讨论」时调）。 */
+  requestFocus: () => void;
 }
 
 export default function useAiBridgeModel(): AiContextModel {
   const [context, setContext] = useState<AiTaskContext | null>(null);
   const [lastUpdate, setLastUpdate] = useState<AiEntityUpdate | null>(null);
   const [expandSignal, setExpandSignal] = useState(0);
+  const [focusSignal, setFocusSignal] = useState(0);
 
   const clearContext = useCallback(() => {
     setContext(null);
@@ -82,6 +93,10 @@ export default function useAiBridgeModel(): AiContextModel {
     setExpandSignal((value) => value + 1);
   }, []);
 
+  const requestFocus = useCallback(() => {
+    setFocusSignal((value) => value + 1);
+  }, []);
+
   return {
     context,
     setContext,
@@ -90,5 +105,7 @@ export default function useAiBridgeModel(): AiContextModel {
     notifyUpdate,
     expandSignal,
     requestExpand,
+    focusSignal,
+    requestFocus,
   };
 }

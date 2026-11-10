@@ -327,6 +327,8 @@ const TaskGantt: React.FC = () => {
         if (!context) return;
         aiBridge.setContext(context);
         aiBridge.requestExpand();
+        // ⚠️ 顺便切到「对话」页签：点完「讨论」就该**马上能说话**
+        aiBridge.requestFocus();
         return;
       }
 

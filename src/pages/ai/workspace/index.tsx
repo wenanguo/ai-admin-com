@@ -20,11 +20,12 @@
  * - **ETA 只写 burndown**：后端没有依赖图接口 ⇒ 没有关键路径、没有 P50/P90。
  * - **意图卡片标「暂未开放」**：AI 服务当前只有 `create_task` 一条命令。
  */
-import { history } from '@umijs/max';
+import { history, useModel } from '@umijs/max';
 import { Alert, Button, Dropdown, Space, Tabs, Typography, theme } from 'antd';
 import type React from 'react';
 import { useCallback, useRef, useState } from 'react';
 import { AuditPanel } from '@/components/ai-workspace/AuditPanel';
+import { DiscussionBar } from '@/components/ai-workspace/DiscussionBar';
 import { PendingPanel } from '@/components/ai-workspace/PendingPanel';
 import { useAiLists } from '@/components/ai-workspace/useAiLists';
 import { useWorkspace } from '@/components/ai-workspace/useWorkspace';
@@ -51,6 +52,8 @@ function toMessage(error: unknown): string {
 export default function AiWorkspacePage(): React.ReactElement {
   const { token } = theme.useToken();
   const workspace = useWorkspace();
+  // 全局 model（AI 工作台 ↔ 主工作区的桥）：当前讨论的任务
+  const aiBridge = useModel('ai-bridge');
   const [view, setView] = useState<WorkspaceView>('rules');
   /**
    * ⚠️ **按需读**：待确认与审计都是只读端点，页签没打开就不读
@@ -254,6 +257,13 @@ export default function AiWorkspacePage(): React.ReactElement {
         消息在里面滚，输入区固定在面板底部 ⇒ 面板里只有一个滚动条。
       */}
       <div ref={chatRef}>
+        {/* ⚠️ 「当前讨论」条：全宽页也要看得见在聊哪条任务 */}
+        <DiscussionBar
+          context={aiBridge.context ?? null}
+          onClear={() => {
+            aiBridge.clearContext();
+          }}
+        />
         <WideChat
           messages={workspace.messages}
           thinking={workspace.thinking}
