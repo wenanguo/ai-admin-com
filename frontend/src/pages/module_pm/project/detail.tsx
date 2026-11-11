@@ -20,7 +20,6 @@ import type React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import {
   buildAiProjectContext,
-  contextPromptText,
   mergeDictLabels,
 } from '@/components/pm/aiContext';
 import { DictTag } from '@/components/pm/DictTag';
@@ -458,7 +457,6 @@ const ProjectDetail: React.FC = () => {
     aiBridge.setContext(context);
     aiBridge.requestExpand();
     aiBridge.requestFocus();
-    aiBridge.requestInject(contextPromptText(context));
   }, [aiBridge, project]);
 
   if (!validId) {

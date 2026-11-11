@@ -141,37 +141,6 @@ export function buildAiProjectContext(
 }
 
 /**
- * 上下文 → **发给智能体的那句话**（固定提示词 + 上下文信息）。
- *
- * ## 为什么要有这句「固定的话」
- *
- * 用户点「讨论」时**并没有说话** ⇒ 如果什么都不发，智能体根本不知道
- * 「用户换了个对象」⇒ 它会接着上一句聊 ⇒ 用户看着像「没反应」。
- * ⇒ 点一下就发一句**说明现在在谈什么**的话，智能体立刻能接上。
- *
- * ⚠️ 这句话是**代表用户发的**（它会进对话历史）⇒ 措辞要说清楚是「切换上下文」。
- */
-export function contextPromptText(context: AiTaskContext): string {
-  if (context.kind === 'project' && context.project) {
-    const code = context.projectCode ? `（${context.projectCode}）` : '';
-    return `已切换到当前项目：#${context.project.id} ${context.project.name}${code}。请先概括这个项目的现状（里程碑、进行中的任务与风险），再问我要做什么。`;
-  }
-  const task = context.task;
-  if (!task) {
-    return '已切换到当前讨论对象，请先说明它的现状，再问我要做什么。';
-  }
-  const parts: string[] = [];
-  parts.push(`已切换到当前任务：#${task.id} ${String(task.title ?? '')}`);
-  if (context.project) {
-    parts.push(`所属项目：${context.project.name}`);
-  }
-  if (context.milestone) {
-    parts.push(`所属里程碑：${context.milestone.name}`);
-  }
-  return `${parts.join('；')}。请先说明这条任务的现状与风险，再问我要做什么。`;
-}
-
-/**
  * 上下文 → 气泡上的**技能标签**（像参考界面里的那个 chip）。
  *
  * ⚠️ 只是给人看的标签 ⇒ 智能体那边不靠它识别（它靠真正的上下文块）。

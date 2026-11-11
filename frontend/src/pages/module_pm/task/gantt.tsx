@@ -4,11 +4,7 @@ import { Alert, App, Button, Empty, Segmented, Select, Spin } from 'antd';
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCrudTable } from '@/components/CrudTable';
-import {
-  buildAiTaskContext,
-  contextPromptText,
-  mergeDictLabels,
-} from '@/components/pm/aiContext';
+import { buildAiTaskContext, mergeDictLabels } from '@/components/pm/aiContext';
 import type {
   GanttChartHandle,
   GanttRowAction,
@@ -333,9 +329,6 @@ const TaskGantt: React.FC = () => {
         aiBridge.requestExpand();
         // ⚠️ 顺便切到「对话」页签：点完「讨论」就该**马上能说话**
         aiBridge.requestFocus();
-        // ⚠️ **替用户发一句上下文说明**：用户点「讨论」时并没有说话
-        //    ⇒ 不发这句的话，智能体会接着上一句聊（用户看着像「点了没反应」）
-        aiBridge.requestInject(contextPromptText(context));
         return;
       }
 

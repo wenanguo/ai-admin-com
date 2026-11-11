@@ -11,7 +11,6 @@ import {
 } from '@/components/CrudTable';
 import {
   buildAiProjectContext,
-  contextPromptText,
   mergeDictLabels,
 } from '@/components/pm/aiContext';
 import { DictTag } from '@/components/pm/DictTag';
@@ -92,8 +91,6 @@ const ProjectManagement: React.FC = () => {
       aiBridge.requestExpand();
       // 切到「对话」页签（点完就能说话）
       aiBridge.requestFocus();
-      // 替用户发一句上下文说明（智能体立刻知道现在谈的是哪个项目）
-      aiBridge.requestInject(contextPromptText(context));
     },
     [aiBridge, priorityOptions, statusOptions],
   );
