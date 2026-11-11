@@ -17,6 +17,7 @@ import { toErrorEnvelope } from "./http/errors";
 import { MISSING_TOKEN_MESSAGE, allowedOrigins, errorBody } from "./http/respond";
 import { agentRouter } from "./routes/agent";
 import { auditRouter } from "./routes/audit";
+import { eventsRouter } from "./routes/events";
 import { pendingRouter } from "./routes/pending";
 
 export { MISSING_TOKEN_MESSAGE };
@@ -75,6 +76,7 @@ export function createApp(): Express {
 	//    语义与迁移前逐字一致。
 	// 路由挂载（顺序：具体的先于带参数的，router 内部已经排好）
 	app.use("/api/agent", agentRouter);
+	app.use("/api/agent", eventsRouter);
 	app.use("/api/pending", pendingRouter);
 	app.use("/api/audit", auditRouter);
 	app.use(notFoundHandler);
