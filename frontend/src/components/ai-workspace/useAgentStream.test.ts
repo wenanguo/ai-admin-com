@@ -312,6 +312,29 @@ describe('AI 流式状态机', () => {
     expect(result.current.messages[0].text).toBe('本周所有 P0 顺延到下周一');
   });
 
+  it('用户气泡不再有「来源」概念', async () => {
+    const { subscribe } = fakeSubscribe();
+    const loadState = vi.fn(async () => ({ ...SNAPSHOT, messages: [] }));
+
+    const { act, result } = await renderHook(() =>
+      useAgentStream({
+        conversationId: 'c1',
+        subscribe,
+        loadState,
+      }),
+    );
+
+    await act(async () => {
+      // @ts-expect-error 用户气泡不再有「来源」概念 ⇒ 不该再能传 origin
+      result.current.appendUserMessage('你好', 'context');
+    });
+
+    // 消息照样上屏（只是没有来源标记了）
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0].role).toBe('user');
+    expect(result.current.messages[0]).not.toHaveProperty('origin');
+  });
+
   it('回放的帧不上屏:快照才是真相,历史只渲染一遍', async () => {
     const { captured, subscribe } = fakeSubscribe();
     // 快照什么时候落地由测试控制（要模拟「快照落在回放的中间」）
