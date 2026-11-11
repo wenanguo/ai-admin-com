@@ -9,6 +9,11 @@ permissions:
   contents: write
   pages: write
 
+defaults:
+  run:
+    # monorepo 之后前端在 frontend/ 下 => 所有 run 步骤都在那里跑
+    working-directory: frontend
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest

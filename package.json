@@ -1,0 +1,26 @@
+{
+  "name": "ai-admin-com",
+  "version": "6.0.3",
+  "private": true,
+  "description": "AiAdmin monorepo：frontend（Umi 前端）+ backend/ai（Express + pi SDK 的 AI 服务）",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:ai": "npm --prefix backend/ai run dev",
+    "build": "npm --prefix frontend run build && npm --prefix backend/ai run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:ai": "npm --prefix backend/ai run build",
+    "start:ai": "npm --prefix backend/ai run start",
+    "lint": "npm --prefix frontend run lint",
+    "test": "npm --prefix frontend run test && npm --prefix backend/ai run test",
+    "test:frontend": "npm --prefix frontend run test",
+    "test:ai": "npm --prefix backend/ai run test",
+    "e2e": "npm --prefix frontend run e2e",
+    "biome": "npm --prefix frontend run biome",
+    "tsc": "npm --prefix frontend run tsc && npm --prefix backend/ai run typecheck",
+    "prepare": "npm --prefix frontend run prepare"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

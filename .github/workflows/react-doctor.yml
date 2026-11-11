@@ -27,3 +27,5 @@ jobs:
       - uses: millionco/react-doctor@695e46eee203a5d1855020191aa7e9c010a1250e # v2
         with:
           version: 0.7.1
+          # ⚠️ monorepo 之后前端在 frontend/ 下 ⇒ 让 action 去那儿扫
+          working-directory: frontend

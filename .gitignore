@@ -70,3 +70,18 @@ login.cjs
 probe-crud*.cjs
 probe-crud*.png
 .scratch/
+
+# ──────────── backend/ai（AI 后端：Express + pi SDK）────────────
+# ⚠️ 它的 .gitignore 只对 backend/ai/ 目录内生效；根这份补上根级会扫到的
+backend/ai/node_modules/
+backend/ai/dist/
+backend/ai/coverage/
+backend/ai/out/
+backend/ai/*.tsbuildinfo
+backend/ai/.env
+backend/ai/.env.local
+backend/ai/.env.*.local
+# pi SDK 的本地凭据（.ai/auth.json 等）
+backend/ai/.ai/
+# 本地临时脚本与日志（端到端验证用的）
+backend/ai/.scratch/

@@ -7,6 +7,11 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    # monorepo 之后前端在 frontend/ 下 => 所有 run 步骤都在那里跑
+    working-directory: frontend
+
 jobs:
   build-preview:
     runs-on: ubuntu-latest

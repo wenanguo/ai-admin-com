@@ -5,6 +5,11 @@ on: [push, pull_request]
 permissions:
   contents: read
 
+defaults:
+  run:
+    # monorepo 之后前端在 frontend/ 下 => 所有 run 步骤都在那里跑
+    working-directory: frontend
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -14,6 +19,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run biome:lint
 
@@ -25,6 +31,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run tsc
 
@@ -41,6 +48,7 @@ jobs:
         with:
           node-version: ${{ matrix.node_version }}
           cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - run: echo ${{github.ref}}
       - uses: utooland/setup-utoo@e7aa4d726a17f79f68aed736476ea5bd68f8ba52 # v1
         with:
