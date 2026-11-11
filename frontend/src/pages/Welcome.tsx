@@ -1,12 +1,12 @@
 import { PageContainer } from '@ant-design/pro-components';
 import XMarkdown from '@ant-design/x-markdown';
 import '@ant-design/x-markdown/es/XMarkdown/index.css';
-import enUS from '@root/docs/cheatsheet.en-US.md';
-import zhCN from '@root/docs/cheatsheet.zh-CN.md';
 import { getLocale, useIntl, useModel } from '@umijs/max';
 import { Card } from 'antd';
 import hljs from 'highlight.js';
 import React from 'react';
+import enUS from '../../../docs/cheatsheet.en-US.md';
+import zhCN from '../../../docs/cheatsheet.zh-CN.md';
 
 import 'highlight.js/styles/github.css';
 import './Welcome.css';
