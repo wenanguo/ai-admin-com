@@ -1,0 +1,142 @@
+// AI 服务的本地元数据表（AI 侧运行时必需的元数据，业务事实源在 AiAdmin 的 API）。
+//
+// - 与 AiAdmin 业务表同库（aipm），但统一用 ai_ 前缀区分归属。
+// - 单租户：不设 tenant_id。
+// - 表名/列名一律小写下划线（MySQL lower_case_table_names = 1，且与库里既有表一致）。
+// - ai_pending_action（待人决定）与 ai_audit_log（已发生）是两张表，确认执行时由前者生成后者。
+// - ⚠️ 库里还有一张后端遗留的空表 ai_action_log，与本 schema 无关，不要动、不要重名。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+/// 会话：一次连续的对话。
+model AiConversation {
+  id         String     @id @default(cuid()) @db.VarChar(64)
+  userId     String     @map("user_id") @db.VarChar(64)
+  projectRef String?    @map("project_ref") @db.VarChar(128)
+  channel    AiChannel  @default(WEB) @map("channel")
+  title      String?    @map("title") @db.VarChar(255)
+  createdAt  DateTime   @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime   @updatedAt @map("updated_at") @db.DateTime(3)
+
+  messages       AiMessage[]
+  pendingActions AiPendingAction[]
+
+  @@index([userId, updatedAt])
+  @@map("ai_conversation")
+}
+
+/// 会话里的一条消息。
+model AiMessage {
+  id             String   @id @default(cuid()) @db.VarChar(64)
+  conversationId String   @map("conversation_id") @db.VarChar(64)
+  role           AiRole   @map("role")
+  content        String   @db.Text
+  toolCalls      Json?    @map("tool_calls")
+  seq            Int      @default(0)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, seq])
+  @@map("ai_message")
+}
+
+/// 待人决定的动作（等人确认后才执行）。
+model AiPendingAction {
+  id             String          @id @default(cuid()) @db.VarChar(64)
+  conversationId String?         @map("conversation_id") @db.VarChar(64)
+  userId         String          @map("user_id") @db.VarChar(64)
+  command        String          @db.VarChar(64)
+  args           Json
+  preview        Json
+  status         AiPendingStatus @default(PENDING) @map("status")
+  expiresAt      DateTime        @map("expires_at") @db.DateTime(3)
+  resolvedAt     DateTime?       @map("resolved_at") @db.DateTime(3)
+  resolvedBy     String?         @map("resolved_by") @db.VarChar(64)
+  adjustedFrom   String?         @map("adjusted_from") @db.VarChar(255)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.DateTime(3)
+
+  conversation AiConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([status, userId])
+  @@map("ai_pending_action")
+}
+
+/// 已经发生的动作审计（由 pending_action 确认执行后生成，可被撤销）。
+model AiAuditLog {
+  id             String      @id @default(cuid()) @db.VarChar(64)
+  userId         String      @map("user_id") @db.VarChar(64)
+  actorType      AiActorType @map("actor_type")
+  command        String      @db.VarChar(64)
+  args           Json
+  beforeSnapshot Json?       @map("before_snapshot")
+  afterSnapshot  Json?       @map("after_snapshot")
+  undoOf         String?     @map("undo_of") @db.VarChar(64)
+  undoneAt       DateTime?   @map("undone_at") @db.DateTime(3)
+  adopted        Boolean?    @map("adopted")
+  model          String?     @map("model") @db.VarChar(128)
+  tokens         Int?        @map("tokens")
+  latencyMs      Int?        @map("latency_ms")
+  traceId        String?     @map("trace_id") @db.VarChar(64)
+  error          String?     @db.Text
+  createdAt      DateTime    @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([userId, createdAt])
+  @@index([undoOf])
+  @@map("ai_audit_log")
+}
+
+/// 外部业务实体的本地引用（只存 id 与标题缓存，不复制业务数据）。
+model AiEntityRef {
+  id           String       @id @default(cuid()) @db.VarChar(64)
+  entityType   AiEntityType @map("entity_type")
+  externalId   String       @map("external_id") @db.VarChar(128)
+  titleCache   String?      @map("title_cache") @db.VarChar(255)
+  lastSyncedAt DateTime?    @map("last_synced_at") @db.DateTime(3)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@unique([entityType, externalId])
+  @@map("ai_entity_ref")
+}
+
+/// 会话渠道。
+enum AiChannel {
+  WEB
+}
+
+/// 消息角色。
+enum AiRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+/// 待确认动作的状态。
+enum AiPendingStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  EXPIRED
+  EXECUTED
+}
+
+/// 审计动作的发起方。
+enum AiActorType {
+  USER
+  AI
+}
+
+/// 外部实体的类型。
+enum AiEntityType {
+  PROJECT
+  MILESTONE
+  TASK
+  RISK
+}

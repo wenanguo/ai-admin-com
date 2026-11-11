@@ -1,0 +1,18 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"noEmit": false,
+		"module": "nodenext",
+		"moduleResolution": "nodenext",
+		"allowImportingTsExtensions": true,
+		"rewriteRelativeImportExtensions": true,
+		"outDir": "dist",
+		"rootDir": "src",
+		"sourceMap": true,
+		"declaration": false,
+		"incremental": false,
+		"tsBuildInfoFile": "dist/.tsbuildinfo"
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": ["src/**/*.test.ts", "node_modules", "spike"]
+}
