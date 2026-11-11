@@ -11,13 +11,12 @@
 		"moduleResolution": "bundler",
 		"resolveJsonModule": true,
 		"isolatedModules": true,
-		"jsx": "preserve",
 		"allowImportingTsExtensions": true,
 		"incremental": true,
 		"paths": {
 			"@/*": ["./src/*"]
 		}
 	},
-	"include": ["**/*.ts", "**/*.tsx"],
+	"include": ["**/*.ts"],
 	"exclude": ["node_modules", "spike/scripts", "dist"]
 }

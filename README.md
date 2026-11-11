@@ -7,15 +7,30 @@ AiAdmin 的 **AI 编排服务**（独立仓）。业务事实源是 AiAdmin 后�
 | --- | --- |
 | 前端 | `D:/project/ai-admin-com`（Ant Design Pro） |
 | 后端（业务事实源） | `D:/project/AiAdmin/backend`（FastAPI） |
-| 本服务 | 本仓：Next.js（Route Handler）+ pi SDK + Prisma（MySQL）+ Vitest |
+| 本服务 | 本仓：Express 5（Node HTTP 层）+ pi SDK + Prisma（MySQL）+ Vitest |
 
 ## 快速开始
 
 ```bash
 npm install
 cp .env.example .env      # 填真值：模型 key / 数据库口令
-npm run dev               # http://localhost:3100
+npm run dev               # http://localhost:3100（tsx 热重载）
 ```
+
+生产：
+
+```bash
+npm run build             # tsc ⇒ dist/（ESM）
+npm start                 # node --env-file=.env dist/main.js
+```
+
+> **为什么不用 Next.js**：本服务**不渲染任何页面**，只有 10 个 HTTP 端点。
+> agent 内核（`src/agent/**`）对框架零依赖 ⇒ Next 当年只是一层路由壳，
+> 却带来了打包器、`serverExternalPackages`、全局单例热重载一堆包袱。
+> 2026-11-11 起 HTTP 层换成 **Express 5**，产物是 `tsc` 编译的 **ESM**
+> （pi SDK 是 ESM-only，CommonJS 产物 `require` 不了它）。
+> 对外行为（路径、状态码、信封、CORS、SSE 帧）由 `src/routes/contract.ts`
+> 的**契约表**锁住，迁移前后跑的是同一张表。
 
 ## 环境变量
 
@@ -30,14 +45,10 @@ npm run dev               # http://localhost:3100
 
 - `.env` **不入库**（里面有模型 key 与数据库口令），仓库里只有 `.env.example`。
 - `src/env.ts` 用 zod 校验，**缺哪个变量就在启动时报哪个**（不等到第一个请求打进来才炸）。
-- 校验发生在 **import 时**（`env.ts` 模块级就执行 `parseEnv`）。`next build` 也会加载路由模块，
-  所以一旦路由（或路由引用到的模块）import 了 `env.ts`，**构建机上也得有 `.env`** ——
-  Next 在 build 时同样会加载 `.env`。
-  ⚠️ **本仓现在就是这样**：`/api/agent/**` 的路由 import 了 `agent/runtime.ts`，
-  而运行时 import 了 `env.ts` ⇒ **`npm run build` 也需要 `.env`**（构建机上没有就会失败）。
-  真要把校验推迟到运行时，得改用 `instrumentation.ts`（本仓不这么做）。
-- 端口**不走环境变量**：钉在 `package.json` 的脚本里（`next dev -p 3100` /
-  `next start -p 3100`），要换端口改 scripts。
+- 校验发生在 **import 时**（`env.ts` 模块级就执行 `parseEnv`）⇒
+  **启动服务必须有 `.env`**（`npm run dev` / `npm start`）。
+  ℹ️ `npm run build` 只是 `tsc` 类型检查，**不执行代码** ⇒ 构建机上不需要 `.env`。
+- 端口：缺省 **3100**，可用 `PORT` 环境变量覆盖。
 - ⚠️ **`AI_THINKING_LEVEL` 默认 `off`**：开了思考 ⇒ 模型**先想再写** ⇒ 用户等得更久。
   开了它，服务端会把思考增量以 `thinking_delta` 事件外发 ⇒ 前端显示「思考中…」。
 
@@ -45,8 +56,9 @@ npm run dev               # http://localhost:3100
 
 | 命令 | 作用 |
 | --- | --- |
-| `npm run dev` | 开发服务器（3100 端口） |
-| `npm run build` / `npm start` | 生产构建 / 起服务 |
+| `npm run dev` | 开发服务器（3100 端口，`tsx watch` 热重载） |
+| `npm run build` | 生产构建（`tsc` ⇒ `dist/`，ESM） |
+| `npm start` | 起服务（`node --env-file=.env dist/main.js`） |
 | `npm test` | Vitest 单元测试（`src/**/*.test.ts`） |
 | `npm run typecheck` | `tsc --noEmit` |
 
@@ -271,11 +283,14 @@ git add prisma/schema.prisma prisma/migrations/<时间戳>_<名字>/
 - 库里还有一张**后端遗留的空表 `ai_action_log`**（AiAdmin PRD-v2 §7，源码里没有 model）——
   **不是本服务的表，不要动、不要重名**。
 
-## pi SDK 与 Next.js
+## pi SDK 与运行形态
 
-pi SDK（`@earendil-works/pi-coding-agent`）必须列进 `next.config.ts` 的 `serverExternalPackages`，
-否则 Next 的打包器会去处理它的 `node:fs` / `jiti` / wasm 依赖，运行时报错。
-Route Handler 里还要显式写 `export const runtime = "nodejs"`。
+pi SDK（`@earendil-works/pi-coding-agent`）是 **ESM-only**（它的 `exports` 只有 `import`）
+⇒ 产物必须是 ESM ⇒ `tsc` 用 `module: nodenext` + `rewriteRelativeImportExtensions` 编译，
+源码里的相对 import 一律带 `.ts` 后缀（`scripts/add-ts-extensions.mjs` 批量改）。
+
+⚠️ **pi SDK 不能被打包**（它带 `node:fs` / `jiti` / wasm 等原生与动态依赖）
+⇒ 只转译、不 bundle，依赖留在 `node_modules`。
 
 尖峰阶段的实测结论（pi SDK 的真实 API、SSE 行为、Prisma 在共享库上的脾气）都在
 [`spike/FINDINGS.md`](spike/FINDINGS.md)，写代码前先读它。
@@ -317,8 +332,10 @@ src/audit-redact.ts               审计参数脱敏（**写侧与读侧共用�
 src/audit-query.ts                审计的**读侧**（只看自己的行 + 筛选 + 脱敏 + 分页）
 src/pending-query.ts              待确认的**读侧**（只看自己的行 + status 缺省 PENDING + preview 原样透出）
 src/tools/                        命令目录（create_task 一个命令 + 闸门形状）
-src/http/                         HTTP 通用件（cors / respond 信封 / auth 取 token / sse 帧格式 / errors 错误映射）
-src/app/                          Route Handler（/api/agent/** 、/api/audit 与 /api/pending；尖峰路由已删）
+src/http/                         HTTP 通用件（cors / respond 信封 / auth 取 token / sse 帧格式 / errors 错误映射 / body 读 JSON）
+src/routes/                       ★ Express 路由（agent 会话与命令 / pending 待确认 / audit 审计 / events SSE / support 小工具 / contract **契约表**）
+src/server.ts                     ★ Express app 装配（createApp / start / CORS 中间件 / JSON 404 / 错误中间件）
+src/main.ts                       ★ 进程入口（node dist/main.js 就是它）
 .pi/skills/<name>/SKILL.md        ★ 技能（**加 AI 能力不用改代码**；见下面那节）
 spike/                            Task 1 的风险尖峰（一次性，结论在 spike/FINDINGS.md）
 ```

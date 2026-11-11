@@ -158,9 +158,9 @@ pi SDK 是 ESM-only ⇒ CommonJS 产物 `require()` 不了它（已实测：`exp
 
 | 脚本 | 现在 | 之后 |
 | --- | --- | --- |
-| `dev` | `next dev -p 3100` | `tsx watch src/server.ts` |
+| `dev` | `next dev -p 3100` | `tsx watch src/main.ts` |
 | `build` | `next build` | `tsc -p tsconfig.build.json` |
-| `start` | `next start -p 3100` | `node --env-file=.env dist/server.js` |
+| `start` | `next start -p 3100` | `node --env-file=.env dist/main.js` |
 | `typecheck` | `tsc --noEmit` | 不变 |
 | `test` | `vitest run` | 不变 |
 
@@ -223,7 +223,7 @@ server.close();
 7. **删 Next**：`src/app/**`、`next.config.ts`、`next-env.d.ts`、`next` 依赖。
 8. **更新 README**（启动方式、端口、`.env`、与前端的代理关系）。
 9. **门禁**：`tsc --noEmit` → `vitest run`（29 文件 + 新增路由测试）→ `npm run build` →
-   `node --env-file=.env dist/server.js` 真实冒烟（REST + SSE）→ 前端 e2e 不受影响（路径未变）。
+   `node --env-file=.env dist/main.js` 真实冒烟（REST + SSE）→ 前端 e2e 不受影响（路径未变）。
 
 ## 11. 我（架构侧）已做的小决定
 
