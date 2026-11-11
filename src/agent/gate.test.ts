@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { AiTaskContext } from "./context";
 import { createGateExtension, isAvailabilityTool, requiresConfirmation } from "./gate";
 import { PendingWaiterRegistry } from "./pending-waiters";
 
@@ -72,7 +73,8 @@ describe("闸门", () => {
 		const waiters = new PendingWaiterRegistry();
 		const onPending = vi.fn();
 		const { pi, handlers } = fakePi();
-		const taskContext = {
+		const taskContext: AiTaskContext = {
+			kind: "task",
 			task: {
 				id: 123,
 				project_id: 6,
@@ -150,6 +152,7 @@ describe("闸门", () => {
 				userId: "2",
 				onPending,
 				taskContext: {
+					kind: "task",
 					task: {
 						id: 123,
 						project_id: 6,

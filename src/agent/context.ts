@@ -42,16 +42,27 @@
 
 /** 任务上下文的形状（前端发来的）。 */
 export interface AiTaskContext {
+	/**
+	 * 上下文是**任务**还是**项目**。
+	 *
+	 * ⚠️ 两种的差别：
+	 *    - `task` ⇒ 回填只能改**这一条**任务（写参数会被收窄到它）；
+	 *    - `project` ⇒ 谈的是**整个项目**（可以列它的任务、改它的某条任务，
+	 *      但改哪条任务由模型决定，且**只能改那三个可写字段**）。
+	 */
+	kind: "task" | "project";
 	/** 任务对象：后端 update 的载荷形状（**整对象 PUT 的基线**）。 */
-	task: Record<string, unknown> & { id: number };
+	task?: Record<string, unknown> & { id: number };
 	/** 字典中文名（线上码 → 中文）：状态/优先级/类型。 */
 	labels?: Record<string, string>;
 	/** 人名（负责人/报告人）。 */
 	names?: { assignee?: string; reporter?: string };
-	/** 所属项目。 */
+	/** 所属项目（任务上下文时是「所属项目」；项目上下文时是「当前项目」）。 */
 	project?: { id: number; name: string };
 	/** 所属里程碑。 */
 	milestone?: { id: number; name: string };
+	/** 项目编码（给人看的）。 */
+	projectCode?: string;
 }
 
 /**
@@ -150,21 +161,34 @@ export function parseAiTaskContext(input: unknown): AiTaskContext | null {
 	if (record === undefined) {
 		return null;
 	}
-	const task = asRecord(record["task"]);
-	if (task === undefined) {
-		return null;
-	}
-	const id = task["id"];
-	if (typeof id !== "number" || !Number.isInteger(id) || id <= 0) {
-		return null;
-	}
+	const rawTask = asRecord(record["task"]);
 	const project = asRecord(record["project"]);
 	const milestone = asRecord(record["milestone"]);
 	const names = asRecord(record["names"]);
 	const labels = asRecord(record["labels"]);
 
+	// ⚠️ **两种上下文**：
+	//    - 任务上下文 ⇒ 必须有 task.id（没它就没法回填、没法高亮）；
+	//    - 项目上下文 ⇒ 必须有 project.id（没它智能体就没法查它的任务）。
+	const taskId = rawTask?.["id"];
+	const hasTask =
+		rawTask !== undefined &&
+		typeof taskId === "number" &&
+		Number.isInteger(taskId) &&
+		taskId > 0;
+	const projectId = project?.["id"];
+	const hasProject =
+		project !== undefined &&
+		typeof projectId === "number" &&
+		Number.isInteger(projectId) &&
+		projectId > 0;
+	if (!hasTask && !hasProject) {
+		return null;
+	}
+
 	return {
-		task: { ...task, id },
+		kind: hasTask ? "task" : "project",
+		task: hasTask ? { ...(rawTask as Record<string, unknown>), id: taskId } : undefined,
 		labels: labels === undefined ? undefined : mapStrings(labels),
 		names: {
 			assignee: text(names?.["assignee"]),
@@ -181,6 +205,7 @@ export function parseAiTaskContext(input: unknown): AiTaskContext | null {
 						id: Number(milestone["id"]),
 						name: text(milestone["name"]) ?? "",
 					},
+		projectCode: text(record["projectCode"]),
 	};
 }
 
@@ -218,6 +243,29 @@ export function renderAiTaskContext(context: AiTaskContext): string {
 	const labels = context.labels ?? {};
 	const names = context.names ?? {};
 	const lines: string[] = [];
+
+	// ⚠️ **项目上下文**：没有单条任务 ⇒ 智能体要做的是“把这个项目摸清楚”
+	if (context.kind === "project" || task === undefined) {
+		lines.push(
+			`【当前讨论的项目】#${context.project?.id ?? "?"} ${context.project?.name ?? "（无名称）"}`,
+		);
+		if (context.projectCode !== undefined) {
+			lines.push(`- 项目编码：${context.projectCode}`);
+		}
+		if (names.assignee !== undefined) {
+			lines.push(`- 项目 PM：${names.assignee}`);
+		}
+		lines.push(
+			"",
+			"⚠️ 你现在谈的是**整个项目** ⇒ 可以用 list_tasks（带 project_id）看它的任务，",
+			"用 get_task_detail 看某一条任务的详情。",
+			"⚠️ **改数据只能改这三个字段**：状态(status_code)、实际工时(actual_hours)、",
+			"完成说明(description)；改哪条任务由你定，但别的字段不许动。",
+			"⚠️ update_task 是整对象 PUT ⇒ 必须带齐 id / project_id / title / type_code /",
+			"status_code / priority_code；没填的字段**不要传 null**（不传就保持原值）。",
+		);
+		return lines.join("\n");
+	}
 
 	lines.push(`【当前讨论的任务】#${task.id} ${text(task["title"]) ?? "（无标题）"}`);
 	lines.push(`- 状态：${coded(labels[task["status_code"] as string], task["status_code"])}`);
@@ -303,7 +351,7 @@ export function sanitizeWriteArgs(
 	if (bare === "patch_task_status") {
 		const status = args["status"];
 		const finalArgs: Record<string, unknown> = {
-			ids: [context.task.id],
+			ids: [context.task?.id],
 			status,
 		};
 		for (const key of Object.keys(args)) {
@@ -317,24 +365,44 @@ export function sanitizeWriteArgs(
 		return { args: finalArgs, stripped };
 	}
 
-	// update_task：基线 + 可写字段
-	const merged: Record<string, unknown> = { ...context.task };
-	merged["id"] = context.task.id;
+	// update_task：
+	// - **任务上下文** ⇒ 基线（上下文里的任务对象）+ 模型给的可写字段
+	//   （其余字段**一律用基线的原值**，模型想改的也丢掉）；
+	// - **项目上下文** ⇒ 没有单条任务的基线 ⇒ 只留「必填字段 + 可写字段」，
+	//   其余字段**不传** ⇒ 后端 `exclude_unset=True` ⇒ 原值保持不变。
+	const isTaskContext = context.kind === "task" && context.task !== undefined;
+	const merged: Record<string, unknown> = isTaskContext
+		? { ...context.task }
+		: {};
+	if (isTaskContext && context.task !== undefined) {
+		merged["id"] = context.task.id;
+	}
 	for (const key of Object.keys(args)) {
 		if (key === "id") {
 			continue;
 		}
-		if (!WRITABLE_FIELD_SET.has(key)) {
-			stripped.push(key);
+		if (WRITABLE_FIELD_SET.has(key)) {
+			merged[key] = args[key];
 			continue;
 		}
-		merged[key] = args[key];
+		// ⚠️ 项目上下文：**必填字段**得用模型给的那份（那里没有基线）
+		//    （整对象 PUT 缺一个就 422）。
+		if (
+			!isTaskContext &&
+			(REQUIRED_UPDATE_FIELDS as readonly string[]).includes(key)
+		) {
+			merged[key] = args[key];
+			continue;
+		}
+		// 其余字段：任务上下文里**保持基线原值**（模型想改的也丢掉）；
+		// 项目上下文里**不传** ⇒ 后端保持原值。
+		stripped.push(key);
 	}
 	// ⚠️ **空值要整个键去掉**（MCP 的入参校验不吃 null，见 `stripNullishArgs`）
 	//    ⇒ 基线里没填的字段就不传 ⇒ 后端 `exclude_unset=True` ⇒ 原值保持不变。
 	const finalArgs = stripNullishArgs(merged);
-	// ⚠️ 必填字段一个都不能少（少一个就 422）⇒ 缺了就从模型给的参数里补，
-	//    再缺就**明确报错**（别把一个必填的 PUT 放出去）。
+	// ⚠️ 必填字段一个都不能少（少一个就 422）⇒ 缺了就**明确报错**
+	//    （别把一个必填的 PUT 放出去）。
 	for (const field of REQUIRED_UPDATE_FIELDS) {
 		if (finalArgs[field] === undefined) {
 			throw new Error(
@@ -357,6 +425,12 @@ export function writeTargetId(
 ): number | undefined {
 	const bare = toolName.replace(/^mcp__[^_]+__/, "");
 	if (context === null || !TASK_WRITE_TOOLS.has(bare)) {
+		return undefined;
+	}
+	// ⚠️ **只有任务上下文**能定位到「改的是哪条」；
+	//    项目上下文里改哪条任务由模型定 ⇒ 前端不知道该高亮哪一行
+	//    ⇒ 不发 entity_updated（前端那边靠「批准即刷新」兜底）。
+	if (context.kind !== "task" || context.task === undefined) {
 		return undefined;
 	}
 	return context.task.id;

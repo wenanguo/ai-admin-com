@@ -10,6 +10,7 @@ import {
 /** 一个合法的上下文（前端发过来的样子）。 */
 function makeContext(overrides?: Partial<AiTaskContext>): AiTaskContext {
 	return {
+		kind: "task",
 		task: {
 			id: 123,
 			project_id: 6,
@@ -47,7 +48,7 @@ describe("parseAiTaskContext", () => {
 	it("认得合法的上下文", () => {
 		const parsed = parseAiTaskContext(makeContext());
 		expect(parsed).not.toBeNull();
-		expect(parsed?.task.id).toBe(123);
+		expect(parsed?.task?.id).toBe(123);
 		expect(parsed?.project?.name).toBe("财务对账系统升级");
 	});
 
@@ -152,7 +153,9 @@ describe("sanitizeWriteArgs", () => {
 
 	it("update_task：基线缺必填字段 ⇒ 明确报错（不放一个会 422 的 PUT 出去）", () => {
 		const context = makeContext();
-		delete context.task["project_id"];
+		if (context.task) {
+			delete context.task["project_id"];
+		}
 		expect(() =>
 			sanitizeWriteArgs("update_task", { id: 123 }, context),
 		).toThrow(/project_id/);
