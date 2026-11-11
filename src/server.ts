@@ -14,11 +14,12 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { buildCorsHeaders, originOf } from "./http/cors";
 import { toErrorEnvelope } from "./http/errors";
-import { allowedOrigins, errorBody } from "./http/respond";
+import { MISSING_TOKEN_MESSAGE, allowedOrigins, errorBody } from "./http/respond";
+import { agentRouter } from "./routes/agent";
+import { auditRouter } from "./routes/audit";
+import { pendingRouter } from "./routes/pending";
 
-/** 缺 token 时的统一说法（10 个端点共用）。 */
-export const MISSING_TOKEN_MESSAGE =
-	"缺少 Authorization: Bearer <token>（token 由调用方提供，本服务只做透传）";
+export { MISSING_TOKEN_MESSAGE };
 
 /** 未知路径的提示。 */
 export const NOT_FOUND_MESSAGE = "接口不存在";
@@ -72,10 +73,10 @@ export function createApp(): Express {
 	// ⚠️ **不挂 `express.json()`**：body 由各路由自己读（`readJsonBody`），
 	//    这样「没有 body」「body 坏了」「这个路由不关心 body」三种情况的
 	//    语义与迁移前逐字一致。
-	// 路由挂载在下面（Task 4/5）：
-	// app.use("/api/agent", agentRouter);
-	// app.use("/api/pending", pendingRouter);
-	// app.use("/api/audit", auditRouter);
+	// 路由挂载（顺序：具体的先于带参数的，router 内部已经排好）
+	app.use("/api/agent", agentRouter);
+	app.use("/api/pending", pendingRouter);
+	app.use("/api/audit", auditRouter);
 	app.use(notFoundHandler);
 	app.use(errorHandler);
 	return app;

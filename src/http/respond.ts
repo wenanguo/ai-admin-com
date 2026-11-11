@@ -23,6 +23,14 @@ import { buildCorsHeaders, originOf } from "./cors";
 export const SUCCESS_CODE = 0;
 
 /**
+ * 缺 token 时的统一说法（10 个端点共用）。
+ *
+ * ⚠️ 一字不改：前端会把它直接显示给用户。
+ */
+export const MISSING_TOKEN_MESSAGE =
+	"缺少 Authorization: Bearer <token>（token 由调用方提供，本服务只做透传）";
+
+/**
  * 允许的源（来自 `env.ALLOWED_ORIGINS`，启动时已校验非空）。
  *
  * 留一个替换口给单元测试 —— 生产代码里它就是 `env.ALLOWED_ORIGINS`。
