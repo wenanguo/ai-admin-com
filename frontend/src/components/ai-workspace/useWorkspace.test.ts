@@ -384,14 +384,19 @@ describe('AI 工作台的会话', () => {
   });
 
   it('换了上下文之后，下一条命令带的是新的那个', async () => {
-    const { result } = await renderHook(() => useWorkspace());
+    const { result, rerender } = await renderHook(() => useWorkspace());
     await vi.waitFor(() => {
       expect(result.current.conversationId).toBe('c-new');
     });
 
     mocks.bridge.context = { kind: 'task', task: { id: 6, title: '旧的' } };
+    // ⚠️ 必须**重渲染**再发：生产里 `useModel` 每次渲染返回**新对象**，
+    //    上下文是顺着重渲染流进 `submit` 的 ⇒ 不重渲染就只是在测
+    //    「同一个对象被就地改掉」这条生产上不存在的路径。
+    await rerender();
     await result.current.send('第一条');
     mocks.bridge.context = { kind: 'task', task: { id: 7, title: '新的' } };
+    await rerender();
     await result.current.send('第二条');
 
     expect(mocks.sendAiCommand.mock.calls[0]?.[2]).toEqual({
