@@ -366,6 +366,9 @@ test.describe('与 AI 讨论', () => {
     // 状态：中文 + 线上码两样
     await expect(bar).toContainText('进行中（in_progress）');
 
+    // 点「讨论」本身**不发任何命令**（用户没说话 ⇒ 不该烧 token）
+    expect(commands.length).toBe(0);
+
     // 2. 发一句话 ⇒ 命令请求体里带着上下文
     const composer = page.getByPlaceholder('输入消息').first();
     await composer.click();
