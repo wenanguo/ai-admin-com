@@ -1,8 +1,8 @@
 {
-  "**/*.{js,jsx,tsx,ts,css,less}": [
-    "npx @biomejs/biome check --write --no-errors-on-unmatched"
+  "frontend/**/*.{js,jsx,tsx,ts,css,less}": [
+    "frontend/node_modules/.bin/biome check --write --no-errors-on-unmatched"
   ],
-  "src/**/*.md": [
-    "npx @biomejs/biome check --write --no-errors-on-unmatched"
+  "frontend/src/**/*.md": [
+    "frontend/node_modules/.bin/biome check --write --no-errors-on-unmatched"
   ]
 }

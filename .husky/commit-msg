@@ -1,1 +1,6 @@
-npx --no -- commitlint --edit $1
+#!/usr/bin/env sh
+# 提交信息校验（commitlint）。
+#
+# ⚠️ 同 pre-commit：依赖在 `frontend/node_modules` ⇒ 用它的二进制
+#    （别用 npx —— 根目录没有 node_modules，npx 会去下载）。
+frontend/node_modules/.bin/commitlint --edit "$1"

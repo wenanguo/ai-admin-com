@@ -1,5 +1,5 @@
 {
-  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "$schema": "./frontend/node_modules/@biomejs/biome/configuration_schema.json",
   "css": {
     "parser": {
       "tailwindDirectives": true
@@ -8,7 +8,7 @@
   "files": {
     "ignoreUnknown": true,
     "includes": [
-      "**/*",
+      "frontend/**",
       "!**/.umi",
       "!**/.umi-production",
       "!**/.umi-test",
@@ -23,10 +23,10 @@
       "!**/e2e-out",
       "!**/node_modules",
       "!biome.json",
-      "!tailwind.css",
-      "!package-lock.json",
+      "!frontend/tailwind.css",
+      "!frontend/package-lock.json",
       "!**/.worktrees",
-      "!docs/aipm"
+      "!frontend/docs/aipm"
     ]
   },
   "formatter": {

@@ -1,1 +1,8 @@
-lint-staged
+#!/usr/bin/env sh
+# 提交前的 lint（只管 frontend/ 的代码）。
+#
+# ⚠️ **为什么路径这么写**：monorepo 之后，依赖装在 `frontend/node_modules`
+#    （根目录没有 node_modules）⇒ 直接跑 `lint-staged` 会「command not found」。
+#    ⇒ 用 frontend 里的二进制；配置读**仓库根**的 `.lintstagedrc`
+#    （里面的 glob 带 `frontend/` 前缀 ⇒ 只会动前端的文件）。
+frontend/node_modules/.bin/lint-staged

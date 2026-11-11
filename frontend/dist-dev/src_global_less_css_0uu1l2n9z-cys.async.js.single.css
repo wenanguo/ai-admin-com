@@ -1,0 +1,141 @@
+/* [project]/src/global.less.css [client] (css) */
+@font-face {
+  font-family: AlibabaSans;
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("//mdn.alipayobjects.com/huamei_iwk9zp/afts/file/A*1GSgSYDD_aIAAAAAQsAAAAgAegCCAQ/AlibabaSans-Light.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: AlibabaSans;
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("//mdn.alipayobjects.com/huamei_iwk9zp/afts/file/A*2zEUQqnPNesAAAAAQtAAAAgAegCCAQ/AlibabaSans-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: AlibabaSans;
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("//mdn.alipayobjects.com/huamei_iwk9zp/afts/file/A*E_cxRbMlZqUAAAAAQuAAAAgAegCCAQ/AlibabaSans-Medium.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: AlibabaSans;
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("//mdn.alipayobjects.com/huamei_iwk9zp/afts/file/A*E_cxRbMlZqUAAAAAQuAAAAgAegCCAQ/AlibabaSans-Bold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: AlibabaSans;
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("//mdn.alipayobjects.com/huamei_iwk9zp/afts/file/A*E_cxRbMlZqUAAAAAQuAAAAgAegCCAQ/AlibabaSans-Heavy.woff2") format("woff2");
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: AlibabaSans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial, Noto Sans, sans-serif, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji;
+}
+
+.colorWeak {
+  filter: invert(80%);
+}
+
+.ant-layout {
+  min-height: 100vh;
+}
+
+.ant-pro-sider.ant-layout-sider.ant-pro-sider-fixed {
+  left: unset;
+}
+
+.ant-pro-sider-collapsed .ant-pro-sider-link span:not([role="img"]) {
+  display: none;
+}
+
+canvas {
+  display: block;
+}
+
+ul, ol {
+  list-style: none;
+}
+
+@media (max-width: 768px) {
+  .ant-table {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .ant-table-thead > tr > th, .ant-table-tbody > tr > th, .ant-table-thead > tr > td, .ant-table-tbody > tr > td {
+    white-space: pre;
+  }
+
+  .ant-table-thead > tr > th > span, .ant-table-tbody > tr > th > span, .ant-table-thead > tr > td > span, .ant-table-tbody > tr > td > span {
+    display: block;
+  }
+}
+
+.ant-pro-setting-drawer-handle {
+  display: none !important;
+}
+
+.ai-workspace-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.ai-workspace-scroll:hover {
+  scrollbar-color: #00000040 transparent;
+}
+
+.ai-workspace-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ai-workspace-scroll::-webkit-scrollbar-track {
+  background: none;
+}
+
+.ai-workspace-scroll::-webkit-scrollbar-thumb {
+  background: none;
+  border-radius: 3px;
+}
+
+.ai-workspace-scroll:hover::-webkit-scrollbar-thumb {
+  background: #00000040;
+}
+
+.ant-pro-layout, .ant-pro-layout > .ant-layout-has-sider, .ant-pro-layout > .ant-layout-has-sider > .ant-pro-layout-container {
+  height: 100%;
+}
+
+.ant-pro-layout-content {
+  min-height: 0;
+  overflow: hidden auto;
+  flex-direction: row !important;
+  align-items: stretch !important;
+  padding: 0 !important;
+  display: flex !important;
+  overflow: hidden !important;
+}
+
+html, body, #root, .ant-app {
+  height: 100%;
+}
+
+.pm-ai-updated-row > td {
+  transition: background .3s;
+  background: var(--ant-color-primary-bg) !important;
+}
+
+/*# sourceMappingURL=src_global_less_css_0uu1l2n9z-cys.async.js.single.css.map*/

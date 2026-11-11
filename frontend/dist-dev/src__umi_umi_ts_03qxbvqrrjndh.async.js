@@ -1,0 +1,49 @@
+(globalThis["utooChunk_ai_admin_com"] || (globalThis["utooChunk_ai_admin_com"] = [])).push([typeof document === "object" ? document.currentScript : undefined,
+"[project]/src/.umi/umi.ts [client] (ecmascript, manifest chunk)", (function(__turbopack_context__){
+
+__turbopack_context__.v([
+  "src_1v8ewrfafy1ps.async.js",
+  "_1cta9phke_h7g.async.js",
+  "node_modules_core-js_1s1fkrpponki4.async.js",
+  "node_modules_react-dom_cjs_react-dom-client_development_19o-19_b5z0bm.async.js",
+  "node_modules_react-dom_cjs_react-dom_development_1z9jgdjc5dnvc.async.js",
+  "node_modules_react-dom_0wief-56539w4.async.js",
+  "node_modules_1g-yv5_-ju624.async.js",
+  "node_modules__rc-component_util_es_0iz5xi46togv_.async.js",
+  "node_modules_antd_es_modal_1eyzzrs9j1uy6.async.js",
+  "node_modules_antd_es_input_0_1f-0n0n_eix.async.js",
+  "node_modules_antd_es_typography_0q-wbhy9-y5_m.async.js",
+  "node_modules_antd_es_04ixwzf519pe2.async.js",
+  "node_modules_antd_lib_070ovgo1h_x97.async.js",
+  "node_modules__ant-design_cssinjs_es_1lsf_f0qafm55.async.js",
+  "node_modules_1chewvyn9fkyq.async.js",
+  "node_modules__rc-component_form_es_1k5fppgybm0ht.async.js",
+  "node_modules__rc-component_select_es_0cs686yinyl9w.async.js",
+  "node_modules__rc-component_trigger_es_0mv_9d_aua8od.async.js",
+  "node_modules__ant-design_pro-components_es_19-2lpn7b_08_.async.js",
+  "node_modules__rc-component_menu_es_18uznxw5q9m27.async.js",
+  "node_modules__tanstack_query-core_build_modern_0q1zzad495313.async.js",
+  "node_modules_axios_lib_1fokh-js2jn3t.async.js",
+  "node_modules_antd-style_es_0ea0t9bz3htcx.async.js",
+  "node_modules__rc-component_tree_es_1-6duufkmu99x.async.js",
+  "node_modules_lodash_0io75mlm268ld.async.js",
+  "node_modules__umijs_03tgswjuu0dro.async.js",
+  "node_modules__ant-design_14h255_qc6wzl.async.js",
+  "node_modules__rc-component_0fm7g_ij31ptm.async.js",
+  "node_modules__emotion_1mlr2v2tkthei.async.js",
+  "node_modules_0u07-67y9f1nm.async.js",
+  {
+    "path": "_0dl27-qp8vovu.css",
+    "included": [
+      "[project]/src/global.less.css [client] (css)",
+      "[project]/tailwind.css.css [client] (css)"
+    ],
+    "moduleChunks": [
+      "src_global_less_css_0uu1l2n9z-cys.async.js.single.css",
+      "tailwind_css_css_0uu1l2n9z-cys.async.js.single.css"
+    ]
+  },
+  "src__umi_umi_ts_1r_3-rm9a4c1n.async.js"
+]);
+}),
+]);
