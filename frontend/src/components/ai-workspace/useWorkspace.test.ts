@@ -189,11 +189,6 @@ describe('AI 工作台的会话', () => {
     );
 
     const { result } = await renderHook(() => useWorkspace());
-    // ⚠️ `result.current` 要等 React 的被动 effect 跑过才有值
-    //    （不等的话在这台机器上会拿到 null）
-    await vi.waitFor(() => {
-      expect(result.current).toBeTruthy();
-    });
 
     const pending = result.current.send('建个任务');
     expect(mocks.sendAiCommand).not.toHaveBeenCalled();
@@ -320,10 +315,6 @@ describe('AI 工作台的会话', () => {
     );
 
     const { result } = await renderHook(() => useWorkspace());
-    // ⚠️ 同上：`result.current` 要等 React 的被动 effect 跑过才有值
-    await vi.waitFor(() => {
-      expect(result.current).toBeTruthy();
-    });
 
     await result.current.abort();
 
