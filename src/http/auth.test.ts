@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { extractBearerToken } from "./auth";
+import { extractBearerToken } from "./auth.ts";
 
 describe("extractBearerToken", () => {
 	it("没有 Authorization 头 ⇒ undefined", () => {

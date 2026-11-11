@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { CAPABILITIES } from "./capabilities";
-import { PM_PATHS } from "../aadmin/types";
+import { CAPABILITIES } from "./capabilities.ts";
+import { PM_PATHS } from "../aadmin/types.ts";
 
 /**
  * 能力位必须被**钉死** —— 注释不是断言。

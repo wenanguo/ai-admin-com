@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FrameBuffer } from "./frame-buffer";
+import { FrameBuffer } from "./frame-buffer.ts";
 
 /** 造一帧（`rebuildable` = 是不是「可从快照重建」的帧）。 */
 function frame(event: string, text: string, rebuildable = false): {

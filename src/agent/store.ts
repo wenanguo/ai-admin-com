@@ -9,7 +9,7 @@
  * （见 `session-registry.ts`）。token 落盘 = 凭据落盘，绝不能。
  */
 
-import { prisma } from "../db";
+import { prisma } from "../db.ts";
 
 /** 消息角色（与 `ai_message.role` 的枚举一致）。 */
 export type MessageRole = "USER" | "ASSISTANT" | "SYSTEM";

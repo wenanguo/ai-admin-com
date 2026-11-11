@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { StartupLock } from "./startup-lock";
+import { StartupLock } from "./startup-lock.ts";
 
 /** 等一小会儿（毫秒）。 */
 function sleep(ms: number): Promise<void> {

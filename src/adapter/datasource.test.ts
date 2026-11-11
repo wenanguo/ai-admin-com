@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AadminClient } from "../aadmin/client";
-import { AdapterErrorException } from "../aadmin/errors";
-import { AadminDataSource, clearProjectIdCache } from "./datasource";
-import type { EnumWarning } from "./enums";
+import { AadminClient } from "../aadmin/client.ts";
+import { AdapterErrorException } from "../aadmin/errors.ts";
+import { AadminDataSource, clearProjectIdCache } from "./datasource.ts";
+import type { EnumWarning } from "./enums.ts";
 
 const TOKEN = "test-token-must-not-leak";
 const BASE_URL = "https://www.pmdict.cn/api/v1";

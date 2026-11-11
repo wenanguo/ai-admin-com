@@ -8,10 +8,10 @@
  * token 交给 AiAdmin 判（本服务不解析它）—— 顺带就把「当前用户」问出来了。
  */
 
-import { agentRuntime } from "../../../../agent/runtime";
-import { extractBearerToken } from "../../../../http/auth";
-import { errorResponse } from "../../../../http/errors";
-import { errorEnvelope, okEnvelope, preflightResponse } from "../../../../http/respond";
+import { agentRuntime } from "../../../../agent/runtime.ts";
+import { extractBearerToken } from "../../../../http/auth.ts";
+import { errorResponse } from "../../../../http/errors.ts";
+import { errorEnvelope, okEnvelope, preflightResponse } from "../../../../http/respond.ts";
 
 // Route Handler 必须跑在 Node 运行时（pi SDK 依赖 node:fs / jiti / wasm）。
 export const runtime = "nodejs";

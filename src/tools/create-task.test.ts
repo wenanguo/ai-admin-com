@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import type { UnifiedTask } from "../adapter/model";
-import type { CreateTaskInput } from "../adapter/datasource";
-import { createCreateTaskTool, type CreateTaskToolDeps } from "./create-task";
+import type { UnifiedTask } from "../adapter/model.ts";
+import type { CreateTaskInput } from "../adapter/datasource.ts";
+import { createCreateTaskTool, type CreateTaskToolDeps } from "./create-task.ts";
 
 /** 审计条目（测试自己声明形状：工具只把它当「不透明的一条记录」用）。 */
 interface AuditRecord {

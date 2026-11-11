@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { prisma } from "./db";
+import { prisma } from "./db.ts";
 
 vi.mock("./db", () => ({
 	prisma: {
@@ -9,7 +9,7 @@ vi.mock("./db", () => ({
 
 describe("待确认的写侧", () => {
 	it("建一条 pending ⇒ 状态 PENDING、带过期时间", async () => {
-		const { createPendingAction } = await import("./pending-write");
+		const { createPendingAction } = await import("./pending-write.ts");
 		vi.mocked(prisma.aiPendingAction.create).mockResolvedValue({
 			id: "p1",
 		} as never);
@@ -31,7 +31,7 @@ describe("待确认的写侧", () => {
 	});
 
 	it("批准 ⇒ 状态改成 CONFIRMED 并记下是谁批的", async () => {
-		const { resolvePendingAction } = await import("./pending-write");
+		const { resolvePendingAction } = await import("./pending-write.ts");
 		vi.mocked(prisma.aiPendingAction.updateMany).mockResolvedValue({
 			count: 1,
 		});
@@ -44,7 +44,7 @@ describe("待确认的写侧", () => {
 	});
 
 	it("重复批准 ⇒ 改不到行（不会重复执行）", async () => {
-		const { resolvePendingAction } = await import("./pending-write");
+		const { resolvePendingAction } = await import("./pending-write.ts");
 		vi.mocked(prisma.aiPendingAction.updateMany).mockResolvedValue({
 			count: 0,
 		});

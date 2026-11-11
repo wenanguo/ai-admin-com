@@ -20,10 +20,10 @@
  * （工具要在 AiAdmin 上真的建出东西，缺了它就没法干活）。
  */
 
-import { agentRuntime } from "../../../../../agent/runtime";
-import { extractBearerToken } from "../../../../../http/auth";
-import { errorResponse } from "../../../../../http/errors";
-import { errorEnvelope, okEnvelope, preflightResponse } from "../../../../../http/respond";
+import { agentRuntime } from "../../../../../agent/runtime.ts";
+import { extractBearerToken } from "../../../../../http/auth.ts";
+import { errorResponse } from "../../../../../http/errors.ts";
+import { errorEnvelope, okEnvelope, preflightResponse } from "../../../../../http/respond.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

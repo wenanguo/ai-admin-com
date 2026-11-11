@@ -7,11 +7,11 @@
  */
 
 import { Router } from "express";
-import { agentRuntime } from "../agent/runtime";
-import { prisma } from "../db";
-import { okBody } from "../http/respond";
-import { parsePendingFilters, prismaPendingReader, queryPendingActions } from "../pending-query";
-import { queryToSearchParams, requireToken, sendError } from "./support";
+import { agentRuntime } from "../agent/runtime.ts";
+import { prisma } from "../db.ts";
+import { okBody } from "../http/respond.ts";
+import { parsePendingFilters, prismaPendingReader, queryPendingActions } from "../pending-query.ts";
+import { queryToSearchParams, requireToken, sendError } from "./support.ts";
 
 /** 待确认的路由。 */
 export const pendingRouter = Router();

@@ -23,14 +23,14 @@
  * ⇒ 前端要用 `fetch` + `ReadableStream`（读 `response.body`）自己解析 SSE 帧。
  */
 
-import { agentRuntime } from "../../../../../agent/runtime";
-import type { StreamFrame } from "../../../../../agent/frame-buffer";
-import { extractBearerToken } from "../../../../../http/auth";
-import { errorResponse } from "../../../../../http/errors";
-import { errorEnvelope, preflightResponse } from "../../../../../http/respond";
-import { buildCorsHeaders, originOf } from "../../../../../http/cors";
-import { allowedOrigins } from "../../../../../http/respond";
-import { frameToSse, sseComment, sseFrame, SSE_HEADERS } from "../../../../../http/sse";
+import { agentRuntime } from "../../../../../agent/runtime.ts";
+import type { StreamFrame } from "../../../../../agent/frame-buffer.ts";
+import { extractBearerToken } from "../../../../../http/auth.ts";
+import { errorResponse } from "../../../../../http/errors.ts";
+import { errorEnvelope, preflightResponse } from "../../../../../http/respond.ts";
+import { buildCorsHeaders, originOf } from "../../../../../http/cors.ts";
+import { allowedOrigins } from "../../../../../http/respond.ts";
+import { frameToSse, sseComment, sseFrame, SSE_HEADERS } from "../../../../../http/sse.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

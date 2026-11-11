@@ -12,13 +12,13 @@
  */
 
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
-import { buildCorsHeaders, originOf } from "./http/cors";
-import { toErrorEnvelope } from "./http/errors";
-import { MISSING_TOKEN_MESSAGE, allowedOrigins, errorBody } from "./http/respond";
-import { agentRouter } from "./routes/agent";
-import { auditRouter } from "./routes/audit";
-import { eventsRouter } from "./routes/events";
-import { pendingRouter } from "./routes/pending";
+import { buildCorsHeaders, originOf } from "./http/cors.ts";
+import { toErrorEnvelope } from "./http/errors.ts";
+import { MISSING_TOKEN_MESSAGE, allowedOrigins, errorBody } from "./http/respond.ts";
+import { agentRouter } from "./routes/agent.ts";
+import { auditRouter } from "./routes/audit.ts";
+import { eventsRouter } from "./routes/events.ts";
+import { pendingRouter } from "./routes/pending.ts";
 
 export { MISSING_TOKEN_MESSAGE };
 

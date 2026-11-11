@@ -16,7 +16,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { BAD_TOKEN, JSON_CONTRACT, MISSING_CONVERSATION, type ContractCase } from "../../routes/contract";
+import { BAD_TOKEN, JSON_CONTRACT, MISSING_CONVERSATION, type ContractCase } from "../../routes/contract.ts";
 
 // ── 把运行时与数据层换成假的（不碰真数据库、不打真模型） ────────────────────
 
@@ -116,23 +116,23 @@ import {
 	GET as conversationsGET,
 	POST as conversationsPOST,
 	OPTIONS as conversationsOPTIONS,
-} from "./agent/conversations/route";
+} from "./agent/conversations/route.ts";
 import {
 	POST as approvePOST,
 	OPTIONS as approveOPTIONS,
-} from "./agent/pending/[id]/approve/route";
-import { POST as rejectPOST, OPTIONS as rejectOPTIONS } from "./agent/pending/[id]/reject/route";
+} from "./agent/pending/[id]/approve/route.ts";
+import { POST as rejectPOST, OPTIONS as rejectOPTIONS } from "./agent/pending/[id]/reject/route.ts";
 import {
 	POST as commandPOST,
 	OPTIONS as commandOPTIONS,
-} from "./agent/[conversationId]/command/route";
-import { GET as stateGET, OPTIONS as stateOPTIONS } from "./agent/[conversationId]/state/route";
+} from "./agent/[conversationId]/command/route.ts";
+import { GET as stateGET, OPTIONS as stateOPTIONS } from "./agent/[conversationId]/state/route.ts";
 import {
 	POST as abortPOST,
 	OPTIONS as abortOPTIONS,
-} from "./agent/[conversationId]/abort/route";
-import { GET as pendingGET, OPTIONS as pendingOPTIONS } from "./pending/route";
-import { GET as auditGET, OPTIONS as auditOPTIONS } from "./audit/route";
+} from "./agent/[conversationId]/abort/route.ts";
+import { GET as pendingGET, OPTIONS as pendingOPTIONS } from "./pending/route.ts";
+import { GET as auditGET, OPTIONS as auditOPTIONS } from "./audit/route.ts";
 
 type Handler = (
 	request: Request,

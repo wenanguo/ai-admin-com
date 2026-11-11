@@ -12,7 +12,7 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { BAD_TOKEN, JSON_CONTRACT, MISSING_CONVERSATION } from "./contract";
+import { BAD_TOKEN, JSON_CONTRACT, MISSING_CONVERSATION } from "./contract.ts";
 
 // ── 把运行时与数据层换成假的（不碰真数据库、不打真模型） ────────────────────
 
@@ -104,7 +104,7 @@ vi.mock("../agent/pending-waiters", () => ({
 	pendingWaiters: { decide: vi.fn() },
 }));
 
-import { createApp } from "../server";
+import { createApp } from "../server.ts";
 
 let server: Server;
 let base: string;

@@ -14,14 +14,14 @@
  */
 
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { taskStatusToUnified } from "../adapter/enums";
-import type { CreateTaskInput } from "../adapter/datasource";
-import type { UnifiedTask } from "../adapter/model";
-import { prisma } from "../db";
-import type { PiSessionOptions } from "./pi-session";
-import { AgentRuntime } from "./runtime";
-import type { ConversationRecord, ConversationStore, MessageRecord } from "./store";
-import type { CommandTool } from "../tools/types";
+import { taskStatusToUnified } from "../adapter/enums.ts";
+import type { CreateTaskInput } from "../adapter/datasource.ts";
+import type { UnifiedTask } from "../adapter/model.ts";
+import { prisma } from "../db.ts";
+import type { PiSessionOptions } from "./pi-session.ts";
+import { AgentRuntime } from "./runtime.ts";
+import type { ConversationRecord, ConversationStore, MessageRecord } from "./store.ts";
+import type { CommandTool } from "../tools/types.ts";
 
 /* ------------------------------------------------------------------ 假实现 */
 

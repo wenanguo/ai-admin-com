@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isSuccess, SUCCESS_CODES } from "./api";
+import { isSuccess, SUCCESS_CODES } from "./api.ts";
 
 describe("isSuccess", () => {
 	it("接受 code 0 与 200", () => {

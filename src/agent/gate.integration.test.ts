@@ -27,10 +27,10 @@ import {
 	SessionManager,
 	type AgentSession,
 } from "@earendil-works/pi-coding-agent";
-import { createFakeMcpServer, type FakeMcpServer } from "./mcp.fake";
-import { createAiadminMcpExtension } from "./mcp";
-import { createGateExtension } from "./gate";
-import { PendingWaiterRegistry } from "./pending-waiters";
+import { createFakeMcpServer, type FakeMcpServer } from "./mcp.fake.ts";
+import { createAiadminMcpExtension } from "./mcp.ts";
+import { createGateExtension } from "./gate.ts";
+import { PendingWaiterRegistry } from "./pending-waiters.ts";
 
 /** 造一个带假 MCP 服务器 + 闸门的会话。 */
 async function sessionWithGate(fake: FakeMcpServer, waiters: PendingWaiterRegistry): Promise<{

@@ -40,7 +40,7 @@ import type {
 	SessionHeader,
 	SessionMessageEntry,
 } from "@earendil-works/pi-coding-agent";
-import type { MessageRecord } from "./store";
+import type { MessageRecord } from "./store.ts";
 
 /** 造 entries 需要的参数。 */
 export interface BuildSessionEntriesOptions {

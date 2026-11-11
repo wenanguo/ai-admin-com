@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { AdapterErrorException } from "../aadmin/errors";
-import { entityKey, parseEntityKey, tryParseEntityKey, tryParseNumericId } from "./keys";
+import { AdapterErrorException } from "../aadmin/errors.ts";
+import { entityKey, parseEntityKey, tryParseEntityKey, tryParseNumericId } from "./keys.ts";
 
 /** 抓住 parseEntityKey 抛出的错误。 */
 function catchError(fn: () => unknown): AdapterErrorException {

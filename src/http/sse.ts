@@ -10,8 +10,8 @@
  * （`event:` 行给出事件名，`data:` 行给出 JSON 载荷，最后一个空行表示帧结束。）
  */
 
-import { isRebuildable } from "../agent/events";
-import type { StreamFrame } from "../agent/frame-buffer";
+import { isRebuildable } from "../agent/events.ts";
+import type { StreamFrame } from "../agent/frame-buffer.ts";
 
 /** SSE 响应头。 */
 export const SSE_HEADERS: Record<string, string> = {

@@ -25,9 +25,9 @@ import {
 	SessionManager,
 	type AgentSession,
 } from "@earendil-works/pi-coding-agent";
-import { createFakeMcpServer, type FakeMcpServer } from "./mcp.fake";
-import { createAiadminMcpExtension } from "./mcp";
-import { createPiSession } from "./pi-session";
+import { createFakeMcpServer, type FakeMcpServer } from "./mcp.fake.ts";
+import { createAiadminMcpExtension } from "./mcp.ts";
+import { createPiSession } from "./pi-session.ts";
 
 /** 造一个带假 MCP 服务器的会话（与生产同构：扩展工厂挂在 loader 上）。 */
 async function sessionWithFakeMcp(fake: FakeMcpServer): Promise<{

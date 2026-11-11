@@ -14,9 +14,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { AdapterErrorException } from "../aadmin/errors";
-import { AgentError } from "../agent/runtime";
-import { errorResponse, toErrorEnvelope } from "./errors";
+import { AdapterErrorException } from "../aadmin/errors.ts";
+import { AgentError } from "../agent/runtime.ts";
+import { errorResponse, toErrorEnvelope } from "./errors.ts";
 
 /** 一个请求（CORS 头要 origin）。 */
 function request(): Request {

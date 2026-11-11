@@ -8,7 +8,7 @@
  * （谁提的、什么时候、批没批、什么时候过期）。
  */
 
-import { prisma } from "./db";
+import { prisma } from "./db.ts";
 
 /** 默认多久算过期（毫秒）。 */
 export const DEFAULT_PENDING_TTL_MS = 5 * 60 * 1000;

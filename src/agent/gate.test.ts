@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AiTaskContext } from "./context";
-import { createGateExtension, isAvailabilityTool, requiresConfirmation } from "./gate";
-import { PendingWaiterRegistry } from "./pending-waiters";
+import type { AiTaskContext } from "./context.ts";
+import { createGateExtension, isAvailabilityTool, requiresConfirmation } from "./gate.ts";
+import { PendingWaiterRegistry } from "./pending-waiters.ts";
 
 /** 假的 pi 扩展 API（只实现我们用到的两个方法）。 */
 function fakePi(): {

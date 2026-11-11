@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import { AgentEventMapper } from "./event-mapper";
+import { AgentEventMapper } from "./event-mapper.ts";
 
 const CID = "conv-1";
 

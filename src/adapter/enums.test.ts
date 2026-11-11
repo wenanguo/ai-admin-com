@@ -21,7 +21,7 @@ import {
 	taskTypeFromUnified,
 	taskTypeToUnified,
 	type EnumWarning,
-} from "./enums";
+} from "./enums.ts";
 
 /**
  * 归一表里的值必须与后端字典逐字一致。

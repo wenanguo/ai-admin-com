@@ -24,7 +24,7 @@
  */
 
 import { Prisma } from "@prisma/client";
-import { prisma } from "./db";
+import { prisma } from "./db.ts";
 
 /** 一条审计（写进 `ai_audit_log` 的一行）。 */
 export interface AuditEntry {

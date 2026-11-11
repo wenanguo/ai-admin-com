@@ -16,12 +16,12 @@
  */
 
 import { Router } from "express";
-import { agentRuntime } from "../agent/runtime";
-import { pendingWaiters } from "../agent/pending-waiters";
-import { readJsonBody } from "../http/body";
-import { errorBody, okBody } from "../http/respond";
-import { resolvePendingAction } from "../pending-write";
-import { requireToken, sendError } from "./support";
+import { agentRuntime } from "../agent/runtime.ts";
+import { pendingWaiters } from "../agent/pending-waiters.ts";
+import { readJsonBody } from "../http/body.ts";
+import { errorBody, okBody } from "../http/respond.ts";
+import { resolvePendingAction } from "../pending-write.ts";
+import { requireToken, sendError } from "./support.ts";
 
 /** 命令类型（与迁移前一字不差）。 */
 const SUPPORTED_COMMAND_TYPES = ["prompt", "prompt-followup", "prompt-steer"] as const;

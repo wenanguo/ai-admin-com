@@ -1,5 +1,5 @@
-import { isSuccess } from "../types/api";
-import { AdapterErrorException, isAdapterErrorException, isRetryable } from "./errors";
+import { isSuccess } from "../types/api.ts";
+import { AdapterErrorException, isAdapterErrorException, isRetryable } from "./errors.ts";
 
 /**
  * 查询参数。值为 `undefined` 的键**不拼进 URL**；其余值按字符串编码。

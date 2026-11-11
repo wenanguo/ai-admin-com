@@ -15,8 +15,8 @@
  */
 
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import type { AiTaskContext } from "./context";
-import { FrameBuffer, type StreamFrame } from "./frame-buffer";
+import type { AiTaskContext } from "./context.ts";
+import { FrameBuffer, type StreamFrame } from "./frame-buffer.ts";
 
 /** SSE 订阅者：收到一帧就被叫一次。 */
 export type ChannelSubscriber = (frame: StreamFrame) => void;

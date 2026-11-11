@@ -5,11 +5,11 @@
  */
 
 import { Router } from "express";
-import { parseAuditFilters, prismaAuditReader, queryAuditLog } from "../audit-query";
-import { agentRuntime } from "../agent/runtime";
-import { prisma } from "../db";
-import { okBody } from "../http/respond";
-import { queryToSearchParams, requireToken, sendError } from "./support";
+import { parseAuditFilters, prismaAuditReader, queryAuditLog } from "../audit-query.ts";
+import { agentRuntime } from "../agent/runtime.ts";
+import { prisma } from "../db.ts";
+import { okBody } from "../http/respond.ts";
+import { queryToSearchParams, requireToken, sendError } from "./support.ts";
 
 /** 审计的路由。 */
 export const auditRouter = Router();

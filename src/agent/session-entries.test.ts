@@ -18,8 +18,8 @@ import {
 	ModelRuntime,
 	SessionManager,
 } from "@earendil-works/pi-coding-agent";
-import { buildSessionEntries } from "./session-entries";
-import type { MessageRecord } from "./store";
+import { buildSessionEntries } from "./session-entries.ts";
+import type { MessageRecord } from "./store.ts";
 
 /** 造一条消息记录。 */
 function message(

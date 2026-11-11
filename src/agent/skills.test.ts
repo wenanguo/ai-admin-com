@@ -11,7 +11,7 @@ import {
 	buildSystemPrompt,
 	createProjectSkillsOverride,
 	renderSkillsSection,
-} from "./skills";
+} from "./skills.ts";
 
 /** 造一个技能条目（只填我们用到的字段）。 */
 function skill(overrides: Partial<Skill> = {}): Skill {

@@ -11,9 +11,9 @@
  * （`noTools: "builtin"`）—— 它们能在服务器上乱跑。
  */
 
-import type { AuditWriter } from "../audit";
-import { createCreateTaskTool, CREATE_TASK_TOOL_NAME, type TaskCreator } from "./create-task";
-import type { CommandGate, CommandTool } from "./types";
+import type { AuditWriter } from "../audit.ts";
+import { createCreateTaskTool, CREATE_TASK_TOOL_NAME, type TaskCreator } from "./create-task.ts";
+import type { CommandGate, CommandTool } from "./types.ts";
 
 /** 造工具时需要的上下文。 */
 export interface CommandContext {

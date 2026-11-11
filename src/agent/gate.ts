@@ -21,10 +21,10 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { createPendingAction } from "../pending-write";
-import type { AiTaskContext } from "./context";
-import { sanitizeWriteArgs, type SanitizedWrite } from "./context";
-import type { PendingWaiterRegistry } from "./pending-waiters";
+import { createPendingAction } from "../pending-write.ts";
+import type { AiTaskContext } from "./context.ts";
+import { sanitizeWriteArgs, type SanitizedWrite } from "./context.ts";
+import type { PendingWaiterRegistry } from "./pending-waiters.ts";
 
 /** 默认等多久（毫秒）。 */
 export const DEFAULT_GATE_TIMEOUT_MS = 5 * 60 * 1000;

@@ -7,11 +7,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { CommandTool } from "./types";
-import { buildCommandTools, isDestructiveCommand } from "./index";
-import type { AuditWriter } from "../audit";
-import type { CreateTaskInput } from "../adapter/datasource";
-import type { UnifiedTask } from "../adapter/model";
+import type { CommandTool } from "./types.ts";
+import { buildCommandTools, isDestructiveCommand } from "./index.ts";
+import type { AuditWriter } from "../audit.ts";
+import type { CreateTaskInput } from "../adapter/datasource.ts";
+import type { UnifiedTask } from "../adapter/model.ts";
 
 /** 审计去处（测试不需要真的落库）。 */
 const audit: AuditWriter = {

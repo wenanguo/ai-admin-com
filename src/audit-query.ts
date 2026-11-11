@@ -24,7 +24,7 @@
  */
 
 import type { PrismaClient } from "@prisma/client";
-import { redactAuditArgs } from "./audit-redact";
+import { redactAuditArgs } from "./audit-redact.ts";
 
 /** 发起方（与 `ai_audit_log.actor_type` 的枚举一致）。 */
 export type AuditActorType = "AI" | "USER";

@@ -17,12 +17,12 @@
 
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
-import type { AuditWriter } from "../audit";
-import { redactAuditArgs } from "../audit-redact";
-import type { CreateTaskInput } from "../adapter/datasource";
-import type { UnifiedTask } from "../adapter/model";
-import { AdapterErrorException, isAdapterErrorException } from "../aadmin/errors";
-import { ALLOW_ALL_GATE, type CommandGate, type CommandTool } from "./types";
+import type { AuditWriter } from "../audit.ts";
+import { redactAuditArgs } from "../audit-redact.ts";
+import type { CreateTaskInput } from "../adapter/datasource.ts";
+import type { UnifiedTask } from "../adapter/model.ts";
+import { AdapterErrorException, isAdapterErrorException } from "../aadmin/errors.ts";
+import { ALLOW_ALL_GATE, type CommandGate, type CommandTool } from "./types.ts";
 
 /** 工具名（模型用它来调用）。 */
 export const CREATE_TASK_TOOL_NAME = "create_task";

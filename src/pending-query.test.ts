@@ -5,7 +5,7 @@ import {
 	type PendingActionReader,
 	type PendingFindArgs,
 	type PendingRow,
-} from "./pending-query";
+} from "./pending-query.ts";
 
 /**
  * 待确认只读查询 —— 用**注入的假 prisma** 测（不连库）。

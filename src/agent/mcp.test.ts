@@ -3,7 +3,7 @@ import {
 	AIADMIN_MCP_SERVER_NAME,
 	createAiadminMcpConfig,
 	createAiadminMcpExtension,
-} from "./mcp";
+} from "./mcp.ts";
 
 describe("AiAdmin 的 MCP 服务器配置", () => {
 	it("名字是 aiadmin（工具名前缀就是 mcp__aiadmin__）", () => {

@@ -7,7 +7,7 @@
 
 import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { MAX_BODY_BYTES, readJsonBody } from "./body";
+import { MAX_BODY_BYTES, readJsonBody } from "./body.ts";
 
 /** 造一个带 body 的请求源。 */
 function source(text: string): Readable & { headers?: Record<string, string> } {

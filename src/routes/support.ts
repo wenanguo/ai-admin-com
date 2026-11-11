@@ -5,9 +5,9 @@
  */
 
 import type { Request, Response } from "express";
-import { extractBearerToken } from "../http/auth";
-import { toErrorEnvelope } from "../http/errors";
-import { MISSING_TOKEN_MESSAGE, errorBody } from "../http/respond";
+import { extractBearerToken } from "../http/auth.ts";
+import { toErrorEnvelope } from "../http/errors.ts";
+import { MISSING_TOKEN_MESSAGE, errorBody } from "../http/respond.ts";
 
 /**
  * 取调用方的 token；**没有就回 401 信封**并返回 `undefined`。

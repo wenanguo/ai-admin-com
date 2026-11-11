@@ -18,8 +18,8 @@
  */
 
 import { createHash } from "node:crypto";
-import type { AadminClient } from "../aadmin/client";
-import { AdapterErrorException } from "../aadmin/errors";
+import type { AadminClient } from "../aadmin/client.ts";
+import { AdapterErrorException } from "../aadmin/errors.ts";
 
 /** 当前用户信息的路径（AiAdmin 系统管理模块）。 */
 export const CURRENT_USER_PATH = "/system/user/current/info";

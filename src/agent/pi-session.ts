@@ -21,14 +21,14 @@ import {
 	SessionManager,
 	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
-import { env } from "../env";
-import type { CommandTool } from "../tools/types";
-import { createAiadminMcpExtension } from "./mcp";
-import { buildSystemPrompt, createProjectSkillsOverride } from "./skills";
-import { createLoadSkillTool } from "./skill-tools";
-import { buildSessionEntries } from "./session-entries";
-import type { AgentSessionLike } from "./session-registry";
-import type { MessageRecord } from "./store";
+import { env } from "../env.ts";
+import type { CommandTool } from "../tools/types.ts";
+import { createAiadminMcpExtension } from "./mcp.ts";
+import { buildSystemPrompt, createProjectSkillsOverride } from "./skills.ts";
+import { createLoadSkillTool } from "./skill-tools.ts";
+import { buildSessionEntries } from "./session-entries.ts";
+import type { AgentSessionLike } from "./session-registry.ts";
+import type { MessageRecord } from "./store.ts";
 
 /** pi 的凭据文件放在仓内 `.ai/` 下（只存环境变量鉴权的结果，通常是空的 `{}`）。 */
 const AGENT_DIR = join(process.cwd(), ".ai");

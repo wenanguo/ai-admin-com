@@ -12,15 +12,15 @@
  */
 
 import { createHash } from "node:crypto";
-import type { AadminClient } from "../aadmin/client";
-import { AdapterErrorException, isAdapterErrorException } from "../aadmin/errors";
+import type { AadminClient } from "../aadmin/client.ts";
+import { AdapterErrorException, isAdapterErrorException } from "../aadmin/errors.ts";
 import {
 	PM_PATHS,
 	type AadminPageResult,
 	type PmProjectOut,
 	type PmTaskCreate,
 	type PmTaskOut,
-} from "../aadmin/types";
+} from "../aadmin/types.ts";
 import {
 	priorityFromUnified,
 	priorityToUnified,
@@ -34,9 +34,9 @@ import {
 	taskTypeToUnified,
 	type EnumMapping,
 	type EnumWarningSink,
-} from "./enums";
-import { entityKey, parseEntityKey, tryParseEntityKey, tryParseNumericId } from "./keys";
-import type { UnifiedProject, UnifiedTask, UnifiedUserRef } from "./model";
+} from "./enums.ts";
+import { entityKey, parseEntityKey, tryParseEntityKey, tryParseNumericId } from "./keys.ts";
+import type { UnifiedProject, UnifiedTask, UnifiedUserRef } from "./model.ts";
 
 /* ------------------------------------------------------------ 构造参数 */
 

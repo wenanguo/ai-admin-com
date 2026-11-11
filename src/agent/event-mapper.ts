@@ -21,7 +21,7 @@
  */
 
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import { SSE_EVENTS, type SseEventName, type SsePayload } from "./events";
+import { SSE_EVENTS, type SseEventName, type SsePayload } from "./events.ts";
 
 /** 映射结果。 */
 export interface MappedEvent {

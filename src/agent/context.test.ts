@@ -5,7 +5,7 @@ import {
 	sanitizeWriteArgs,
 	writeTargetId,
 	type AiTaskContext,
-} from "./context";
+} from "./context.ts";
 
 /** 一个合法的上下文（前端发过来的样子）。 */
 function makeContext(overrides?: Partial<AiTaskContext>): AiTaskContext {

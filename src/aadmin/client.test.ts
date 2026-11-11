@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { AadminClient } from "./client";
-import { AdapterErrorException, isRetryable } from "./errors";
-import { PM_PATHS } from "./types";
+import { AadminClient } from "./client.ts";
+import { AdapterErrorException, isRetryable } from "./errors.ts";
+import { PM_PATHS } from "./types.ts";
 
 /**
  * 假 token：只允许出现在请求头里。

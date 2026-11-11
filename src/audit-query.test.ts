@@ -6,7 +6,7 @@ import {
 	type AuditFindArgs,
 	type AuditLogReader,
 	type AuditRow,
-} from "./audit-query";
+} from "./audit-query.ts";
 
 /**
  * 审计只读查询 —— 用**注入的假 prisma** 测（不连库）。

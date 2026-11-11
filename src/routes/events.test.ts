@@ -43,7 +43,7 @@ vi.mock("../agent/runtime", () => ({
 	},
 }));
 
-import { createApp } from "../server";
+import { createApp } from "../server.ts";
 
 let server: Server;
 let base: string;

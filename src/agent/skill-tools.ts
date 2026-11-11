@@ -21,7 +21,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import type { CommandTool } from "../tools/types";
+import type { CommandTool } from "../tools/types.ts";
 
 /** 工具名（模型用它调用）。 */
 export const LOAD_SKILL_TOOL_NAME = "load_skill";

@@ -8,7 +8,7 @@ import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import express from "express";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { MISSING_TOKEN_MESSAGE, NOT_FOUND_MESSAGE, createApp, errorHandler } from "./server";
+import { MISSING_TOKEN_MESSAGE, NOT_FOUND_MESSAGE, createApp, errorHandler } from "./server.ts";
 
 let server: Server;
 let base: string;

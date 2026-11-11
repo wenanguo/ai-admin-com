@@ -402,10 +402,13 @@
 - [ ] **Step 5: 改 `package.json` 脚本**
   | 脚本 | 值 |
   | --- | --- |
-  | `dev` | `tsx watch src/server.ts` |
+  | `dev` | `tsx watch src/main.ts` |
   | `build` | `tsc -p tsconfig.build.json` |
-  | `start` | `node --env-file=.env dist/server.js` |
+  | `start` | `node --env-file=.env dist/main.js` |
   | `typecheck` | `tsc --noEmit`（不变） |
+
+  ⚠️ 入口是 `src/main.ts` 而不是 `src/server.ts`：`server.ts` 导出 `createApp()`，
+  **测试要 import 它** ⇒ 不能在 import 时就监听端口 ⇒ 单独一个入口文件负责启动。
 
 - [ ] **Step 6: 改 `.gitignore`**：删 `.next/`，加 `dist/`
 

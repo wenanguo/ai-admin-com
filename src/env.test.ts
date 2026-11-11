@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { env, parseEnv, type EnvSource } from "./env";
+import { env, parseEnv, type EnvSource } from "./env.ts";
 
 /** 一份齐全的（假的）环境变量。 */
 const FULL: EnvSource = {

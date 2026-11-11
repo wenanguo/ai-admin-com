@@ -18,7 +18,7 @@ import type {
 	UnifiedTaskSource,
 	UnifiedTaskStatus,
 	UnifiedTaskType,
-} from "./enums";
+} from "./enums.ts";
 
 /**
  * 写操作的快照 —— **撤销层的插槽**。

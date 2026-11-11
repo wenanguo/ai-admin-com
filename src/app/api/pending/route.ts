@@ -28,12 +28,12 @@
  * 完整版的确认流程落地后前端立刻就有数据。
  */
 
-import { agentRuntime } from "../../../agent/runtime";
-import { prisma } from "../../../db";
-import { extractBearerToken } from "../../../http/auth";
-import { errorResponse } from "../../../http/errors";
-import { errorEnvelope, okEnvelope, preflightResponse } from "../../../http/respond";
-import { parsePendingFilters, prismaPendingReader, queryPendingActions } from "../../../pending-query";
+import { agentRuntime } from "../../../agent/runtime.ts";
+import { prisma } from "../../../db.ts";
+import { extractBearerToken } from "../../../http/auth.ts";
+import { errorResponse } from "../../../http/errors.ts";
+import { errorEnvelope, okEnvelope, preflightResponse } from "../../../http/respond.ts";
+import { parsePendingFilters, prismaPendingReader, queryPendingActions } from "../../../pending-query.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

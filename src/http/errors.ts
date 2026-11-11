@@ -10,10 +10,10 @@
  * 这里只做「原样转出去」，不再加工。
  */
 
-import { AdapterErrorException, isAdapterErrorException } from "../aadmin/errors";
-import { AgentError } from "../agent/runtime";
-import { errorBody, jsonResponse } from "./respond";
-import type { ApiResponse } from "../types/api";
+import { AdapterErrorException, isAdapterErrorException } from "../aadmin/errors.ts";
+import { AgentError } from "../agent/runtime.ts";
+import { errorBody, jsonResponse } from "./respond.ts";
+import type { ApiResponse } from "../types/api.ts";
 
 /**
  * 这个错误是不是**运行时自己的**（会话不存在、参数不对……）。

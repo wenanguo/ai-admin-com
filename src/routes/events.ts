@@ -15,12 +15,12 @@
  */
 
 import { Router } from "express";
-import { agentRuntime } from "../agent/runtime";
-import type { StreamFrame } from "../agent/frame-buffer";
-import { buildCorsHeaders, originOf } from "../http/cors";
-import { allowedOrigins } from "../http/respond";
-import { frameToSse, sseComment, sseFrame, SSE_HEADERS } from "../http/sse";
-import { requireToken, sendError } from "./support";
+import { agentRuntime } from "../agent/runtime.ts";
+import type { StreamFrame } from "../agent/frame-buffer.ts";
+import { buildCorsHeaders, originOf } from "../http/cors.ts";
+import { allowedOrigins } from "../http/respond.ts";
+import { frameToSse, sseComment, sseFrame, SSE_HEADERS } from "../http/sse.ts";
+import { requireToken, sendError } from "./support.ts";
 
 /** 心跳间隔（毫秒）。 */
 const HEARTBEAT_INTERVAL_MS = 15_000;

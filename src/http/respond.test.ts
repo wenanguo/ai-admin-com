@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { SUCCESS_CODE, errorBody, okBody } from "./respond";
+import { SUCCESS_CODE, errorBody, okBody } from "./respond.ts";
 
 describe("okBody", () => {
 	it("成功信封：code=0、默认 msg、data 原样", () => {

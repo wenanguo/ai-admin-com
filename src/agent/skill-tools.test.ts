@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Skill } from "@earendil-works/pi-coding-agent";
-import { createLoadSkillTool, LOAD_SKILL_TOOL_NAME } from "./skill-tools";
+import { createLoadSkillTool, LOAD_SKILL_TOOL_NAME } from "./skill-tools.ts";
 
 /** 造一个技能目录（SKILL.md + 一个附属文件）。 */
 function makeSkill(): Skill {

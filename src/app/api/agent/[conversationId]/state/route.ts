@@ -10,10 +10,10 @@
  * 也靠它补回来）。
  */
 
-import { agentRuntime } from "../../../../../agent/runtime";
-import { extractBearerToken } from "../../../../../http/auth";
-import { errorResponse } from "../../../../../http/errors";
-import { errorEnvelope, okEnvelope, preflightResponse } from "../../../../../http/respond";
+import { agentRuntime } from "../../../../../agent/runtime.ts";
+import { extractBearerToken } from "../../../../../http/auth.ts";
+import { errorResponse } from "../../../../../http/errors.ts";
+import { errorEnvelope, okEnvelope, preflightResponse } from "../../../../../http/respond.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

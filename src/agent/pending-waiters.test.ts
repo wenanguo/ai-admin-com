@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PendingWaiterRegistry } from "./pending-waiters";
+import { PendingWaiterRegistry } from "./pending-waiters.ts";
 
 describe("待确认等待者", () => {
 	it("批准 ⇒ 等待者被唤醒成 approved", async () => {

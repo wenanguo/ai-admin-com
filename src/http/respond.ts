@@ -15,9 +15,9 @@
  *   老的 Next 路由还在用，**Task 7 随 `src/app/**` 一起删**。
  */
 
-import { env } from "../env";
-import type { ApiResponse } from "../types/api";
-import { buildCorsHeaders, originOf } from "./cors";
+import { env } from "../env.ts";
+import type { ApiResponse } from "../types/api.ts";
+import { buildCorsHeaders, originOf } from "./cors.ts";
 
 /** 成功的业务码。 */
 export const SUCCESS_CODE = 0;

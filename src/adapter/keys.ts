@@ -10,7 +10,7 @@
  * - 解析失败能立刻给出人话提示，而不是把一个坏字符串丢给后端。
  */
 
-import { AdapterErrorException } from "../aadmin/errors";
+import { AdapterErrorException } from "../aadmin/errors.ts";
 
 /** 统一模型里能出现的实体种类。 */
 export type EntityKind = "project" | "milestone" | "task" | "risk" | "user";

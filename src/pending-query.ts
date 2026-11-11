@@ -27,7 +27,7 @@
  */
 
 import type { PrismaClient } from "@prisma/client";
-import { redactAuditArgs } from "./audit-redact";
+import { redactAuditArgs } from "./audit-redact.ts";
 
 /** 待确认动作的状态（与 `ai_pending_action.status` 的枚举一致）。 */
 export type PendingStatus = "PENDING" | "CONFIRMED" | "REJECTED" | "EXPIRED" | "EXECUTED";

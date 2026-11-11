@@ -18,34 +18,34 @@
  *   客户端随时可以用它重建界面。
  */
 
-import { AadminClient } from "../aadmin/client";
-import { AadminDataSource } from "../adapter/datasource";
+import { AadminClient } from "../aadmin/client.ts";
+import { AadminDataSource } from "../adapter/datasource.ts";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import { PrismaAuditWriter, type AuditWriter } from "../audit";
-import { redactAuditArgs } from "../audit-redact";
-import { env } from "../env";
-import { buildFrame } from "../http/sse";
-import type { TaskCreator } from "../tools/create-task";
-import { buildCommandTools } from "../tools";
-import { setEnumWarningSink, standardEnumWarningSink } from "../adapter/enums";
-import { SSE_EVENTS, type SseEventName, type SsePayload } from "./events";
-import { AgentEventMapper, extractAssistantText, isAssistantMessage } from "./event-mapper";
-import type { AiTaskContext } from "./context";
-import { parseAiTaskContext, renderAiTaskContext, writeTargetId, WRITABLE_FIELDS } from "./context";
-import { CurrentUserResolver, type CurrentUser } from "./identity";
-import { createGateExtension } from "./gate";
-import { createAiadminMcpExtension } from "./mcp";
-import { pendingWaiters } from "./pending-waiters";
-import { createPiSession, type PiSessionOptions } from "./pi-session";
-import { PM_AGENT_PROMPT } from "./prompt";
+import { PrismaAuditWriter, type AuditWriter } from "../audit.ts";
+import { redactAuditArgs } from "../audit-redact.ts";
+import { env } from "../env.ts";
+import { buildFrame } from "../http/sse.ts";
+import type { TaskCreator } from "../tools/create-task.ts";
+import { buildCommandTools } from "../tools/index.ts";
+import { setEnumWarningSink, standardEnumWarningSink } from "../adapter/enums.ts";
+import { SSE_EVENTS, type SseEventName, type SsePayload } from "./events.ts";
+import { AgentEventMapper, extractAssistantText, isAssistantMessage } from "./event-mapper.ts";
+import type { AiTaskContext } from "./context.ts";
+import { parseAiTaskContext, renderAiTaskContext, writeTargetId, WRITABLE_FIELDS } from "./context.ts";
+import { CurrentUserResolver, type CurrentUser } from "./identity.ts";
+import { createGateExtension } from "./gate.ts";
+import { createAiadminMcpExtension } from "./mcp.ts";
+import { pendingWaiters } from "./pending-waiters.ts";
+import { createPiSession, type PiSessionOptions } from "./pi-session.ts";
+import { PM_AGENT_PROMPT } from "./prompt.ts";
 import {
 	SessionRegistry,
 	type AgentSessionLike,
 	type ChannelSubscriber,
 	type ConversationChannel,
-} from "./session-registry";
-import { StartupLock } from "./startup-lock";
-import { ConversationStore, type ConversationRecord, type MessageRecord } from "./store";
+} from "./session-registry.ts";
+import { StartupLock } from "./startup-lock.ts";
+import { ConversationStore, type ConversationRecord, type MessageRecord } from "./store.ts";
 
 /** 运行时的错误种类。 */
 export type AgentErrorKind = "NOT_FOUND" | "VALIDATION" | "AUTH_EXPIRED" | "UPSTREAM";
