@@ -1,87 +1,59 @@
+# 忽略规则 —— ⚠️ **不要用前导斜杠**
+#
+# monorepo 之后前端在 `frontend/` 下 ⇒ `/dist` 这种只对根目录生效的写法
+# 挡不住 `frontend/dist` ⇒ 统一用 `**/` 前缀（任意层级）。
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# dependencies
-**/node_modules
-# roadhog-api-doc ignore
-/src/utils/request-temp.js
-_roadhog-api-doc
+# ──────────── 依赖 ────────────
+**/node_modules/
+**/yarn.lock
+**/package-lock.json.bak
 
-# production
-/dist
-/dist-dev
+# ──────────── 构建产物 ────────────
+**/dist/
+**/dist-dev/
+**/build/
+**/out/
+**/coverage/
+**/.next/
+**/.turbopack/
+**/.umi/
+**/.umi-production/
+**/.umi-test/
+**/.umi-undefined/
+**/.umi-test-production/
+**/e2e-out/
+**/.vitest/
 
-# misc
-.DS_Store
-*.pem
-npm-debug.log*
-yarn-error.log
+# ──────────── 环境变量与凭据 ────────────
+**/.env
+**/.env.local
+**/.env*.local
+**/.ai/                       # pi SDK 的本地凭据（.ai/auth.json 等）
+**/auth.json
 
-# local env files
-.env
-.env*.local
+# ──────────── 编辑器 / 系统 ────────────
+**/.DS_Store
+**/.idea/
+**/.vscode/
+**/.history/
+**/*.pem
+**/*.log
+**/npm-debug.log*
+**/yarn-error.log
+**/*bak
+**/.temp/**
 
-# vercel
-.vercel
+# ──────────── 本地工具产物 ────────────
+**/functions/*
+**/requestRecord.mock.js
+**/.wrangler/
+**/_roadhog-api-doc/
+**/src/utils/request-temp.js
+**/.worktrees/
 
-/coverage
-.idea
-yarn.lock
-*bak
-.vscode
-
-
-# visual studio code
-.history
-*.log
-functions/*
-.temp/**
-
-# claude code local settings
-.claude/settings.local.json
-
-# umi
-.umi
-.umi-production
-.umi-test
-.umi-undefined
-.turbopack
-
-# screenshot
-screenshot
-.firebase
-
-build
-
-# worktrees
-.worktrees
-
-# cloudflare wrangler
-.wrangler
-requestRecord.mock.js
-
-.vitest
-e2e-out
-
-# macOS 垃圾文件
-.DS_Store
-
-# 本地一次性探针脚本（不入库）
-login.cjs
-probe-crud*.cjs
-probe-crud*.png
-.scratch/
-
-# ──────────── backend/ai（AI 后端：Express + pi SDK）────────────
-# ⚠️ 它的 .gitignore 只对 backend/ai/ 目录内生效；根这份补上根级会扫到的
-backend/ai/node_modules/
-backend/ai/dist/
-backend/ai/coverage/
-backend/ai/out/
-backend/ai/*.tsbuildinfo
-backend/ai/.env
-backend/ai/.env.local
-backend/ai/.env.*.local
-# pi SDK 的本地凭据（.ai/auth.json 等）
-backend/ai/.ai/
-# 本地临时脚本与日志（端到端验证用的）
-backend/ai/.scratch/
+# ──────────── 本地一次性脚本与探针（不入库）────────────
+**/login*.cjs
+**/probe-*.cjs
+**/probe-*.png
+**/.scratch/

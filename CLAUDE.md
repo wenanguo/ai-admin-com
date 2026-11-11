@@ -2,13 +2,31 @@
 
 ## Project
 
-Ant Design Pro — React enterprise boilerplate on Umi Max v4, antd v6, ProComponents v3.
+**AiAdmin monorepo** —— 两部分：
+
+| 目录 | 是什么 | 技术栈 |
+| ---- | ------ | ------ |
+| `frontend/` | 前端（管理后台） | Umi Max 4 · React 19 · antd 6 · ProComponents 3 |
+| `backend/ai/` | AI 服务（智能体） | Express 5 · `@earendil-works/pi-coding-agent`（pi SDK）· Prisma |
+
+⚠️ **AiAdmin 后端（FastAPI）不在这个仓里** —— 独立项目，通过 HTTP / MCP 对话。
+⚠️ **依赖各装各的**（两套 npm）⇒ 根目录**没有** node_modules ⇒
+husky / lint-staged / commitlint 都用 `frontend/node_modules/.bin/` 里的二进制。
 
 ## Commands
 
-`npm start` (dev+mock), `npm run dev` (no mock), `npm run build` (utoopack), `npm run lint` (Biome+tsc), `npm run test` (Vitest), `npx antd lint ./src` (antd-specific checks).
+**根目录（聚合）**：`npm run dev:frontend` · `npm run dev:ai` · `npm run test` ·
+`npm run lint` · `npm run build` · `npm run e2e`
 
-Other: `npx max openapi` (regenerate `src/services/`), `npm run simple` (**irreversible** — commit first), `npm run biome` (auto-fix), `npm run tsc` (type-check only).
+**前端（cd frontend）**：`npm start`（dev+mock）· `npm run dev`（真实后端）·
+`npm run build`（utoopack）· `npm run lint`（Biome+tsc）· `npm run test`（Vitest）·
+`npx antd lint ./src` · `npm run simple`（**不可逆**）
+
+**AI 服务（cd backend/ai）**：`npm run dev`（tsx watch，3100）· `npm run build`（tsc → ESM）·
+`npm start` · `npm test`（Vitest）· `npm run typecheck`
+
+⚠️ pi SDK 是 **ESM-only** ⇒ AI 服务的产物必须是 ESM。
+⚠️ AI 服务依赖 **cwd 相对**的 `.pi/skills` 与 `.ai/auth.json` ⇒ 必须在 `backend/ai/` 下启动。
 
 ## Critical Rules
 
@@ -19,8 +37,11 @@ Other: `npx max openapi` (regenerate `src/services/`), `npm run simple` (**irrev
 - **Conventional commits** required (commitlint enforced)
 - **TypeScript strict** · **Node ≥ 22** · **`package-lock.json`** (not yarn/pnpm)
 - **`.umi` dir is auto-generated** — delete `src/.umi` and restart if dev server acts up
+- **技能（`backend/ai/.pi/skills/**`）是提示词** ⇒ 它进模型上下文 ⇒ 走 git 评审，别写凭据
 
 ## Architecture Essentials
+
+### 前端（`frontend/`）
 
 **Config**: `config/config.ts` (defineConfig), `config/routes.ts` (declarative routes). Route `name` → `menu.xxx` i18n key; `access` field gates visibility.
 
@@ -38,90 +59,27 @@ Other: `npx max openapi` (regenerate `src/services/`), `npm run simple` (**irrev
 
 **Mock**: `mock/` (global) + `src/pages/**/_mock.ts` (co-located). Express-style handlers.
 
-**Cloudflare Worker**: `cloudflare-worker/` — separate Hono app, own `package.json`, not an npm workspace.
+**Cloudflare Worker**: `frontend/cloudflare-worker/` — separate Hono app, own `package.json`, not an npm workspace.
+
+### AI 服务（`backend/ai/`）
+
+**内核**（`src/agent/`）：`pi-session.ts`（建 pi 会话：挂 MCP 扩展 + 闸门 + 技能段）·
+`runtime.ts`（会话/命令/事件流）· `gate.ts`（改数据要人点头）· `mcp.ts`（AiAdmin MCP 服务器，带用户 JWT）·
+`skills.ts` / `skill-tools.ts`（技能提示词段 + `load_skill`）· `session-entries.ts`（历史 → pi entries）·
+`event-mapper.ts`（pi 事件 → SSE 事件）· `frame-buffer.ts`（回放窗口）
+
+**HTTP**（`src/routes/`）：`agent.ts`（会话/命令/approve|reject/事件流）· `events.ts`（SSE）·
+`pending.ts` · `audit.ts` · `contract.ts`（9 个端点的行为契约表）
+
+**两条主线**：
+- **工具来自后端 MCP**（`AIADMIN_MCP_URL`）⇒ 后端加接口，AI 侧不用改代码；
+- **技能（`.pi/skills/*/SKILL.md`）教模型怎么用** ⇒ 加一条能力 = 加一个 markdown。
+
+**闸门口径**：**新增放行、修改要点头**（`update_*` / `patch_*` 会被拦下等人在界面点「同意」）。
 
 ## AI Skills
 
 This project ships with two built-in Claude Code Skills (`.claude/skills/`). If you already have these skills in your project, no installation is needed — just run them directly. To update to the latest skill definitions, run `npx skills add ant-design/ant-design-pro`.
-
-### `/pro-upgrade` — Project Upgrade
-
-Run `/pro-upgrade` in Claude Code to auto-upgrade the project to the latest Ant Design Pro version. It diffs the latest template against this project and merges framework changes while preserving business code. Works for any version gap (v5→v6, v6.x→latest, etc.).
-
-### `/antd` — Ant Design CLI
-
-Run `/antd` in Claude Code for any antd-related work. It provides access to `@ant-design/cli` with offline metadata for antd v3/v4/v5/v6. Key commands:
-
-- `npx antd info <Component>` — look up props/API before writing code (mandatory)
-- `npx antd lint ./src` — check for deprecated or problematic usage (must pass before commit)
-- `npx antd demo <Component> <demo>` — get working code examples
-- `npx antd migrate <from> <to>` — migration checklist between major versions
-
-## Page Co-location
-
-Each page dir: `index.tsx`, optional `service.ts`, `_mock.ts`, `data.d.ts`, style files. Keep page-specific code with the page.
-
-# CLAUDE.md
-
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
-
-**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
-
-## 1. Think Before Coding
-
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
-
-Before implementing:
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
-
-## 2. Simplicity First
-
-**Minimum code that solves the problem. Nothing speculative.**
-
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
-
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
-
-## 3. Surgical Changes
-
-**Touch only what you must. Clean up only your own mess.**
-
-When editing existing code:
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
-
-When your changes create orphans:
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
-
-The test: Every changed line should trace directly to the user's request.
-
-## 4. Goal-Driven Execution
-
-**Define success criteria. Loop until verified.**
-
-Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
-
-For multi-step tasks, state a brief plan:
-```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
-```
-
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
 ---
 
