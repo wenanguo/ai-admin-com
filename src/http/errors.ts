@@ -12,7 +12,7 @@
 
 import { AdapterErrorException, isAdapterErrorException } from "../aadmin/errors.ts";
 import { AgentError } from "../agent/runtime.ts";
-import { errorBody, jsonResponse } from "./respond.ts";
+import { errorBody } from "./respond.ts";
 import type { ApiResponse } from "../types/api.ts";
 
 /**
@@ -49,16 +49,6 @@ export function toErrorEnvelope(error: unknown): { status: number; body: ApiResp
 	}
 	const message = error instanceof Error ? error.message : String(error);
 	return { status: 500, body: errorBody(500, `服务内部错误：${message}`) };
-}
-
-/**
- * 把异常变成一个带 CORS 头的错误信封。
- *
- * ⚠️ Web 兼容层：Task 7 删除。
- */
-export function errorResponse(request: Request, error: unknown): Response {
-	const { status, body } = toErrorEnvelope(error);
-	return jsonResponse(request, body, status);
 }
 
 /** 错误种类 → HTTP 状态码（也用作信封里的业务码）。 */

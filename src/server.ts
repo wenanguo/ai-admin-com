@@ -12,7 +12,7 @@
  */
 
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
-import { buildCorsHeaders, originOf } from "./http/cors.ts";
+import { buildCorsHeaders, isPreflightRequest, originOf } from "./http/cors.ts";
 import { toErrorEnvelope } from "./http/errors.ts";
 import { MISSING_TOKEN_MESSAGE, allowedOrigins, errorBody } from "./http/respond.ts";
 import { agentRouter } from "./routes/agent.ts";
@@ -33,7 +33,7 @@ export const NOT_FOUND_MESSAGE = "接口不存在";
  */
 export function corsMiddleware(req: Request, res: Response, next: NextFunction): void {
 	const origin = originOf(req.get("origin"));
-	const preflight = req.method === "OPTIONS" && origin !== undefined;
+	const preflight = isPreflightRequest(req.method, req.get("origin"));
 	const headers = buildCorsHeaders(origin, allowedOrigins(), preflight);
 	for (const [name, value] of Object.entries(headers)) {
 		res.setHeader(name, value);
@@ -86,12 +86,6 @@ export function createApp(): Express {
 
 /** 启动服务（监听 `PORT`，缺省 3100）。 */
 export function start(): void {
-	// `.env` 兜底：命令行没带 `--env-file` 时也能读到（文件不在也不致命）
-	try {
-		process.loadEnvFile?.();
-	} catch {
-		// 没有 .env ⇒ 用进程环境变量
-	}
 	const port = Number(process.env.PORT ?? 3100);
 	const app = createApp();
 	const server = app.listen(port, () => {
