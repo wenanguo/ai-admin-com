@@ -168,8 +168,11 @@ export function AiWorkspace({
       <div
         style={{
           padding: `${token.paddingSM}px ${token.padding}px`,
-          background: token.colorPrimary,
-          color: token.colorTextLightSolid,
+          // ⚠️ 头部**不铺蓝底**：面板整体已经是 `colorBgContainer`（白）
+          //    ⇒ 头部跟内容同色，只靠下面那条分隔线区分层次（更安静，不抢内容的注意力）。
+          background: token.colorBgContainer,
+          color: token.colorText,
+          borderBottom: `1px solid ${token.colorBorderSecondary}`,
         }}
       >
         {/*
@@ -195,13 +198,13 @@ export function AiWorkspace({
             data-role="ai-workspace-full-page-link"
             title="全宽页"
             aria-label="全宽页"
-            style={{ display: 'inline-flex', color: token.colorTextLightSolid }}
+            style={{ display: 'inline-flex', color: token.colorText }}
           >
             <Button
               type="text"
               size="small"
               icon={<FullscreenOutlined />}
-              style={{ color: token.colorTextLightSolid }}
+              style={{ color: token.colorText }}
             />
           </Link>
           <span
@@ -237,7 +240,7 @@ export function AiWorkspace({
               title="收起 AI 工作台（⌘B）"
               icon={<RightOutlined />}
               onClick={onCollapse}
-              style={{ color: token.colorTextLightSolid }}
+              style={{ color: token.colorText }}
             />
           ) : null}
         </div>
