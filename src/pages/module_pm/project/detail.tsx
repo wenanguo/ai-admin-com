@@ -1,6 +1,8 @@
-import { useParams } from '@umijs/max';
+import { CommentOutlined } from '@ant-design/icons';
+import { useModel, useParams } from '@umijs/max';
 import {
   Alert,
+  Button,
   Card,
   Descriptions,
   type DescriptionsProps,
@@ -15,7 +17,12 @@ import {
   Tag,
 } from 'antd';
 import type React from 'react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  buildAiProjectContext,
+  contextPromptText,
+  mergeDictLabels,
+} from '@/components/pm/aiContext';
 import { DictTag } from '@/components/pm/DictTag';
 import { renderJsonTags } from '@/components/pm/JsonTags';
 import {
@@ -397,6 +404,8 @@ function MembersTab({ projectId }: { projectId: number }) {
  * 切回不重拉
  */
 const ProjectDetail: React.FC = () => {
+  // AI 工作台 ↔ 主工作区的桥（当前讨论对象）
+  const aiBridge = useModel('ai-bridge');
   // 项目 id 是路径参数(umi 路由占位符 :id)
   const params = useParams<{ id: string }>();
   const projectId = Number(params?.id);
@@ -424,6 +433,34 @@ const ProjectDetail: React.FC = () => {
     };
   }, [projectId, validId]);
 
+  /**
+   * 「与 AI 讨论」：把**这个项目**设为当前讨论对象。
+   *
+   * ⚠️ 上下文由**前端**组装（详情页手上就有这个项目）。
+   */
+  const discussProject = useCallback(() => {
+    if (project === null) {
+      return;
+    }
+    const context = buildAiProjectContext({
+      project: {
+        id: project.id,
+        code: project.code,
+        name: project.name,
+        status_code: project.status_code,
+        priority_code: project.priority_code,
+        owner_by: project.owner_by,
+      },
+    });
+    if (!context) {
+      return;
+    }
+    aiBridge.setContext(context);
+    aiBridge.requestExpand();
+    aiBridge.requestFocus();
+    aiBridge.requestInject(contextPromptText(context));
+  }, [aiBridge, project]);
+
   if (!validId) {
     return (
       <Card>
@@ -442,6 +479,14 @@ const ProjectDetail: React.FC = () => {
       }
       extra={
         <Space size="small">
+          <Button
+            type="link"
+            size="small"
+            icon={<CommentOutlined />}
+            onClick={discussProject}
+          >
+            与 AI 讨论
+          </Button>
           {project?.status_code ? (
             <DictTag
               dictType="module_pm_project_status"

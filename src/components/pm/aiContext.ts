@@ -35,6 +35,21 @@ export interface BuildAiContextInput {
   labels?: Record<string, string>;
 }
 
+/** 项目上下文的入参。 */
+export interface BuildAiProjectContextInput {
+  /** 项目行（项目列表/详情里的那一行）。 */
+  project: {
+    id?: number | null;
+    code?: string | null;
+    name?: string | null;
+    status_code?: string | null;
+    priority_code?: string | null;
+    owner_by?: { id?: number | null; name?: string | null } | null;
+  };
+  /** 字典中文名（线上码 → 中文）。 */
+  labels?: Record<string, string>;
+}
+
 /**
  * 任务行 → 讨论上下文。
  *
@@ -67,6 +82,7 @@ export function buildAiTaskContext(
   };
 
   return {
+    kind: 'task',
     task: { ...baseline, id: task.id },
     labels,
     names: {
@@ -90,6 +106,78 @@ export function buildAiTaskContext(
             name: milestoneName ?? `里程碑 ${task.milestone_id}`,
           },
   };
+}
+
+/**
+ * 项目行 → 讨论上下文。
+ *
+ * ## 为什么项目也要有上下文
+ *
+ * 用户点开的是**项目** ⇒ 他想知道的是「这个项目现在怎么样」⇒
+ * 智能体要能列它的里程碑与任务 ⇒ 上下文里必须有项目的 id 与名字。
+ *
+ * ⚠️ 项目上下文**没有** `task` ⇒ 服务端**不会**把写操作收窄到某一条任务
+ *    （那是任务上下文才有的待遇）⇒ 但「只能改三个字段」这条规矩仍然有效。
+ *
+ * @returns 项目没有 id ⇒ null（没 id 就没法让智能体去查它）。
+ */
+export function buildAiProjectContext(
+  input: BuildAiProjectContextInput,
+): AiTaskContext | null {
+  const { project, labels } = input;
+  if (project.id == null) {
+    return null;
+  }
+  return {
+    kind: 'project',
+    labels,
+    names: { assignee: project.owner_by?.name ?? undefined },
+    project: {
+      id: project.id,
+      name: project.name ?? `项目 ${project.id}`,
+    },
+    projectCode: project.code ?? undefined,
+  };
+}
+
+/**
+ * 上下文 → **发给智能体的那句话**（固定提示词 + 上下文信息）。
+ *
+ * ## 为什么要有这句「固定的话」
+ *
+ * 用户点「讨论」时**并没有说话** ⇒ 如果什么都不发，智能体根本不知道
+ * 「用户换了个对象」⇒ 它会接着上一句聊 ⇒ 用户看着像「没反应」。
+ * ⇒ 点一下就发一句**说明现在在谈什么**的话，智能体立刻能接上。
+ *
+ * ⚠️ 这句话是**代表用户发的**（它会进对话历史）⇒ 措辞要说清楚是「切换上下文」。
+ */
+export function contextPromptText(context: AiTaskContext): string {
+  if (context.kind === 'project' && context.project) {
+    const code = context.projectCode ? `（${context.projectCode}）` : '';
+    return `已切换到当前项目：#${context.project.id} ${context.project.name}${code}。请先概括这个项目的现状（里程碑、进行中的任务与风险），再问我要做什么。`;
+  }
+  const task = context.task;
+  if (!task) {
+    return '已切换到当前讨论对象，请先说明它的现状，再问我要做什么。';
+  }
+  const parts: string[] = [];
+  parts.push(`已切换到当前任务：#${task.id} ${String(task.title ?? '')}`);
+  if (context.project) {
+    parts.push(`所属项目：${context.project.name}`);
+  }
+  if (context.milestone) {
+    parts.push(`所属里程碑：${context.milestone.name}`);
+  }
+  return `${parts.join('；')}。请先说明这条任务的现状与风险，再问我要做什么。`;
+}
+
+/**
+ * 上下文 → 气泡上的**技能标签**（像参考界面里的那个 chip）。
+ *
+ * ⚠️ 只是给人看的标签 ⇒ 智能体那边不靠它识别（它靠真正的上下文块）。
+ */
+export function contextSkillLabel(context: AiTaskContext): string {
+  return context.kind === 'project' ? '项目助手' : '任务助手';
 }
 
 /**

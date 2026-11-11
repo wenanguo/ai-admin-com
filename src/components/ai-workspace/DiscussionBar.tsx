@@ -10,10 +10,10 @@
  *
  * ## 显示什么
  *
- * - 任务：id + 标题（用户在列表/看板/甘特里点的**那一行**）；
- * - 所属项目 / 所属里程碑（任务行里只有 id，名字是侧载出来的）；
- * - 当前状态（**线上码 + 中文**，模型那边也是这个口径）；
- * - 「结束讨论」：清掉当前上下文（下一条消息就不再带它了）。
+ * - 任务上下文：id + 标题、所属项目 / 所属里程碑、状态、负责人；
+ * - 项目上下文：id + 名称（+ 编码）、状态、项目 PM。
+ *
+ * 状态一律给「**线上码 + 中文**」两样（模型那边也是这个口径）。
  */
 import { CloseCircleOutlined } from '@ant-design/icons';
 import { Button, Tag, theme } from 'antd';
@@ -22,7 +22,7 @@ import type { AiTaskContext } from '@/services/api/ai/types';
 
 /** 条的 props。 */
 export interface DiscussionBarProps {
-  /** 当前讨论的上下文（null = 没在讨论某条任务）。 */
+  /** 当前讨论的上下文（null = 没在讨论某个对象）。 */
   context: AiTaskContext | null;
   /** 结束讨论（清掉上下文）。 */
   onClear: () => void;
@@ -55,10 +55,17 @@ export function DiscussionBar({
     return null;
   }
 
+  const isProject = context.kind === 'project';
   const task = context.task;
-  const title = String(task['title'] ?? '').trim();
-  const statusCode =
-    typeof task['status_code'] === 'string' ? task['status_code'] : undefined;
+  const title = isProject
+    ? (context.project?.name ?? '')
+    : String(task?.['title'] ?? '').trim();
+  const targetId = isProject ? context.project?.id : task?.['id'];
+  const statusCode = isProject
+    ? undefined
+    : typeof task?.['status_code'] === 'string'
+      ? task['status_code']
+      : undefined;
   const statusLabel = labelOf(context.labels, statusCode);
 
   return (
@@ -83,7 +90,7 @@ export function DiscussionBar({
         }}
       >
         <Tag color="processing" style={{ marginInlineEnd: 0 }}>
-          正在讨论
+          正在讨论{isProject ? '项目' : '任务'}
         </Tag>
         <span
           data-role="ai-discussion-title"
@@ -96,7 +103,14 @@ export function DiscussionBar({
           }}
           title={title}
         >
-          #{task.id} {title.length > 0 ? title : '（无标题）'}
+          {targetId === undefined ? '' : `#${targetId} `}
+          {title.length > 0 ? title : '（无标题）'}
+          {isProject && context.projectCode ? (
+            <span style={{ color: token.colorTextSecondary }}>
+              {' '}
+              （{context.projectCode}）
+            </span>
+          ) : null}
         </span>
         <Button
           size="small"
@@ -123,12 +137,12 @@ export function DiscussionBar({
           color: token.colorTextSecondary,
         }}
       >
-        {context.project ? (
+        {!isProject && context.project ? (
           <span data-role="ai-discussion-project">
             所属项目：{context.project.name}
           </span>
         ) : null}
-        {context.milestone ? (
+        {!isProject && context.milestone ? (
           <span data-role="ai-discussion-milestone">
             所属里程碑：{context.milestone.name}
           </span>
@@ -141,7 +155,7 @@ export function DiscussionBar({
         ) : null}
         {context.names?.assignee ? (
           <span data-role="ai-discussion-assignee">
-            负责人：{context.names.assignee}
+            {isProject ? '项目 PM' : '负责人'}：{context.names.assignee}
           </span>
         ) : null}
       </div>

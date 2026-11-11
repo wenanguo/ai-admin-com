@@ -14,6 +14,7 @@ import { DiscussionBar } from './DiscussionBar';
 
 /** 一个上下文（前端组装好的样子）。 */
 const context: AiTaskContext = {
+  kind: 'task',
   task: {
     id: 21,
     project_id: 5,

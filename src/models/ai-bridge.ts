@@ -73,6 +73,21 @@ export interface AiContextModel {
   focusSignal: number;
   /** 请求切到「对话」页签（点「与 AI 讨论」时调）。 */
   requestFocus: () => void;
+  /**
+   * 「请发一句上下文说明」的请求（点「与 AI 讨论」时调）。
+   *
+   * ## 为什么要点一下就替用户发一句
+   *
+   * 用户点「讨论」时**并没有说话** ⇒ 如果什么都不发，智能体会接着上一句聊
+   * ⇒ 用户看着像「点了没反应」。
+   * ⇒ 于是点一下就发一句「已切换到当前任务/项目……」，
+   *    智能体立刻能接上（参考界面里的做法）。
+   *
+   * ⚠️ **由工作台去发**：任务页与工作台不在同一个组件树里 ⇒ 用 model 当中转。
+   */
+  injectRequest: { text: string; at: number } | null;
+  /** 请求工作台发一句上下文说明（点「与 AI 讨论」时调）。 */
+  requestInject: (text: string) => void;
 }
 
 export default function useAiBridgeModel(): AiContextModel {
@@ -80,6 +95,10 @@ export default function useAiBridgeModel(): AiContextModel {
   const [lastUpdate, setLastUpdate] = useState<AiEntityUpdate | null>(null);
   const [expandSignal, setExpandSignal] = useState(0);
   const [focusSignal, setFocusSignal] = useState(0);
+  const [injectRequest, setInjectRequest] = useState<{
+    text: string;
+    at: number;
+  } | null>(null);
 
   const clearContext = useCallback(() => {
     setContext(null);
@@ -97,6 +116,10 @@ export default function useAiBridgeModel(): AiContextModel {
     setFocusSignal((value) => value + 1);
   }, []);
 
+  const requestInject = useCallback((text: string) => {
+    setInjectRequest({ text, at: Date.now() });
+  }, []);
+
   return {
     context,
     setContext,
@@ -107,5 +130,7 @@ export default function useAiBridgeModel(): AiContextModel {
     requestExpand,
     focusSignal,
     requestFocus,
+    injectRequest,
+    requestInject,
   };
 }

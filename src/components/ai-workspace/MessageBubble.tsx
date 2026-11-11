@@ -9,7 +9,7 @@
  * 失败提示只在 `message_end.error` 有值时出现。
  */
 import { RobotOutlined } from '@ant-design/icons';
-import { Alert, Avatar, theme } from 'antd';
+import { Alert, Avatar, Tag, theme } from 'antd';
 import type React from 'react';
 import { CommandCard } from './CommandCard';
 import type { ChatMessage } from './useAgentStream';
@@ -49,6 +49,37 @@ export function MessageBubble({
             wordBreak: 'break-word',
           }}
         >
+          {/*
+            ⚠️ **代用户发的上下文说明**（点了「与 AI 讨论」之后自动发的那句）：
+                界面上要说得清楚「这句不是我打的」⇒ 顶上挂一个技能标签，
+                底下补一句「已加入上下文」。
+          */}
+          {message.origin === 'context' ? (
+            <div
+              data-role="context-origin"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: token.sizeXS,
+                marginBottom: token.sizeXS,
+              }}
+            >
+              <Tag
+                color="default"
+                style={{
+                  marginInlineEnd: 0,
+                  color: token.colorTextLightSolid,
+                  background: 'rgba(255,255,255,0.18)',
+                  borderColor: 'transparent',
+                }}
+              >
+                上下文
+              </Tag>
+              <span style={{ fontSize: token.fontSizeSM, opacity: 0.85 }}>
+                已加入上下文
+              </span>
+            </div>
+          ) : null}
           {message.text}
         </div>
       </div>

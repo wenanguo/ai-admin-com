@@ -67,8 +67,17 @@ export interface AiState {
  *   ⇒ 模型照抄线上码就不会写出不存在的状态（线上码里**没有** `doing`）。
  */
 export interface AiTaskContext {
-  /** 任务对象（后端 update 的载荷形状）。 */
-  task: Record<string, unknown> & { id: number };
+  /**
+   * 上下文是**任务**还是**项目**。
+   *
+   * ⚠️ 两种的差别很大：
+   *    - `task` ⇒ 回填只能改**这一条**任务（服务端会把写参数收窄到它）；
+   *    - `project` ⇒ 谈的是**整个项目**（可以列它的任务、改它的某条任务，
+   *      但改哪条任务由模型决定，且只能改那三个可写字段）。
+   */
+  kind: 'task' | 'project';
+  /** 任务对象（后端 update 的载荷形状）。`kind==='task'` 时必有。 */
+  task?: Record<string, unknown> & { id: number };
   /** 字典中文名（线上码 → 中文）：状态/优先级/类型。 */
   labels?: Record<string, string>;
   /** 人名（负责人/报告人）。 */
@@ -77,6 +86,8 @@ export interface AiTaskContext {
   project?: { id: number; name: string };
   /** 所属里程碑。 */
   milestone?: { id: number; name: string };
+  /** 项目上下文时的项目编码（给人看的）。 */
+  projectCode?: string;
 }
 
 /**

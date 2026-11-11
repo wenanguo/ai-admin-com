@@ -1,14 +1,19 @@
-import { PlusOutlined } from '@ant-design/icons';
+import { CommentOutlined, PlusOutlined } from '@ant-design/icons';
 import { type ProColumns, ProTable } from '@ant-design/pro-components';
-import { Link, useAccess } from '@umijs/max';
+import { Link, useAccess, useModel } from '@umijs/max';
 import { Button } from 'antd';
 import type React from 'react';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   CRUD_PAGINATION,
   useCrudColumns,
   useCrudTable,
 } from '@/components/CrudTable';
+import {
+  buildAiProjectContext,
+  contextPromptText,
+  mergeDictLabels,
+} from '@/components/pm/aiContext';
 import { DictTag } from '@/components/pm/DictTag';
 import { renderJsonTags } from '@/components/pm/JsonTags';
 import { toValueEnum } from '@/components/pm/toValueEnum';
@@ -38,6 +43,8 @@ const requestProjects = toProTableRequest<ProjectOut>(listProjects);
  */
 const ProjectManagement: React.FC = () => {
   const access = useAccess();
+  // AI 工作台 ↔ 主工作区的桥（当前讨论对象）
+  const aiBridge = useModel('ai-bridge');
 
   const crud = useCrudTable<ProjectOut, ProjectCreateParams>({
     create: createProject,
@@ -59,7 +66,57 @@ const ProjectManagement: React.FC = () => {
     [priorityOptions],
   );
 
+  /**
+   * 「与 AI 讨论」：把**这个项目**设为当前讨论对象。
+   *
+   * ⚠️ 上下文由**前端**组装（不发请求）：用户点的是他看到的这一行。
+   */
+  const discussProject = useCallback(
+    (record: ProjectOut) => {
+      const context = buildAiProjectContext({
+        project: {
+          id: record.id,
+          code: record.code,
+          name: record.name,
+          status_code: record.status_code,
+          priority_code: record.priority_code,
+          owner_by: record.owner_by,
+        },
+        labels: mergeDictLabels(statusOptions, priorityOptions),
+      });
+      if (!context) {
+        return;
+      }
+      aiBridge.setContext(context);
+      // 面板可能是收着的 ⇒ 展开它
+      aiBridge.requestExpand();
+      // 切到「对话」页签（点完就能说话）
+      aiBridge.requestFocus();
+      // 替用户发一句上下文说明（智能体立刻知道现在谈的是哪个项目）
+      aiBridge.requestInject(contextPromptText(context));
+    },
+    [aiBridge, priorityOptions, statusOptions],
+  );
+
   const columns: ProColumns<ProjectOut>[] = [
+    {
+      title: '与 AI 讨论',
+      dataIndex: 'discuss',
+      width: 110,
+      search: false,
+      render: (_, record) => (
+        <Button
+          type="link"
+          size="small"
+          icon={<CommentOutlined />}
+          onClick={() => {
+            discussProject(record);
+          }}
+        >
+          讨论
+        </Button>
+      ),
+    },
     { title: 'ID', dataIndex: 'id', width: 80, search: false },
     {
       title: '项目名称',

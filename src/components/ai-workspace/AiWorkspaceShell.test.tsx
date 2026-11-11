@@ -32,8 +32,10 @@ vi.mock('@umijs/max', () => ({
     notifyUpdate: vi.fn(),
     expandSignal: 0,
     focusSignal: 0,
+    injectRequest: null,
     requestExpand: vi.fn(),
     requestFocus: vi.fn(),
+    requestInject: vi.fn(),
   }),
   // 外壳要知道当前路由（全宽页上不挂侧栏）⇒ 给一个固定的路径。
   //

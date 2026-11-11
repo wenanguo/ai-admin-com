@@ -63,6 +63,14 @@ export interface ChatMessage {
   commands: ChatCommand[];
   /** 这一轮失败的原因（`message_end.error`）—— 正常结束没有这个字段。 */
   error?: string;
+  /**
+   * 这条消息的**来源**。
+   *
+   * ⚠️ `context` = **代用户发的上下文说明**（点了「与 AI 讨论」之后自动发的那句）
+   *    ⇒ 界面上要带上技能标签与「已加入上下文」的说明，
+   *    让用户知道「这句不是我打的」。
+   */
+  origin?: 'context';
 }
 
 /** 订阅事件流的形状（与 `subscribeAiEvents` 一致，测试注入假实现用）。 */
@@ -125,7 +133,7 @@ export interface AgentStream {
    */
   pendingItems: AiPendingItem[];
   /** 追加一条用户气泡（发送时乐观上屏）。 */
-  appendUserMessage: (text: string) => void;
+  appendUserMessage: (text: string, origin?: ChatMessage['origin']) => void;
   /** 用一份**已经拿到的**快照重建界面（刷新页面恢复历史）。 */
   restore: (snapshot: AiState, conversationId: string) => void;
   /** 用快照重建界面（断线重连后调用）。 */
@@ -294,8 +302,17 @@ function createAssistantMessage(): ChatMessage {
 }
 
 /** 造一条用户气泡。 */
-function createUserMessage(text: string): ChatMessage {
-  return { id: nextId('msg'), role: 'user', text, commands: [] };
+function createUserMessage(
+  text: string,
+  origin?: ChatMessage['origin'],
+): ChatMessage {
+  return {
+    id: nextId('msg'),
+    role: 'user',
+    text,
+    commands: [],
+    ...(origin === undefined ? {} : { origin }),
+  };
 }
 
 /** 找到最后一张还没出结果的同名命令卡片。 */
@@ -1047,20 +1064,23 @@ export function useAgentStream(options: UseAgentStreamOptions): AgentStream {
   }, [conversationId, resync, scheduleSettle, startResync]);
 
   /** 追加一条用户气泡（发送时乐观上屏）。 */
-  const appendUserMessage = useCallback((text: string): void => {
-    const trimmed = text.trim();
-    if (!trimmed) {
-      return;
-    }
-    pendingUserMessagesRef.current = [
-      ...pendingUserMessagesRef.current,
-      trimmed,
-    ];
-    setState((previous) => ({
-      ...previous,
-      messages: [...previous.messages, createUserMessage(trimmed)],
-    }));
-  }, []);
+  const appendUserMessage = useCallback(
+    (text: string, origin?: ChatMessage['origin']): void => {
+      const trimmed = text.trim();
+      if (!trimmed) {
+        return;
+      }
+      pendingUserMessagesRef.current = [
+        ...pendingUserMessagesRef.current,
+        trimmed,
+      ];
+      setState((previous) => ({
+        ...previous,
+        messages: [...previous.messages, createUserMessage(trimmed, origin)],
+      }));
+    },
+    [],
+  );
 
   /** 强行结束本轮（用户点了「停止生成」）。 */
   const settle = useCallback((): void => {

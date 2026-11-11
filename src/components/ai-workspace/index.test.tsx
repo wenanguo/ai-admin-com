@@ -35,8 +35,10 @@ vi.mock('@umijs/max', () => ({
     notifyUpdate: mocks.notifyUpdate,
     expandSignal: 0,
     focusSignal: 0,
+    injectRequest: null,
     requestExpand: vi.fn(),
     requestFocus: vi.fn(),
+    requestInject: vi.fn(),
   }),
   // 侧栏头部有进全宽页的入口（一个 `Link`）。
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => (

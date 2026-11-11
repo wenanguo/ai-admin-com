@@ -78,8 +78,8 @@ describe('buildAiTaskContext', () => {
   it('空值保持 null（服务端会把 null 的键整个去掉）', () => {
     const context = buildAiTaskContext({ task: makeTask() });
 
-    expect(context?.task['description']).toBeNull();
-    expect(context?.task['actual_hours']).toBeNull();
+    expect(context?.task?.['description']).toBeNull();
+    expect(context?.task?.['actual_hours']).toBeNull();
   });
 });
 
