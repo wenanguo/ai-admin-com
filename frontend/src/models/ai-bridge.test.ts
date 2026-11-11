@@ -16,8 +16,7 @@ describe('ai-bridge 模型', () => {
   it('没有替用户发消息的入口', async () => {
     const { result } = await renderHook(() => useAiBridgeModel());
     // ⚠️ `result.current` 是 React 的**被动 effect** 里写进去的
-    //    ⇒ 不等它跑过就是 null（这台机器上浏览器里跑的是 React 的生产构建
-    //    ⇒ 没有 `act` ⇒ 渲染不会同步刷完）。
+    //    ⇒ 读它之前先等一拍（不依赖具体实现细节）。
     await vi.waitFor(() => {
       expect(result.current).toBeTruthy();
     });
