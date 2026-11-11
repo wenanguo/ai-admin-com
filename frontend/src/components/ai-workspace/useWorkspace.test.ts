@@ -20,23 +20,28 @@ const mocks = vi.hoisted(() => ({
   createAiCommandId: vi.fn(),
   abortAiConversation: vi.fn(),
   subscribeAiEvents: vi.fn(() => () => undefined),
-}));
-
-// 全局 model（AI 工作台 ↔ 主工作区的桥）
-vi.mock('@umijs/max', () => ({
-  useModel: () => ({
-    context: null,
+  /** 假的全局 model（AI 工作台 ↔ 主工作区的桥）。
+   *  ⚠️ **必须稳定**：测试要改它的字段并重渲染 ⇒ 每次返回新对象就测不了。 */
+  bridge: {
+    context: null as unknown,
     setContext: vi.fn(),
     clearContext: vi.fn(),
     lastUpdate: null,
     notifyUpdate: vi.fn(),
     expandSignal: 0,
     focusSignal: 0,
-    injectRequest: null,
+    /** ⚠️ **故意保留**这个字段：真实模型里它马上要删掉了。
+     *  留在这里是为了钉住「工作台不会因为它而自动发命令」。 */
+    injectRequest: null as { text: string; at: number } | null,
     requestExpand: vi.fn(),
     requestFocus: vi.fn(),
     requestInject: vi.fn(),
-  }),
+  },
+}));
+
+// 全局 model（AI 工作台 ↔ 主工作区的桥）
+vi.mock('@umijs/max', () => ({
+  useModel: () => mocks.bridge,
 }));
 
 vi.mock('@/services/api/ai/client', () => ({
@@ -71,6 +76,10 @@ describe('AI 工作台的会话', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    // ⚠️ `mockReset` 会清掉「一次性返回值」的队列 ——
+    //    「重试复用同一个命令 id」那个用例排了两个 once 值，
+    //    不清掉就会漏到后面的用例里（下一个用例会拿到 cmd-2）。
+    mocks.createAiCommandId.mockReset();
     mocks.createAiCommandId.mockReturnValue('cmd-1');
     mocks.sendAiCommand.mockResolvedValue({ id: 'cmd-1', success: true });
     mocks.getAiState.mockResolvedValue(SNAPSHOT);
@@ -79,6 +88,9 @@ describe('AI 工作台的会话', () => {
       title: '新对话',
     });
     mocks.abortAiConversation.mockResolvedValue(undefined);
+    mocks.bridge.context = null;
+    // ⚠️ 不重置的话，上一个用例留下的注入请求会打乱本用例的调用次序
+    mocks.bridge.injectRequest = null;
   });
 
   it('没有存过的会话会新建一个并记住', async () => {
@@ -177,6 +189,11 @@ describe('AI 工作台的会话', () => {
     );
 
     const { result } = await renderHook(() => useWorkspace());
+    // ⚠️ `result.current` 要等 React 的被动 effect 跑过才有值
+    //    （不等的话在这台机器上会拿到 null）
+    await vi.waitFor(() => {
+      expect(result.current).toBeTruthy();
+    });
 
     const pending = result.current.send('建个任务');
     expect(mocks.sendAiCommand).not.toHaveBeenCalled();
@@ -303,6 +320,10 @@ describe('AI 工作台的会话', () => {
     );
 
     const { result } = await renderHook(() => useWorkspace());
+    // ⚠️ 同上：`result.current` 要等 React 的被动 effect 跑过才有值
+    await vi.waitFor(() => {
+      expect(result.current).toBeTruthy();
+    });
 
     await result.current.abort();
 
@@ -332,5 +353,63 @@ describe('AI 工作台的会话', () => {
       expect(result.current.messages).toHaveLength(1);
     });
     expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).toContain('c-old');
+  });
+
+  it('即使桥上还留着注入请求，工作台也不自己发命令', async () => {
+    // ⚠️ `renderHook` 要 **await**（返回的 `act` 是它解构出来的，不是模块导出）
+    const { result, rerender } = await renderHook(() => useWorkspace());
+
+    await vi.waitFor(() => {
+      expect(result.current.conversationId).toBe('c-new');
+    });
+
+    // 模拟「有人请求替用户发一句」（今天点「讨论」正是这么干的）
+    mocks.bridge.injectRequest = {
+      text: '已切换到当前任务：#1 测试',
+      at: Date.now(),
+    };
+    rerender();
+    // ⚠️ 等一拍：今天这里会真的发出去（effect 立刻跑 send）
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(mocks.sendAiCommand).not.toHaveBeenCalled();
+    expect(result.current.messages).toHaveLength(0);
+  });
+
+  it('用户自己说的那句话会带上当前上下文', async () => {
+    mocks.bridge.context = { kind: 'task', task: { id: 6, title: '测试333' } };
+    const { result } = await renderHook(() => useWorkspace());
+
+    await vi.waitFor(() => {
+      expect(result.current.conversationId).toBe('c-new');
+    });
+    await result.current.send('这个任务做完了吗');
+
+    expect(mocks.sendAiCommand).toHaveBeenCalledWith(
+      'c-new',
+      '这个任务做完了吗',
+      { id: 'cmd-1', context: mocks.bridge.context },
+    );
+  });
+
+  it('换了上下文之后，下一条命令带的是新的那个', async () => {
+    const { result } = await renderHook(() => useWorkspace());
+    await vi.waitFor(() => {
+      expect(result.current.conversationId).toBe('c-new');
+    });
+
+    mocks.bridge.context = { kind: 'task', task: { id: 6, title: '旧的' } };
+    await result.current.send('第一条');
+    mocks.bridge.context = { kind: 'task', task: { id: 7, title: '新的' } };
+    await result.current.send('第二条');
+
+    expect(mocks.sendAiCommand.mock.calls[0]?.[2]).toEqual({
+      id: 'cmd-1',
+      context: { kind: 'task', task: { id: 6, title: '旧的' } },
+    });
+    expect(mocks.sendAiCommand.mock.calls[1]?.[2]).toEqual({
+      id: 'cmd-1',
+      context: { kind: 'task', task: { id: 7, title: '新的' } },
+    });
   });
 });

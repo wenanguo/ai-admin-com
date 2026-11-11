@@ -153,6 +153,8 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
   const storageKey = options.storageKey;
   // ⚠️ **当前讨论的上下文**是全局的（任务页点「与 AI 讨论」时设的）
   //    ⇒ 发消息时带上它，服务端才知道 AI 在聊哪条任务。
+  //    （桥上那个「请求替用户发一句」的信号**故意不监听**：
+  //      用户点「讨论」只该切上下文，不该替他说任何话 ⇒ 真发命令 = 真烧 token。）
   const aiContext = useModel('ai-bridge');
   const [conversationId, setConversationId] = useState<string | undefined>(
     undefined,
@@ -302,7 +304,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
 
   /** 发送一句话（用户说的立刻上屏，服务端受理之后再走事件流）。 */
   const send = useCallback(
-    async (text: string, origin?: 'context'): Promise<void> => {
+    async (text: string): Promise<void> => {
       const trimmed = text.trim();
       if (!trimmed) {
         return;
@@ -318,27 +320,11 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
       // ⚠️ id 在这里生成并留着 —— 重试要原样用回它
       const id = createAiCommandId();
       lastCommandRef.current = { id, text: trimmed };
-      appendUserMessage(trimmed, origin);
+      appendUserMessage(trimmed);
       await submit(id, trimmed);
     },
     [appendUserMessage, submit],
   );
-
-  /**
-   * 「代用户发一句上下文说明」—— 点了「与 AI 讨论」之后自动发。
-   *
-   * ⚠️ 用户点「讨论」时**并没有说话** ⇒ 不发这句的话，智能体会接着上一句聊
-   *    ⇒ 用户看着像「点了没反应」。
-   * ⇒ 这里替用户发一句「已切换到当前任务/项目……」。
-   */
-  useEffect(() => {
-    const request = aiContext.injectRequest;
-    // ⚠️ 可能是 undefined（测试里的假 model 没给这个字段）⇒ 一律当「没有请求」
-    if (!request) {
-      return;
-    }
-    void send(request.text, 'context');
-  }, [aiContext.injectRequest, send]);
 
   /** 重试上一条失败的消息：同一个 id，服务端不会真的再执行一遍。 */
   const retry = useCallback(async (): Promise<void> => {
