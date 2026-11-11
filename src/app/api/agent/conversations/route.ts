@@ -27,7 +27,7 @@ export async function OPTIONS(request: Request): Promise<Response> {
 
 /** 新建会话。 */
 export async function POST(request: Request): Promise<Response> {
-	const token = extractBearerToken(request);
+	const token = extractBearerToken(request.headers.get("authorization") ?? undefined);
 	if (token === undefined) {
 		return errorEnvelope(request, 401, MISSING_TOKEN, 401);
 	}
@@ -59,7 +59,7 @@ export async function POST(request: Request): Promise<Response> {
 
 /** 列会话（当前用户的，最近更新的在前）。 */
 export async function GET(request: Request): Promise<Response> {
-	const token = extractBearerToken(request);
+	const token = extractBearerToken(request.headers.get("authorization") ?? undefined);
 	if (token === undefined) {
 		return errorEnvelope(request, 401, MISSING_TOKEN, 401);
 	}

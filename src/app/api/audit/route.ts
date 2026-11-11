@@ -41,7 +41,7 @@ export async function OPTIONS(request: Request): Promise<Response> {
 
 /** 审计流水（当前用户的，新的在前）。 */
 export async function GET(request: Request): Promise<Response> {
-	const token = extractBearerToken(request);
+	const token = extractBearerToken(request.headers.get("authorization") ?? undefined);
 	if (token === undefined) {
 		return errorEnvelope(request, 401, MISSING_TOKEN, 401);
 	}

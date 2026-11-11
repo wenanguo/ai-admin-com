@@ -31,7 +31,7 @@ export async function GET(
 	request: Request,
 	{ params }: { params: Promise<{ conversationId: string }> },
 ): Promise<Response> {
-	const token = extractBearerToken(request);
+	const token = extractBearerToken(request.headers.get("authorization") ?? undefined);
 	if (token === undefined) {
 		return errorEnvelope(request, 401, MISSING_TOKEN, 401);
 	}

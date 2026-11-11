@@ -16,7 +16,7 @@
 import { describe, expect, it } from "vitest";
 import { AdapterErrorException } from "../aadmin/errors";
 import { AgentError } from "../agent/runtime";
-import { errorResponse } from "./errors";
+import { errorResponse, toErrorEnvelope } from "./errors";
 
 /** 一个请求（CORS 头要 origin）。 */
 function request(): Request {
@@ -75,5 +75,53 @@ describe("错误 → 信封", () => {
 
 	it("不认识的东西 ⇒ 500", () => {
 		expect(errorResponse(request(), new Error("炸了")).status).toBe(500);
+	});
+});
+
+describe("toErrorEnvelope（框架无关版）", () => {
+	it("运行时的 NOT_FOUND ⇒ 404 + 信封", () => {
+		const result = toErrorEnvelope(new AgentError("NOT_FOUND", "会话不存在"));
+		expect(result.status).toBe(404);
+		expect(result.body).toEqual({ code: 404, msg: "会话不存在", data: null });
+	});
+
+	it("适配层的 AUTH_EXPIRED ⇒ 401（前端据此刷新 token）", () => {
+		const result = toErrorEnvelope(
+			new AdapterErrorException("AUTH_EXPIRED", "AiAdmin 凭证已失效"),
+		);
+		expect(result.status).toBe(401);
+		expect(result.body.code).toBe(401);
+		expect(result.body.msg).toContain("凭证已失效");
+	});
+
+	it("另一个 chunk 造出来的错误 ⇒ 仍然按 kind 判定", () => {
+		const result = toErrorEnvelope({
+			name: "AgentError",
+			kind: "NOT_FOUND",
+			message: "会话不存在",
+		});
+		expect(result.status).toBe(404);
+	});
+
+	it("不认识的东西 ⇒ 500 + 「服务内部错误：」前缀", () => {
+		const result = toErrorEnvelope(new Error("炸了"));
+		expect(result.status).toBe(500);
+		expect(result.body.code).toBe(500);
+		expect(result.body.msg).toContain("服务内部错误：");
+	});
+
+	it("各种 kind ⇒ 各自的语义码", () => {
+		const cases: Array<[string, number]> = [
+			["NOT_FOUND", 404],
+			["VALIDATION", 400],
+			["AUTH_EXPIRED", 401],
+			["CONFLICT", 409],
+			["RATE_LIMIT", 429],
+			["UNSUPPORTED", 400],
+			["UPSTREAM", 502],
+		];
+		for (const [kind, expected] of cases) {
+			expect(toErrorEnvelope(new AgentError(kind as never, "x")).status).toBe(expected);
+		}
 	});
 });

@@ -136,7 +136,7 @@ import { GET as auditGET, OPTIONS as auditOPTIONS } from "./audit/route";
 
 type Handler = (
 	request: Request,
-	context?: { params: Promise<Record<string, string>> },
+	context: { params: Promise<Record<string, string>> },
 ) => Promise<Response>;
 
 interface RouteEntry {
@@ -159,28 +159,28 @@ const ROUTES: RouteEntry[] = [
 	},
 	{
 		segments: ["api", "agent", "pending", ":id", "approve"],
-		post: approvePOST,
-		options: approveOPTIONS,
+		post: approvePOST as unknown as Handler,
+		options: approveOPTIONS as unknown as Handler,
 	},
 	{
 		segments: ["api", "agent", "pending", ":id", "reject"],
-		post: rejectPOST,
-		options: rejectOPTIONS,
+		post: rejectPOST as unknown as Handler,
+		options: rejectOPTIONS as unknown as Handler,
 	},
 	{
 		segments: ["api", "agent", ":conversationId", "command"],
-		post: commandPOST,
-		options: commandOPTIONS,
+		post: commandPOST as unknown as Handler,
+		options: commandOPTIONS as unknown as Handler,
 	},
 	{
 		segments: ["api", "agent", ":conversationId", "state"],
-		get: stateGET,
-		options: stateOPTIONS,
+		get: stateGET as unknown as Handler,
+		options: stateOPTIONS as unknown as Handler,
 	},
 	{
 		segments: ["api", "agent", ":conversationId", "abort"],
-		post: abortPOST,
-		options: abortOPTIONS,
+		post: abortPOST as unknown as Handler,
+		options: abortOPTIONS as unknown as Handler,
 	},
 	{ segments: ["api", "pending"], get: pendingGET, options: pendingOPTIONS },
 	{ segments: ["api", "audit"], get: auditGET, options: auditOPTIONS },
@@ -243,7 +243,9 @@ describe("现状固化：契约表对现在的 Next 实现", () => {
 				expect(route).toBeDefined();
 				const handler = route?.entry.options;
 				expect(handler).toBeDefined();
-				const response = await handler?.(buildRequest(testCase));
+				const response = await handler?.(buildRequest(testCase), {
+					params: Promise.resolve(route?.params ?? {}),
+				});
 				expect(response?.status).toBe(testCase.status);
 				return;
 			}

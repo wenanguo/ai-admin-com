@@ -12,12 +12,13 @@
 
 import { AdapterErrorException, isAdapterErrorException } from "../aadmin/errors";
 import { AgentError } from "../agent/runtime";
-import { errorEnvelope } from "./respond";
+import { errorBody, jsonResponse } from "./respond";
+import type { ApiResponse } from "../types/api";
 
 /**
  * 这个错误是不是**运行时自己的**（会话不存在、参数不对……）。
  *
- * ⚠️ 不能只看 `instanceof`：Next 的打包器可能把同一个模块在不同的 chunk 里
+ * ⚠️ 不能只看 `instanceof`：打包器可能把同一个模块在不同的 chunk 里
  *    **各实例化一次** ⇒ 跨 chunk 的 `instanceof` 就是 false
  *    （适配层那边的同类问题见 `aadmin/errors.ts` 的 `isAdapterErrorException`）。
  *
@@ -32,17 +33,32 @@ function isAgentError(error: unknown): error is AgentError {
 	);
 }
 
-/** 把异常变成一个带 CORS 头的错误信封。 */
-export function errorResponse(request: Request, error: unknown): Response {
+/**
+ * 把异常变成「状态码 + 信封体」（**框架无关**）。
+ *
+ * @param error 任意异常。
+ */
+export function toErrorEnvelope(error: unknown): { status: number; body: ApiResponse<null> } {
 	if (isAgentError(error)) {
-		return errorEnvelope(request, statusOf(error.kind), error.message, statusOf(error.kind));
+		const status = statusOf(error.kind);
+		return { status, body: errorBody(status, error.message) };
 	}
 	if (isAdapterErrorException(error)) {
 		const status = statusOf(error.kind);
-		return errorEnvelope(request, status, error.message, status);
+		return { status, body: errorBody(status, error.message) };
 	}
 	const message = error instanceof Error ? error.message : String(error);
-	return errorEnvelope(request, 500, `服务内部错误：${message}`, 500);
+	return { status: 500, body: errorBody(500, `服务内部错误：${message}`) };
+}
+
+/**
+ * 把异常变成一个带 CORS 头的错误信封。
+ *
+ * ⚠️ Web 兼容层：Task 7 删除。
+ */
+export function errorResponse(request: Request, error: unknown): Response {
+	const { status, body } = toErrorEnvelope(error);
+	return jsonResponse(request, body, status);
 }
 
 /** 错误种类 → HTTP 状态码（也用作信封里的业务码）。 */

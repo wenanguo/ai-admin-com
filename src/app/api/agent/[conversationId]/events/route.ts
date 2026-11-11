@@ -28,7 +28,7 @@ import type { StreamFrame } from "../../../../../agent/frame-buffer";
 import { extractBearerToken } from "../../../../../http/auth";
 import { errorResponse } from "../../../../../http/errors";
 import { errorEnvelope, preflightResponse } from "../../../../../http/respond";
-import { buildCorsHeaders } from "../../../../../http/cors";
+import { buildCorsHeaders, originOf } from "../../../../../http/cors";
 import { allowedOrigins } from "../../../../../http/respond";
 import { frameToSse, sseComment, sseFrame, SSE_HEADERS } from "../../../../../http/sse";
 
@@ -51,7 +51,7 @@ export async function GET(
 	request: Request,
 	{ params }: { params: Promise<{ conversationId: string }> },
 ): Promise<Response> {
-	const token = extractBearerToken(request);
+	const token = extractBearerToken(request.headers.get("authorization") ?? undefined);
 	if (token === undefined) {
 		return errorEnvelope(request, 401, MISSING_TOKEN, 401);
 	}
@@ -159,7 +159,7 @@ export async function GET(
 	return new Response(stream, {
 		headers: {
 			...SSE_HEADERS,
-			...buildCorsHeaders(request, allowedOrigins()),
+			...buildCorsHeaders(originOf(request.headers.get("origin") ?? undefined), allowedOrigins()),
 		},
 	});
 }

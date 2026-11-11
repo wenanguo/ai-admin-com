@@ -14,19 +14,21 @@
  * token 有但无效 ⇒ AiAdmin 会回 401，本服务把那个失败**如实**转成 401 信封。
  *
  * ⚠️ token **绝不**进日志、进错误消息、进数据库。它只在内存里待着。
+ *
+ * ⚠️ 本模块**不接收 Web `Request`**，只接收原始头值 ⇒ 与框架无关。
  */
 
 /**
- * 从 `Authorization` 头里取 token。
+ * 从 `Authorization` 头值里取 token。
  *
+ * @param headerValue `Authorization` 头的原始值（没有就 `undefined`）。
  * @returns token；没有头、不是 `Bearer` 方案、或者是空串 ⇒ `undefined`。
  */
-export function extractBearerToken(request: Request): string | undefined {
-	const header = request.headers.get("authorization");
-	if (header === null) {
+export function extractBearerToken(headerValue: string | undefined | null): string | undefined {
+	if (headerValue === undefined || headerValue === null) {
 		return undefined;
 	}
-	const trimmed = header.trim();
+	const trimmed = headerValue.trim();
 	if (trimmed.length === 0) {
 		return undefined;
 	}
