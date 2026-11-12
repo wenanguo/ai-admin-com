@@ -199,7 +199,9 @@ test.describe('AI 工作台全宽页', () => {
    *
    * ⚠️ 光看「没有滚动条」**不够**：宽版内容盒有 `padding: 16px`
    *    ⇒ 溢出落在内边距里**不会**撑高 `scrollHeight` ⇒ 最多 16px 的回退看不见。
-   *    ⇒ 这里**再量一次几何**：对话面板的底边要贴着内容区的底边。
+   *    ⇒ 这里**再量一次几何**：对话面板的底边要贴着内容区的底边，
+   *      且它的高度**超过**视口的 55%（跟浮层宿主那条一样，见
+   *      `ai-workspace.spec.ts`）。
    */
   test('整页不滚:宽版内容盒不溢出,对话区吃满剩余高度', async ({ page }) => {
     await openWorkspacePage(page);
@@ -222,10 +224,12 @@ test.describe('AI 工作台全宽页', () => {
       const wideStyle = getComputedStyle(wide);
       return {
         panelBottom: panel.getBoundingClientRect().bottom,
+        panelHeight: panel.getBoundingClientRect().height,
         // 内容区的底边（**去掉根容器的内边距** —— 那不是内容区的边）
         contentBottom:
           wide.getBoundingClientRect().bottom -
           parseFloat(wideStyle.paddingBottom || '0'),
+        viewportHeight: window.innerHeight,
       };
     });
     if (!geo) {
@@ -234,6 +238,10 @@ test.describe('AI 工作台全宽页', () => {
     expect(Math.abs(geo.panelBottom - geo.contentBottom)).toBeLessThanOrEqual(
       8,
     );
+
+    // ⚠️ **高度这一半也要断言**（跟浮层宿主那条一样）：
+    //    对话区不再是固定的 560 / 55vh ⇒ 高度**超过**视口的 55%。
+    expect(geo.panelHeight).toBeGreaterThan(geo.viewportHeight * 0.55);
   });
 
   test('规则与 AI 的分工两栏都在,ETA 按实情写', async ({ page }) => {
