@@ -37,6 +37,11 @@ export const LIKE_FIELDS = [
  *
  * ⚠️ 白名单：只认这些 key ⇒ ProTable 塞进来的其它参数（分页、排序、
  *   我们自己塞的版本号…）不会变成「一条都匹配不上」的筛选项。
+ *
+ * ⚠️ **新增可搜索列时，必须同时确认它的 LIKE / eq 归属**
+ *    （对照上面的 `LIKE_FIELDS` 与后端的 `__post_init__`）——
+ *    否则「后端筛得到、本地筛不到」的分裂会**悄悄回来**：
+ *    归属写错时筛选结果不报错，只是少了一半（用户以为项目不存在）。
  */
 export const SEARCHABLE_FIELDS = [
   'name',

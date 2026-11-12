@@ -1,6 +1,5 @@
 import {
   ModalForm,
-  ProForm,
   ProFormDatePicker,
   ProFormSelect,
   ProFormText,
