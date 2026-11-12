@@ -13,6 +13,7 @@ import { Alert, Spin } from 'antd';
 import type React from 'react';
 import { DictSelect } from '@/components/pm/DictSelect';
 import { toProSelectRequest } from '@/components/pm/useDictOptions';
+import type { ProjectOption } from '@/components/pm/useProjectNames';
 import { listMilestones } from '@/services/api/pm/milestone';
 import type {
   TaskCreateParams,
@@ -21,7 +22,6 @@ import type {
 } from '@/services/api/pm/task';
 import { listTasks } from '@/services/api/pm/task';
 import { listUsers } from '@/services/api/system/user';
-import type { ProjectOption } from './useProjectNames';
 
 export type TaskModalProps = {
   open: boolean;

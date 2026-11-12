@@ -10,13 +10,16 @@ import {
 import { Col, Tooltip } from 'antd';
 import type React from 'react';
 import { DictTag } from '@/components/pm/DictTag';
+import {
+  RULE_ENGINE_STATUSES,
+  RULE_ENGINE_TOOLTIP,
+} from '@/components/pm/ruleEngineStatus';
 import { toProSelectRequest } from '@/components/pm/useDictOptions';
 import type {
   MilestoneCreateParams,
   MilestoneOut,
 } from '@/services/api/pm/milestone';
 import { listProjects } from '@/services/api/pm/project';
-import { RULE_ENGINE_STATUSES, RULE_ENGINE_TOOLTIP } from './constants';
 
 export type MilestoneModalProps = {
   open: boolean;

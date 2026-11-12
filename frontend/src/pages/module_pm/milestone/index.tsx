@@ -1,7 +1,7 @@
 import { PlusOutlined } from '@ant-design/icons';
 import { type ProColumns, ProTable } from '@ant-design/pro-components';
 import { useAccess } from '@umijs/max';
-import { Button, Progress, Tooltip } from 'antd';
+import { Button } from 'antd';
 import type React from 'react';
 import { useMemo } from 'react';
 import {
@@ -9,7 +9,7 @@ import {
   useCrudColumns,
   useCrudTable,
 } from '@/components/CrudTable';
-import { DictTag } from '@/components/pm/DictTag';
+import { milestoneColumns } from '@/components/pm/columns/milestone';
 import { toValueEnum } from '@/components/pm/toValueEnum';
 import { useDictOptions } from '@/components/pm/useDictOptions';
 import type {
@@ -23,7 +23,6 @@ import {
   updateMilestone,
 } from '@/services/api/pm/milestone';
 import { toProTableRequest } from '@/services/paginate';
-import { RULE_ENGINE_STATUSES, RULE_ENGINE_TOOLTIP } from './constants';
 import MilestoneModalForm from './ModalForm';
 
 const requestMilestones = toProTableRequest<MilestoneOut>(listMilestones);
@@ -39,23 +38,6 @@ const TIMELINE_ORDER_BY = JSON.stringify([
   { sort_order: 'asc' },
   { start_date: 'asc' },
 ]);
-
-/**
- * 状态列:规则独占的状态(at_risk/missed)加一句说明,
- * 免得有人以为是手工设的(INV-13)。
- *
- * Tooltip 的子元素要能接收事件与 ref —— DictTag 是函数组件、不透传
- * 未知属性,所以外面包一层 span(事件落在 span 上)。
- */
-function StatusCell({ value }: { value?: string | null }) {
-  const tag = <DictTag dictType="module_pm_milestone_status" value={value} />;
-  if (!value || !RULE_ENGINE_STATUSES.includes(value)) return tag;
-  return (
-    <Tooltip title={RULE_ENGINE_TOOLTIP}>
-      <span>{tag}</span>
-    </Tooltip>
-  );
-}
 
 /**
  * 里程碑管理页 —— 路由 /pm/milestone(菜单由后端下发,目录挂在 /pm 下)。
@@ -91,71 +73,7 @@ const MilestoneManagement: React.FC = () => {
   );
 
   const columns: ProColumns<MilestoneOut>[] = [
-    { title: 'ID', dataIndex: 'id', width: 80, search: false },
-    {
-      title: '里程碑名称',
-      dataIndex: 'name',
-      width: 200,
-      fieldProps: { placeholder: '支持模糊查询' },
-    },
-    {
-      title: '所属项目',
-      dataIndex: 'project_id',
-      width: 160,
-      search: false,
-      // 表格里读后端随行返回的 project_by 冗余字段,不用再查项目表
-      render: (_, record) => record.project_by?.name ?? '-',
-    },
-    {
-      title: '状态',
-      dataIndex: 'status_code',
-      width: 120,
-      // 搜索下拉给全部五个状态:筛选是只读用途,规则独占写的两个状态也能筛
-      valueEnum: statusValueEnum,
-      render: (_, record) => <StatusCell value={record.status_code} />,
-    },
-    {
-      title: '进度',
-      dataIndex: 'progress',
-      width: 160,
-      search: false,
-      // progress 是后端缓存的派生字段,前端不重算
-      render: (_, record) =>
-        record.progress == null ? (
-          '-'
-        ) : (
-          <Progress percent={record.progress} size="small" />
-        ),
-    },
-    {
-      title: '健康度',
-      dataIndex: 'health_score',
-      width: 100,
-      search: false,
-      render: (_, record) => record.health_score ?? '-',
-    },
-    {
-      title: '计划区间',
-      dataIndex: 'start_date',
-      width: 200,
-      search: false,
-      render: (_, record) =>
-        `${record.start_date ?? '-'} ~ ${record.due_date ?? '-'}`,
-    },
-    {
-      title: '实际区间',
-      dataIndex: 'actual_start_date',
-      width: 200,
-      search: false,
-      render: (_, record) =>
-        `${record.actual_start_date ?? '-'} ~ ${record.actual_end_date ?? '-'}`,
-    },
-    {
-      title: '排序',
-      dataIndex: 'sort_order',
-      width: 80,
-      search: false,
-    },
+    ...milestoneColumns({ statusValueEnum }),
   ];
 
   const operationColumns = useCrudColumns<MilestoneOut>({

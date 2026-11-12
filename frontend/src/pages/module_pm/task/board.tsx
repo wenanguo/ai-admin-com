@@ -18,9 +18,9 @@ import { buildAiTaskContext, mergeDictLabels } from '@/components/pm/aiContext';
 import { DictTag } from '@/components/pm/DictTag';
 import { useAiTaskUpdate } from '@/components/pm/useAiTaskUpdate';
 import { useDictOptions } from '@/components/pm/useDictOptions';
+import { useProjectNames } from '@/components/pm/useProjectNames';
 import type { TaskOut } from '@/services/api/pm/task';
 import { type BoardStatus, useBoardColumns } from './useBoardColumns';
-import { useProjectNames } from './useProjectNames';
 
 /**
  * 任务看板页 —— 路由 /pm/task/board。

@@ -7,10 +7,10 @@ import {
 } from '@/components/pm/gantt/mapping';
 import type { TaskDateChange } from '@/components/pm/gantt/payload';
 import { buildDateUpdatePayload } from '@/components/pm/gantt/payload';
+import type { ProjectOption } from '@/components/pm/useProjectNames';
+import { useProjectNames } from '@/components/pm/useProjectNames';
 import type { TaskOut } from '@/services/api/pm/task';
 import { listTasks, updateTask } from '@/services/api/pm/task';
-import type { ProjectOption } from './useProjectNames';
-import { useProjectNames } from './useProjectNames';
 
 /**
  * 甘特视图的数据层:取数 → 映射成甘特行 → 拖拽写回。

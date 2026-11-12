@@ -1,4 +1,5 @@
 import { CommentOutlined } from '@ant-design/icons';
+import { ProTable } from '@ant-design/pro-components';
 import { useModel, useParams } from '@umijs/max';
 import {
   Alert,
@@ -7,28 +8,21 @@ import {
   Descriptions,
   type DescriptionsProps,
   Empty,
-  List,
-  Progress,
   Space,
   Spin,
   Table,
   type TableProps,
   Tabs,
-  Tag,
 } from 'antd';
 import type React from 'react';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  buildAiProjectContext,
-  mergeDictLabels,
-} from '@/components/pm/aiContext';
+import { buildAiProjectContext } from '@/components/pm/aiContext';
+import { milestoneColumns } from '@/components/pm/columns/milestone';
+import { riskColumns } from '@/components/pm/columns/risk';
+import { taskColumns } from '@/components/pm/columns/task';
 import { DictTag } from '@/components/pm/DictTag';
 import { renderJsonTags } from '@/components/pm/JsonTags';
-import {
-  RISK_LEVEL_COLOR,
-  riskLevel,
-  riskLevelLabel,
-} from '@/components/pm/riskLevel';
+import { useMilestoneNames } from '@/components/pm/useProjectNames';
 import { listMilestones, type MilestoneOut } from '@/services/api/pm/milestone';
 import {
   getProjectDetail,
@@ -38,12 +32,51 @@ import {
 } from '@/services/api/pm/project';
 import { listRisks, type RiskOut } from '@/services/api/pm/risk';
 import { listTasks, type TaskOut } from '@/services/api/pm/task';
+import { isSuccess } from '@/services/response';
+import type { ApiResponse, PageResult } from '@/services/types';
 
 /**
  * 子列表的分页参数:详情页各 tab 是只读总览,一次拉满后端 page_size
  * 上限(100,同 CRUD_PAGINATION)就不再翻页了
  */
 const SUB_LIST_PARAMS = { page_no: 1, page_size: 100 } as const;
+
+/**
+ * 子列表的 request：**一次只拉一页**（后端上限 100），并记住总数/加载数。
+ *
+ * ## 为什么不用 ProTable 的分页
+ *
+ * 详情页的三个页签是**只读总览**：不翻页。
+ * ⇒ 这里把 page_no / page_size 写死，ProTable 传什么都不理。
+ *
+ * ## 为什么还要记住总数
+ *
+ * 「上限**不静默**」：后端一共 250 个而这里只加载了 100 个 ⇒
+ * 得把两个数都摆出来（见 `truncationAlert`）。
+ */
+function useSubListRequest<T>(
+  api: (params: {
+    page_no: number;
+    page_size: number;
+    project_id: number;
+  }) => Promise<ApiResponse<PageResult<T>>>,
+  projectId: number,
+): {
+  request: () => Promise<{ data: T[]; total: number; success: boolean }>;
+  stats: { total: number; loaded: number };
+} {
+  const [stats, setStats] = useState({ total: 0, loaded: 0 });
+
+  const request = useCallback(async () => {
+    const res = await api({ project_id: projectId, ...SUB_LIST_PARAMS });
+    const items = res?.data?.items ?? [];
+    const total = res?.data?.total ?? 0;
+    setStats({ total, loaded: items.length });
+    return { data: items, total, success: isSuccess(res) };
+  }, [api, projectId]);
+
+  return { request, stats };
+}
 
 /**
  * 子列表被截断时的提示(与任务页/风险页同款:type=info,标题说上限,
@@ -151,190 +184,81 @@ function OverviewTab({ project }: { project: ProjectOut }) {
  * 里程碑响应里没有任何任务数据,前端无从重算,只负责展示
  */
 function MilestonesTab({ projectId }: { projectId: number }) {
-  const [milestones, setMilestones] = useState<MilestoneOut[]>([]);
-  // 后端一共多少个里程碑(与实际加载的条数比一比才知道截没截)
-  const [total, setTotal] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    // 失败提示由请求层统一弹,这里落地成空态
-    listMilestones({ project_id: projectId, ...SUB_LIST_PARAMS })
-      .then((res) => {
-        if (cancelled) return;
-        setMilestones(res?.data?.items ?? []);
-        setTotal(res?.data?.total ?? 0);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]);
+  const { request, stats } = useSubListRequest(listMilestones, projectId);
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      {truncationAlert('里程碑', total, milestones.length)}
-      {milestones.length === 0 ? (
-        <Empty description="暂无里程碑" />
-      ) : (
-        milestones.map((milestone) => (
-          <Card
-            key={String(milestone.id ?? milestone.name ?? '')}
-            size="small"
-            title={milestone.name ?? '-'}
-            extra={
-              milestone.status_code ? (
-                <DictTag
-                  dictType="module_pm_milestone_status"
-                  value={milestone.status_code}
-                />
-              ) : null
-            }
-          >
-            <Space direction="vertical" size="small" style={{ width: '100%' }}>
-              <Progress percent={milestone.progress ?? 0} />
-              <Space size="large" wrap>
-                <span>
-                  计划区间 {dateRange(milestone.start_date, milestone.due_date)}
-                </span>
-                <span>
-                  实际区间{' '}
-                  {dateRange(
-                    milestone.actual_start_date,
-                    milestone.actual_end_date,
-                  )}
-                </span>
-              </Space>
-            </Space>
-          </Card>
-        ))
-      )}
+      {truncationAlert('里程碑', stats.total, stats.loaded)}
+      <ProTable<MilestoneOut>
+        rowKey="id"
+        // ⚠️ 列定义与**独立里程碑页共用同一份** ⇒ 改一个字段只改一处
+        columns={milestoneColumns({ hideProject: true })}
+        request={request}
+        // 详情页的子列表是**只读总览**:不搜、不翻页
+        search={false}
+        pagination={false}
+        // 列多的时候横向滚动,不要把表头挤成竖排的一列字
+        scroll={{ x: 'max-content' }}
+        // 错误提示由请求层统一弹,这里只需阻止 ProTable 把 rejection 重新抛出
+        onRequestError={() => {}}
+      />
     </Space>
   );
 }
 
 /**
- * 任务 tab:精简表格(标题/状态/优先级/负责人/截止日)。
- * 负责人读 assignee_by 冗余字段(JOIN sys_user 的姓名),不回查用户表
+ * 任务 tab:与**独立任务页共用同一份列定义**。
+ *
+ * ⚠️ 「所属项目」列在这里是冗余的（就是这个项目）⇒ `hideProject`。
+ * ⚠️ 「所属里程碑」要显示名字 ⇒ 需要里程碑的**侧载**（响应里没有 milestone_by）。
  */
 function TasksTab({ projectId }: { projectId: number }) {
-  const [tasks, setTasks] = useState<TaskOut[]>([]);
-  // 后端一共多少个任务(与实际加载的条数比一比才知道截没截)
-  const [total, setTotal] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    listTasks({ project_id: projectId, ...SUB_LIST_PARAMS })
-      .then((res) => {
-        if (cancelled) return;
-        setTasks(res?.data?.items ?? []);
-        setTotal(res?.data?.total ?? 0);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]);
-
-  const columns: TableProps<TaskOut>['columns'] = [
-    {
-      title: '标题',
-      dataIndex: 'title',
-      render: (_, record) => record.title ?? '-',
-    },
-    {
-      title: '状态',
-      dataIndex: 'status_code',
-      render: (_, record) =>
-        record.status_code ? (
-          <DictTag
-            dictType="module_pm_task_status"
-            value={record.status_code}
-          />
-        ) : (
-          '-'
-        ),
-    },
-    {
-      title: '优先级',
-      dataIndex: 'priority_code',
-      render: (_, record) =>
-        record.priority_code ? (
-          <DictTag dictType="module_pm_priority" value={record.priority_code} />
-        ) : (
-          '-'
-        ),
-    },
-    {
-      title: '负责人',
-      dataIndex: 'assignee_id',
-      render: (_, record) => record.assignee_by?.name ?? '-',
-    },
-    {
-      title: '截止日',
-      dataIndex: 'due_date',
-      render: (_, record) => record.due_date ?? '-',
-    },
-  ];
+  const { request, stats } = useSubListRequest(listTasks, projectId);
+  const { milestoneNames } = useMilestoneNames();
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      {truncationAlert('任务', total, tasks.length)}
-      <Table<TaskOut> rowKey="id" columns={columns} dataSource={tasks} />
+      {truncationAlert('任务', stats.total, stats.loaded)}
+      <ProTable<TaskOut>
+        rowKey="id"
+        // ⚠️ 列定义与**独立任务页共用同一份** ⇒ 改一个字段只改一处
+        columns={taskColumns({ milestoneNames, hideProject: true })}
+        request={request}
+        // 详情页的子列表是**只读总览**:不搜、不翻页
+        search={false}
+        pagination={false}
+        // 列多的时候横向滚动,不要把表头挤成竖排的一列字
+        scroll={{ x: 'max-content' }}
+        // 错误提示由请求层统一弹,这里只需阻止 ProTable 把 rejection 重新抛出
+        onRequestError={() => {}}
+      />
     </Space>
   );
 }
 
 /**
- * 风险 tab:列表 + 等级标签。后端只有 score(= 概率 × 影响)没有 level,
- * 等级用共享件 riskLevel 本地推导;分数随行展示(等级的推导依据)
+ * 风险 tab:与**独立风险页共用同一份列定义**。
+ *
+ * ⚠️ 「所属项目」列在这里是冗余的（就是这个项目）⇒ `hideProject`。
  */
 function RisksTab({ projectId }: { projectId: number }) {
-  const [risks, setRisks] = useState<RiskOut[]>([]);
-  // 后端一共多少条风险(与实际加载的条数比一比才知道截没截)
-  const [total, setTotal] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    listRisks({ project_id: projectId, ...SUB_LIST_PARAMS })
-      .then((res) => {
-        if (cancelled) return;
-        setRisks(res?.data?.items ?? []);
-        setTotal(res?.data?.total ?? 0);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]);
+  const { request, stats } = useSubListRequest(listRisks, projectId);
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      {truncationAlert('风险', total, risks.length)}
-      <List
-        dataSource={risks}
-        renderItem={(risk) => {
-          // score 为空就没法推导等级,连标签一起不显示
-          const level = risk.score == null ? null : riskLevel(risk.score);
-          return (
-            <List.Item>
-              <Space size="middle" wrap>
-                <span>{risk.title ?? '-'}</span>
-                {level ? (
-                  <Tag color={RISK_LEVEL_COLOR[level]}>
-                    {riskLevelLabel(level)}
-                  </Tag>
-                ) : null}
-                {risk.score == null ? null : <span>{risk.score} 分</span>}
-                {risk.status_code ? (
-                  <DictTag
-                    dictType="module_pm_risk_status"
-                    value={risk.status_code}
-                  />
-                ) : null}
-              </Space>
-            </List.Item>
-          );
-        }}
+      {truncationAlert('风险', stats.total, stats.loaded)}
+      <ProTable<RiskOut>
+        rowKey="id"
+        // ⚠️ 列定义与**独立风险页共用同一份** ⇒ 改一个字段只改一处
+        columns={riskColumns({ hideProject: true })}
+        request={request}
+        // 详情页的子列表是**只读总览**:不搜、不翻页
+        search={false}
+        pagination={false}
+        // 列多的时候横向滚动,不要把表头挤成竖排的一列字
+        scroll={{ x: 'max-content' }}
+        // 错误提示由请求层统一弹,这里只需阻止 ProTable 把 rejection 重新抛出
+        onRequestError={() => {}}
       />
     </Space>
   );

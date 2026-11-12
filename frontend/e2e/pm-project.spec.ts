@@ -252,6 +252,12 @@ const taskStatusDictResponse = dictDataResponse([
 ]);
 
 /** 风险状态(五态) */
+/** 任务类型(独立任务页的「类型」列要它) */
+const taskTypeDictResponse = dictDataResponse([
+  { dict_label: '功能', dict_value: 'feature', list_class: 'primary' },
+  { dict_label: '缺陷', dict_value: 'bug', list_class: 'danger' },
+]);
+
 const riskStatusDictResponse = dictDataResponse([
   { dict_label: '已识别', dict_value: 'identified', list_class: 'info' },
   { dict_label: '分析中', dict_value: 'analyzing', list_class: 'primary' },
@@ -593,6 +599,7 @@ async function setupProjectDetailPage(
     module_pm_visibility: visibilityDictResponse,
     module_pm_milestone_status: milestoneStatusDictResponse,
     module_pm_task_status: taskStatusDictResponse,
+    module_pm_task_type: taskTypeDictResponse,
     module_pm_risk_status: riskStatusDictResponse,
     module_pm_project_role: projectRoleDictResponse,
   };
@@ -642,6 +649,28 @@ async function setupProjectDetailPage(
       });
     });
   }
+
+  /*
+    项目列表(侧载)与用户列表(负责人下拉)。
+
+    ⚠️ **必须 mock**：e2e 的预览服务器把 `/api` 代理到**真后端**
+    ⇒ 假 token 拿到 401 ⇒ 全局请求层清登录态并跳登录页。
+    （详情页的「任务」页签要里程碑名，独立任务页要项目名。）
+  */
+  await page.route(PROJECT_LIST_URL, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(projectListResponse),
+    }),
+  );
+  await page.route(USER_LIST_URL, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(userListResponse),
+    }),
+  );
 
   await seedAuthState(page);
 
@@ -822,9 +851,33 @@ test.describe('项目详情页', () => {
     await expect(medium).toBeVisible();
     await expect(medium).toHaveClass(/ant-tag-gold/);
 
-    // 分数随行展示(等级的推导依据)
-    await expect(panel.getByText('16 分', { exact: true })).toBeVisible();
-    await expect(panel.getByText('6 分', { exact: true })).toBeVisible();
+    /*
+      分数随行展示(等级的推导依据)。
+
+      ⚠️ **格式与独立风险页一致**：列头就叫「分数」⇒ 单元格里是裸数字
+      （以前详情页写的是「16 分」—— 两边格式不一样正是这次要消掉的东西）。
+      ⚠️ 按**表头文字**定位列号，不写死「第几列」⇒ 以后加列也不会指错。
+    */
+    const scoreColumn = await panel
+      .locator('.ant-table-thead th')
+      .evaluateAll((ths) =>
+        ths.findIndex((th) => th.textContent?.trim() === '分数'),
+      );
+    expect(scoreColumn).toBeGreaterThan(0);
+    // ⚠️ 用 `tr.ant-table-row` 挑**数据行**：antd 在 `scroll.x` 时会把表头拆成
+    //    独立的表，那张表里有一行「测量列宽」用的 tbody ⇒ 不能按 `.ant-table-tbody` 挑
+    const scoreCells = panel
+      .locator('.ant-table-tbody tr.ant-table-row')
+      .first()
+      .locator('td');
+    await expect(scoreCells.nth(scoreColumn)).toHaveText('16');
+    await expect(
+      panel
+        .locator('.ant-table-tbody tr.ant-table-row')
+        .nth(1)
+        .locator('td')
+        .nth(scoreColumn),
+    ).toHaveText('6');
 
     // 子列表请求带 project_id 过滤
     await expect.poll(() => requests.risks.length).toBeGreaterThan(0);
@@ -1203,5 +1256,104 @@ test.describe('项目清单的「与 AI 讨论」图标', () => {
 
     // ⚠️ **没有**进详情页（图标是名字链接的兄弟,不是嵌在链接里）
     expect(page.url()).not.toContain('/pm/project/');
+  });
+});
+
+/**
+ * **详情页的三个页签与独立列表页共用同一份列定义。**
+ *
+ * ## 为什么要有这条
+ *
+ * 用户报过的痛点：「项目详情里的任务/里程碑/风险，跟外面的**不一致**，
+ * 每次改都要改两个地方」。
+ *
+ * ⇒ 列定义抽成了共享件（`components/pm/columns/*`），两个页面都用它。
+ *
+ * ## 这条用例钉的是什么
+ *
+ * **运行时**对比两个页面的表头 —— 不是把列名写死在测试里：
+ * - 共享定义加一列 ⇒ 两边同时变 ⇒ 这条**不用改**照样绿；
+ * - 有人又给详情页**手抄**一份列定义 ⇒ 两边对不上 ⇒ 这条红。
+ *
+ * ⚠️ 允许的差异只有两类（都写在这儿，别默默多出别的）：
+ * - **列表页专属**：「与 AI 讨论」「操作」（编辑/删除）—— 详情页是只读总览；
+ * - **在详情页里冗余**：「所属项目」（就是当前这个项目）。
+ */
+test.describe('详情页与独立列表页的列一致', () => {
+  /** 项目详情页的路径（与上面那条用例同一个） */
+  const DETAIL_PAGE_PATH = '/pm/project/1';
+
+  /** 只属于列表页的列（详情页是只读总览，不该有） */
+  const LIST_ONLY_COLUMNS = ['与 AI 讨论', '操作'];
+  /** 在详情页里冗余的列（就是当前这个项目） */
+  const REDUNDANT_IN_DETAIL = ['所属项目'];
+
+  /**
+   * 当前可见表格的表头文字。
+   *
+   * ⚠️ 详情页的表格在**活动的 tabpanel** 里；独立列表页**没有 tabpanel**
+   *    ⇒ 找不到就退回整页。
+   */
+  async function columnTitles(page: Page): Promise<string[]> {
+    return page.evaluate(() => {
+      const panel = [...document.querySelectorAll('[role="tabpanel"]')].find(
+        (element) => element.getAttribute('aria-hidden') === 'false',
+      );
+      const scope = panel ?? document;
+      const head = scope.querySelector('.ant-table-thead');
+      return [...(head?.querySelectorAll('th') ?? [])]
+        .map((th) => th.textContent?.trim() ?? '')
+        .filter(Boolean);
+    });
+  }
+
+  test('任务：详情页的列 == 独立任务页的列（去掉列表页专属与冗余的）', async ({
+    page,
+  }) => {
+    await setupProjectDetailPage(page, {
+      tasks: [
+        {
+          id: 21,
+          project_id: 1,
+          title: '需求分析',
+          status_code: 'in_progress',
+          priority_code: 'P1',
+          type_code: 'feature',
+          assignee_id: 1,
+          assignee_by: { id: 1, name: '石锦锋' },
+          reporter_by: { id: 1, name: '石锦锋' },
+          start_date: '2026-07-01',
+          due_date: '2026-07-20',
+          estimate_hours: 16,
+          actual_hours: 12,
+          sort_order: 1,
+          created_via_code: 'manual',
+        },
+      ],
+    });
+
+    // 1) 独立任务页的列
+    await gotoModulePage(page, '/pm/task', page.locator('.ant-table-thead'));
+    const standalone = await columnTitles(page);
+
+    // 2) 详情页「任务」页签的列
+    await gotoModulePage(
+      page,
+      DETAIL_PAGE_PATH,
+      page.getByText('AIPM 核心项目'),
+    );
+    await page.getByRole('tab', { name: '任务' }).click();
+    await expect(page.locator('.ant-table-thead')).toBeVisible();
+    const detail = await columnTitles(page);
+
+    const expected = standalone.filter(
+      (title) =>
+        !LIST_ONLY_COLUMNS.includes(title) &&
+        !REDUNDANT_IN_DETAIL.includes(title),
+    );
+    expect(detail).toEqual(expected);
+    // 顺带确认详情页确实少了那几列（别让「都为空」蒙混过关）
+    expect(detail.length).toBeGreaterThan(5);
+    expect(standalone.length).toBeGreaterThan(detail.length);
   });
 });

@@ -22,6 +22,10 @@ import { listProjects } from '@/services/api/pm/project';
  * 越攒越多的东西,所以「第 101 条开始就查不到名字」是迟早的事。
  * 页面据此给出提示(见 task/index.tsx 的 Alert),**不静默截断**:
  * 侧载到的条数与后端的总数都会带出去,页面据此判断要不要提示。
+ *
+ * ⚠️ 现在**列表列定义是共享的**（独立页与项目详情页共用）⇒
+ *    项目详情页只要里程碑名（它的「所属项目」列是冗余的、藏掉了）⇒
+ *    那边用 `useMilestoneNames()`（**只拉里程碑**），不多发一个项目列表请求。
  */
 
 /** 侧载一次的上限:后端 page_size 最大 100(同 CRUD_PAGINATION) */
@@ -61,6 +65,59 @@ export interface ProjectNames {
   projectTotal: number;
   /** 后端一共多少个里程碑(侧载只拿到其中 100 条,差值用来提示) */
   milestoneTotal: number;
+}
+
+/**
+ * 只侧载**里程碑**的名字。
+ *
+ * ## 为什么单独一个
+ *
+ * 项目详情页的「任务」页签要显示「所属里程碑」的名字 ⇒ 需要里程碑的侧载；
+ * 但它的「所属项目」列是**冗余的**（就是这个项目）⇒ 不需要项目列表。
+ *
+ * ⇒ 用这个 hook 就只发**一个**请求（里程碑列表），不多拉一张项目表。
+ */
+export function useMilestoneNames(): {
+  /** 里程碑 id → 里程碑名 */
+  milestoneNames: Map<number, string>;
+  /** 里程碑选项 */
+  milestoneOptions: ProjectOption[];
+  /** 侧载是否还在途 */
+  loading: boolean;
+  /** 后端一共多少个里程碑（侧载只拿到其中 100 条，差值用来提示） */
+  milestoneTotal: number;
+} {
+  const [milestoneOptions, setMilestoneOptions] = useState<ProjectOption[]>([]);
+  const [milestoneTotal, setMilestoneTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    listMilestones(SIDE_LOAD_PARAMS)
+      .then((res) => {
+        if (cancelled) return;
+        setMilestoneOptions(toOptions(res?.data?.items ?? []));
+        setMilestoneTotal(res?.data?.total ?? 0);
+      })
+      .catch(() => {
+        // 失败提示由请求层统一弹,这里降级成空选项
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // id → 名字的映射表:列的 render 里查表,不回查接口
+  const milestoneNames = useMemo(
+    () =>
+      new Map(milestoneOptions.map((option) => [option.value, option.label])),
+    [milestoneOptions],
+  );
+
+  return { milestoneNames, milestoneOptions, loading, milestoneTotal };
 }
 
 /** 项目/里程碑列表 → 下拉选项(没有 id 的行没法当候选项,丢掉) */
