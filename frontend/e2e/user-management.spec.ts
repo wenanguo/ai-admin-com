@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { waitForApp } from './helpers';
+import { expandSider, waitForApp } from './helpers';
 
 /**
  * 用户管理页的前端闭环(接口全部拦截,不需要真实账号)。
@@ -120,6 +120,8 @@ test.describe('用户管理页', () => {
     expect(pageErrors).toEqual([]);
 
     // 侧边栏来自后端菜单
+    // ⚠️ 菜单**默认是收缩的** ⇒ 菜单项的文字看不见 ⇒ 先展开
+    await expandSider(page);
     await expect(page.locator('.ant-menu').getByText('用户管理')).toBeVisible();
 
     // 表格渲染出后端返回的数据

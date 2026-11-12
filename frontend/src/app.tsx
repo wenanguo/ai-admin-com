@@ -141,6 +141,40 @@ export const layout: RunTimeLayoutConfig = ({
   setInitialState,
 }) => {
   return {
+    /**
+     * 左侧菜单栏更窄一点。
+     *
+     * ⚠️ umi 的插件把 `siderWidth={256}` **写死**在 `<ProLayout>` 上，
+     *    但 `{...runtimeConfig}` 在它**后面**展开 ⇒ 这里能覆盖掉。
+     */
+    siderWidth: 200,
+    /**
+     * 菜单**默认是收缩的**。
+     *
+     * ⚠️ 这个状态**不持久化** ⇒ 刷新页面又回到收缩（就是「默认收缩」的意思）。
+     *    想记住用户的选择的话得自己存 localStorage 再用 `collapsed` 受控
+     *    （⚠️ 但 `collapsed` 被 ProLayout 的类型 `Omit` 掉了，只能绕）。
+     */
+    defaultCollapsed: true,
+    /**
+     * 关掉 antd `Sider` 自带的**响应式折叠**。
+     *
+     * ## 为什么必须关
+     *
+     * `Sider` 带 `breakpoint` 时会在**挂载时立刻**跑一次响应式处理：
+     * 视口宽于断点 ⇒ `mql.matches === false` ⇒ 强制 `collapsed = false`
+     * ⇒ **`defaultCollapsed` 当场被推翻**（菜单自己弹开）。
+     *
+     * 实测（1600px 视口）：t≈2.1s 时菜单是收缩的（64px），
+     * t≈2.6s 就自己展开成 200px 了。
+     *
+     * ## 关掉之后窄屏怎么办
+     *
+     * - 手机（<576px）：ProLayout 自己会换成**抽屉**（`isMobile`）⇒ 不受影响；
+     * - 平板（576–992px）：菜单保持**默认收缩**（64px）
+     *   ⇒ 内容区反而更宽（比自动折叠更宽松）。
+     */
+    breakpoint: false,
     menuItemRender: (item, dom) => {
       if (item.path) {
         return (

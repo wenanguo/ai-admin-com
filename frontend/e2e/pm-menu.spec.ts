@@ -5,7 +5,7 @@ import {
   PM_RISK_PREFIX,
 } from '../src/services/api/pm/paths';
 import type { MenuNode } from './helpers';
-import { seedAuthState, waitForApp } from './helpers';
+import { expandSider, seedAuthState, waitForApp } from './helpers';
 
 /**
  * PM 侧边栏入口的端到端闭环:后端下发的**真实菜单路径** → 侧边栏 → 真实页面。
@@ -246,6 +246,8 @@ test.describe('PM 侧边栏菜单(后端真实路径)', () => {
       page.locator('.ant-table-thead').getByText('风险标题'),
     ).toBeVisible();
 
+    // ⚠️ 菜单**默认是收缩的** ⇒ 菜单项的文字看不见 ⇒ 先展开
+    await expandSider(page);
     const menu = siderMenu(page);
 
     // 两个顶层目录的标题都是后端下发的

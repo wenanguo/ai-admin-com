@@ -315,12 +315,86 @@ export async function setupModulePage(
 }
 
 /**
+ * 把 ProLayout 的左侧菜单**展开**。
+ *
+ * ## 为什么需要
+ *
+ * 菜单**默认是收缩的**（只剩一列图标，见 `app.tsx` 的 `defaultCollapsed`）
+ * ⇒ 菜单项的**文字看不见** ⇒ 用例里「点某个菜单项」这个动作根本做不了
+ * （`getByText('岗位管理')` 永远等不到可见）。
+ *
+ * ⇒ 所以统一在这里展开一次：菜单项的文字能点了，页面也回到「菜单展开」
+ * 这个**绝大多数用例本来预期的样子**。
+ */
+export async function expandSider(page: Page): Promise<void> {
+  /*
+   * ⚠️ **必须先等侧栏出现**。
+   *
+   * `waitForApp` 等的是「`#root` 里有内容」⇒ 它会在 ProLayout 的侧栏
+   * **还没渲染**的时候放行（实测：#root 有内容时 `.ant-pro-sider` 还不存在）。
+   * ⇒ 侧栏后到、且带着 `collapsed` 类 ⇒ 菜单项的文字永远看不见。
+   */
+  await page
+    .locator('.ant-pro-sider')
+    .first()
+    .waitFor({ state: 'attached', timeout: 30_000 });
+
+  const collapsed = page.locator('.ant-pro-sider.ant-layout-sider-collapsed');
+  if ((await collapsed.count()) === 0) {
+    return;
+  }
+  // 收缩态下这个按钮就是「展开」的箭头（`.ant-pro-sider-collapsed-button`）
+  await page.locator('.ant-pro-sider-collapsed-button').click();
+  // 等它真的展开了（类名掉了）
+  await page
+    .locator('.ant-pro-sider:not(.ant-layout-sider-collapsed)')
+    .first()
+    .waitFor({ state: 'visible', timeout: 30_000 });
+  // ⚠️ 再等菜单项的**文字**可见（antd 收缩态不渲染标题 ⇒ 展开动画里才出现）
+  await page
+    .locator('.ant-menu-title-content')
+    .first()
+    .waitFor({ state: 'visible', timeout: 30_000 });
+  // ⚠️ **再等布局稳下来**。
+  //
+  // 展开菜单会让内容区**横向移动**（动画）⇒ 动画没结束就去量东西，
+  // 量到的是一个「还在动」的位置（实测甘特条差了 23.6px）。
+  await waitForStableWidth(page);
+}
+
+/**
+ * 等内容区的宽度**不再变化**（布局稳了）。
+ *
+ * ⚠️ 菜单展开/收起有动画 ⇒ 动画期间量出来的位置是假的。
+ */
+export async function waitForStableWidth(page: Page): Promise<void> {
+  let previous = -1;
+  await expect
+    .poll(
+      async () => {
+        const width = await page.evaluate(
+          () =>
+            document
+              .querySelector('.ant-pro-layout-content')
+              ?.getBoundingClientRect().width ?? -1,
+        );
+        const stable = width === previous;
+        previous = width;
+        return stable;
+      },
+      { timeout: 15_000, intervals: [200, 200, 200, 200, 200, 200, 200, 200] },
+    )
+    .toBe(true);
+}
+
+/**
  * 打开模块页并等到「页面真的可用」。
  *
  * **不用 networkidle**:它等的是「网络静默 500ms」,页面里有预取/长连接时
  * 永远等不到;并发跑构建时也最容易假失败(第一轮报告里已经踩过一次)。
  * 这里的判据是确定性的内容信号:
  * - waitForApp:应用挂载完成(#root 有内容、不是「正在加载资源」)
+ * - expandSider:菜单默认是收缩的 ⇒ 先展开,菜单项的文字才点得到
  * - ready:该用例关心的那个元素(侧边栏菜单项 / 表格行 / 空状态 …)
  */
 export async function gotoModulePage(
@@ -330,6 +404,7 @@ export async function gotoModulePage(
 ): Promise<void> {
   await page.goto(path);
   await waitForApp(page);
+  await expandSider(page);
 
   if (ready) {
     await ready.first().waitFor({ state: 'visible', timeout: 30_000 });

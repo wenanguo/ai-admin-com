@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { waitForApp } from './helpers';
+import { expandSider, waitForApp } from './helpers';
 
 /**
  * 登录 / 退出 / 401 静默刷新 的前端闭环(接口全部拦截,不需要真实账号)。
@@ -159,6 +159,8 @@ test.describe('登录与登录态', () => {
 
     // 登录后落到用户管理页(后端菜单里当前唯一注册了前端路由的页面)
     await expect(page).toHaveURL(/\/system\/user/);
+    // ⚠️ 菜单**默认是收缩的** ⇒ 菜单项的文字看不见 ⇒ 先展开
+    await expandSider(page);
     await expect(page.locator('.ant-menu').getByText('用户管理')).toBeVisible();
     await expect(page.locator('.ant-table-tbody tr.ant-table-row')).toHaveCount(
       1,

@@ -56,6 +56,21 @@ export const AI_WORKSPACE_NARROW_WIDTH = 768;
 const FALLBACK_HEADER_HEIGHT = 56;
 
 /**
+ * 内容区自己的内边距（上下 / 左右）。
+ *
+ * ⚠️ 为什么内边距在**这一层**而不是内容区上：
+ *    以前内容区右边坐着一个 `Sider` ⇒ 内边距留在内容区上会把侧栏挤开、
+ *    贴不到视口右边缘 ⇒ 才挪到这里。
+ *    现在 AI 工作台是浮层（不占布局位置）⇒ 这个理由已经**不成立**了，
+ *    但内边距挪过来有另一个好处：**宽版浮层正好盖住内容区**，
+ *    不会在浮层四周留下一圈空白（见 `contentBox` 的测量）。
+ *
+ * ⚠️ 值：上下 16px、左右 24px。以前是 `32px 40px` ⇒ 离菜单与顶栏太远，
+ *    表格右边几列要多滚一段才看得到。
+ */
+const CONTENT_PADDING = '16px 24px';
+
+/**
  * 量一下 ProLayout 的顶栏有多高（px）。
  *
  * ⚠️ 浮层的顶边要**正好压在顶栏下面** ⇒ 顶栏高度是布局给的，不是我们定的
@@ -293,12 +308,9 @@ export function AiWorkspaceShell({
           display: 'flex',
           flexDirection: 'column',
           /*
-            ⚠️ 内容区自己的内边距（ProLayout 的 `32px 40px`）挪到这里。
-
-            因为内容区现在是一个**满高的 flex 列**（浮层不再占布局位置）
-            ⇒ 内边距留在内容区上，就会把内容顶到边上去。
+            ⚠️ 内容区自己的内边距（见 `CONTENT_PADDING` 的注释）。
           */
-          padding: '32px 40px',
+          padding: CONTENT_PADDING,
         }}
       >
         {children}
