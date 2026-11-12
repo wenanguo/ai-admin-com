@@ -72,6 +72,8 @@ vi.mock('@ant-design/icons', () => ({
   // 宽版对话里「意图卡片」按钮的展开/收起箭头。
   DownOutlined: () => null,
   UpOutlined: () => null,
+  // 宽版模型条上那个「为什么只显示当前模型」的 ⓘ。
+  InfoCircleOutlined: () => null,
 }));
 
 vi.mock('./requestErrorConfig', () => ({
