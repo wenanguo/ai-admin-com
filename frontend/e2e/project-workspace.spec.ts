@@ -36,18 +36,18 @@ import {
  * ⇒ 现在两个视图共用**同一份数据集**（react-query 缓存）⇒
  *   切视图**零请求**，两边永远是同一批项目。
  *
- * ## 六条用例
+ * ## 七条用例
  *
  * 1. **切视图不重新取数** —— 一个请求都不多发；
- * 2. **两个视图是同一份数据** —— 卡片数 == 表格分页器上的总数；
+ * 2. **两个视图是同一份数据** —— 卡片数 == 表格分页器上的总数，**且是同一批项目**；
  * 3. **视图状态在 URL 上** —— 刷新以后还是那个视图；
- * 4. **卡片上的机器人** —— 打开 AI 工作台并带上这个项目，且**不进详情页**；
- * 5. **项目太多（> 1000）** —— 显式提示只取到前 N 条（不静默）；
- * 6. **写操作之后切视图** —— 两边都是新数据。
+ * 4. **切视图用 replace** —— 后退会**离开** /pm/project（不往历史里塞条目）；
+ * 5. **卡片上的机器人** —— 打开 AI 工作台并带上这个项目，且**不进详情页**；
+ * 6. **项目太多（> 1000）** —— 显式提示只取到前 N 条（不静默）；
+ * 7. **写操作之后切视图** —— 两边都是新数据。
  *
- * 外加两条：
- * 7. **分页在本地做** —— 25 条数据能翻到第 3 页，且翻页**不发请求**；
- * 8. **改完名字切视图** —— 卡片上也是新名字。
+ * 外加一条：
+ * 8. **分页在本地做** —— 25 条数据能翻到第 3 页，且翻页**不发请求**。
  */
 
 /** 视图切换器（Segmented）里的某一项 */
@@ -282,7 +282,7 @@ test.describe('项目工作台（列表 / 卡片）', () => {
 
     // ⚠️ **一个请求都不该多发**
     //    （两个视图的 queryKey 不一致 ⇒ 这里必红）
-    expect(listRequests.length).toBe(afterEnter);
+    await expect.poll(() => listRequests.length).toBe(afterEnter);
   });
 
   test('两个视图是同一份数据：卡片数 == 表格分页器上的总数', async ({
@@ -297,10 +297,32 @@ test.describe('项目工作台（列表 / 卡片）', () => {
     const total = await paginationTotal(page);
     expect(total).toBe(12);
 
+    /*
+      ⚠️ 光比**数量**不够：「数量相同」不一定是「同一批项目」
+      （两边各取 12 条不同的项目，数字也一样）。
+      ⇒ 再比一次**身份**：表格里可见那几行的项目 id（项目名称列是详情页入口
+        ⇒ href 里就是 id）必须与卡片前几个的 `data-project-id` 一一对应。
+    */
+    const tableIds = await page
+      .locator('.ant-table-tbody tr.ant-table-row a[href^="/pm/project/"]')
+      .evaluateAll((links) =>
+        links.map((link) => link.getAttribute('href') ?? ''),
+      );
+    expect(tableIds.length).toBeGreaterThan(0);
+    expect(tableIds.length).toBeLessThan(total); // 表格是分页的 ⇒ 只看得见一部分
+
     // 切到卡片视图：卡片渲染的是**整个筛选结果集**
     await viewTab(page, '卡片').click();
     await expect(page).toHaveURL(/\/pm\/project\?view=card$/);
     await expect(projectCards(page)).toHaveCount(total);
+
+    // ⚠️ **是同一批项目**（不只是同一个数量）
+    const cardIds = await projectCards(page).evaluateAll((cards) =>
+      cards.map((card) => card.getAttribute('data-project-id') ?? ''),
+    );
+    expect(cardIds.slice(0, tableIds.length)).toEqual(
+      tableIds.map((href) => href.replace('/pm/project/', '')),
+    );
   });
 
   test('视图状态在 URL 上：刷新以后还是卡片视图', async ({ page }) => {
@@ -323,6 +345,29 @@ test.describe('项目工作台（列表 / 卡片）', () => {
     await expect(page).toHaveURL(/\/pm\/project\?view=card$/);
     await expect(projectCards(page)).toHaveCount(3);
     await expect(tableRows(page)).toHaveCount(0);
+  });
+
+  test('切视图用 replace：不往浏览器历史里塞条目', async ({ page }) => {
+    await setupWorkspace(page, { count: 3 });
+
+    // 先去一个**别的**页面 ⇒ 后退时有一个明确的上一站
+    //（否则 about:blank 能不能当上一站要看浏览器的实现，不可靠）
+    await page.goto('/welcome');
+    await waitForApp(page);
+
+    await gotoModulePage(page, PROJECT_PAGE_PATH, tableRows(page).first());
+
+    // 切两次视图（`replace` ⇒ 历史里仍然只有一个 /pm/project 条目）
+    await viewTab(page, '卡片').click();
+    await expect(page).toHaveURL(/\/pm\/project\?view=card$/);
+    await viewTab(page, '列表').click();
+    await expect(page).toHaveURL(/\/pm\/project\?view=list$/);
+
+    // ⚠️ 后退 ⇒ **离开** /pm/project
+    //（若是 `push`，这里会退回到 ?view=card ⇒ 断言变红）
+    await page.goBack();
+    await waitForApp(page);
+    await expect(page).not.toHaveURL(/\/pm\/project/);
   });
 
   test('卡片上的机器人：打开 AI 工作台并带上这个项目，且不进详情页', async ({

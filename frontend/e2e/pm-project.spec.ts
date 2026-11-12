@@ -716,11 +716,12 @@ test.describe('项目管理列表页', () => {
     //
     // ⚠️ **第一次请求取 100 条**（共享数据集一次取满；后端 page_size 上限就是 100）
     //    ⇒ 表格的分页是**本地**切片，不再问后端要第 2 页。
-    // ⚠️ 断言写成 `page_size=100`（不是 `page_size=10`）——
-    //    `'page_size=100'.includes('page_size=10')` 是**真** ⇒ 写 `page_size=10` 是假阳性。
+    // ⚠️ **解析查询参数**再断言（不是子串匹配）：
+    //    `'page_size=1000'.includes('page_size=100')` 是**真** ⇒ 子串匹配是假阳性。
     await expect.poll(() => listRequests.length).toBeGreaterThan(0);
-    expect(listRequests[0]).toContain('page_no=1');
-    expect(listRequests[0]).toContain('page_size=100');
+    const firstListUrl = new URL(listRequests[0]);
+    expect(firstListUrl.searchParams.get('page_no')).toBe('1');
+    expect(firstListUrl.searchParams.get('page_size')).toBe('100');
   });
 
   test('新增项目提交的是后端的线上码,不是中文标签', async ({ page }) => {
