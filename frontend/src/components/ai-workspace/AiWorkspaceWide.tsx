@@ -26,7 +26,11 @@
  * - **左边**：对话（这一页的主用途）；
  * - **右边**：360px 的侧栏（待确认 / 审计 / 规则与 AI 的分工）。
  *
- * ⚠️ 根容器 `overflow: hidden` ⇒ **整页不滚**，滚动条都在各面板**里面**。
+ * ⚠️ **这一轮页面仍然会滚**（根容器 `overflowY: auto`）：
+ *    意图卡片墙还在**文档流**里（下一个任务才把它折进输入框上方的抽屉），
+ *    内容比视口高 ⇒ 页面本来就该能滚。
+ *    ⇒ 「整页不滚」是**下一个任务**（意图卡片离开文档流之后）的断言，
+ *    现在关掉滚动会把底部的卡片墙切掉，甚至压住输入框。
  */
 import { useModel } from '@umijs/max';
 import { Alert, Button, Dropdown, Space, Tabs, Typography, theme } from 'antd';
@@ -107,7 +111,7 @@ export function AiWorkspaceWide({
   /** 点意图卡片：只把问句填进输入框，**不发送**。 */
   const pickIntent = useCallback((example: string): void => {
     setDraft(example);
-    // 输入区在页面下方 ⇒ 填完之后滚过去，让用户看见自己点了什么
+    // 输入区在页面下方（卡片墙还在文档流里）⇒ 填完之后滚过去，让用户看见自己点了什么
     chatRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, []);
 
@@ -159,8 +163,10 @@ export function AiWorkspaceWide({
         height: '100%',
         flex: '1 1 0%',
         minHeight: 0,
-        // ⚠️ **整页不滚**：滚动条只在各个面板**里面**（消息区 / 列表区）。
-        overflow: 'hidden',
+        // ⚠️ **这一轮页面照旧能滚**：意图卡片墙还在文档流里（下一个任务才折进抽屉）
+        //    ⇒ 内容比视口高，页面就该能滚。
+        //    「整页不滚」要等卡片墙离开文档流之后才成立（那时再关滚动）。
+        overflowY: 'auto',
       }}
     >
       {/* 头部 */}
@@ -283,14 +289,18 @@ export function AiWorkspaceWide({
       {/*
         **两栏**：左边对话，右边 360px 的侧栏（待确认 / 审计 / 规则分工）。
 
-        ⚠️ 这一行是**弹性行**（`flex: 1 1 0%`）⇒ 吃满头部与模型条剩下的高度
-        ⇒ 整页不滚（滚动条都在各面板**里面**）。
+        ⚠️ 这一行是**自然高度行**（`flex: none`）⇒ 高度由**对话区自己**决定
+        （对话区现在还是固定高度 `min(560px, 55vh)`，Task 3 才吃满剩余高度）。
+        ⇒ 行**不会被压缩** ⇒ 底部的意图卡片墙压不到对话区（发送按钮点得到），
+        侧栏与对话区等高。
+        ⚠️ **不要**把它改回 `flex: 1 1 0%` —— 那样它会被压缩到剩余高度
+        （视口矮时只有 ~235px）⇒ 对话区（固定高度）溢出这一行 ⇒ 卡片墙盖住输入框。
       */}
       <div
         style={{
           display: 'flex',
           gap: token.size,
-          flex: '1 1 0%',
+          flex: 'none',
           minHeight: 0,
         }}
       >
@@ -442,7 +452,11 @@ export function AiWorkspaceWide({
                       minHeight: 0,
                       // ⚠️ 这一块**自己滚**：`RuleSplit` 内部没有滚动区
                       //    ⇒ 不给它滚动区的话，360px 窄栏里下半截看不到。
+                      // ⚠️ `overflowX` 也写上：只写 `overflowY: auto` 时，
+                      //    CSS 会把 `overflowX` 算成 `auto` ⇒ 一段长的不可断字符串
+                      //    会多出一条横向滚动条。
                       overflowY: 'auto',
+                      overflowX: 'hidden',
                     }}
                   >
                     {/* 侧栏窄 ⇒ 两栏并排放不下 ⇒ 上下堆叠 */}

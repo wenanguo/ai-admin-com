@@ -645,8 +645,11 @@ test.describe('最大化（宽版浮层）', () => {
    * 最大化之后是**两栏**：左边对话，右边 360px 的侧栏。
    *
    * ⚠️ 「一屏铺满」（页面自己不滚 + 对话区吃满）那条断言**不在这里** ——
-   *    意图卡片墙还在页面底部（Task 3 才折进输入框上方的抽屉），
-   *    对话区的高度也还是固定的（Task 2 才吃满）⇒ 本任务只钉两栏骨架。
+   *    意图卡片墙还在页面底部（下一个任务才折进输入框上方的抽屉），
+   *    对话区的高度也还是固定的（后面的任务才吃满）⇒ 本任务只钉两栏骨架。
+   *
+   * ⚠️ 但**「对话区还在、而且点得到」是这里必须钉的**：
+   *    意图卡片墙在文档流里时，它曾经把对话区盖住 ⇒ 发送按钮点不到。
    */
   test('最大化后右侧栏出现,对话在左、侧栏在右', async ({ page }) => {
     await setupAiService(page);
@@ -671,10 +674,39 @@ test.describe('最大化（宽版浮层）', () => {
 
     // 侧栏里就是「待确认 / 审计 / 规则与 AI 的分工」那三个页签
     await expect(sidebar.getByRole('tab', { name: '待确认' })).toBeVisible();
+    await expect(sidebar.getByRole('tab', { name: '审计' })).toBeVisible();
+    await expect(
+      sidebar.getByRole('tab', { name: '规则与 AI 的分工' }),
+    ).toBeVisible();
 
     // 对话在左、侧栏在右
     const chatColumn = page.locator('[data-role="ai-wide-chat-column"]');
     await expect(chatColumn).toBeVisible();
+
+    // ⚠️ **对话区还在**（不是只剩一个空壳）：左列里必须有输入框与发送按钮。
+    //    把 `WideChat` 整个卸掉的话，这两条会挂 ⇒ 它们守住「输入框点得到」。
+    const composer = chatColumn.locator('textarea');
+    await expect(composer).toBeVisible();
+    // ⚠️ `^发\s*送$`：antd 会把按钮里**两个汉字**之间插一个空格
+    //    ⇒ 按钮的可访问名是「发 送」而不是「发送」。
+    const sendButton = chatColumn.getByRole('button', {
+      name: /^发\s*送$/,
+    });
+    await expect(sendButton).toBeVisible();
+
+    // ⚠️ **发送按钮没被挡住**：卡片墙曾经盖住输入区 ⇒ 用命中测试确认
+    //    按钮中心点到的就是按钮自己（不是盖在上面的卡片墙）。
+    await sendButton.scrollIntoViewIfNeeded();
+    const covered = await sendButton.evaluate((button) => {
+      const rect = button.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        rect.x + rect.width / 2,
+        rect.y + rect.height / 2,
+      );
+      return hit ? !button.contains(hit) : true;
+    });
+    expect(covered).toBe(false);
+
     const chatBox = await chatColumn.boundingBox();
     const sidebarBox = await sidebar.boundingBox();
     if (!chatBox || !sidebarBox) {
