@@ -15,6 +15,26 @@ import {
   seedAuthState,
   tableRows,
 } from './helpers';
+import {
+  CURRENT_INFO_URL,
+  dictDataResponse,
+  dictDataUrl,
+  okResponse,
+  PROJECT_CREATE_URL,
+  PROJECT_DELETE_URL,
+  PROJECT_LIST_URL,
+  PROJECT_PAGE_PATH,
+  PROJECT_UPDATE_URL,
+  pmCurrentUserResponse,
+  priorityDictResponse,
+  projectListResponse,
+  projectRow,
+  setupProjectPage,
+  statusDictResponse,
+  USER_LIST_URL,
+  userListResponse,
+  visibilityDictResponse,
+} from './pm-project-fixture';
 
 /**
  * 项目管理列表页(/pm/project)的前端闭环,接口全部拦截。
@@ -31,205 +51,22 @@ import {
  * 这里手造信封(子菜单的相对 route_path 'project' 会被拼到 /pm 下,
  * 必须与前端路由表对齐)。helpers.buildCurrentUserResponse 现在也支持
  * 自定义父目录(helpers 的 MenuParent),但这份夹具的 id/用户字段是
- * 本 spec 自己的,保持原样不动。
+ * 本仓自己的,保持原样不动。
+ *
+ * ⚠️ 这份夹具现在住在 **./pm-project-fixture.ts**(项目工作台的 spec 也共用它):
+ *    测试文件之间互相 import 会把被 import 的 `test(...)` **再注册一遍**
+ *    ⇒ 共用的夹具必须放在**不是测试文件**的模块里。
  */
 
-const PROJECT_PAGE_PATH = '/pm/project';
-const CURRENT_INFO_URL = '**/api/v1/system/user/current/info';
-const PROJECT_LIST_URL = `**/api/v1${PM_PROJECT_PREFIX}/list**`;
-const PROJECT_CREATE_URL = `**/api/v1${PM_PROJECT_PREFIX}/create**`;
-const PROJECT_UPDATE_URL = `**/api/v1${PM_PROJECT_PREFIX}/update/**`;
-const PROJECT_DELETE_URL = `**/api/v1${PM_PROJECT_PREFIX}/delete**`;
-const USER_LIST_URL = '**/api/v1/system/user/list**';
-/** 详情页:项目详情与成员接口(项目 id 在路径上)+ 三个子列表接口 */
 const PROJECT_DETAIL_URL = `**/api/v1${PM_PROJECT_PREFIX}/detail/1`;
 const PROJECT_MEMBERS_URL = `**/api/v1${PM_PROJECT_PREFIX}/members/1`;
 const MILESTONE_LIST_URL = `**/api/v1${PM_MILESTONE_PREFIX}/list**`;
 const TASK_LIST_URL = `**/api/v1${PM_TASK_PREFIX}/list**`;
 const RISK_LIST_URL = `**/api/v1${PM_RISK_PREFIX}/list**`;
-/** 字典选项接口(状态/优先级/可见性三个下拉与标签共用) */
-const dictDataUrl = (dictType: string) =>
-  `**/api/v1/system/dict/data/info/${dictType}**`;
 
-/**
- * 后端 current/info 下发的 PM 菜单树。
- *
- * 结构:目录 /pm(type=1)→ 项目菜单(type=2)→ 按钮权限节点(type=3)。
- * type=3 节点授予权限但不出现在侧边栏(collectPermissions 收集、buildMenuItems 剔除)。
- */
-const pmCurrentUserResponse = {
-  code: 0,
-  msg: '获取当前用户信息成功',
-  data: {
-    id: 1,
-    username: 'pmuser',
-    name: '项目管理员',
-    status: 0,
-    is_superuser: false,
-    role_ids: [2],
-    roles: [],
-    menus: [
-      {
-        id: 2,
-        parent_id: null,
-        name: '项目管理',
-        type: 1,
-        order: 2,
-        route_path: '/pm',
-        title: '项目管理',
-        status: 0,
-        hidden: false,
-        children: [
-          {
-            id: 3,
-            parent_id: 2,
-            name: '项目列表',
-            type: 2,
-            order: 1,
-            route_path: 'project',
-            title: '项目列表',
-            permission: 'module_pm_project:pm_project:query',
-            status: 0,
-            hidden: false,
-            children: [
-              {
-                id: 30,
-                parent_id: 3,
-                name: '新增项目',
-                type: 3,
-                order: 1,
-                route_path: '',
-                title: '新增项目',
-                permission: 'module_pm_project:pm_project:create',
-                status: 0,
-                hidden: false,
-                children: null,
-              },
-              {
-                id: 31,
-                parent_id: 3,
-                name: '编辑项目',
-                type: 3,
-                order: 2,
-                route_path: '',
-                title: '编辑项目',
-                permission: 'module_pm_project:pm_project:update',
-                status: 0,
-                hidden: false,
-                children: null,
-              },
-              {
-                id: 32,
-                parent_id: 3,
-                name: '删除项目',
-                type: 3,
-                order: 3,
-                route_path: '',
-                title: '删除项目',
-                permission: 'module_pm_project:pm_project:delete',
-                status: 0,
-                hidden: false,
-                children: null,
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  },
-  status_code: 200,
-  success: true,
-};
-
-/** 列表里那一行项目(线上的值 + owner_by 冗余字段,形状对齐 ProjectOut) */
-const projectRow = {
-  id: 1,
-  code: 'AIPM-CORE',
-  name: 'AIPM 核心项目',
-  description: 'v1 交付',
-  owner_id: 1,
-  template_id: null,
-  status_code: 'planning',
-  priority_code: 'P1',
-  start_date: '2026-11-01',
-  due_date: '2026-12-31',
-  visibility_code: 'public',
-  tags: '["财务","合规"]',
-  extra_fields: null,
-  owner_by: { id: 1, name: '张三', username: 'zhangsan' },
-  created_time: '2026-11-01 09:00:00',
-  updated_time: '2026-11-01 09:00:00',
-};
-
-const projectListResponse = {
-  code: 0,
-  msg: '查询成功',
-  data: {
-    items: [projectRow],
-    total: 1,
-    page_no: 1,
-    page_size: 10,
-    has_next: false,
-  },
-  status_code: 200,
-  success: true,
-};
-
-/** 负责人远程搜索的候选(列表页搜索项与表单的下拉共用这个接口) */
-const userListResponse = {
-  code: 0,
-  msg: '查询成功',
-  data: {
-    items: [
-      { id: 1, username: 'zhangsan', name: '张三' },
-      { id: 2, username: 'lisi', name: '李四' },
-    ],
-    total: 2,
-    page_no: 1,
-    page_size: 100,
-    has_next: false,
-  },
-  status_code: 200,
-  success: true,
-};
-
-/** 字典选项的信封(label 给人看,value 是线上码,list_class 决定标签颜色) */
-function dictDataResponse(
-  items: { dict_label: string; dict_value: string; list_class: string }[],
-) {
-  return {
-    code: 0,
-    msg: '查询成功',
-    data: items,
-    status_code: 200,
-    success: true,
-  };
-}
-
-/** 项目状态(后端种子 SQL 的 6 态) */
-const statusDictResponse = dictDataResponse([
-  { dict_label: '规划中', dict_value: 'planning', list_class: 'info' },
-  { dict_label: '进行中', dict_value: 'active', list_class: 'primary' },
-  { dict_label: '挂起', dict_value: 'on_hold', list_class: 'warning' },
-  { dict_label: '已完成', dict_value: 'completed', list_class: 'success' },
-  { dict_label: '已归档', dict_value: 'archived', list_class: 'default' },
-  { dict_label: '已取消', dict_value: 'cancelled', list_class: 'danger' },
-]);
-
-/** 优先级(P0–P3) */
-const priorityDictResponse = dictDataResponse([
-  { dict_label: '紧急', dict_value: 'P0', list_class: 'danger' },
-  { dict_label: '高', dict_value: 'P1', list_class: 'warning' },
-  { dict_label: '中', dict_value: 'P2', list_class: 'info' },
-  { dict_label: '低', dict_value: 'P3', list_class: 'default' },
-]);
-
-/** 可见性(公开/内部/私有) */
-const visibilityDictResponse = dictDataResponse([
-  { dict_label: '公开', dict_value: 'public', list_class: 'success' },
-  { dict_label: '内部', dict_value: 'internal', list_class: 'primary' },
-  { dict_label: '私有', dict_value: 'private', list_class: 'warning' },
-]);
+/* -------------------------------------------------------------------------- */
+/* 详情页用到的其余字典                                                         */
+/* -------------------------------------------------------------------------- */
 
 /** 里程碑状态(五态:upcoming/in_progress/at_risk/done/missed) */
 const milestoneStatusDictResponse = dictDataResponse([
@@ -274,15 +111,6 @@ const projectRoleDictResponse = dictDataResponse([
   { dict_label: '管理者', dict_value: 'manager', list_class: 'warning' },
   { dict_label: '所有者', dict_value: 'owner', list_class: 'danger' },
 ]);
-
-/** 写操作成功后的信封(提示文案由请求层统一弹,这里只让 promise 落地) */
-const okResponse = {
-  code: 0,
-  msg: '操作成功',
-  data: null,
-  status_code: 200,
-  success: true,
-};
 
 /* -------------------------------------------------------------------------- */
 /* 项目详情页的夹具                                                             */
@@ -468,66 +296,6 @@ function activePanel(page: Page) {
   return page.locator(
     '[role="tabpanel"][aria-hidden="false"]:not([data-testid="ai-workspace-panel"] *)',
   );
-}
-
-/**
- * 装好受控页面:登录态 + current/info 菜单树 + 项目列表 + 三个字典 + 用户列表。
- * 返回收集到的列表请求 URL(断言分页参数用,读之前先 expect.poll)。
- */
-async function setupProjectPage(page: Page): Promise<string[]> {
-  const listRequests: string[] = [];
-
-  await page.route(CURRENT_INFO_URL, (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(pmCurrentUserResponse),
-    }),
-  );
-
-  await page.route(PROJECT_LIST_URL, (route) => {
-    listRequests.push(route.request().url());
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(projectListResponse),
-    });
-  });
-
-  await page.route(dictDataUrl('module_pm_project_status'), (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(statusDictResponse),
-    }),
-  );
-  await page.route(dictDataUrl('module_pm_priority'), (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(priorityDictResponse),
-    }),
-  );
-  await page.route(dictDataUrl('module_pm_visibility'), (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(visibilityDictResponse),
-    }),
-  );
-
-  // 负责人下拉(listUsers):列表页搜索项与表单都会来取
-  await page.route(USER_LIST_URL, (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(userListResponse),
-    }),
-  );
-
-  await seedAuthState(page);
-
-  return listRequests;
 }
 
 /**
@@ -945,9 +713,14 @@ test.describe('项目管理列表页', () => {
     await expect(row).toContainText('合规');
 
     // 分页参数用后端约定的 page_no / page_size
+    //
+    // ⚠️ **第一次请求取 100 条**（共享数据集一次取满；后端 page_size 上限就是 100）
+    //    ⇒ 表格的分页是**本地**切片，不再问后端要第 2 页。
+    // ⚠️ 断言写成 `page_size=100`（不是 `page_size=10`）——
+    //    `'page_size=100'.includes('page_size=10')` 是**真** ⇒ 写 `page_size=10` 是假阳性。
     await expect.poll(() => listRequests.length).toBeGreaterThan(0);
     expect(listRequests[0]).toContain('page_no=1');
-    expect(listRequests[0]).toContain('page_size=10');
+    expect(listRequests[0]).toContain('page_size=100');
   });
 
   test('新增项目提交的是后端的线上码,不是中文标签', async ({ page }) => {
