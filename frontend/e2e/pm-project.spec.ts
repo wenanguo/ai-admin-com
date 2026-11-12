@@ -756,11 +756,15 @@ test.describe('项目详情页', () => {
     expect(requests.milestones[0]).toContain('project_id=1');
   });
 
-  test('子列表超过后端 100 条上限时在对应的 tab 里提示,没超的不提示', async ({
+  test('子列表跟独立列表页一样翻页 ⇒ 超过 100 条也能翻到,不再截断', async ({
     page,
   }) => {
-    // 里程碑:后端一共 250 个,只回了最新的 100 个 ⇒ 被截断了
-    // 任务与风险都在上限内 ⇒ 不该有提示
+    /*
+      ⚠️ 以前详情页的子列表是「一次拉 100 条 + 截断提示」。
+      现在详情页用的是**与独立列表页同一个组件** ⇒ **翻页**
+      ⇒ 超过 100 条也能翻到 ⇒ 那个「上限不静默」的提示不再需要。
+    */
+    // 里程碑:后端一共 250 个（每页 10 条 ⇒ 25 页）
     const requests = await setupProjectDetailPage(page, {
       milestones: truncatedMilestoneRows,
       tasks: [taskRow],
@@ -774,25 +778,22 @@ test.describe('项目详情页', () => {
       page.getByText('AIPM 核心项目'),
     );
 
-    // 里程碑 tab:上限**不静默** —— 提示说清一共多少、加载了多少、其余没显示
+    // 里程碑 tab：**有分页器**，且总数摆出来 ⇒ 能翻到第 25 页
     await page.getByRole('tab', { name: '里程碑' }).click();
     const milestonePanel = activePanel(page);
-    const alert = milestonePanel.locator('.ant-alert');
-    await expect(alert).toHaveCount(1);
-    await expect(alert).toContainText('250 个里程碑');
-    await expect(alert).toContainText('只加载了最新的 100 个');
-    await expect(alert).toContainText('其余 150 个未显示');
-    // 提示是 **tab 级**的(不是页面顶上的一条全局提示)
-    // ⚠️ 计数只算**主内容区**里的：AI 工作台的侧栏里也有自己的 Alert
-    await expect(mainContent(page).locator('.ant-alert')).toHaveCount(1);
+    await expect(milestonePanel.locator('.ant-pagination')).toBeVisible();
+    await expect(milestonePanel).toContainText('总共 250 条');
 
-    // 任务 tab:条数没超 ⇒ 不提示
+    // ⚠️ **不再有截断提示**（能翻页就不存在「只加载了一部分」这回事）
+    await expect(milestonePanel.locator('.ant-alert')).toHaveCount(0);
+
+    // 任务 tab：同样有分页器
     await page.getByRole('tab', { name: '任务' }).click();
-    await expect(activePanel(page).locator('.ant-alert')).toHaveCount(0);
+    await expect(activePanel(page).locator('.ant-pagination')).toBeVisible();
 
-    // 风险 tab:同样没超 ⇒ 不提示
+    // 风险 tab：同样有分页器
     await page.getByRole('tab', { name: '风险' }).click();
-    await expect(activePanel(page).locator('.ant-alert')).toHaveCount(0);
+    await expect(activePanel(page).locator('.ant-pagination')).toBeVisible();
 
     await expect.poll(() => requests.milestones.length).toBeGreaterThan(0);
   });
@@ -1275,18 +1276,12 @@ test.describe('项目清单的「与 AI 讨论」图标', () => {
  * - 共享定义加一列 ⇒ 两边同时变 ⇒ 这条**不用改**照样绿；
  * - 有人又给详情页**手抄**一份列定义 ⇒ 两边对不上 ⇒ 这条红。
  *
- * ⚠️ 允许的差异只有两类（都写在这儿，别默默多出别的）：
- * - **列表页专属**：「与 AI 讨论」「操作」（编辑/删除）—— 详情页是只读总览；
- * - **在详情页里冗余**：「所属项目」（就是当前这个项目）。
+ * ⚠️ 两边的列**必须完全一样**（一列不多一列不少）——
+ *    详情页就是**同一个列表组件**，只是多带一个「限定当前项目」的过滤。
  */
 test.describe('详情页与独立列表页的列一致', () => {
   /** 项目详情页的路径（与上面那条用例同一个） */
   const DETAIL_PAGE_PATH = '/pm/project/1';
-
-  /** 只属于列表页的列（详情页是只读总览，不该有） */
-  const LIST_ONLY_COLUMNS = ['与 AI 讨论', '操作'];
-  /** 在详情页里冗余的列（就是当前这个项目） */
-  const REDUNDANT_IN_DETAIL = ['所属项目'];
 
   /**
    * 当前可见表格的表头文字。
@@ -1307,9 +1302,7 @@ test.describe('详情页与独立列表页的列一致', () => {
     });
   }
 
-  test('任务：详情页的列 == 独立任务页的列（去掉列表页专属与冗余的）', async ({
-    page,
-  }) => {
+  test('任务：详情页的列 == 独立任务页的列（完全一样）', async ({ page }) => {
     await setupProjectDetailPage(page, {
       tasks: [
         {
@@ -1346,14 +1339,9 @@ test.describe('详情页与独立列表页的列一致', () => {
     await expect(page.locator('.ant-table-thead')).toBeVisible();
     const detail = await columnTitles(page);
 
-    const expected = standalone.filter(
-      (title) =>
-        !LIST_ONLY_COLUMNS.includes(title) &&
-        !REDUNDANT_IN_DETAIL.includes(title),
-    );
-    expect(detail).toEqual(expected);
-    // 顺带确认详情页确实少了那几列（别让「都为空」蒙混过关）
+    // ⚠️ **完全一样**（一列不多一列不少）
+    expect(detail).toEqual(standalone);
+    // 顺带确认两边都不是空的（别让「都为空」蒙混过关）
     expect(detail.length).toBeGreaterThan(5);
-    expect(standalone.length).toBeGreaterThan(detail.length);
   });
 });

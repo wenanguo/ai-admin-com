@@ -1,5 +1,5 @@
 import { CommentOutlined } from '@ant-design/icons';
-import { Link, useAccess, useModel } from '@umijs/max';
+import { Link, useAccess, useModel, useSearchParams } from '@umijs/max';
 import {
   Alert,
   Avatar,
@@ -139,8 +139,16 @@ function TaskCard({
  */
 const TaskBoard: React.FC = () => {
   const access = useAccess();
+  /*
+    从项目详情页的「任务」页签点「看板」进来时，地址上带着 project_id
+    ⇒ 看板也只看**这个项目**（否则项目限定会在跳转里悄悄丢掉）。
+  */
+  const [searchParams] = useSearchParams();
+  const projectId = searchParams.get('project_id')
+    ? Number(searchParams.get('project_id'))
+    : undefined;
   const { columns, loading, total, truncated, moveTask, reload } =
-    useBoardColumns();
+    useBoardColumns({ projectId });
   /** AI 工作台 ↔ 主工作区的桥 */
   const aiBridge = useModel('ai-bridge');
   /** 侧载的项目/里程碑名字（讨论上下文里要带「所属项目 / 所属里程碑」） */

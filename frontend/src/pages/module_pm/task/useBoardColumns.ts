@@ -133,7 +133,10 @@ function toUpdatePayload(
  * 任务一次拉满(后端 page_size 上限 100),在**户端**按 status_code 分列 ——
  * 六列是产品的划分,不是后端的查询维度。
  */
-export function useBoardColumns(): BoardColumns {
+export function useBoardColumns(options?: {
+  projectId?: number;
+}): BoardColumns {
+  const projectId = options?.projectId;
   const [tasks, setTasks] = useState<TaskOut[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -149,7 +152,11 @@ export function useBoardColumns(): BoardColumns {
 
   useEffect(() => {
     let cancelled = false;
-    listTasks(BOARD_LIST_PARAMS)
+    listTasks({
+      ...BOARD_LIST_PARAMS,
+      // ⚠️ 限定到某个项目（从项目详情页的「任务」页签点「看板」进来时）
+      ...(projectId ? { project_id: projectId } : {}),
+    })
       .then((res) => {
         if (cancelled) return;
         setTasks(res?.data?.items ?? []);
@@ -163,7 +170,7 @@ export function useBoardColumns(): BoardColumns {
     return () => {
       cancelled = true;
     };
-  }, [reloadCount]);
+  }, [reloadCount, projectId]);
 
   const columns = useMemo<BoardColumn[]>(
     () =>

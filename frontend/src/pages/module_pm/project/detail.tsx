@@ -1,8 +1,6 @@
 import { CommentOutlined } from '@ant-design/icons';
-import { ProTable } from '@ant-design/pro-components';
 import { useModel, useParams } from '@umijs/max';
 import {
-  Alert,
   Button,
   Card,
   Descriptions,
@@ -17,98 +15,17 @@ import {
 import type React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { buildAiProjectContext } from '@/components/pm/aiContext';
-import { milestoneColumns } from '@/components/pm/columns/milestone';
-import { riskColumns } from '@/components/pm/columns/risk';
-import { taskColumns } from '@/components/pm/columns/task';
 import { DictTag } from '@/components/pm/DictTag';
 import { renderJsonTags } from '@/components/pm/JsonTags';
-import { useMilestoneNames } from '@/components/pm/useProjectNames';
-import { listMilestones, type MilestoneOut } from '@/services/api/pm/milestone';
+import { MilestoneListView } from '@/components/pm/milestone/MilestoneListView';
+import { RiskListView } from '@/components/pm/risk/RiskListView';
+import { TaskListView } from '@/components/pm/task/TaskListView';
 import {
   getProjectDetail,
   getProjectMembers,
   type ProjectMemberOut,
   type ProjectOut,
 } from '@/services/api/pm/project';
-import { listRisks, type RiskOut } from '@/services/api/pm/risk';
-import { listTasks, type TaskOut } from '@/services/api/pm/task';
-import { isSuccess } from '@/services/response';
-import type { ApiResponse, PageResult } from '@/services/types';
-
-/**
- * 子列表的分页参数:详情页各 tab 是只读总览,一次拉满后端 page_size
- * 上限(100,同 CRUD_PAGINATION)就不再翻页了
- */
-const SUB_LIST_PARAMS = { page_no: 1, page_size: 100 } as const;
-
-/**
- * 子列表的 request：**一次只拉一页**（后端上限 100），并记住总数/加载数。
- *
- * ## 为什么不用 ProTable 的分页
- *
- * 详情页的三个页签是**只读总览**：不翻页。
- * ⇒ 这里把 page_no / page_size 写死，ProTable 传什么都不理。
- *
- * ## 为什么还要记住总数
- *
- * 「上限**不静默**」：后端一共 250 个而这里只加载了 100 个 ⇒
- * 得把两个数都摆出来（见 `truncationAlert`）。
- */
-function useSubListRequest<T>(
-  api: (params: {
-    page_no: number;
-    page_size: number;
-    project_id: number;
-  }) => Promise<ApiResponse<PageResult<T>>>,
-  projectId: number,
-): {
-  request: () => Promise<{ data: T[]; total: number; success: boolean }>;
-  stats: { total: number; loaded: number };
-} {
-  const [stats, setStats] = useState({ total: 0, loaded: 0 });
-
-  const request = useCallback(async () => {
-    const res = await api({ project_id: projectId, ...SUB_LIST_PARAMS });
-    const items = res?.data?.items ?? [];
-    const total = res?.data?.total ?? 0;
-    setStats({ total, loaded: items.length });
-    return { data: items, total, success: isSuccess(res) };
-  }, [api, projectId]);
-
-  return { request, stats };
-}
-
-/**
- * 子列表被截断时的提示(与任务页/风险页同款:type=info,标题说上限,
- * 描述说实情)。
- *
- * 详情页各 tab 一次只拉后端上限(100 条)那一页,**不翻页** ⇒ 超过 100 条的
- * 子列表只显示最新的一段。上限**不静默**:总数与实际加载数都摆出来。
- *
- * ⚠️ 只在**真的被截断**的那个 tab 里提示 —— 项目多、里程碑少是常态,
- * 把没被截断的也写进去等于夸大。截断是**按子列表**判定的,所以提示是
- * tab 级的:切到哪个 tab 就看哪个 tab 的提示,而不是页面顶上的一条。
- */
-function truncationAlert(
-  label: string,
-  total: number,
-  loaded: number,
-): React.ReactElement | null {
-  if (total <= loaded) return null;
-  return (
-    <Alert
-      type="info"
-      showIcon
-      title={`${label}列表后端一次最多给 100 个`}
-      description={`后端一共 ${total} 个${label},这里只加载了最新的 ${loaded} 个,其余 ${total - loaded} 个未显示。`}
-    />
-  );
-}
-
-/** 日期区间的展示:两个日期中缀一个 ~,空值用占位符 */
-function dateRange(start?: string | null, end?: string | null): string {
-  return `${start ?? '-'} ~ ${end ?? '-'}`;
-}
 
 /** 概览 tab:详情接口的字段原样呈现(字典字段用 DictTag 转成中文标签) */
 function OverviewTab({ project }: { project: ProjectOut }) {
@@ -179,92 +96,10 @@ function OverviewTab({ project }: { project: ProjectOut }) {
   return <Descriptions column={{ xs: 1, md: 2, xl: 3 }} items={items} />;
 }
 
-/**
- * 里程碑 tab:卡片列表。progress 是后端缓存的派生字段(0-100)——
- * 里程碑响应里没有任何任务数据,前端无从重算,只负责展示
- */
-function MilestonesTab({ projectId }: { projectId: number }) {
-  const { request, stats } = useSubListRequest(listMilestones, projectId);
-
-  return (
-    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      {truncationAlert('里程碑', stats.total, stats.loaded)}
-      <ProTable<MilestoneOut>
-        rowKey="id"
-        // ⚠️ 列定义与**独立里程碑页共用同一份** ⇒ 改一个字段只改一处
-        columns={milestoneColumns({ hideProject: true })}
-        request={request}
-        // 详情页的子列表是**只读总览**:不搜、不翻页
-        search={false}
-        pagination={false}
-        // 列多的时候横向滚动,不要把表头挤成竖排的一列字
-        scroll={{ x: 'max-content' }}
-        // 错误提示由请求层统一弹,这里只需阻止 ProTable 把 rejection 重新抛出
-        onRequestError={() => {}}
-      />
-    </Space>
-  );
-}
-
-/**
- * 任务 tab:与**独立任务页共用同一份列定义**。
- *
- * ⚠️ 「所属项目」列在这里是冗余的（就是这个项目）⇒ `hideProject`。
- * ⚠️ 「所属里程碑」要显示名字 ⇒ 需要里程碑的**侧载**（响应里没有 milestone_by）。
- */
-function TasksTab({ projectId }: { projectId: number }) {
-  const { request, stats } = useSubListRequest(listTasks, projectId);
-  const { milestoneNames } = useMilestoneNames();
-
-  return (
-    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      {truncationAlert('任务', stats.total, stats.loaded)}
-      <ProTable<TaskOut>
-        rowKey="id"
-        // ⚠️ 列定义与**独立任务页共用同一份** ⇒ 改一个字段只改一处
-        columns={taskColumns({ milestoneNames, hideProject: true })}
-        request={request}
-        // 详情页的子列表是**只读总览**:不搜、不翻页
-        search={false}
-        pagination={false}
-        // 列多的时候横向滚动,不要把表头挤成竖排的一列字
-        scroll={{ x: 'max-content' }}
-        // 错误提示由请求层统一弹,这里只需阻止 ProTable 把 rejection 重新抛出
-        onRequestError={() => {}}
-      />
-    </Space>
-  );
-}
-
-/**
- * 风险 tab:与**独立风险页共用同一份列定义**。
- *
- * ⚠️ 「所属项目」列在这里是冗余的（就是这个项目）⇒ `hideProject`。
- */
-function RisksTab({ projectId }: { projectId: number }) {
-  const { request, stats } = useSubListRequest(listRisks, projectId);
-
-  return (
-    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      {truncationAlert('风险', stats.total, stats.loaded)}
-      <ProTable<RiskOut>
-        rowKey="id"
-        // ⚠️ 列定义与**独立风险页共用同一份** ⇒ 改一个字段只改一处
-        columns={riskColumns({ hideProject: true })}
-        request={request}
-        // 详情页的子列表是**只读总览**:不搜、不翻页
-        search={false}
-        pagination={false}
-        // 列多的时候横向滚动,不要把表头挤成竖排的一列字
-        scroll={{ x: 'max-content' }}
-        // 错误提示由请求层统一弹,这里只需阻止 ProTable 把 rejection 重新抛出
-        onRequestError={() => {}}
-      />
-    </Space>
-  );
-}
-
-/**
+/** 日期区间的展示:两个日期中缀一个 ~,空值用占位符 */
+function dateRange(start?: string | null, end?: string | null): string {
+  return `${start ?? '-'} ~ ${end ?? '-'}`;
+} /**
  * 成员 tab:members 是路径参数接口(/pm_project/pm_project/members/{id}),返回的
  * 是数组(带 user_info 冗余)不是分页信封;姓名直接读 user_info
  */
@@ -440,17 +275,17 @@ const ProjectDetail: React.FC = () => {
           {
             key: 'milestones',
             label: '里程碑',
-            children: <MilestonesTab projectId={projectId} />,
+            children: <MilestoneListView projectId={projectId} />,
           },
           {
             key: 'tasks',
             label: '任务',
-            children: <TasksTab projectId={projectId} />,
+            children: <TaskListView projectId={projectId} />,
           },
           {
             key: 'risks',
             label: '风险',
-            children: <RisksTab projectId={projectId} />,
+            children: <RiskListView projectId={projectId} />,
           },
           {
             key: 'members',

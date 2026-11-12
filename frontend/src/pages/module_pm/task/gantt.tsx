@@ -1,5 +1,5 @@
 import { PlusOutlined } from '@ant-design/icons';
-import { Link, useAccess, useModel } from '@umijs/max';
+import { Link, useAccess, useModel, useSearchParams } from '@umijs/max';
 import { Alert, App, Button, Empty, Segmented, Select, Spin } from 'antd';
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -15,6 +15,7 @@ import {
   NARROW_TIMELINE_WIDTH,
 } from '@/components/pm/gantt/layout';
 import type { TaskDateChange } from '@/components/pm/gantt/payload';
+import TaskModalForm from '@/components/pm/task/TaskModalForm';
 import { useAiTaskUpdate } from '@/components/pm/useAiTaskUpdate';
 import { useDictOptions } from '@/components/pm/useDictOptions';
 import type {
@@ -23,7 +24,6 @@ import type {
   TaskUpdateParams,
 } from '@/services/api/pm/task';
 import { createTask, deleteTasks, updateTask } from '@/services/api/pm/task';
-import TaskModalForm from './ModalForm';
 import { rowIdToTaskId, useGanttTasks } from './useGanttTasks';
 
 /**
@@ -123,7 +123,16 @@ const TaskGantt: React.FC = () => {
   const aiBridge = useModel('ai-bridge');
 
   /** 按项目筛选(后端列表接口的 project_id 参数) */
-  const [projectId, setProjectId] = useState<number | undefined>(undefined);
+  /*
+    从项目详情页的「任务」页签点「甘特」进来时，地址上带着 project_id
+    ⇒ 甘特也只看**这个项目**（否则项目限定会在跳转里悄悄丢掉）。
+  */
+  const [searchParams] = useSearchParams();
+  const [projectId, setProjectId] = useState<number | undefined>(
+    searchParams.get('project_id')
+      ? Number(searchParams.get('project_id'))
+      : undefined,
+  );
   /** 缩放级别(「日/周/月」 */
   const [zoom, setZoom] = useState<ZoomLevel>('week');
 

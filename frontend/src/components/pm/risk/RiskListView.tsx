@@ -1,0 +1,305 @@
+import { PlusOutlined } from '@ant-design/icons';
+import { type ProColumns, ProTable } from '@ant-design/pro-components';
+import { useAccess } from '@umijs/max';
+import { Alert, Button } from 'antd';
+import type React from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  CRUD_PAGINATION,
+  useCrudColumns,
+  useCrudTable,
+} from '@/components/CrudTable';
+import { riskColumns } from '@/components/pm/columns/risk';
+import RiskModalForm from '@/components/pm/risk/RiskModalForm';
+import { toValueEnum } from '@/components/pm/toValueEnum';
+import { useDictOptions } from '@/components/pm/useDictOptions';
+import { listProjects } from '@/services/api/pm/project';
+import type { RiskCreateParams, RiskOut } from '@/services/api/pm/risk';
+import {
+  createRisk,
+  deleteRisks,
+  listRisks,
+  updateRisk,
+} from '@/services/api/pm/risk';
+import { toProTableRequest } from '@/services/paginate';
+import RiskHeatmap, { type RiskCell } from './RiskHeatmap';
+
+const requestRisks = toProTableRequest<RiskOut>(listRisks);
+
+/** 侧载一次的上限:后端 page_size 最大 100(同 CRUD_PAGINATION) */
+const SIDE_LOAD_PARAMS = {
+  page_no: 1,
+  page_size: 100,
+  // 排序显式写出来:后端的默认排序也是 id 倒序,但写出来才能保证
+  // 「侧载到的是最新的 100 条」是构造出来的,而不是后端改了默认值才知道
+  order_by: JSON.stringify([{ id: 'desc' }]),
+} as const;
+
+/** 项目下拉选项(label 给人看,value 是项目 id) */
+interface ProjectOption {
+  label: string;
+  value: number;
+}
+
+/**
+ * 项目名的**侧载**。
+ *
+ * 风险的响应里没有 project_by,只有 project_id —— 名字要自己把项目表
+ * 拉下来做映射。三条纪律(与任务页的侧载同款):
+ * 1. **一次**:挂载时拉一次,不是在每行的 render 里发请求
+ * 2. **查表**:列的 render 只做 Map 查表
+ * 3. **降级**:拉失败只是没有名字(失败提示由请求层统一弹,这里不抛)
+ *
+ * ⚠️ 侧载有上限(后端 page_size 最大 100):这里取的是**最新的** 100 个项目,
+ * 更早的项目在表格里只能看到 id(见 lookupProjectName)。上限**不静默**:
+ * 后端的总数会带出去,页面据此给提示。
+ */
+function useProjectSideLoad(): {
+  names: Map<number, string>;
+  options: ProjectOption[];
+  /** 后端一共多少个项目 */
+  total: number;
+} {
+  const [options, setOptions] = useState<ProjectOption[]>([]);
+  const [total, setTotal] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    listProjects(SIDE_LOAD_PARAMS)
+      .then((res) => {
+        if (cancelled) return;
+        const next: ProjectOption[] = [];
+        for (const project of res?.data?.items ?? []) {
+          if (project.id == null) continue;
+          next.push({
+            label: project.name ?? String(project.id),
+            value: project.id,
+          });
+        }
+        setOptions(next);
+        setTotal(res?.data?.total ?? 0);
+      })
+      .catch(() => {
+        // 失败提示由请求层统一弹,这里降级成空选项
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const names = useMemo(
+    () => new Map(options.map((option) => [option.value, option.label])),
+    [options],
+  );
+
+  return { names, options, total };
+}
+
+/**
+ * **风险列表界面**（独立页与项目详情页共用）。
+ *
+ * ## 为什么抽出来
+ *
+ * 风险列表出现在两个地方：
+ * - 菜单里的「风险」（`/pm/risk`）—— **全部项目**的风险
+ * - 项目详情页的「风险」页签 —— **当前这个项目**的风险
+ *
+ * ⚠️ 以前这是**两个各写各的页面**：一个是「热力图 + 表格」，另一个是一个 List
+ * ⇒ 用户看着像两个不同的页面，而且改一个字段要改两个地方。
+ *
+ * ⇒ 现在是**同一个组件**，唯一的差别是 `projectId`。
+ *
+ * ## 这个界面长什么样
+ *
+ * 上面是 5×5 **热力图**(横轴影响、纵轴概率,每格是落在该格的风险数,
+ * 颜色取该格最高分对应的等级),下面是风险列表;点格子过滤列表。
+ *
+ * 一个特别之处:**等级是派生量** —— 后端只存 score(= 概率 × 影响),
+ * 没有 level 字段,等级一律用共享件 riskLevel 现算(不在这页另写一套阈值)。
+ */
+
+/** 风险列表界面的 props。 */
+export interface RiskListViewProps {
+  /**
+   * 限定到某个项目。
+   *
+   * ⚠️ **不传 = 全部项目**（菜单里的入口）；传了 = 只看这个项目
+   *    （项目详情页的「风险」页签）。
+   */
+  projectId?: number;
+}
+
+/**
+ * 风险列表界面。
+ *
+ * 骨架逻辑(操作列 / 分页)在共享脚手架 @/components/CrudTable 里,
+ * 这里只留「列定义 + service 调用 + 声明式 JSX」,与其它模块同范式。
+ *
+ * @param props `projectId` 限定项目；不传就是全部
+ */
+export function RiskListView({
+  projectId,
+}: RiskListViewProps): React.ReactElement {
+  const access = useAccess();
+
+  const crud = useCrudTable<RiskOut, RiskCreateParams>({
+    create: createRisk,
+    update: updateRisk,
+    remove: deleteRisks,
+  });
+
+  // 侧载的项目名字:一次拉,列里查表映射成名字
+  const {
+    names: projectNames,
+    options: projectOptions,
+    total: projectTotal,
+  } = useProjectSideLoad();
+
+  // 字典选项:表格标签(DictTag 内部也用它)与搜索下拉(valueEnum)共用,
+  // useDictOptions 有模块级缓存,这里两个类型各只发一次请求
+  const { options: categoryOptions } = useDictOptions(
+    'module_pm_risk_category',
+  );
+  const { options: statusOptions } = useDictOptions('module_pm_risk_status');
+
+  const categoryValueEnum = useMemo(
+    () => toValueEnum(categoryOptions),
+    [categoryOptions],
+  );
+  const statusValueEnum = useMemo(
+    () => toValueEnum(statusOptions),
+    [statusOptions],
+  );
+
+  /**
+   * 热力图要统计**全部**风险(不是当前页),所以单独拉一次。
+   *
+   * 后端 page_size 上限 100 ⇒ 超过 100 条时热力图只统计前 100 条,
+   * 页面会给一条提示(与任务看板页的处理同款)。
+   */
+  const [allRisks, setAllRisks] = useState<RiskOut[]>([]);
+  const [allTotal, setAllTotal] = useState(0);
+
+  const loadAllRisks = useCallback(() => {
+    listRisks({
+      ...SIDE_LOAD_PARAMS,
+      // ⚠️ 限定项目时，热力图也只统计**这个项目**的风险
+      ...(projectId ? { project_id: projectId } : {}),
+    })
+      .then((res) => {
+        setAllRisks(res?.data?.items ?? []);
+        setAllTotal(res?.data?.total ?? 0);
+      })
+      .catch(() => {
+        // 失败提示由请求层统一弹,这里降级成空热力图
+      });
+  }, []);
+
+  useEffect(() => {
+    loadAllRisks();
+  }, [loadAllRisks]);
+
+  /** 热力图上选中的格子(null = 不过滤) */
+  const [cell, setCell] = useState<RiskCell | null>(null);
+  const handleSelectCell = useCallback((next: RiskCell | null) => {
+    setCell(next);
+  }, []);
+
+  const columns: ProColumns<RiskOut>[] = [
+    ...riskColumns({
+      statusValueEnum,
+      categoryValueEnum,
+      projectOptions,
+      projectNames,
+    }),
+  ];
+
+  const operationColumns = useCrudColumns<RiskOut>({
+    onEdit: crud.openEdit,
+    onDelete: async (record) => {
+      await crud.handleDelete(record);
+      // 热力图统计的是全量风险,删除后要重新拉一次
+      loadAllRisks();
+    },
+    editPerm: 'module_pm_risk:pm_risk:update',
+    deletePerm: 'module_pm_risk:pm_risk:delete',
+    entityName: '风险',
+  });
+
+  return (
+    <div className="flex flex-col gap-4">
+      <RiskHeatmap
+        risks={allRisks}
+        selected={cell}
+        onSelect={handleSelectCell}
+      />
+      {allTotal > allRisks.length ? (
+        <Alert
+          type="info"
+          showIcon
+          title={`热力图最多统计前 ${allRisks.length} 条风险(共 ${allTotal} 条),其余请到下面的列表里翻页查看`}
+        />
+      ) : null}
+      {/*
+        项目名的侧载也有上限:后端 page_size 最大 100,这里取的是最新的 100 个
+        项目 ⇒ 更早的项目在表格里显示为 id。这条上限不静默,给一条提示。
+        标题说**上限**(后端一次最多给 100 个),描述说**实际拿到几个** ——
+        两句分开说才不互相打架。
+      */}
+      {projectTotal > projectOptions.length ? (
+        <Alert
+          type="info"
+          showIcon
+          title="项目名来自侧载列表,后端一次最多给 100 个"
+          description={`后端一共 ${projectTotal} 个项目,侧载只拿到最新的 ${projectOptions.length} 个,更早的项目在表格里显示为项目 id。`}
+        />
+      ) : null}
+      <ProTable<RiskOut>
+        headerTitle="风险登记册"
+        rowKey="id"
+        actionRef={crud.actionRef}
+        columns={[...columns, ...operationColumns]}
+        request={requestRisks}
+        // 热力图选中的格子 = 列表的过滤条件(后端就是按这两个字段等值过滤的)
+        // ⚠️ **项目限定**：项目详情页的页签传了 projectId ⇒ 只看这个项目；
+        //    菜单里的入口不传 ⇒ 全部项目。
+        params={{
+          ...(cell
+            ? { probability: cell.probability, impact: cell.impact }
+            : {}),
+          ...(projectId ? { project_id: projectId } : {}),
+        }}
+        search={{ labelWidth: 80 }}
+        pagination={CRUD_PAGINATION}
+        // 列多的时候横向滚动,不要把表头挤成竖排的一列字
+        // (内容区被右侧的 AI 工作台占掉一块,列宽被压到最小就会这样)
+        scroll={{ x: 'max-content' }}
+        // 错误提示由请求层统一弹,这里只需阻止 ProTable 把 rejection 重新抛出
+        // (ProComponents v3 在 onRequestError 未定义时会 rethrow,产生未捕获的 promise rejection)
+        onRequestError={() => {}}
+        toolBarRender={() => [
+          <Button
+            key="create"
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={!access.hasPermission('module_pm_risk:pm_risk:create')}
+            onClick={crud.openCreate}
+          >
+            新增
+          </Button>,
+        ]}
+      />
+      <RiskModalForm
+        open={crud.modalOpen}
+        record={crud.editing}
+        onOpenChange={crud.closeModal}
+        onSubmit={async (values) => {
+          const ok = await crud.handleSubmit(values);
+          // 热力图统计的是全量风险,写操作之后要重新拉一次
+          if (ok) loadAllRisks();
+          return ok;
+        }}
+      />
+    </div>
+  );
+}
