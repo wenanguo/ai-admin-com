@@ -7,13 +7,15 @@
  * **`/ai-api/`**（见 `config/proxy.ts`）⇒ 真正请求的是 `/ai-api/api/agent/...`。
  * 下面两个 pattern 都挂上（代理路径 + 绝对地址），两种形态都能拦住。
  *
- * ## 五件事
+ * ## 六件事
  *
  * 1. 页面能打开（头部、当前模型、三个页签都在）；
  * 2. 「规则与 AI 的分工」的两栏都在，ETA 那条按实情写（**没有**关键路径、没有 P50/P90）；
  * 3. 点意图卡片**只把问句填进输入框**（**不发出任何请求**）；
  * 4. **不画配额条**（服务端没有配额端点 ⇒ 没有数据源就不画假数字）；
- * 5. **不承诺后端还没有的能力**（没接通的意图卡片上必须有「暂未开放」的标记）。
+ * 5. **不承诺后端还没有的能力**（没接通的意图卡片上必须有「暂未开放」的标记）；
+ * 6. **整页不滚**（宽版内容盒 `scrollHeight <= clientHeight`）——
+ *    浮层宿主那边有同样的守卫，路由页这边也得有。
  */
 import type { Page, Route } from '@playwright/test';
 import { expect, test } from '@playwright/test';
@@ -184,6 +186,27 @@ test.describe('AI 工作台全宽页', () => {
     await expect(
       page.getByRole('tab', { name: '规则与 AI 的分工' }),
     ).toBeVisible();
+  });
+
+  /**
+   * ⚠️ **整页不滚**（路由页宿主）。
+   *
+   * 意图卡片墙已经折进输入框上方的抽屉（不在文档流里了）⇒ 宽版内容盒
+   * 不该比视口高 ⇒ 不该出滚动条。
+   *
+   * ⚠️ **浮层宿主那边有同样的守卫**（`ai-workspace.spec.ts`）——
+   *    路由页这边也得有：那才是「发送按钮被顶到屏幕外」真正会发生的宿主。
+   */
+  test('整页不滚:宽版内容盒不溢出', async ({ page }) => {
+    await openWorkspacePage(page);
+
+    const wideBox = await page
+      .locator('[data-testid="ai-workspace-page"]')
+      .evaluate((el) => ({
+        clientH: el.clientHeight,
+        scrollH: el.scrollHeight,
+      }));
+    expect(wideBox.scrollH).toBeLessThanOrEqual(wideBox.clientH);
   });
 
   test('规则与 AI 的分工两栏都在,ETA 按实情写', async ({ page }) => {

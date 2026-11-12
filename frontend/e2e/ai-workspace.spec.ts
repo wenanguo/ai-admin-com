@@ -644,9 +644,10 @@ test.describe('最大化（宽版浮层）', () => {
   /**
    * 最大化之后是**两栏**：左边对话，右边 360px 的侧栏。
    *
-   * ⚠️ 「一屏铺满」（页面自己不滚 + 对话区吃满）那条断言**不在这里** ——
-   *    意图卡片墙还在页面底部（下一个任务才折进输入框上方的抽屉），
-   *    对话区的高度也还是固定的（后面的任务才吃满）⇒ 本任务只钉两栏骨架。
+   * ⚠️ 「页面自己不滚」那条断言**就在这个用例的末尾**（意图卡片墙已经
+   *    折进输入框上方的抽屉 ⇒ 不在文档流里了 ⇒ 宽版内容盒不溢出）。
+   *    但**「对话区吃满这一行」还没做**（对话区还是固定高度 `min(560px,55vh)`）
+   *    ⇒ 「一屏铺满」的另一半是下一个任务的事。
    *
    * ⚠️ 但**「对话区还在、而且点得到」是这里必须钉的**：
    *    意图卡片墙在文档流里时，它曾经把对话区盖住 ⇒ 发送按钮点不到。
@@ -764,12 +765,23 @@ test.describe('最大化（宽版浮层）', () => {
     await expect(toggle).toBeVisible();
     // 按钮上写着「意图卡片（10）」（10 = 意图的类数）
     await expect(toggle).toContainText('意图卡片（10）');
+
+    // ⚠️ **抽屉不占文档流** ⇒ 打开它不能把页面撑高。
+    //    记下**关闭时**宽版内容盒的 `scrollHeight`，开抽屉后要一模一样。
+    const wideBox = page.locator('[data-testid="ai-workspace-page"]');
+    const closedScrollH = await wideBox.evaluate((el) => el.scrollHeight);
+
     await toggle.click();
     const drawer = page.locator('[data-role="ai-intent-drawer"]');
     await expect(drawer).toBeVisible();
     await expect(
       drawer.locator('[data-role="intent-card"]').first(),
     ).toBeVisible();
+
+    // ⚠️ 打开抽屉 ⇒ 高度**一点没变**（抽屉是绝对定位的浮层）
+    await expect
+      .poll(() => wideBox.evaluate((el) => el.scrollHeight))
+      .toBe(closedScrollH);
 
     // ③ 抽屉**浮在输入框上方**（不挡输入框）
     const composer = page.locator('[data-role="ai-wide-chat-column"] textarea');

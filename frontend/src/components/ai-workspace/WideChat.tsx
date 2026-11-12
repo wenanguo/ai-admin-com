@@ -15,6 +15,7 @@
  *
  * 气泡与命令卡片直接复用侧栏那套（`MessageBubble`），不重画一遍。
  */
+import { DownOutlined, UpOutlined } from '@ant-design/icons';
 import { Alert, Button, theme } from 'antd';
 import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -239,10 +240,12 @@ export function WideChat({
             ⚠️ `maxHeight: min(320px, 100%)`：既限死 320px，
                又不会超过消息区自己的高度（窗口很矮时也不会被裁掉一半）。
           */}
-          {intentSlot && intentOpen ? (
+          {intentSlot !== undefined && intentOpen ? (
             <div
               ref={drawerRef}
               data-role="ai-intent-drawer"
+              role="dialog"
+              aria-label="意图卡片"
               style={{
                 position: 'absolute',
                 left: 0,
@@ -339,7 +342,7 @@ export function WideChat({
             ⚠️ 它在**输入区的上面** ⇒ 抽屉从它上方长出来，
                底边正好停在它上面 ⇒ 抽屉既不挡按钮，也不挡输入框。
           */}
-          {intentSlot ? (
+          {intentSlot !== undefined ? (
             <div
               style={{
                 display: 'flex',
@@ -353,14 +356,7 @@ export function WideChat({
                 size="small"
                 data-role="ai-intent-toggle"
                 aria-expanded={intentOpen}
-                /*
-                  ⚠️ **箭头用字符，不用图标组件**：
-                     新引入一个 `@ant-design/icons` 的图标会让 vitest 浏览器模式
-                     的依赖预打包（optimizeDeps）在运行中少导出那个图标
-                     ⇒ 整个 `app.test.tsx` 挂在 "does not provide an export named ..."。
-                     字符箭头没有这个坑。
-                */
-                icon={intentOpen ? '▴' : '▾'}
+                icon={intentOpen ? <UpOutlined /> : <DownOutlined />}
                 onClick={() => {
                   setIntentOpen((open) => !open);
                 }}
@@ -369,14 +365,6 @@ export function WideChat({
                   ? '意图卡片'
                   : `意图卡片（${intentCount}）`}
               </Button>
-              <span
-                style={{
-                  fontSize: token.fontSizeSM,
-                  color: token.colorTextTertiary,
-                }}
-              >
-                点一下只填输入框，不自动发送
-              </span>
             </div>
           ) : null}
           <Composer

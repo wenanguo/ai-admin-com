@@ -69,6 +69,9 @@ vi.mock('@ant-design/icons', () => ({
   SmileOutlined: () => null,
   // 「当前讨论」条上的「结束讨论」按钮。
   CloseCircleOutlined: () => null,
+  // 宽版对话里「意图卡片」按钮的展开/收起箭头。
+  DownOutlined: () => null,
+  UpOutlined: () => null,
 }));
 
 vi.mock('./requestErrorConfig', () => ({
