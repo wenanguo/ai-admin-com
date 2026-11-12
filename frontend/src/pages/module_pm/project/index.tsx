@@ -1,7 +1,7 @@
-import { CommentOutlined, PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, RobotOutlined } from '@ant-design/icons';
 import { type ProColumns, ProTable } from '@ant-design/pro-components';
 import { Link, useAccess, useModel } from '@umijs/max';
-import { Button } from 'antd';
+import { Button, Space } from 'antd';
 import type React from 'react';
 import { useCallback, useMemo } from 'react';
 import {
@@ -96,40 +96,45 @@ const ProjectManagement: React.FC = () => {
   );
 
   const columns: ProColumns<ProjectOut>[] = [
-    {
-      title: '与 AI 讨论',
-      dataIndex: 'discuss',
-      width: 110,
-      search: false,
-      render: (_, record) => (
-        <Button
-          type="link"
-          size="small"
-          icon={<CommentOutlined />}
-          onClick={() => {
-            discussProject(record);
-          }}
-        >
-          讨论
-        </Button>
-      ),
-    },
     { title: 'ID', dataIndex: 'id', width: 80, search: false },
     {
       title: '项目名称',
       dataIndex: 'name',
-      width: 200,
+      width: 220,
       fieldProps: { placeholder: '支持模糊查询' },
       /*
         项目名称是**详情页的入口**:点它进 /pm/project/:id。
         菜单里没有「项目详情」这一项(后端种子只种了列表),详情页从列表进。
+
+        ⚠️ 「与 AI 讨论」以前是**单独一列** ⇒ 表格白白多占一列宽度。
+        ⇒ 改成**项目名称后面的一个小机器人图标**,功能完全一样。
       */
-      render: (_, record) =>
-        record.id == null ? (
-          (record.name ?? '-')
-        ) : (
-          <Link to={`/pm/project/${record.id}`}>{record.name ?? '-'}</Link>
-        ),
+      render: (_, record) => (
+        <Space size={4}>
+          {record.id == null ? (
+            (record.name ?? '-')
+          ) : (
+            <Link to={`/pm/project/${record.id}`}>{record.name ?? '-'}</Link>
+          )}
+          {/*
+            小机器人：与 AI 讨论。
+
+            ⚠️ 它是项目名称链接的**兄弟**（不是嵌在链接里）⇒
+            点它不会顺手进详情页。
+          */}
+          <Button
+            type="link"
+            size="small"
+            data-role="ai-discuss-button"
+            icon={<RobotOutlined />}
+            title="与 AI 讨论"
+            aria-label="与 AI 讨论"
+            onClick={() => {
+              discussProject(record);
+            }}
+          />
+        </Space>
+      ),
     },
     {
       title: '项目编码',

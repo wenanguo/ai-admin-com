@@ -1151,3 +1151,57 @@ test.describe('项目管理列表页', () => {
     expect(deleteRequests[0].body).toEqual([1]);
   });
 });
+
+/**
+ * 「与 AI 讨论」：项目名称后面的**小机器人图标**。
+ *
+ * ⚠️ 以前它是**单独一列**（标题「与 AI 讨论」）⇒ 表格白白多占一列宽度。
+ * ⇒ 现在是项目名称列里的一个图标按钮，功能完全一样。
+ *
+ * 这条用例钉三件事：
+ * - 表格里**没有**「与 AI 讨论」这一列了；
+ * - 每行的项目名后面都有那个图标；
+ * - 点它 ⇒ 打开 AI 工作台 + 带上这个项目的上下文，**且不进详情页**。
+ */
+test.describe('项目清单的「与 AI 讨论」图标', () => {
+  test('没有单独的一列;点项目名后的机器人 ⇒ 打开工作台并带上上下文', async ({
+    page,
+  }) => {
+    await setupProjectPage(page);
+    // AI 服务：会话与事件流都要有,否则浮层打不开
+    await page.route('**/ai-api/api/agent/**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: '成功',
+          data: { conversationId: 'c-project', title: '新对话' },
+        }),
+      }),
+    );
+
+    await gotoModulePage(page, PROJECT_PAGE_PATH, tableRows(page).first());
+
+    // ⚠️ 表头里**没有**「与 AI 讨论」这一列了
+    const headers = await page.locator('.ant-table-thead th').allTextContents();
+    expect(headers.map((h) => h.trim())).not.toContain('与 AI 讨论');
+
+    // 每行都有一个机器人图标
+    const buttons = page.locator('[data-role="ai-discuss-button"]');
+    await expect(buttons).toHaveCount(
+      await page.locator('.ant-table-tbody tr.ant-table-row').count(),
+    );
+
+    // 点第一个 ⇒ 浮层打开 + 上下文是这个项目
+    await buttons.first().click();
+    await expect(page.getByTestId('ai-workspace-panel')).toBeVisible();
+
+    const bar = page.locator('[data-testid="ai-context-bar"]');
+    await expect(bar).toBeVisible();
+    await expect(bar).toContainText('正在讨论项目');
+
+    // ⚠️ **没有**进详情页（图标是名字链接的兄弟,不是嵌在链接里）
+    expect(page.url()).not.toContain('/pm/project/');
+  });
+});

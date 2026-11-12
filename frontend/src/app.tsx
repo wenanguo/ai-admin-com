@@ -29,12 +29,14 @@ import {
   buildMenuItems,
   collectPaths,
   collectPermissions,
+  collectRedirects,
   collectRouteIcons,
   HOME_MENU_PATH,
 } from '@/menu/adapter';
 import type { UserOut } from '@/services/api/system/types';
 import { API_BASE_URL } from '@/services/http';
 import defaultSettings from '../config/defaultSettings';
+import routes from '../config/routes';
 import { errorConfig } from './requestErrorConfig';
 
 // Initialize dayjs plugins globally
@@ -195,10 +197,14 @@ export const layout: RunTimeLayoutConfig = ({
     menuDataRender: (menuData) => {
       const knownPaths = collectPaths(menuData);
       const routeIcons = collectRouteIcons(menuData);
+      const redirects = collectRedirects(
+        routes as unknown as Parameters<typeof collectRedirects>[0],
+      );
       const items = buildMenuItems(
         initialState?.menus ?? [],
         knownPaths,
         routeIcons,
+        redirects,
       );
       /*
        * 前端自有的「首页」放在**最上面**。

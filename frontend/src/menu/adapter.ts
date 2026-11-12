@@ -38,7 +38,15 @@ export interface MenuItem {
 export interface RouteLike {
   path?: string;
   icon?: ReactNode;
+  redirect?: string;
   children?: RouteLike[];
+  /**
+   * umi 路由配置里的子路由字段。
+   *
+   * ⚠️ `config/routes.ts` 用的是 `routes`，ProLayout 的 menuData 用的是
+   *    `children` ⇒ 两个都得认。
+   */
+  routes?: RouteLike[];
 }
 
 /**
@@ -134,11 +142,64 @@ export function collectPaths(items: RouteLike[]): Set<string> {
 }
 
 /**
- * 收集前端路由派生的菜单图标:path → ReactNode。
+ * 收集前端路由里的**重定向**：`path → 重定向目标`。
  *
- * 图标由前端路由表决定:后端下发的 icon 是 Remix Icon 类名(ri:xxx),
- * ProLayout 认不出来,会当作文本直接显示。
+ * ## 为什么需要
+ *
+ * 后端菜单用的路径与前端的「正式地址」**不总是同一个**：
+ * 后端下发的 `route_path` 是插件的源码路径（`/module_pm_project/pm_task`），
+ * 前端把它重定向到 `/pm/task`。
+ *
+ * ⚠️ 菜单项若链接到**重定向的起点**：
+ * - 点完以后地址会变成 `/pm/task` ⇒ ProLayout 用 pathname 匹配菜单路径
+ *   ⇒ **匹配不上** ⇒ 菜单组自动折叠、菜单项也不高亮（看着像刷新了一遍）。
+ *
+ * ⇒ 菜单项应该链接到**最终会去的那个地址**（`/pm/task`）：
+ * 链接与落地地址一致 ⇒ 匹配得上 ⇒ 菜单组保持展开、菜单项保持高亮。
  */
+export function collectRedirects(items: RouteLike[]): Map<string, string> {
+  const redirects = new Map<string, string>();
+  const walk = (list: RouteLike[]) => {
+    for (const item of list ?? []) {
+      if (item.path && item.redirect) {
+        redirects.set(item.path, item.redirect);
+      }
+      // `routes` 是 umi 配置里的写法，`children` 是 ProLayout menuData 的写法
+      if (item.children?.length) walk(item.children);
+      if (item.routes?.length) walk(item.routes);
+    }
+  };
+  walk(items);
+  return redirects;
+}
+
+/**
+ * 解析菜单项该链到哪：优先用重定向的**最终目标**。
+ *
+ * ⚠️ 只改**叶子菜单**（type=2）：目录(type=1)的路径与它的第一个子菜单
+ *    **共用一条**（后端就是这么种的）⇒ 目录也改就会变成两个一样的 key。
+ *
+ * @param path 后端下发的路径
+ * @param redirects 前端路由的重定向表
+ * @param knownPaths 前端已注册的路径
+ * @returns 该链到的路径
+ */
+function resolveMenuLink(
+  path: string,
+  redirects: Map<string, string> | undefined,
+  knownPaths: Set<string>,
+): string {
+  let target = path;
+  // 重定向可能链式（A → B → C）⇒ 最多解几层
+  for (let i = 0; i < 5; i += 1) {
+    const next = redirects?.get(target);
+    if (!next || next === target || !knownPaths.has(next)) {
+      break;
+    }
+    target = next;
+  }
+  return target;
+}
 export function collectRouteIcons(items: RouteLike[]): Map<string, ReactNode> {
   const icons = new Map<string, ReactNode>();
 
@@ -201,6 +262,7 @@ export function buildMenuItems(
   backendMenus: BackendMenu[],
   knownPaths: Set<string>,
   routeIcons?: Map<string, ReactNode>,
+  redirects?: Map<string, string>,
 ): MenuItem[] {
   const build = (nodes: InternalMenu[]): MenuItem[] => {
     const result: MenuItem[] = [];
@@ -235,10 +297,21 @@ export function buildMenuItems(
       }
       if (!path && !isDirectory) continue;
 
+      /*
+       * 链接到**最终会去的那个地址**（见 `resolveMenuLink` 的注释）。
+       *
+       * ⚠️ 只改叶子菜单：目录(type=1)与它的第一个子菜单共用一条路径
+       *    ⇒ 目录也改就会出现两个一样的 key。
+       */
+      const link = isDirectory
+        ? path
+        : resolveMenuLink(path, redirects, knownPaths);
+
       result.push({
-        path,
+        path: link,
         name: item.title || item.name || item.route_name || path,
-        icon: routeIcons?.get(path),
+        // 图标先按后端那条路径找，找不到再按最终地址找
+        icon: routeIcons?.get(path) ?? routeIcons?.get(link),
         locale: false,
         ...(children.length > 0 ? { children } : {}),
       });

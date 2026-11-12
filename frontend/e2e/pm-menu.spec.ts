@@ -261,20 +261,26 @@ test.describe('PM 侧边栏菜单(后端真实路径)', () => {
     await expect(menu.getByText('里程碑', { exact: true })).toBeVisible();
 
     /*
-      菜单项的链接是**后端的路径**,不是前端自己编的 /pm/project ——
-      前端只是给这些路径注册了重定向路由。
-    */
-    await expect(
-      menu.locator('a[href="/module_pm_project/pm_project"]'),
-    ).toContainText('项目清单');
-    await expect(
-      menu.locator('a[href="/module_pm_project/pm_task"]'),
-    ).toContainText('任务');
-    await expect(
-      menu.locator('a[href="/module_pm_project/pm_milestone"]'),
-    ).toContainText('里程碑');
+      菜单项的链接指向**最终会去的那个地址**（/pm/project），不是后端下发的
+      源码路径（/module_pm_project/pm_project）。
 
-    // 点「项目清单」:后端路径先被命中,重定向落到真实页面 /pm/project
+      ⚠️ 为什么：ProLayout 用**当前地址**去匹配菜单项 ⇒ 若菜单链接的是
+      「重定向的起点」，点完地址变了就匹配不上 ⇒ **菜单组自动折叠、
+      菜单项也不高亮**（看着像刷新了一遍）。
+      ⇒ 链接与落地地址一致 ⇒ 匹配得上 ⇒ 组保持展开、项保持高亮。
+
+      ⚠️ 后端下发的路径**仍然注册了路由**（重定向到同一个页面），
+      所以直接访问 /module_pm_project/pm_task 也照样能进。
+    */
+    await expect(menu.locator('a[href="/pm/project"]')).toContainText(
+      '项目清单',
+    );
+    await expect(menu.locator('a[href="/pm/task"]')).toContainText('任务');
+    await expect(menu.locator('a[href="/pm/milestone"]')).toContainText(
+      '里程碑',
+    );
+
+    // 点「项目清单」⇒ 直接落到真实页面 /pm/project
     await menu.getByText('项目清单', { exact: true }).click();
     await expect.poll(() => currentPath(page)).toBe('/pm/project');
     await expect(
@@ -284,9 +290,7 @@ test.describe('PM 侧边栏菜单(后端真实路径)', () => {
     // 「pm_risk」目录里的「风险」→ /pm/risk
     await menu.getByText('pm_risk', { exact: true }).click();
     await expect(menu.getByText('风险', { exact: true })).toBeVisible();
-    await expect(
-      menu.locator('a[href="/module_pm_risk/pm_risk"]'),
-    ).toContainText('风险');
+    await expect(menu.locator('a[href="/pm/risk"]')).toContainText('风险');
 
     await menu.getByText('风险', { exact: true }).click();
     await expect.poll(() => currentPath(page)).toBe('/pm/risk');
