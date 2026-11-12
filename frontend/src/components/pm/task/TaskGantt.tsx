@@ -400,11 +400,8 @@ export function TaskGantt({ projectId }: TaskGanttProps): React.ReactElement {
       className="flex flex-col gap-4"
       style={{ height: pageHeight }}
     >
-      {/* 页面标题:与看板页同款 */}
-      <div className="flex items-center gap-3">
-        <span className="text-base font-semibold">任务甘特</span>
-      </div>
-
+      {/* ⚠️ **这里不写标题**:工作台顶上有「任务管理」+ Segmented ⇒ 再写一个
+          「任务甘特」就是同一个地方两个标题。 */}
       {truncated ? (
         <Alert
           type="info"
@@ -413,7 +410,6 @@ export function TaskGantt({ projectId }: TaskGanttProps): React.ReactElement {
           description={`甘特一次只拉一页(后端 page_size 上限 100),本次取回 ${fetched} 条、其中 ${mapping.taskCount} 条画进了甘特;其余任务请到「任务管理」页查看。`}
         />
       ) : null}
-
       {mapping.excludedCount > 0 ? (
         <Alert
           type="info"
@@ -426,7 +422,6 @@ export function TaskGantt({ projectId }: TaskGanttProps): React.ReactElement {
           }
         />
       ) : null}
-
       {narrow ? (
         <Alert
           type="warning"
@@ -435,7 +430,6 @@ export function TaskGantt({ projectId }: TaskGanttProps): React.ReactElement {
           description="往左拖分隔条可以把左表格收窄、时间轴放宽;拖到最左时时间轴能占满整宽。"
         />
       ) : null}
-
       {/* 工具栏:项目筛选 + 缩放 + 今天/适应 + 新增 */}
       <div className="flex flex-wrap items-center gap-3">
         <Select
@@ -484,7 +478,6 @@ export function TaskGantt({ projectId }: TaskGanttProps): React.ReactElement {
           新增任务
         </Button>
       </div>
-
       {loading ? (
         <div className="flex justify-center py-10">
           <Spin />
@@ -516,7 +509,6 @@ export function TaskGantt({ projectId }: TaskGanttProps): React.ReactElement {
           />
         </div>
       )}
-
       {/* 新增/编辑弹窗:与列表页共用同一个表单(后端契约只有一份) */}
       <TaskModalForm
         open={crud.modalOpen}

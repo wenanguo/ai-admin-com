@@ -252,7 +252,8 @@ export function TaskListView({
         />
       ) : null}
       <ProTable<TaskOut>
-        headerTitle="任务管理"
+        // ⚠️ **不要 headerTitle**:标题在工作台上(`TaskWorkspace` 的那行)
+        //    ⇒ 这里再写一遍就是同一个标题出现两次
         rowKey="id"
         actionRef={crud.actionRef}
         columns={[...columns, ...operationColumns]}

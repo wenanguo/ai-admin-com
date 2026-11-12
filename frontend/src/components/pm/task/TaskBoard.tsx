@@ -235,11 +235,8 @@ export function TaskBoard({ projectId }: TaskBoardProps): React.ReactElement {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* 页面标题:与其它 PM 页(ProTable 的 headerTitle / 详情页的 Card title)对齐 */}
-      <div className="flex items-center gap-3">
-        <span className="text-base font-semibold">任务看板</span>
-        {/* 看板没有菜单入口,列表页才是入口 —— 这里给一条回去的路 */}
-      </div>
+      {/* ⚠️ **这里不写标题**:工作台顶上有「任务管理」+ Segmented ⇒ 再写一个
+          「任务看板」就是同一个地方两个标题。 */}
       {truncated ? (
         <Alert
           type="info"
