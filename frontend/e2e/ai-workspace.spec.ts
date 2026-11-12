@@ -922,10 +922,14 @@ test.describe('最大化（宽版浮层）', () => {
 
     // ① 模型名**看得见**（「当前模型：xxx」还得在）
     await expect(modelRow).toContainText('当前模型：');
-    await expect(modelRow).toContainText('e2e-model');
+    // ⚠️ 用 `toBeVisible()`（不是 `toContainText`）⇒ 模型名被 `visibility:hidden`
+    //    之类藏起来时这条会红。
+    await expect(modelRow.getByText('e2e-model')).toBeVisible();
 
-    // ② 那句开发者解释**不在页面上**
-    await expect(page.getByText('没有数据源就不画配额条')).toHaveCount(0);
+    // ② 那句开发者解释**不在模型条这一行上**
+    // ⚠️ 限定在 `modelRow` 里查（不是整页）⇒ tooltip 打开后同一个字符串会进 DOM
+    //    （在页脚 portal 里）⇒ 整页查询会依赖断言顺序，把两条断言**解耦**。
+    await expect(modelRow.getByText('没有数据源就不画配额条')).toHaveCount(0);
 
     // ③ hover ⓘ ⇒ tooltip 里能看到原句
     const note = page.locator('[data-role="ai-model-note"]');
@@ -934,8 +938,31 @@ test.describe('最大化（宽版浮层）', () => {
     await expect(page.getByRole('tooltip')).toContainText(
       '没有数据源就不画配额条',
     );
+    // ⚠️ tooltip 渲染在 body 的 portal 里，**不在**模型条那一行
+    //    ⇒ 断言② 在 tooltip 打开时**依然**成立 ⇒ 两条断言互不依赖顺序。
+    await expect(modelRow.getByText('没有数据源就不画配额条')).toHaveCount(0);
 
-    // ④ 整条只有**一行**高（原来那句解释把这条撑成了两行）
+    // ⑥ tooltip 弹在ⓘ的**下方**（`placement="bottom"`）
+    //    ⇒ 不盖住正上方的「AI 工作台」标题。
+    const tipBox = await page.getByRole('tooltip').boundingBox();
+    const noteBox = await note.boundingBox();
+    if (!tipBox || !noteBox) {
+      throw new Error('tooltip 或 ⓘ 没有布局盒');
+    }
+    expect(tipBox.y).toBeGreaterThan(noteBox.y + noteBox.height - 1);
+
+    // ④ 键盘**聚焦** ⓘ ⇒ tooltip 也打开
+    //    （触发器是原生 `<button>` ⇒ 天生可聚焦；`trigger` 含 `focus` ⇒ 聚焦即开）
+    //    ⚠️ 先等 hover 触发的那个 tooltip **收掉**（`toHaveCount(0)`）——
+    //    否则这条会蹭上一个还没消失的 tooltip 而假绿。
+    await modelRow.getByText('当前模型：').hover();
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
+    await note.focus();
+    await expect(page.getByRole('tooltip')).toContainText(
+      '没有数据源就不画配额条',
+    );
+
+    // ⑤ 整条只有**一行**高（原来那句解释把这条撑成了两行）
     const box = await modelRow.boundingBox();
     if (!box) {
       throw new Error('模型条没有布局盒');

@@ -284,20 +284,39 @@ export function AiWorkspaceWide({
         <Tooltip
           title="（服务端没有模型列表端点，也没有配额端点 ⇒ 只显示当前模型；没有数据源就不画配额条）"
           mouseEnterDelay={0.1}
+          // ⚠️ 触发器是**可聚焦**的（原生 <button>）⇒ tooltip 必须同时响应
+          //    `focus` ⇒ 否则键盘用户聚焦到它却打不开 tooltip，也听不到那句解释。
+          trigger={['hover', 'focus']}
+          // ⚠️ 模型条就在「AI 工作台」标题**正下方** ⇒ 默认的 `top` 会盖住标题。
+          placement="bottom"
         >
-          <span
+          {/*
+            ⚠️ 触发器是**原生 `<button>`**（不是裸 `<span>`）：
+               - `<span>` 没有 `tabIndex` ⇒ 键盘用户永远聚焦不到它，
+                 `aria-label` 承诺的却是个**操作不了**的控件；
+               - 原生 `<button>` 天生可聚焦 ⇒ 键盘可达（Tab 能到），
+                 `trigger` 含 `focus` ⇒ 聚焦时 tooltip 自动打开。
+               - ⚠️ Biome 的 `a11y/noNoninteractiveTabindex` 不许给
+                 非交互元素加 `tabIndex`，`a11y/useSemanticElements` 又要求
+                 扮演 button 角色时用真 `<button>` ⇒ 这里用原生按钮。
+          */}
+          <button
+            type="button"
             data-role="ai-model-note"
-            role="img"
             aria-label="为什么只显示当前模型"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
+              padding: 0,
+              border: 'none',
+              background: 'transparent',
+              lineHeight: 1,
               cursor: 'help',
               color: token.colorTextTertiary,
             }}
           >
             <InfoCircleOutlined />
-          </span>
+          </button>
         </Tooltip>
       </div>
 
