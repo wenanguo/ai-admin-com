@@ -157,11 +157,22 @@ test.describe('登录与登录态', () => {
     expect(loginRequests[0].body).toContain('username=admin');
     expect(loginRequests[0].body).toContain('captcha_key=e2e-captcha-key');
 
-    // 登录后落到用户管理页(后端菜单里当前唯一注册了前端路由的页面)
-    await expect(page).toHaveURL(/\/system\/user/);
+    // 登录后落到**默认首页**（`/` 重定向到 `/welcome`）
+    await expect(page).toHaveURL(/\/welcome/);
+    await expect(page.getByText('欢迎使用 AiAdmin')).toBeVisible();
+
+    // --- 从侧边栏进「用户管理」 ---
     // ⚠️ 菜单**默认是收缩的** ⇒ 菜单项的文字看不见 ⇒ 先展开
     await expandSider(page);
-    await expect(page.locator('.ant-menu').getByText('用户管理')).toBeVisible();
+    // ⚠️ 「系统管理」是**目录**：默认首页(`/welcome`)不匹配任何菜单项
+    //    ⇒ 目录不会自动展开 ⇒ 得先点开它,「用户管理」才露出来
+    const systemMenu = page.locator('.ant-menu').getByText('系统管理');
+    await expect(systemMenu).toBeVisible();
+    await systemMenu.click();
+    const userMenu = page.locator('.ant-menu').getByText('用户管理');
+    await expect(userMenu).toBeVisible();
+    await userMenu.click();
+    await expect(page).toHaveURL(/\/system\/user/);
     await expect(page.locator('.ant-table-tbody tr.ant-table-row')).toHaveCount(
       1,
     );

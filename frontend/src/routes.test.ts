@@ -53,6 +53,30 @@ describe('路由重定向约定', () => {
   });
 
   /**
+   * 根路径 ⇒ **默认首页**。
+   *
+   * ## 为什么要有这条
+   *
+   * 登录页登录成功后 `window.location.href = '/'`
+   * （`getSafeRedirectUrl` 在没有 `redirect` 参数时返回 `'/'`）
+   * ⇒ **这一行就是「登录后落在哪」的唯一决定点**。
+   *
+   * ⚠️ 别改回 `/dashboard/analysis`：那个演示看板的数据接口不存在，
+   *    打开就是「Not Found」⇒ 登录后第一屏报错。
+   */
+  it('/ 重定向到默认首页(/welcome)', () => {
+    const root = (routes as RouteNode[]).find((r) => r.path === '/');
+
+    expect(root?.redirect).toBe('/welcome');
+    // ⚠️ 父路由带 redirect **又有**子路由 ⇒ 无限重定向（React error #185）
+    expect(root?.routes ?? []).toHaveLength(0);
+    // 默认首页本身得存在
+    expect((routes as RouteNode[]).some((r) => r.path === '/welcome')).toBe(
+      true,
+    );
+  });
+
+  /**
    * 后端 AI 菜单的源码路径 → 前端 AI 工作台全屏页。
    *
    * 后端 `platform_menu` 里「AI智能助手」的 route_path 是 'chat'

@@ -536,11 +536,23 @@ export default [
     component: './chatbot',
   },
   {
-    // 登录后的落地页。后端菜单里目前只有「系统管理 > 用户管理」,
-    // 指向 antd-pro 的演示看板会让登录后第一屏就报 404
+    /*
+     * 根路径 ⇒ **默认首页**（`/welcome`，Pro 模板的「欢迎使用 AiAdmin」页）。
+     *
+     * ⚠️ 这里是「登录后落在哪」的**唯一决定点**：
+     *    登录页登录成功后 `window.location.href = '/'`
+     *    （`getSafeRedirectUrl` 在没有 `redirect` 参数时返回 `'/'`）
+     *    ⇒ 改这一行就改了登录后的落点。
+     *
+     * ⚠️ **父路由带 `redirect` 又有子路由会无限重定向**（React error #185）
+     *    ⇒ 这里必须**没有** `routes`。
+     *
+     * ⚠️ 为什么不是 `/dashboard/analysis`：那个演示看板的数据接口不存在，
+     *    打开就是「Not Found」⇒ 登录后第一屏报错。
+     */
     path: '/',
     layout: false,
-    redirect: '/system/user',
+    redirect: '/welcome',
   },
   {
     component: './exception/404',

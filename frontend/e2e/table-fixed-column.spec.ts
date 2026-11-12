@@ -97,16 +97,22 @@ test.describe('列表的操作列固定在右边', () => {
       };
     });
     expect(scrolled, '表格应该能横向滚动（视口故意弄窄了）').not.toBeNull();
-    expect(scrolled!.scrollWidth).toBeGreaterThan(scrolled!.clientWidth);
-    expect(scrolled!.scrollLeft).toBeGreaterThan(0);
+    if (!scrolled) {
+      throw new Error('表格应该能横向滚动（视口故意弄窄了）');
+    }
+    expect(scrolled.scrollWidth).toBeGreaterThan(scrolled.clientWidth);
+    expect(scrolled.scrollLeft).toBeGreaterThan(0);
 
     // 操作列的**位置**：滚动前后都一样 ⇒ 它是钉住的
     const actionBox = await actionHeader(page).boundingBox();
     expect(actionBox).not.toBeNull();
+    if (!actionBox) {
+      throw new Error('操作列没有布局盒');
+    }
 
     // 钉在**右边缘**：右边不超出视口
     const viewportWidth = page.viewportSize()?.width ?? 0;
-    expect(actionBox!.x + actionBox!.width).toBeLessThanOrEqual(
+    expect(actionBox.x + actionBox.width).toBeLessThanOrEqual(
       viewportWidth + 1,
     );
 
@@ -125,7 +131,11 @@ test.describe('列表的操作列固定在右边', () => {
     await page.waitForTimeout(300);
 
     const actionBoxAfter = await actionHeader(page).boundingBox();
-    expect(actionBoxAfter!.x).toBeCloseTo(actionBox!.x, 0);
+    expect(actionBoxAfter).not.toBeNull();
+    if (!actionBoxAfter) {
+      throw new Error('操作列没有布局盒');
+    }
+    expect(actionBoxAfter.x).toBeCloseTo(actionBox.x, 0);
   });
 
   test('操作列是最后一列(它钉在最右边)', async ({ page }) => {
