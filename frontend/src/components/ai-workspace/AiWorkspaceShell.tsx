@@ -65,10 +65,10 @@ const FALLBACK_HEADER_HEIGHT = 56;
  *    但内边距挪过来有另一个好处：**宽版浮层正好盖住内容区**，
  *    不会在浮层四周留下一圈空白（见 `contentBox` 的测量）。
  *
- * ⚠️ 值：上下 16px、左右 24px。以前是 `32px 40px` ⇒ 离菜单与顶栏太远，
+ * ⚠️ 值：上下 16px、左右 18px。以前是 `32px 40px` ⇒ 离菜单与顶栏太远，
  *    表格右边几列要多滚一段才看得到。
  */
-const CONTENT_PADDING = '16px 24px';
+const CONTENT_PADDING = '16px 18px';
 
 /**
  * 量一下 ProLayout 的顶栏有多高（px）。
