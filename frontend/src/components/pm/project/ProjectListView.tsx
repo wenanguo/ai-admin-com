@@ -266,11 +266,8 @@ export function ProjectListView(): React.ReactElement {
         />
       ) : null}
       <ProTable<ProjectOut>
-        /*
-          ⚠️ `headerTitle` 暂时保留：工作台（`ProjectWorkspace`）还没建，
-            删了这个标题项目页就没有标题了 ⇒ 工作台上线后再删（同一个标题只出现一次）。
-        */
-        headerTitle="项目管理"
+        // ⚠️ **不要 headerTitle**：标题在工作台上（`ProjectWorkspace` 的那行）
+        //    ⇒ 这里再写一遍就是同一个标题出现两次
         rowKey="id"
         actionRef={crud.actionRef}
         columns={[...columns, ...operationColumns]}
