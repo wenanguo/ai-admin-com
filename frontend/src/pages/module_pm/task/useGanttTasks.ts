@@ -7,10 +7,11 @@ import {
 } from '@/components/pm/gantt/mapping';
 import type { TaskDateChange } from '@/components/pm/gantt/payload';
 import { buildDateUpdatePayload } from '@/components/pm/gantt/payload';
+import { useTaskDataset } from '@/components/pm/task/useTaskDataset';
 import type { ProjectOption } from '@/components/pm/useProjectNames';
 import { useProjectNames } from '@/components/pm/useProjectNames';
 import type { TaskOut } from '@/services/api/pm/task';
-import { listTasks, updateTask } from '@/services/api/pm/task';
+import { updateTask } from '@/services/api/pm/task';
 
 /**
  * 甘特视图的数据层:取数 → 映射成甘特行 → 拖拽写回。
@@ -106,38 +107,12 @@ export function useGanttTasks(options?: {
     loading: optionsLoading,
   } = useProjectNames();
 
-  const [tasks, setTasks] = useState<TaskOut[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  /** reload 的计数器:变了就重新取数(用计数器而不是函数当依赖,省一个 ref) */
-  const [reloadCount, setReloadCount] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    listTasks({
-      ...GANTT_LIST_PARAMS,
-      ...(projectId ? { project_id: projectId } : {}),
-    })
-      .then((res) => {
-        if (cancelled) return;
-        setTasks(res?.data?.items ?? []);
-        setTotal(res?.data?.total ?? 0);
-      })
-      .catch(() => {
-        // 失败提示由请求层统一弹,这里降级成空甘特
-        if (!cancelled) {
-          setTasks([]);
-          setTotal(0);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, reloadCount]);
+  /*
+    **共享任务数据集** —— 与列表、看板是同一份数据。
+    ⇒ 切到甘特不用重新取数；甘特拖完日期，列表里立刻能看到变化。
+  */
+  const { tasks, total, loading, truncated, reload, patchTask } =
+    useTaskDataset({ projectId });
 
   // 行数据:任务 + 侧载名字 ⇒ 甘特行
   const mapping = useMemo(
@@ -171,29 +146,20 @@ export function useGanttTasks(options?: {
         // mapping 的 useMemo 依赖 projectNames/milestoneNames ⇒ 侧载的名字晚到时
         // mapping 会重算。若 state 里还是旧日期,重算出来的行就是旧日期 ⇒
         // 甘特图重新 parse() 时会把用户刚拖完的条「弹回」旧位置(而服务端已是新值)。
-        setTasks((previous) =>
-          previous.map((item) =>
-            item.id === taskId
-              ? {
-                  ...item,
-                  start_date: change.start_date,
-                  due_date: change.end_date,
-                }
-              : item,
-          ),
-        );
+        // ⚠️ 改的是**共享数据** ⇒ 列表视图里那一行的日期也立刻变了
+        patchTask({
+          ...task,
+          start_date: change.start_date,
+          due_date: change.end_date,
+        });
         return true;
       } catch {
         // 错误提示由请求层统一弹,这里只管成败(调用方拿 false 去回滚甘特行)
         return false;
       }
     },
-    [tasks],
+    [patchTask, tasks],
   );
-
-  const reload = useCallback(() => {
-    setReloadCount((count) => count + 1);
-  }, []);
 
   return {
     mapping,
@@ -203,7 +169,7 @@ export function useGanttTasks(options?: {
     // ⚠️ 不能拿 mapping.taskCount 比:taskCount 只数**画进了甘特**的任务,
     // 「缺日期被排除」的任务会让它偏小 ⇒ 明明一页取完了却报截断,
     // 与 excludedCount 的提示互相矛盾。
-    truncated: total > tasks.length,
+    truncated,
     applyDateChange,
     reload,
     tasks,

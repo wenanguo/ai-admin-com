@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, renderHook } from 'vitest-browser-react';
 import type { TaskOut } from '@/services/api/pm/task';
@@ -77,9 +78,30 @@ function makeTask(overrides: Partial<TaskOut> = {}): TaskOut {
   };
 }
 
+/**
+ * react-query 的 Provider —— 数据集 hook 靠它拿缓存。
+ *
+ * ⚠️ Wrapper 必须在**模块级**定义：定义在函数里的话，每次调用都是一个
+ *    「新的组件类型」⇒ React 把整棵子树重建 ⇒ state 全丢。
+ *    缓存隔离靠**换掉 queryClient 本身**（beforeEach 里重新 new 一个）。
+ */
+let queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false, gcTime: 0 } },
+});
+
+function Wrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
+
 describe('useGanttTasks 甘特数据', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // 每个用例一个**新的** QueryClient ⇒ 用例之间不共享缓存
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
     mocks.listTasks.mockResolvedValue(envelope(page([makeTask()], 1)));
     mocks.updateTask.mockResolvedValue(envelope(makeTask()));
     // 侧载的项目/里程碑名字(useProjectNames 发的请求)
@@ -97,7 +119,10 @@ describe('useGanttTasks 甘特数据', () => {
 
   describe('取数', () => {
     it('一次拉一页 100 条(后端 page_size 上限就是 100)', async () => {
-      const { result } = await renderHook(() => useGanttTasks());
+      // ⚠️ 现在走**共享数据集**：它会把需要的页补齐(这里只有 1 页)
+      const { result } = await renderHook(() => useGanttTasks(), {
+        wrapper: Wrapper,
+      });
 
       await vi.waitFor(() => {
         expect(result.current.loading).toBe(false);
@@ -107,12 +132,17 @@ describe('useGanttTasks 甘特数据', () => {
       expect(mocks.listTasks).toHaveBeenCalledWith({
         page_no: 1,
         page_size: 100,
+        // ⚠️ 排序写死(不靠后端默认值)⇒ 多这一个参数
+        order_by: JSON.stringify([{ id: 'desc' }]),
       });
     });
 
     it('给了项目 id 时,请求参数带上 project_id(后端按项目筛)', async () => {
-      const { result } = await renderHook(() =>
-        useGanttTasks({ projectId: 7 }),
+      const { result } = await renderHook(
+        () => useGanttTasks({ projectId: 7 }),
+        {
+          wrapper: Wrapper,
+        },
       );
 
       await vi.waitFor(() => {
@@ -123,11 +153,14 @@ describe('useGanttTasks 甘特数据', () => {
         page_no: 1,
         page_size: 100,
         project_id: 7,
+        order_by: JSON.stringify([{ id: 'desc' }]),
       });
     });
 
     it('行来自映射层:分组行用侧载的项目/里程碑名', async () => {
-      const { result } = await renderHook(() => useGanttTasks());
+      const { result } = await renderHook(() => useGanttTasks(), {
+        wrapper: Wrapper,
+      });
 
       await vi.waitFor(() => {
         expect(result.current.mapping.data).toHaveLength(3);
@@ -148,7 +181,9 @@ describe('useGanttTasks 甘特数据', () => {
     it('后端总数大于画出来的任务行数 ⇒ truncated(不静默丢)', async () => {
       mocks.listTasks.mockResolvedValue(envelope(page([makeTask()], 5)));
 
-      const { result } = await renderHook(() => useGanttTasks());
+      const { result } = await renderHook(() => useGanttTasks(), {
+        wrapper: Wrapper,
+      });
 
       await vi.waitFor(() => {
         expect(result.current.total).toBe(5);
@@ -162,7 +197,9 @@ describe('useGanttTasks 甘特数据', () => {
         envelope(page([makeTask({ id: 10 }), makeTask({ id: 11 })], 5)),
       );
 
-      const { result } = await renderHook(() => useGanttTasks());
+      const { result } = await renderHook(() => useGanttTasks(), {
+        wrapper: Wrapper,
+      });
 
       await vi.waitFor(() => {
         expect(result.current.total).toBe(5);
@@ -188,7 +225,9 @@ describe('useGanttTasks 甘特数据', () => {
         ),
       );
 
-      const { result } = await renderHook(() => useGanttTasks());
+      const { result } = await renderHook(() => useGanttTasks(), {
+        wrapper: Wrapper,
+      });
 
       await vi.waitFor(() => {
         expect(result.current.mapping.excludedCount).toBe(1);
@@ -214,7 +253,9 @@ describe('useGanttTasks 甘特数据', () => {
         ),
       );
 
-      const { result } = await renderHook(() => useGanttTasks());
+      const { result } = await renderHook(() => useGanttTasks(), {
+        wrapper: Wrapper,
+      });
 
       await vi.waitFor(() => {
         expect(result.current.mapping.excludedCount).toBe(1);
@@ -225,7 +266,9 @@ describe('useGanttTasks 甘特数据', () => {
     });
 
     it('reload 重新取数', async () => {
-      const { result } = await renderHook(() => useGanttTasks());
+      const { result } = await renderHook(() => useGanttTasks(), {
+        wrapper: Wrapper,
+      });
 
       await vi.waitFor(() => {
         expect(result.current.loading).toBe(false);
@@ -242,7 +285,9 @@ describe('useGanttTasks 甘特数据', () => {
 
   describe('applyDateChange 拖拽写回', () => {
     it('成功:整对象 PUT,只有起止两个日期变了', async () => {
-      const { result } = await renderHook(() => useGanttTasks());
+      const { result } = await renderHook(() => useGanttTasks(), {
+        wrapper: Wrapper,
+      });
 
       await vi.waitFor(() => {
         expect(result.current.mapping.taskCount).toBe(1);
@@ -268,7 +313,9 @@ describe('useGanttTasks 甘特数据', () => {
     });
 
     it('写回成功后:新日期写回本地 state(映射层立刻反映新日期)', async () => {
-      const { result } = await renderHook(() => useGanttTasks());
+      const { result } = await renderHook(() => useGanttTasks(), {
+        wrapper: Wrapper,
+      });
 
       await vi.waitFor(() => {
         expect(result.current.mapping.taskCount).toBe(1);
@@ -300,7 +347,9 @@ describe('useGanttTasks 甘特数据', () => {
         }),
       );
 
-      const { result } = await renderHook(() => useGanttTasks());
+      const { result } = await renderHook(() => useGanttTasks(), {
+        wrapper: Wrapper,
+      });
 
       await vi.waitFor(() => {
         expect(result.current.mapping.taskCount).toBe(1);
@@ -330,7 +379,9 @@ describe('useGanttTasks 甘特数据', () => {
     it('写失败:解析成 false,不抛给调用方(错误提示由请求层统一弹)', async () => {
       mocks.updateTask.mockRejectedValueOnce(new Error('boom'));
 
-      const { result } = await renderHook(() => useGanttTasks());
+      const { result } = await renderHook(() => useGanttTasks(), {
+        wrapper: Wrapper,
+      });
 
       await vi.waitFor(() => {
         expect(result.current.mapping.taskCount).toBe(1);
@@ -345,7 +396,9 @@ describe('useGanttTasks 甘特数据', () => {
     });
 
     it('行 id 不存在 ⇒ false,不发请求', async () => {
-      const { result } = await renderHook(() => useGanttTasks());
+      const { result } = await renderHook(() => useGanttTasks(), {
+        wrapper: Wrapper,
+      });
 
       await vi.waitFor(() => {
         expect(result.current.mapping.taskCount).toBe(1);
@@ -361,7 +414,9 @@ describe('useGanttTasks 甘特数据', () => {
     });
 
     it('分组行 id(不是任务行)⇒ false,不发请求', async () => {
-      const { result } = await renderHook(() => useGanttTasks());
+      const { result } = await renderHook(() => useGanttTasks(), {
+        wrapper: Wrapper,
+      });
 
       await vi.waitFor(() => {
         expect(result.current.mapping.taskCount).toBe(1);
@@ -383,7 +438,9 @@ describe('useGanttTasks 甘特数据', () => {
      * 「里程碑行」这种可写对象 ⇒ 写回去必然 422 ⇒ 不发请求。
      */
     it('里程碑分组行 id ⇒ false,不发请求', async () => {
-      const { result } = await renderHook(() => useGanttTasks());
+      const { result } = await renderHook(() => useGanttTasks(), {
+        wrapper: Wrapper,
+      });
 
       await vi.waitFor(() => {
         expect(result.current.mapping.taskCount).toBe(1);
@@ -399,7 +456,9 @@ describe('useGanttTasks 甘特数据', () => {
     });
 
     it('日期为空 ⇒ false,不发请求(不发注定 422 的请求)', async () => {
-      const { result } = await renderHook(() => useGanttTasks());
+      const { result } = await renderHook(() => useGanttTasks(), {
+        wrapper: Wrapper,
+      });
 
       await vi.waitFor(() => {
         expect(result.current.mapping.taskCount).toBe(1);
@@ -419,7 +478,9 @@ describe('useGanttTasks 甘特数据', () => {
         envelope(page([makeTask({ type_code: undefined })], 1)),
       );
 
-      const { result } = await renderHook(() => useGanttTasks());
+      const { result } = await renderHook(() => useGanttTasks(), {
+        wrapper: Wrapper,
+      });
 
       await vi.waitFor(() => {
         expect(result.current.mapping.taskCount).toBe(1);

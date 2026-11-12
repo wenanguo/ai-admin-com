@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useTaskDataset } from '@/components/pm/task/useTaskDataset';
 import { useDictOptions } from '@/components/pm/useDictOptions';
 import type { TaskOut, TaskUpdateParams } from '@/services/api/pm/task';
-import { listTasks, updateTask } from '@/services/api/pm/task';
+import { updateTask } from '@/services/api/pm/task';
 
 /**
  * 看板的六列与「拖拽改状态」。
@@ -50,8 +51,6 @@ export const BOARD_COLUMNS: { status: BoardStatus; title: string }[] = [
  * (cancelled 不在六列里),所以卡片数可能比 100 还少。
  * 要翻页看全量请去任务列表页。
  */
-const BOARD_LIST_PARAMS = { page_no: 1, page_size: 100 } as const;
-
 /** 看板的一列 */
 export interface BoardColumn {
   /** 列的线上码 */
@@ -137,11 +136,12 @@ export function useBoardColumns(options?: {
   projectId?: number;
 }): BoardColumns {
   const projectId = options?.projectId;
-  const [tasks, setTasks] = useState<TaskOut[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  // 重新取数的计数器(AI 写回成功后要刷新看板)
-  const [reloadCount, setReloadCount] = useState(0);
+  /*
+    **共享任务数据集** —— 与列表是同一份数据。
+    ⇒ 切到看板不用重新取数；看板拖完状态，列表里立刻能看到变化。
+  */
+  const { tasks, total, loading, truncated, reload, patchTask } =
+    useTaskDataset({ projectId });
 
   // 列标题取字典(字典 module_pm_task_status 有七态,看板只用其中六态)
   const { options: statusOptions } = useDictOptions('module_pm_task_status');
@@ -149,28 +149,6 @@ export function useBoardColumns(options?: {
     () => new Map(statusOptions.map((option) => [option.value, option.label])),
     [statusOptions],
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    listTasks({
-      ...BOARD_LIST_PARAMS,
-      // ⚠️ 限定到某个项目（从项目详情页的「任务」页签点「看板」进来时）
-      ...(projectId ? { project_id: projectId } : {}),
-    })
-      .then((res) => {
-        if (cancelled) return;
-        setTasks(res?.data?.items ?? []);
-        setTotal(res?.data?.total ?? 0);
-        setLoading(false);
-      })
-      .catch(() => {
-        // 失败提示由请求层统一弹,这里降级成空看板
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadCount, projectId]);
 
   const columns = useMemo<BoardColumn[]>(
     () =>
@@ -196,39 +174,29 @@ export function useBoardColumns(options?: {
       if (!payload) return;
 
       // 乐观更新:卡片先落到目标列
-      setTasks((prev) =>
-        prev.map((item) =>
-          item.id === taskId ? { ...item, status_code: target } : item,
-        ),
-      );
+      // ⚠️ 改的是**共享数据** ⇒ 列表视图里那一行也立刻变了
+      patchTask({ ...task, status_code: target });
 
       try {
         await updateTask(taskId, payload);
       } catch {
         // 写失败:卡片回到原列(错误提示由请求层统一弹,这里只管位置)。
         // 只在卡片还停在目标列时回滚 —— 期间又被拖走的话,那次拖拽自己负责回滚
-        setTasks((prev) =>
-          prev.map((item) =>
-            item.id === taskId && item.status_code === target
-              ? { ...item, status_code: from }
-              : item,
-          ),
-        );
+        patchTask({ ...task, status_code: from });
       }
     },
-    [tasks],
+    [patchTask, tasks],
   );
 
   return {
     columns,
     loading,
     total,
-    // 后端给的总数超过一页的容量 ⇒ 看板看到的是「前 100 个」
-    truncated: total > BOARD_LIST_PARAMS.page_size,
+    // ⚠️ 口径改成「**手上这份**比后端说的总数少」⇒ 有一截没拿到
+    // (以前是「后端总数超过一页的容量」—— 现在数据是全量的,那个口径过时了)
+    truncated,
     moveTask,
     // 重新取数(AI 写回成功后用)
-    reload: useCallback(() => {
-      setReloadCount((count) => count + 1);
-    }, []),
+    reload,
   };
 }
