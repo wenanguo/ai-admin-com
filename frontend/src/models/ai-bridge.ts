@@ -30,9 +30,9 @@ import type { AiTaskContext } from '@/services/api/ai/types';
  *
  * ## 展开信号为什么只是「计数器」
  *
- * 侧栏的折叠状态住在 `AiWorkspaceShell` 里（还持久化到 localStorage）⇒
+ * 浮层面板的开合状态住在 `AiWorkspaceShell` 里（还持久化到 localStorage）⇒
  * 把它搬进 model 会把「持久化」也搬进来 ⇒ ⇒ 这里只发一个**递增的计数器**：
- * 外壳看到它变了就展开一次 ⇒ 职责清晰，页面也不用管面板怎么存状态。
+ * 外壳看到它变了就打开一次 ⇒ 职责清晰，页面也不用管面板怎么存状态。
  */
 
 /** 一次写回成功的信号。 */
@@ -59,9 +59,14 @@ export interface AiContextModel {
   lastUpdate: AiEntityUpdate | null;
   /** 广播一次写回成功。 */
   notifyUpdate: (update: Omit<AiEntityUpdate, 'at'>) => void;
-  /** 「请把侧栏展开」的信号（每次 +1 ⇒ 外壳看到变化就展开一次）。 */
+  /**
+   * 「请打开 AI 工作台面板」的信号（每次 +1 ⇒ 外壳看到变化就打开一次）。
+   *
+   * ⚠️ 以前这里是「展开」（常驻右栏从 40px 竖条展开成 400px）。
+   *    现在 AI 工作台是浮层 ⇒ 只剩「打开」这一个动作（没有「收成竖条」的对应物）。
+   */
   expandSignal: number;
-  /** 请求展开右侧 AI 工作台（点「与 AI 讨论」时调）。 */
+  /** 请求打开 AI 工作台面板（点「与 AI 讨论」时调）。 */
   requestExpand: () => void;
   /**
    * 「请切到**对话**页签」的信号（每次 +1）。

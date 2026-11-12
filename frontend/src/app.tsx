@@ -214,9 +214,9 @@ export const layout: RunTimeLayoutConfig = ({
     /*
       ⚠️ 页脚**不在这里**渲染。
 
-      内容区现在是一个**横向的 flex 行**（左边主内容、右边 AI 工作台那个
-      `Sider`）⇒ `footerRender` 渲染出来的东西会变成内容区的第三个 flex 子项，
-      被挤到 AI 侧栏右边去。
+      内容区是 `display: flex` 的**一列**（里面只有主内容那一格）
+      ⇒ `footerRender` 渲染出来的东西会变成内容区的另一个 flex 子项，
+      被挤到主内容下面去（而不是跟在内容后面）。
       ⇒ 页脚改由 AI 工作台那个外壳渲染在**主内容那一格里面**
       （见 `AiWorkspaceShell`）—— 跟着内容一起滚，位置和以前一样。
     */
@@ -275,12 +275,11 @@ export const layout: RunTimeLayoutConfig = ({
       return (
         <>
           {/*
-            AI 工作台：主内容右边的一列，**用 antd 的 `Layout.Sider`**。
+            AI 工作台：右下角一个按钮，点开是**浮在内容之上**的面板。
 
-            ⚠️ 不是内容区里的浮层（`position: fixed`）—— 那样它会变成
-            「贴在中间内容上的一块浮板」，而不是「框架的一条边」。
-            ⇒ 内容区本身是一个满高的 flex 行（见 `global.less` 的 app shell）：
-            左边是主内容（自己滚），右边是这个 `Sider`（满高）。
+            ⚠️ 不是内容区里的固定列（那样它会变成「贴在中间内容上的一块浮板」，
+            还会把主内容挤掉 400px）⇒ 浮层是 `position: fixed`，
+            **不占布局宽度** ⇒ 表格不再被挤窄。
           */}
           <AiWorkspaceShell footer={<Footer />}>{children}</AiWorkspaceShell>
           <SettingDrawer

@@ -1,10 +1,11 @@
 /**
  * AI 工作台**布局外壳**的测试。
  *
- * 钉死三件事（规格 §3.1）：
- * 1. 侧栏是**常驻的一列**（不是抽屉）：展开 400px，折叠 40px；
- * 2. `⌘B` / `Ctrl+B` 能折叠与展开；
- * 3. 折叠状态存在 `localStorage`（`aipm.workspace` 的 `collapsed` 字段）。
+ * 钉死四件事：
+ * 1. 面板**默认关着**，右下角只有一个悬浮按钮（不占布局宽度、不挡内容）；
+ * 2. 点悬浮按钮 ⇒ 浮层出现，按钮消失；
+ * 3. `⌘B` / `Ctrl+B` 能开能关（输入框里不劫持）；
+ * 4. 开关状态存在 `localStorage`（`aipm.workspace` 的 `open` 字段）。
  */
 
 import type React from 'react';
@@ -70,21 +71,28 @@ vi.mock('@/services/api/ai/sse', () => ({
   toAiEvent: vi.fn(),
 }));
 
-/** 侧栏（antd 的 `Layout.Sider` 渲染成 `aside`）。 */
-function sider(container: HTMLElement): HTMLElement {
-  const node = container.querySelector<HTMLElement>('.ant-layout-sider');
-  expect(node).not.toBeNull();
-  return node as HTMLElement;
+/** 浮层面板（开着时才有）。 */
+function panel(container: HTMLElement): HTMLElement | null {
+  return container.querySelector<HTMLElement>(
+    '[data-testid="ai-workspace-panel"]',
+  );
 }
 
-/** 读工作台状态里存的折叠状态。 */
-function storedCollapsed(): boolean | undefined {
+/** 右下角的悬浮按钮（面板关着时才有）。 */
+function launcher(container: HTMLElement): HTMLElement | null {
+  return container.querySelector<HTMLElement>(
+    '[data-testid="ai-workspace-launcher"]',
+  );
+}
+
+/** 读工作台状态里存的「面板开着吗」。 */
+function storedOpen(): boolean | undefined {
   const raw = localStorage.getItem(WORKSPACE_STORAGE_KEY);
   if (!raw) {
     return undefined;
   }
-  const parsed = JSON.parse(raw) as { collapsed?: boolean };
-  return parsed.collapsed;
+  const parsed = JSON.parse(raw) as { open?: boolean };
+  return parsed.open;
 }
 
 describe('AI 工作台布局外壳', () => {
@@ -109,49 +117,56 @@ describe('AI 工作台布局外壳', () => {
     });
   });
 
-  it('侧栏是常驻的一列：展开 400px、折叠 40px', async () => {
+  it('默认关着，只有右下角一个悬浮按钮', async () => {
     const { container } = await render(
       <AiWorkspaceShell>
         <div>主内容</div>
       </AiWorkspaceShell>,
     );
 
-    expect(sider(container).style.width).toBe('400px');
-
-    // 折叠：宽度收成 40px 的竖条，主内容那一列还在（不是盖上去）
-    window.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true }),
-    );
-
-    await vi.waitFor(() => {
-      expect(sider(container).style.width).toBe('40px');
-    });
+    // 面板默认**不出现** ⇒ 不挡内容
+    expect(panel(container)).toBeNull();
+    expect(launcher(container)).not.toBeNull();
     expect(container.textContent).toContain('主内容');
   });
 
-  it('⌘B / Ctrl+B 能折叠与展开', async () => {
+  it('点悬浮按钮 ⇒ 浮层出现，按钮消失', async () => {
     const { container } = await render(
       <AiWorkspaceShell>
         <div>主内容</div>
       </AiWorkspaceShell>,
     );
 
+    launcher(container)?.click();
+
     await vi.waitFor(() => {
-      expect(sider(container).style.width).toBe('400px');
+      expect(panel(container)).not.toBeNull();
+    });
+    // 面板开着的时候**不再显示**那个按钮（面板右上角已经有 X 了）
+    expect(launcher(container)).toBeNull();
+  });
+
+  it('⌘B / Ctrl+B 能开能关', async () => {
+    const { container } = await render(
+      <AiWorkspaceShell>
+        <div>主内容</div>
+      </AiWorkspaceShell>,
+    );
+
+    expect(panel(container)).toBeNull();
+
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'b', metaKey: true, bubbles: true }),
+    );
+    await vi.waitFor(() => {
+      expect(panel(container)).not.toBeNull();
     });
 
     window.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'b', metaKey: true, bubbles: true }),
     );
     await vi.waitFor(() => {
-      expect(sider(container).style.width).toBe('40px');
-    });
-
-    window.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'b', metaKey: true, bubbles: true }),
-    );
-    await vi.waitFor(() => {
-      expect(sider(container).style.width).toBe('400px');
+      expect(panel(container)).toBeNull();
     });
   });
 
@@ -178,19 +193,19 @@ describe('AI 工作台布局外壳', () => {
     );
 
     // React 的状态更新是异步的 ⇒ 先让它刷出来。
-    // 守卫失效时侧栏会折成 40px ⇒ 下面的断言就会红。
+    // 守卫失效时面板会开 ⇒ 下面的断言就会红。
     await new Promise((resolve) => {
       setTimeout(resolve, 50);
     });
 
-    // 守卫生效 ⇒ 侧栏**没有**被折叠
+    // 守卫生效 ⇒ 面板**没有**被打开
     await vi.waitFor(() => {
-      expect(sider(container).style.width).toBe('400px');
+      expect(panel(container)).toBeNull();
     });
   });
 
-  it('折叠状态写进 localStorage，刷新后还在', async () => {
-    const { container } = await render(
+  it('面板开关写进 localStorage，刷新后还在', async () => {
+    await render(
       <AiWorkspaceShell>
         <div>主内容</div>
       </AiWorkspaceShell>,
@@ -200,16 +215,15 @@ describe('AI 工作台布局外壳', () => {
       new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true }),
     );
     await vi.waitFor(() => {
-      expect(storedCollapsed()).toBe(true);
+      expect(storedOpen()).toBe(true);
     });
 
-    // 再挂一次（相当于刷新页面）⇒ 仍然是折叠的
+    // 再挂一次（相当于刷新页面）⇒ 仍然是开着的
     const second = await render(
       <AiWorkspaceShell>
         <div>主内容</div>
       </AiWorkspaceShell>,
     );
-    expect(sider(second.container).style.width).toBe('40px');
-    expect(sider(container).style.width).toBe('40px');
+    expect(panel(second.container)).not.toBeNull();
   });
 });

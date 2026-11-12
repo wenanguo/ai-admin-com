@@ -87,7 +87,7 @@ export function ChatPanel({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        // ⚠️ 侧栏是**固定高度的一列** ⇒ 这里填满它。
+        // ⚠️ 面板是**固定高度的浮层** ⇒ 这里填满它。
         height: '100%',
         minHeight: 0,
       }}
@@ -96,7 +96,7 @@ export function ChatPanel({
         ref={listRef}
         className="ai-workspace-scroll"
         style={{
-          // 消息区在**列内**滚（侧栏固定高度 ⇒ 滚不动就得在列内滚）
+          // 消息区在**面板内**滚（面板固定高度 ⇒ 滚不动就得在面板内滚）
           flex: 1,
           minHeight: 0,
           overflowY: 'auto',
@@ -113,10 +113,10 @@ export function ChatPanel({
         ))}
       </div>
       {/*
-        输入区：固定在**列底**。
+        输入区：固定在**面板底**。
 
-        侧栏是固定高度的一列（`AiWorkspaceLayout` 里 `calc(100vh - 顶边)`），
-        消息区在列内滚 ⇒ 输入区自然就在列底，**永远在视口里**，
+        面板是固定高度的浮层（`AiWorkspaceShell` 里 `top: 56px; bottom: 0`），
+        消息区在面板内滚 ⇒ 输入区自然就在面板底，**永远在视口里**，
         不用先滚一屏才找得到发送按钮。
 
         失败提示也放进来：它说的是「刚才那次发送失败了」，得跟发送按钮待在一处，

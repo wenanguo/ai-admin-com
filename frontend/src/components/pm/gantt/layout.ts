@@ -60,7 +60,7 @@ export const MIN_TIMELINE_WIDTH = 420;
 export const GRID_WIDTH_RATIO = 0.42;
 
 /**
- * 时间轴少于这个宽度就算「挤」⇒ 页面给提示(收起 AI 工作台 / 拖分隔条)。
+ * 时间轴少于这个宽度就算「挤」⇒ 页面给提示(拖分隔条)。
  *
  * 比 MIN_TIMELINE_WIDTH 大:分隔条能拖到 420,但 420 已经挺挤了 ⇒
  * 提前提醒用户有更宽的办法。

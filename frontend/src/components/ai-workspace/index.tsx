@@ -1,15 +1,15 @@
 /**
- * AI 工作台侧栏（规格 §3.1–§3.3）。
+ * AI 工作台面板（规格 §3.1–§3.3）。
  *
  * 这一层是**容器**：头部 + 三个页签（对话 / 待确认 / 审计）。
  *
  * - **对话**页签的数据在 `useWorkspace` 里（会话 + 事件流）；
  * - **待确认**与**审计**两个页签的数据在 `useAiLists` 里（两个只读端点）。
  *
- * ⚠️ 侧栏**不是 Drawer**（规格 §3.1 明确否决了抽屉）——
- * 挂进布局是下一刀的事（`Layout.Sider`，宽 400，可折叠到 40）。
+ * ⚠️ 这一层**不管自己怎么摆在外壳里**（是常驻右栏还是浮层）——
+ * 摆法在外壳 `AiWorkspaceShell` 里；这里只管内容。
  */
-import { FullscreenOutlined, RightOutlined } from '@ant-design/icons';
+import { CloseOutlined, FullscreenOutlined } from '@ant-design/icons';
 import { Link, useModel } from '@umijs/max';
 import { Button, Tabs, Tag, theme } from 'antd';
 import type React from 'react';
@@ -38,7 +38,7 @@ export type WorkspaceTab = 'chat' | 'pending' | 'audit';
  */
 const APPROVE_REFRESH_DELAY_MS = 800;
 
-/** 侧栏的 props。 */
+/** 面板的 props。 */
 export interface AiWorkspaceProps {
   /**
    * 默认选中的页签。
@@ -47,9 +47,9 @@ export interface AiWorkspaceProps {
    */
   defaultTab?: WorkspaceTab;
   /**
-   * 「收起面板」的回调（外壳传进来）。
+   * 「关闭面板」的回调（外壳传进来）。
    *
-   * 给 ⇒ 头部右上角出那个「收起」按钮。
+   * 给 ⇒ 头部右上角出那个「关闭」按钮（X）。
    */
   onCollapse?: () => void;
 }
@@ -58,7 +58,7 @@ export interface AiWorkspaceProps {
  * 读存储里的页签。
  *
  * 不认识的值（老版本留下的、被人改过的）⇒ 当「对话」，
- * 不能让一个坏值把侧栏弄成空白。
+ * 不能让一个坏值把面板弄成空白。
  */
 function readStoredTab(): WorkspaceTab {
   const stored = readWorkspaceStorage().tab;
@@ -66,7 +66,7 @@ function readStoredTab(): WorkspaceTab {
 }
 
 /**
- * AI 工作台侧栏。
+ * AI 工作台面板。
  */
 export function AiWorkspace({
   defaultTab,
@@ -80,7 +80,7 @@ export function AiWorkspace({
   // 当前讨论的上下文（任务页点「与 AI 讨论」时设的）
   const aiContext = useModel('ai-bridge');
   // ⚠️ **按需读**：页签没打开就不读那两个列表 ——
-  // 侧栏挂在整个布局上（Task 4），一挂上就发请求会让 AI 服务不可达时
+  // 面板是**浮层**（点开才挂载），一挂上就发请求会让 AI 服务不可达时
   // 用户在别的页面上莫名其妙看到报错。
   const lists = useAiLists({
     pending: activeTab === 'pending',
@@ -158,8 +158,8 @@ export function AiWorkspace({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        // ⚠️ 侧栏是**固定高度的一列**（`AiWorkspaceLayout` 里 `calc(100vh - 顶边)`），
-        // 这里填满它 ⇒ 消息区在**列内**滚，输入区固定在列底。
+        // ⚠️ 面板是**固定高度的浮层**（`AiWorkspaceShell` 里 `top: 56px; bottom: 0`），
+        // 这里填满它 ⇒ 消息区在**面板内**滚，输入区固定在面板底。
         height: '100%',
         minHeight: 0,
         background: token.colorBgContainer,
@@ -176,10 +176,13 @@ export function AiWorkspace({
         }}
       >
         {/*
-          ⚠️ 头部只留**两个按钮**：左边「全宽页」、右边「收起」。
+          ⚠️ 头部只留**两个按钮**：左边「全宽页」、右边「关闭」。
 
           之前这里还有一行副标题（「对话 · 待确认 · 审计 ｜ 命令层受控写入」）
           ⇒ 白占一条高度，把消息区挤没了。功能一样，只是不写了。
+
+          ⚠️ 右边的按钮现在是**关闭**（面板是浮层，关掉就没了），
+          以前是「收起」（常驻右栏收成 40px 竖条）。
         */}
         <div
           style={{
@@ -190,7 +193,7 @@ export function AiWorkspace({
           }}
         >
           {/*
-            进全宽页的入口（规格 §4）：侧栏只有 400px，
+            进全宽页的入口（规格 §4）：面板只有 400px，
             「规则与 AI 的分工」的双栏与意图卡片墙在那边放不下。
           */}
           <Link
@@ -236,9 +239,9 @@ export function AiWorkspace({
             <Button
               type="text"
               size="small"
-              aria-label="收起 AI 工作台"
-              title="收起 AI 工作台（⌘B）"
-              icon={<RightOutlined />}
+              aria-label="关闭 AI 工作台"
+              title="关闭 AI 工作台（⌘B）"
+              icon={<CloseOutlined />}
               onClick={onCollapse}
               style={{ color: token.colorText }}
             />
@@ -259,7 +262,7 @@ export function AiWorkspace({
       />
       {/*
         会话建不起来（AI 服务不可达）——**显示在这里**，不弹全局提示：
-        侧栏常驻在每个页面上，全局提示会在每个页面上重复出现。
+        面板是**浮层**（用户主动点开的），全局提示只会在他打开时出现一次。
       */}
       {workspace.connectionError ? (
         <div
@@ -306,17 +309,17 @@ export function AiWorkspace({
           /*
             ⚠️ 页签条要**自己留左右内边距**。
             antd 的 Tabs 根节点没有内边距 ⇒ 实测 `.ant-tabs-nav` 的
-            padding-left = 0，三个页签的标题会**贴着 Sider 的左边缘**，
+            padding-left = 0，三个页签的标题会**贴着面板的左边缘**，
             看上去像没渲染完（实测三个页签的 x 分别是 1458 / 1518 / 1592，
-            而 Sider 的 x = 1457 —— 第一个页签正好压在线上）。
+            而面板的 x = 1457 —— 第一个页签正好压在线上）。
             `header` 落到的就是 `.ant-tabs-nav`。
           */
           header: { paddingInline: token.paddingSM },
           /*
             高度链（实测出来的）：
               .ant-tabs → .ant-tabs-body-holder → .ant-tabs-body → .ant-tabs-content
-            侧栏是固定高度的一列 ⇒ 这里要**给一个确定的高度**并**藏掉溢出**，
-            否则内容会把面板撑破、溢出到列外（消息就从「列内滚」变成了「溢出到页面」）。
+            面板是固定高度的浮层 ⇒ 这里要**给一个确定的高度**并**藏掉溢出**，
+            否则内容会把面板撑破、溢出到面板外（消息就从「面板内滚」变成了「溢出到页面」）。
             `body` 给 `.ant-tabs-body`、`content` 给 `.ant-tabs-content`。
           */
           content: { height: '100%', overflow: 'hidden' },

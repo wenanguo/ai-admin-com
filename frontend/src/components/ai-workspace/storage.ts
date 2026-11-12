@@ -8,10 +8,19 @@
 /** 工作台状态在 localStorage 里的键。 */
 export const WORKSPACE_STORAGE_KEY = 'aipm.workspace';
 
-/** 工作台状态（会话 id 与页签是这一层自己用的，折叠状态也是）。 */
+/**
+ * 工作台状态（会话 id 与页签是这一层自己用的，面板开合也是）。
+ */
 export interface WorkspaceStorage {
-  /** 侧栏是否折叠。 */
-  collapsed?: boolean;
+  /**
+   * 浮层面板是否打开。
+   *
+   * ⚠️ 以前这里是 `collapsed`（常驻右栏收成 40px 竖条）。
+   *    改成浮层后「折叠」没有对应物了 ⇒ 只剩开/关两态。
+   *
+   * ⚠️ **字段名换了**（`collapsed` → `open`）⇒ 读不到旧值时**当关闭**（`=== true` 才算开）。
+   */
+  open?: boolean;
   /**
    * 当前选中的页签（`chat` / `pending` / `audit`）。
    *
@@ -54,7 +63,7 @@ export function readWorkspaceStorage(
 /**
  * 写工作台状态（**合并**写入，不动别的字段）。
  *
- * 合并是必须的：折叠状态、页签、会话 id 写在同一个对象里，
+ * 合并是必须的：面板开关、页签、会话 id 写在同一个对象里，
  * 各写各的会互相抹掉。
  */
 export function writeWorkspaceStorage(

@@ -66,7 +66,7 @@ export interface Workspace {
   /** 事件流是不是连着的。 */
   connected: boolean;
   /**
-   * AI 服务是不是**不可用**（侧栏头部要挂一个「AI 服务不可用」的标签）。
+   * AI 服务是不是**不可用**（面板头部要挂一个「AI 服务不可用」的标签）。
    *
    * ⚠️ 不能直接用 `!connected`：首次连接**还没连上**的那一瞬间也是 false
    * ⇒ 每个页面刚打开都会闪一下「不可用」（服务其实是好的）。
@@ -80,7 +80,7 @@ export interface Workspace {
   /**
    * 会话建不起来的原因（AI 服务不可达之类）。
    *
-   * ⚠️ 侧栏常驻在每个页面上 ⇒ AI 服务不可达是**全局**状态，
+   * ⚠️ 面板是**浮层**（用户主动点开的）⇒ AI 服务不可达是**全局**状态，
    * 显示在面板里，而不是弹一次全局提示（那个会在每个页面上重复出现）。
    */
   connectionError?: string;
@@ -99,7 +99,7 @@ export interface Workspace {
   /**
    * 新建一个会话并切过去（「新对话」）。
    *
-   * ⚠️ 新的会话 id 会写进 `localStorage` ⇒ 侧栏下次挂载时用的也是它，
+   * ⚠️ 新的会话 id 会写进 `localStorage` ⇒ 面板下次挂载时用的也是它，
    * 两边不会各说各话。
    */
   newConversation: () => Promise<void>;
@@ -214,7 +214,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
       setEverConnected(true);
     }
   }, [connected]);
-  /** AI 服务不可用（侧栏头部据此挂「AI 服务不可用」的标签，规格 §3.10）。 */
+  /** AI 服务不可用（面板头部据此挂「AI 服务不可用」的标签，规格 §3.10）。 */
   const aiUnavailable =
     connectionError !== undefined || (everConnected && !connected);
 
@@ -259,8 +259,8 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
         // 建不出来就留在「还没有会话」的状态：界面提示用户，不崩
         //
         // ⚠️ 这里**不弹全局提示**（AI 服务的请求已设 skipErrorHandler）——
-        // 侧栏是常驻在每个页面上的，服务没起来时不该在每个页面上都弹一次。
-        // 失败的原因显示在侧栏面板里（`connectionError`）。
+        // 面板是**浮层**（用户主动点开的），服务没起来时不该在每个页面上都弹一次。
+        // 失败的原因显示在面板里（`connectionError`）。
         if (!disposed) {
           setConnectionError(toMessage(error));
         }

@@ -413,8 +413,8 @@ const TaskGantt: React.FC = () => {
         <Alert
           type="warning"
           showIcon
-          title="时间轴空间有限？按 Ctrl/⌘+B 收起右侧 AI 工作台"
-          description="收起 AI 工作台后主内容区变宽,左表格与时间轴都会跟着变宽;也可以直接拖动左表格与时间轴之间的分隔条来调两边的比例。"
+          title="时间轴空间有限？拖动左表格与时间轴之间的分隔条"
+          description="往左拖分隔条可以把左表格收窄、时间轴放宽;拖到最左时时间轴能占满整宽。"
         />
       ) : null}
 
