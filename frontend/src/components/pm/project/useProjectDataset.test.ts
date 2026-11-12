@@ -3,6 +3,7 @@ import type { ProjectOut } from '@/services/api/pm/project';
 import {
   fetchAllProjects,
   PROJECT_DATASET_MAX_PAGES,
+  PROJECT_DATASET_PAGE_SIZE,
 } from './useProjectDataset';
 
 const mocks = vi.hoisted(() => ({ listProjects: vi.fn() }));
@@ -74,9 +75,38 @@ describe('fetchAllProjects', () => {
     expect(result.items.map((p) => p.id)).toEqual([1, 2]);
   });
 
+  it('真实分页错位（第 2 页重复第 1 页的第一条）⇒ 去重后每个 id 只留一条', async () => {
+    const all = Array.from({ length: 150 }, (_, i) => project(i + 1));
+    mocks.listProjects.mockImplementation(
+      async (params: { page_no?: number; page_size?: number }) => {
+        const pageNo = params.page_no ?? 1;
+        const size = params.page_size ?? PROJECT_DATASET_PAGE_SIZE;
+        const start = (pageNo - 1) * size;
+        const items = all.slice(start, start + size);
+        // 模拟并发插入导致的分页错位：第 2 页的第一条重复第 1 页的第一条
+        if (pageNo === 2 && items.length > 0) {
+          items[0] = all[0];
+        }
+        return envelope({ items, total: all.length });
+      },
+    );
+
+    const result = await fetchAllProjects();
+
+    const ids = result.items.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.filter((id) => id === 1)).toHaveLength(1);
+  });
+
   it('排序口径写死在请求里（不靠后端默认值）', async () => {
-    const pages = fakeBackend([project(1)]);
+    fakeBackend([project(1)]);
     await fetchAllProjects();
-    expect(mocks.listProjects.mock.calls[0][0]).toHaveProperty('order_by');
+    expect(mocks.listProjects).toHaveBeenCalledWith(
+      expect.objectContaining({
+        page_no: 1,
+        page_size: PROJECT_DATASET_PAGE_SIZE,
+        order_by: JSON.stringify([{ id: 'desc' }]),
+      }),
+    );
   });
 });

@@ -77,7 +77,12 @@ export async function fetchAllProjects(): Promise<ProjectDatasetPage> {
 
   // 后端说有多少条，就补齐到多少条（并发拉，不是一页一页等）。
   // ⚠️ 按**已收到的条数**推进，而不是按 `total / page_size` 算页数：
-  //   后端少给几条时（并发写入导致的分页错位），按页数算会漏掉后面的项目。
+  //   后端某页没给满（并发写入导致的分页错位）时，按页数算会以为已经拿齐 ⇒ 提前收工；
+  //   按实收条数推进 ⇒ 一直补到条数够了为止（仍受 10 页封顶约束）。
+  //   注：正常后端（一页满 100 条）下，本算法与 task 版「按页数算」请求的页数完全一致；
+  //   分页错位时两种算法请求同样的页、丢的尾部也一样 ⇒ 重复项交给下面的去重兜住。
+  //   这条差异被 `useProjectDataset.test.ts` 里「total=3 但首页只回 1 条」那条用例钉住
+  //   ⇒ 别随手改回按页数算（否则那条用例拿不到第 2 页的数据）。
   let nextPage = 2;
   while (items.length < total && nextPage <= PROJECT_DATASET_MAX_PAGES) {
     const missing = total - items.length;
