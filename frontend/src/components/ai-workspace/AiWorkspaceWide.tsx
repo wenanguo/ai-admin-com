@@ -29,8 +29,18 @@
  * ⚠️ **意图卡片不在页面底部了**（它在输入框上方的抽屉里，见 `WideChat`
  *    的 `intentSlot`）⇒ 页面内容不再比视口高 ⇒ 整页不用滚。
  */
+import { InfoCircleOutlined } from '@ant-design/icons';
 import { useModel } from '@umijs/max';
-import { Alert, Button, Dropdown, Space, Tabs, Typography, theme } from 'antd';
+import {
+  Alert,
+  Button,
+  Dropdown,
+  Space,
+  Tabs,
+  Tooltip,
+  Typography,
+  theme,
+} from 'antd';
 import type React from 'react';
 import { useCallback, useState } from 'react';
 import { listAiConversations } from '@/services/api/ai/client';
@@ -251,6 +261,9 @@ export function AiWorkspaceWide({
         当前模型：只显示这一个。
         ⚠️ **不画配额条** —— 服务端没有配额端点（规格 §4.3 明确裁决），
         没有数据源的进度条就是编的数字。
+
+        ⚠️ 那句解释**收进 tooltip**：它是写给开发者看的（解释为什么不画配额条）
+        ⇒ 不该在页面上占一整行 ⇒ 想看的人 hover 一下 ⓘ 就看到。
       */}
       <div
         data-role="ai-model"
@@ -268,12 +281,24 @@ export function AiWorkspaceWide({
         <span style={{ fontFamily: token.fontFamilyCode }}>
           {workspace.model ?? '未知'}
         </span>
-        <span
-          style={{ fontSize: token.fontSizeSM, color: token.colorTextTertiary }}
+        <Tooltip
+          title="（服务端没有模型列表端点，也没有配额端点 ⇒ 只显示当前模型；没有数据源就不画配额条）"
+          mouseEnterDelay={0.1}
         >
-          （服务端没有模型列表端点，也没有配额端点 ⇒
-          只显示当前模型；没有数据源就不画配额条）
-        </span>
+          <span
+            data-role="ai-model-note"
+            role="img"
+            aria-label="为什么只显示当前模型"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              cursor: 'help',
+              color: token.colorTextTertiary,
+            }}
+          >
+            <InfoCircleOutlined />
+          </span>
+        </Tooltip>
       </div>
 
       {/* AI 服务连不上时在这里说一声（不弹全局提示） */}

@@ -884,6 +884,64 @@ test.describe('最大化（宽版浮层）', () => {
     await page.locator('[data-role="ai-model"]').click();
     await expect(drawer).toHaveCount(0);
   });
+
+  /**
+   * 模型条**只留一行**：那句解释收进 tooltip。
+   *
+   * ## 为什么要收
+   *
+   * 「服务端没有模型列表端点，也没有配额端点 ⇒ 没有数据源就不画配额条」
+   * 是**写给开发者看的**（解释为什么不画配额条）⇒ 它不该占页面上一整行
+   * ⇒ 挪进 ⓘ 的 tooltip（想看的人 hover 一下就看到）。
+   *
+   * ## 钉住的三件事
+   *
+   * 1. **模型名看得见**（用户真正要的那部分不能被牺牲掉）；
+   * 2. 那句解释**不在页面上**；
+   * 3. hover ⓘ ⇒ tooltip 里能看到原句（不能只是把它删了）。
+   */
+  test('模型条只留一行,那句开发者解释收进 tooltip', async ({ page }) => {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+
+    await openPanel(page);
+    await expandButton(page).click();
+    await expect(wideOverlay(page)).toBeVisible();
+
+    const modelRow = page.locator('[data-role="ai-model"]');
+    await expect(modelRow).toBeVisible();
+
+    // ① 模型名**看得见**（「当前模型：xxx」还得在）
+    await expect(modelRow).toContainText('当前模型：');
+    await expect(modelRow).toContainText('e2e-model');
+
+    // ② 那句开发者解释**不在页面上**
+    await expect(page.getByText('没有数据源就不画配额条')).toHaveCount(0);
+
+    // ③ hover ⓘ ⇒ tooltip 里能看到原句
+    const note = page.locator('[data-role="ai-model-note"]');
+    await expect(note).toBeVisible();
+    await note.hover();
+    await expect(page.getByRole('tooltip')).toContainText(
+      '没有数据源就不画配额条',
+    );
+
+    // ④ 整条只有**一行**高（原来那句解释把这条撑成了两行）
+    const box = await modelRow.boundingBox();
+    if (!box) {
+      throw new Error('模型条没有布局盒');
+    }
+    expect(box.height).toBeLessThan(60);
+  });
 });
 
 /**

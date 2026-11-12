@@ -359,7 +359,12 @@ export function WideChat({
               <span>⏳ 等待你确认</span>
               <span style={{ color: token.colorTextSecondary }}>
                 {pendingItems.map((item) => item.command).join('、')}
-                （去「待确认」页签点头）
+                {/*
+                  ⚠️ **不带方位**（「在「待确认」里点头」）：
+                  宽版里「待确认」在**右侧栏**里，窄版里它是一个**页签**
+                  ⇒ 写死方位（以前的「去「待确认」页签点头」）总有一边是错的。
+                */}
+                （在「待确认」里点头）
               </span>
             </div>
           ) : null}
