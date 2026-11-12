@@ -15,7 +15,7 @@
  * ```
  * ┌──────────────────────────────┐
  * │ AIPM 核心项目           🤖    │  名称（进详情页）+ 机器人（与 AI 讨论）
- * │ 规划中 · 高 · 张三 · 12-31    │  状态 · 优先级 · 负责人 · 计划截止
+ * │ 规划中 · 高 · 张三 · 2026-12-31 │  状态 · 优先级 · 负责人 · 计划截止（缺失显示 `-`）
  * └──────────────────────────────┘
  * ```
  *
@@ -29,7 +29,6 @@
 import { PlusOutlined, RobotOutlined } from '@ant-design/icons';
 import { Link, useAccess } from '@umijs/max';
 import {
-  Alert,
   Button,
   Card,
   Col,
@@ -56,6 +55,7 @@ import {
 } from '@/services/api/pm/project';
 import { filterProjects } from './filterProjects';
 import ProjectModalForm from './ProjectModalForm';
+import { ProjectTruncationNotice } from './ProjectTruncationNotice';
 import { useDiscussProject } from './useDiscussProject';
 import { useProjectDataset } from './useProjectDataset';
 
@@ -142,13 +142,17 @@ export function ProjectCardView(): React.ReactElement {
     <div className="flex flex-col gap-4">
       {/*
         取数有上限（10 页 × 100 条 = 1000 条）⇒ 被截断时**显式提示**，
-        不静默（与表格视图同一条口径）。
+        不静默。
+
+        ⚠️ 文案在**共享组件**里（./ProjectTruncationNotice）——
+           两个视图各写一份 ⇒ 改的时候要改两处。
       */}
       {dataset.truncated ? (
-        <Alert
-          type="info"
-          showIcon
-          title={`项目太多,一次最多取 ${dataset.projects.length} 条(共 ${dataset.total} 条),其余请用搜索缩小范围`}
+        <ProjectTruncationNotice
+          total={dataset.total}
+          loaded={dataset.projects.length}
+          capped={dataset.capped}
+          duplicates={dataset.duplicates}
         />
       ) : null}
 
@@ -262,13 +266,24 @@ export function ProjectCardView(): React.ReactElement {
                       value={project.priority_code}
                     />
                     <span>{project.owner_by?.name ?? '-'}</span>
-                    {project.due_date ? <span>{project.due_date}</span> : null}
+                    {/* 计划截止：缺失时显示 `-`（与表格的「计划区间」列一致） */}
+                    <span>{project.due_date ?? '-'}</span>
                   </div>
                   {/*
                     编辑 / 删除：右下角，**hover 才出现**（鼠标不在卡片上时收起）。
                     权限码与表格视图同一套 ⇒ 少了权限就点不动。
+
+                    ⚠️ **opacity-0 不会把元素移出命中测试** ⇒ 只藏起来的话，
+                       在**没有 hover 的设备**（手机 / 平板）上这行永远透明，
+                       却仍然占位、仍然接点击 ⇒ 在卡片右下角误点一下就弹出
+                       「确认删除该项目?」。
+                       ⇒ 命中测试也一起关掉（pointer-events-none），
+                         触屏设备上则**常驻显示**（`[@media(hover:none)]`）。
                   */}
-                  <div className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  <div
+                    data-role="card-actions"
+                    className="flex justify-end gap-1 opacity-0 transition-opacity pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto [@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto"
+                  >
                     <Button
                       type="text"
                       size="small"

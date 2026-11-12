@@ -19,12 +19,12 @@
  *    自己另写一套 ⇒ 「后端筛得到、本地筛不到」的分裂会悄悄回来。
  *
  * ⚠️ 取数有上限（10 页 × 100 条 = 1000 条）⇒ 被截断时页面**显式提示**，
- *    不静默（见下面的 Alert）。
+ *    不静默（见下面的 ProjectTruncationNotice）。
  */
 import { PlusOutlined, RobotOutlined } from '@ant-design/icons';
 import { type ProColumns, ProTable } from '@ant-design/pro-components';
 import { Link, useAccess } from '@umijs/max';
-import { Alert, Button, Space } from 'antd';
+import { Button, Space } from 'antd';
 import type React from 'react';
 import { useCallback, useMemo } from 'react';
 import {
@@ -48,6 +48,7 @@ import {
 import { listUsers } from '@/services/api/system/user';
 import { filterProjects } from './filterProjects';
 import ProjectModalForm from './ProjectModalForm';
+import { ProjectTruncationNotice } from './ProjectTruncationNotice';
 import { useDiscussProject } from './useDiscussProject';
 import { useProjectDataset } from './useProjectDataset';
 
@@ -257,12 +258,16 @@ export function ProjectListView(): React.ReactElement {
       {/*
         取数有上限（10 页 × 100 条 = 1000 条）⇒ 被截断时**显式提示**，
         不静默（用户搜不到的项目会以为不存在）。
+
+        ⚠️ 文案在**共享组件**里（./ProjectTruncationNotice）——
+           两个视图各写一份 ⇒ 改的时候要改两处。
       */}
       {dataset.truncated ? (
-        <Alert
-          type="info"
-          showIcon
-          title={`项目太多,一次最多取 ${dataset.projects.length} 条(共 ${dataset.total} 条),其余请用搜索缩小范围`}
+        <ProjectTruncationNotice
+          total={dataset.total}
+          loaded={dataset.projects.length}
+          capped={dataset.capped}
+          duplicates={dataset.duplicates}
         />
       ) : null}
       <ProTable<ProjectOut>

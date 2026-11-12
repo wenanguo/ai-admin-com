@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ProjectOut } from '@/services/api/pm/project';
 import {
-  fetchAllProjects,
   PROJECT_DATASET_MAX_PAGES,
   PROJECT_DATASET_PAGE_SIZE,
-} from './useProjectDataset';
+} from './projectDatasetLimits';
+import { fetchAllProjects } from './useProjectDataset';
 
 const mocks = vi.hoisted(() => ({ listProjects: vi.fn() }));
 vi.mock('@/services/api/pm/project', () => ({
@@ -61,6 +61,8 @@ describe('fetchAllProjects', () => {
     expect(result.items).toHaveLength(PROJECT_DATASET_MAX_PAGES * 100);
     expect(result.total).toBe(1200);
     expect(pages).toHaveLength(PROJECT_DATASET_MAX_PAGES);
+    // ⚠️ 够不到的那一截是**封顶** ⇒ 提示的措辞要与「去重丢行」分开
+    expect(result.capped).toBe(true);
   });
 
   it('多页里出现同一个 id ⇒ 只留一条', async () => {
@@ -73,6 +75,9 @@ describe('fetchAllProjects', () => {
     );
     const result = await fetchAllProjects();
     expect(result.items.map((p) => p.id)).toEqual([1, 2]);
+    // ⚠️ 页都拉完了（**不是**封顶）⇒ 是去重丢行 ⇒ 提示的措辞要分开
+    expect(result.capped).toBe(false);
+    expect(result.duplicates).toBe(1);
   });
 
   it('真实分页错位（第 2 页重复第 1 页的第一条）⇒ 去重后每个 id 只留一条', async () => {

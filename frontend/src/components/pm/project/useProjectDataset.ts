@@ -2,6 +2,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import type { ProjectOut } from '@/services/api/pm/project';
 import { listProjects } from '@/services/api/pm/project';
+import {
+  PROJECT_DATASET_MAX_PAGES,
+  PROJECT_DATASET_PAGE_SIZE,
+} from './projectDatasetLimits';
 
 /**
  * **共享的项目数据集** —— 列表 / 卡片两个视图共用的那一份数据。
@@ -31,12 +35,6 @@ import { listProjects } from '@/services/api/pm/project';
  * - `patchProject` 改本地缓存 ⇒ 两个视图立刻一致。
  */
 
-/** 一页拉多少条（后端上限就是 100） */
-export const PROJECT_DATASET_PAGE_SIZE = 100;
-
-/** 最多拉多少页（10 页 = 1000 条）—— 数据量再大也不无限拉 */
-export const PROJECT_DATASET_MAX_PAGES = 10;
-
 /**
  * 排序口径：**写出来**，不靠后端的默认值。
  *
@@ -57,6 +55,17 @@ export interface ProjectDatasetPage {
   items: ProjectOut[];
   /** 后端说的总数（可能大于 items.length ⇒ 被封顶截断了） */
   total: number;
+  /**
+   * 够不到的那一截**是不是**因为撞到了 10 页封顶。
+   *
+   * - `true` ⇒ 页数用完了（还有更多页没拉）；
+   * - `false` ⇒ 页都拉完了，是**去重**丢了几行（后端分页错位）。
+   *
+   * ⚠️ 这两种原因要用**不同的措辞**提示 ⇒ 页面得知道是哪一种。
+   */
+  capped: boolean;
+  /** 取数时同一个 id 落在多页里 ⇒ 被去重掉的条数 */
+  duplicates: number;
 }
 
 /**
@@ -80,7 +89,8 @@ export async function fetchAllProjects(): Promise<ProjectDatasetPage> {
   //   后端某页没给满（并发写入导致的分页错位）时，按页数算会以为已经拿齐 ⇒ 提前收工；
   //   按实收条数推进 ⇒ 一直补到条数够了为止（仍受 10 页封顶约束）。
   //   注：正常后端（一页满 100 条）下，本算法与 task 版「按页数算」请求的页数完全一致；
-  //   分页错位时两种算法请求同样的页、丢的尾部也一样 ⇒ 重复项交给下面的去重兜住。
+  //   分页错位时**不一样** —— 按页数算会以为已经拿齐而提前收工，
+  //   本算法按实收条数继续补（可能多发一次请求）⇒ 这正是它存在的理由。
   //   这条差异被 `useProjectDataset.test.ts` 里「total=3 但首页只回 1 条」那条用例钉住
   //   ⇒ 别随手改回按页数算（否则那条用例拿不到第 2 页的数据）。
   let nextPage = 2;
@@ -101,6 +111,10 @@ export async function fetchAllProjects(): Promise<ProjectDatasetPage> {
     nextPage += batchSize;
   }
 
+  // ⚠️ **循环退出时还没取够 ⇒ 撞到了 10 页封顶**（还有页没拉）
+  //   （取够了但去重丢了几行 ⇒ 那不是封顶，是分页错位 —— 提示的措辞要分开）
+  const capped = items.length < total;
+
   // ⚠️ **去重**：并发插入会让分页错位（同一页出现两条一样的），
   //   重复的项目在列表里会占两行、在卡片视图里会变成两张卡片 ⇒ 按 id 去重（保留第一次）。
   const seen = new Set<number>();
@@ -111,7 +125,12 @@ export async function fetchAllProjects(): Promise<ProjectDatasetPage> {
     return true;
   });
 
-  return { items: deduped, total };
+  return {
+    items: deduped,
+    total,
+    capped,
+    duplicates: items.length - deduped.length,
+  };
 }
 
 /** useProjectDataset 的返回值 */
@@ -130,6 +149,17 @@ export interface ProjectDatasetResult {
    * 页面据此给一条提示 —— **上限不静默**。
    */
   truncated: boolean;
+  /**
+   * 够不到的那一截**是不是**因为撞到了 10 页封顶。
+   *
+   * - `true` ⇒ 封顶；
+   * - `false` ⇒ 页都拉完了，是去重丢了几行（后端分页错位）。
+   *
+   * ⚠️ 两种原因的**措辞不同** ⇒ 提示组件靠它区分（见 ./ProjectTruncationNotice）。
+   */
+  capped?: boolean;
+  /** 取数时被去重掉的条数（后端分页错位时 > 0） */
+  duplicates: number;
   /**
    * 数据集的**版本号**（react-query 的 `dataUpdatedAt`）。
    *
@@ -190,6 +220,8 @@ export function useProjectDataset(): ProjectDatasetResult {
     loading: query.isLoading,
     error: (query.error as Error | null) ?? null,
     truncated: (query.data?.total ?? 0) > projects.length,
+    capped: query.data?.capped,
+    duplicates: query.data?.duplicates ?? 0,
     dataUpdatedAt: query.dataUpdatedAt,
     reload,
     patchProject,
