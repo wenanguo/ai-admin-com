@@ -161,12 +161,13 @@ export function AiWorkspaceWide({
         //    `height: 100%` 也留着（路由页那条链靠它）。
         height: '100%',
         flex: '1 1 0%',
-        minHeight: 0,
-        // ⚠️ 意图卡片墙已经折进抽屉（不在文档流里）⇒ 内容不再比视口高
-        //    ⇒ 正常情况下**不会滚**（e2e 里有守卫）。
-        //    这里保留 `auto` 而不是 `hidden`：万一某个宿主里高度链塌了，
-        //    还能滚到输入框，而不是把它裁掉。
-        overflowY: 'auto',
+        // ⚠️ **兜底**：高度链万一塌了（某个宿主没给出确定高度），
+        //    整页不至于塌成一条 ⇒ 至少 320px 高。
+        minHeight: 320,
+        // ⚠️ **根容器这时才关滚动**：意图卡片墙已经折进抽屉（不在文档流里），
+        //    对话区又吃满了剩余高度 ⇒ 内容**不再比容器高** ⇒ 整页不用滚。
+        //    （中间那一行、对话区、侧栏各自内部滚。）
+        overflow: 'hidden',
       }}
     >
       {/* 头部 */}
@@ -292,8 +293,8 @@ export function AiWorkspaceWide({
         ⚠️ 这一行**吃满剩余高度**（`flex: 1 1 0%`）⇒ 整页不滚：
            意图卡片墙已经折进输入框上方的抽屉（不在文档流里了），
            剩下的内容（头部 + 模型条 + 这一行）正好是视口高度。
-        ⚠️ 对话区自己还是**固定高度**（`min(560px, 55vh)`）——
-           「对话区吃满这一行」是下一个任务的事。
+        ⚠️ 对话区也**吃满这一行**（`WideChat` 里的 `flex: 1 1 0%`）
+           ⇒ 它的底边**贴着内容区底边** ⇒ 「一屏铺满」。
       */}
       <div
         style={{
@@ -308,8 +309,8 @@ export function AiWorkspaceWide({
 
         ⚠️ **对话区是主页面的主用途**：左边整列都留给它，
         右边那 360px 才是参考用的三视图（待确认 / 审计 / 规则分工）。
-        对话区自己有个视口相对的高度（`min(560px, 55vh)`，见 `WideChat`），
-        消息在里面滚，输入区固定在面板底部 ⇒ 面板里只有一个滚动条。
+        ⚠️ 左列是**纵向 flex** ⇒ 「当前讨论」条（`flexShrink: 0`）
+        与对话区（`flex: 1 1 0%`）上下排 ⇒ 对话区吃满剩下的高度。
       */}
         <div
           data-role="ai-wide-chat-column"
@@ -321,13 +322,20 @@ export function AiWorkspaceWide({
             flexDirection: 'column',
           }}
         >
-          {/* ⚠️ 「当前讨论」条：宽版也要看得见在聊哪条任务 */}
-          <DiscussionBar
-            context={aiBridge.context ?? null}
-            onClear={() => {
-              aiBridge.clearContext();
-            }}
-          />
+          {/*
+            ⚠️ 「当前讨论」条：宽版也要看得见在聊哪条任务。
+
+            ⚠️ 包一层 `flexShrink: 0`：它是对话区**上面**的一块
+            ⇒ 对话区吃满剩余高度时，**不能把它压扁**。
+          */}
+          <div style={{ flexShrink: 0 }}>
+            <DiscussionBar
+              context={aiBridge.context ?? null}
+              onClear={() => {
+                aiBridge.clearContext();
+              }}
+            />
+          </div>
           <WideChat
             messages={workspace.messages}
             thinking={workspace.thinking}

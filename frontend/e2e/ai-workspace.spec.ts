@@ -732,6 +732,74 @@ test.describe('最大化（宽版浮层）', () => {
   });
 
   /**
+   * 对话区**吃满剩余高度**（不再是固定的 `min(560px, 55vh)`）。
+   *
+   * ⚠️ 光断言「没有滚动条」**不够**：宽版内容盒有 `padding: 16px`
+   *    ⇒ 溢出落在内边距里**不会**撑高 `scrollHeight`
+   *    ⇒ 最多 16px 的回退是看不见的。
+   *    ⇒ 这里量**几何**：对话面板的底边要**贴着内容区的底边**，
+   *      而且高度要超过视口的 55%（固定高度时正好 55vh）。
+   */
+  test('对话区吃满剩余高度:底边贴着内容区底边', async ({ page }) => {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+
+    await openPanel(page);
+    await expandButton(page).click();
+    await expect(wideOverlay(page)).toBeVisible();
+
+    const chat = page.locator('[data-role="ai-wide-chat"]');
+    await expect(chat).toBeVisible();
+
+    const geo = await page.evaluate(() => {
+      const panel = document.querySelector('[data-role="ai-wide-chat"]');
+      const column = document.querySelector(
+        '[data-role="ai-wide-chat-column"]',
+      );
+      const wide = document.querySelector('[data-testid="ai-workspace-page"]');
+      if (!panel || !column || !wide) {
+        return null;
+      }
+      const panelRect = panel.getBoundingClientRect();
+      const columnRect = column.getBoundingClientRect();
+      const wideRect = wide.getBoundingClientRect();
+      const wideStyle = getComputedStyle(wide);
+      return {
+        panelBottom: panelRect.bottom,
+        panelHeight: panelRect.height,
+        columnBottom: columnRect.bottom,
+        // 内容区的底边（**去掉根容器的内边距** —— 那不是内容区的边）
+        contentBottom:
+          wideRect.bottom - parseFloat(wideStyle.paddingBottom || '0'),
+        viewportHeight: window.innerHeight,
+      };
+    });
+    if (!geo) {
+      throw new Error('对话面板 / 左列 / 宽版内容盒缺一个');
+    }
+
+    // ① 对话面板的底边**贴着内容区的底边**（差 <= 8px）
+    expect(Math.abs(geo.panelBottom - geo.contentBottom)).toBeLessThanOrEqual(
+      8,
+    );
+
+    // ② 对话面板吃满了左列（底边 ≈ 左列底边）
+    expect(Math.abs(geo.panelBottom - geo.columnBottom)).toBeLessThanOrEqual(2);
+
+    // ③ 不再是固定的 560 / 55vh ⇒ 高度**超过**视口的 55%
+    expect(geo.panelHeight).toBeGreaterThan(geo.viewportHeight * 0.55);
+  });
+
+  /**
    * 意图卡片**折进输入框上方的抽屉**（不再是页面底部铺开的一片卡片）。
    *
    * 抽屉是**绝对定位**的浮层 ⇒ 不占高度 ⇒ 页面不用滚。

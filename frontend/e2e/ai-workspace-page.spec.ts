@@ -196,8 +196,12 @@ test.describe('AI 工作台全宽页', () => {
    *
    * ⚠️ **浮层宿主那边有同样的守卫**（`ai-workspace.spec.ts`）——
    *    路由页这边也得有：那才是「发送按钮被顶到屏幕外」真正会发生的宿主。
+   *
+   * ⚠️ 光看「没有滚动条」**不够**：宽版内容盒有 `padding: 16px`
+   *    ⇒ 溢出落在内边距里**不会**撑高 `scrollHeight` ⇒ 最多 16px 的回退看不见。
+   *    ⇒ 这里**再量一次几何**：对话面板的底边要贴着内容区的底边。
    */
-  test('整页不滚:宽版内容盒不溢出', async ({ page }) => {
+  test('整页不滚:宽版内容盒不溢出,对话区吃满剩余高度', async ({ page }) => {
     await openWorkspacePage(page);
 
     const wideBox = await page
@@ -207,6 +211,29 @@ test.describe('AI 工作台全宽页', () => {
         scrollH: el.scrollHeight,
       }));
     expect(wideBox.scrollH).toBeLessThanOrEqual(wideBox.clientH);
+
+    // ⚠️ **对话区吃满剩余高度**：面板底边 ≈ 内容区底边（差 <= 8px）
+    const geo = await page.evaluate(() => {
+      const panel = document.querySelector('[data-role="ai-wide-chat"]');
+      const wide = document.querySelector('[data-testid="ai-workspace-page"]');
+      if (!panel || !wide) {
+        return null;
+      }
+      const wideStyle = getComputedStyle(wide);
+      return {
+        panelBottom: panel.getBoundingClientRect().bottom,
+        // 内容区的底边（**去掉根容器的内边距** —— 那不是内容区的边）
+        contentBottom:
+          wide.getBoundingClientRect().bottom -
+          parseFloat(wideStyle.paddingBottom || '0'),
+      };
+    });
+    if (!geo) {
+      throw new Error('对话面板或宽版内容盒没有布局盒');
+    }
+    expect(Math.abs(geo.panelBottom - geo.contentBottom)).toBeLessThanOrEqual(
+      8,
+    );
   });
 
   test('规则与 AI 的分工两栏都在,ETA 按实情写', async ({ page }) => {

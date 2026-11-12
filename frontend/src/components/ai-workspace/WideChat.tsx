@@ -153,7 +153,24 @@ export function WideChat({
   }, [messages]);
 
   return (
-    <section data-role="ai-wide-chat">
+    <section
+      /*
+        ⚠️ **这一段是 flex 列**：它是宽版左列（`AiWorkspaceWide` 的
+           `ai-wide-chat-column`）的**最后一个子项** ⇒ `flex: 1 1 0%`
+           ⇒ 它吃满左列的剩余高度 ⇒ 里面的对话面板跟着吃满。
+
+        ⚠️ `data-role` 用的是 **`ai-wide-chat-section`**（不是 `ai-wide-chat`）：
+           `ai-wide-chat` 指的是**对话面板本身**（那个带边框、装着消息与输入框的盒子）
+           —— e2e 要量的是**它的底边**（贴着内容区底边才叫「吃满」）。
+      */
+      data-role="ai-wide-chat-section"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        flex: '1 1 0%',
+        minHeight: 0,
+      }}
+    >
       <div
         style={{
           display: 'flex',
@@ -161,6 +178,8 @@ export function WideChat({
           justifyContent: 'space-between',
           gap: token.sizeSM,
           marginBottom: token.sizeSM,
+          // ⚠️ 标题行**不能被压扁**（它只有一行高 ⇒ 压扁就只剩一条线）
+          flexShrink: 0,
         }}
       >
         <span style={{ fontWeight: 600 }}>对话（宽版）</span>
@@ -171,22 +190,30 @@ export function WideChat({
         </span>
       </div>
       <div
+        /*
+          ⚠️ **对话面板**（带边框的那一块：消息区 + 输入区）。
+          ⇒ e2e 量的就是它（`data-role="ai-wide-chat"`）。
+        */
+        data-role="ai-wide-chat"
         style={{
           border: `1px solid ${token.colorBorderSecondary}`,
           borderRadius: token.borderRadiusLG,
           overflow: 'hidden',
           background: token.colorBgContainer,
           /*
-            ⚠️ **对话区要有确定的高度**，否则它会跟着消息一起长高，
-            把页面顶到很下面去 —— 于是每次都要先滚一屏才找得到输入框的发送按钮。
-            `min(560px, 55vh)`：窗口矮时按视口比例收，窗口高时不超过 560px。
-            里面的消息列表自己滚（`flex:1 + overflow-y:auto`），输入区固定在底部
-            ⇒ **面板里只有一个滚动条**（页面那个滚动条是给下一段的侧栏/卡片用的）。
-            ⚠️ 这里是**固定高度**；「对话区吃满剩余高度」是下一个任务的事。
+            ⚠️ **吃满剩余高度**（`flex: 1 1 0%` + `minHeight: 0`）：
+            以前这里是**固定高度** `min(560px, 55vh)` ⇒ 面板底下空一截，
+            页面还要滚一屏才看得到别的内容。
+            现在它跟着左列的剩余高度走 ⇒ **底边贴着内容区底边**。
+            里面的消息列表自己滚（`flex:1 + minHeight:0 + overflow-y:auto`），
+            输入区固定在底部 ⇒ **面板里只有一个滚动条**，页面那个不滚。
+            ⚠️ `minHeight: 0` 不能省：没有它，flex 子项不肯缩到内容高度以下
+            ⇒ 消息一多就把面板顶出去（页面又开始滚）。
           */
           display: 'flex',
           flexDirection: 'column',
-          height: 'min(560px, 55vh)',
+          flex: '1 1 0%',
+          minHeight: 0,
         }}
       >
         {/*
