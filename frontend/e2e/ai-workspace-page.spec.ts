@@ -155,6 +155,16 @@ async function openWorkspacePage(
   return requests;
 }
 
+/**
+ * 打开**意图卡片抽屉**（卡片墙折进输入框上方的抽屉了 ⇒ 不在页面里铺着）。
+ */
+async function openIntentDrawer(page: Page): Promise<void> {
+  const toggle = page.locator('[data-role="ai-intent-toggle"]');
+  await expect(toggle).toBeVisible();
+  await toggle.click();
+  await expect(page.locator('[data-role="ai-intent-drawer"]')).toBeVisible();
+}
+
 test.describe('AI 工作台全宽页', () => {
   test('页面能打开', async ({ page }) => {
     await openWorkspacePage(page);
@@ -208,6 +218,8 @@ test.describe('AI 工作台全宽页', () => {
       .getByPlaceholder(/问点什么/);
     await expect(input).toHaveValue('');
 
+    // ⚠️ 卡片在**输入框上方的抽屉**里 ⇒ 先把抽屉打开
+    await openIntentDrawer(page);
     await page
       .locator('[data-role="intent-card"][data-intent="进度查询"]')
       .click();
@@ -216,6 +228,9 @@ test.describe('AI 工作台全宽页', () => {
     await expect(input).toHaveValue(
       '上周我负责的项目进度如何？哪个有延期风险？',
     );
+
+    // ⚠️ 抽屉**自动收起**了（不然它一直挡着消息区）
+    await expect(page.locator('[data-role="ai-intent-drawer"]')).toHaveCount(0);
 
     // ⚠️ **没有发出任何请求** —— 点卡片只填输入框，不发送。
     expect(requests.filter((url) => url.includes('/command'))).toHaveLength(0);
@@ -272,6 +287,9 @@ test.describe('AI 工作台全宽页', () => {
 
   test('没有承诺后端还没有的能力', async ({ page }) => {
     await openWorkspacePage(page);
+
+    // ⚠️ 卡片在**输入框上方的抽屉**里 ⇒ 先把抽屉打开
+    await openIntentDrawer(page);
 
     // 没接通的意图卡片上必须有标记
     for (const title of NOT_OPEN_INTENTS) {

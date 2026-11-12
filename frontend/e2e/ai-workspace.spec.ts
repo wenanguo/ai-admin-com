@@ -718,6 +718,91 @@ test.describe('最大化（宽版浮层）', () => {
 
     // 侧栏是固定宽度的窄栏（360px），不是把对话挤掉的那种自适应
     expect(sidebarBox.width).toBeCloseTo(360, 0);
+
+    // ⚠️ **整页不滚**：意图卡片墙折进输入框上方的抽屉之后（不在文档流里了），
+    //    宽版内容盒的高度就等于视口高度 ⇒ 不该再溢出。
+    const wideBox = await page
+      .locator('[data-testid="ai-workspace-page"]')
+      .evaluate((el) => ({
+        clientH: el.clientHeight,
+        scrollH: el.scrollHeight,
+      }));
+    expect(wideBox.scrollH).toBeLessThanOrEqual(wideBox.clientH);
+  });
+
+  /**
+   * 意图卡片**折进输入框上方的抽屉**（不再是页面底部铺开的一片卡片）。
+   *
+   * 抽屉是**绝对定位**的浮层 ⇒ 不占高度 ⇒ 页面不用滚。
+   */
+  test('意图卡片折进输入框上方的抽屉:能开、点卡片填输入框并自动收起', async ({
+    page,
+  }) => {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+
+    await openPanel(page);
+    await expandButton(page).click();
+    await expect(wideOverlay(page)).toBeVisible();
+
+    // ① 页面上**没有**直接铺开的意图卡片墙了
+    await expect(page.locator('[data-role="ai-intent-gallery"]')).toHaveCount(
+      0,
+    );
+
+    // ② 点「意图卡片」按钮 ⇒ 抽屉出现
+    const toggle = page.locator('[data-role="ai-intent-toggle"]');
+    await expect(toggle).toBeVisible();
+    // 按钮上写着「意图卡片（10）」（10 = 意图的类数）
+    await expect(toggle).toContainText('意图卡片（10）');
+    await toggle.click();
+    const drawer = page.locator('[data-role="ai-intent-drawer"]');
+    await expect(drawer).toBeVisible();
+    await expect(
+      drawer.locator('[data-role="intent-card"]').first(),
+    ).toBeVisible();
+
+    // ③ 抽屉**浮在输入框上方**（不挡输入框）
+    const composer = page.locator('[data-role="ai-wide-chat-column"] textarea');
+    const drawerBox = await drawer.boundingBox();
+    const composerBox = await composer.boundingBox();
+    if (!drawerBox || !composerBox) {
+      throw new Error('抽屉或输入框没有布局盒');
+    }
+    expect(drawerBox.y + drawerBox.height).toBeLessThanOrEqual(
+      composerBox.y + 1,
+    );
+
+    // ④ 点一张卡片 ⇒ 输入框被填上（**不发送**）、抽屉自动收起
+    const card = drawer.locator('[data-role="intent-card"]').first();
+    const cardText = (await card.textContent())?.replace(/\s+/g, '') ?? '';
+    await card.click();
+    const filled = (await composer.inputValue()).replace(/\s+/g, '');
+    expect(filled.length).toBeGreaterThan(0);
+    // 填进去的正是那张卡片上的示例问句
+    expect(cardText).toContain(filled);
+    await expect(drawer).toHaveCount(0);
+
+    // ⑤ 按 Esc 也能收起
+    await toggle.click();
+    await expect(drawer).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(drawer).toHaveCount(0);
+
+    // ⑥ 点抽屉**外面**也能收起
+    await toggle.click();
+    await expect(drawer).toBeVisible();
+    await page.locator('[data-role="ai-model"]').click();
+    await expect(drawer).toHaveCount(0);
   });
 });
 

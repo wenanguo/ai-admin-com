@@ -26,21 +26,19 @@
  * - **左边**：对话（这一页的主用途）；
  * - **右边**：360px 的侧栏（待确认 / 审计 / 规则与 AI 的分工）。
  *
- * ⚠️ **这一轮页面仍然会滚**（根容器 `overflowY: auto`）：
- *    意图卡片墙还在**文档流**里（下一个任务才把它折进输入框上方的抽屉），
- *    内容比视口高 ⇒ 页面本来就该能滚。
- *    ⇒ 「整页不滚」是**下一个任务**（意图卡片离开文档流之后）的断言，
- *    现在关掉滚动会把底部的卡片墙切掉，甚至压住输入框。
+ * ⚠️ **意图卡片不在页面底部了**（它在输入框上方的抽屉里，见 `WideChat`
+ *    的 `intentSlot`）⇒ 页面内容不再比视口高 ⇒ 整页不用滚。
  */
 import { useModel } from '@umijs/max';
 import { Alert, Button, Dropdown, Space, Tabs, Typography, theme } from 'antd';
 import type React from 'react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { listAiConversations } from '@/services/api/ai/client';
 import type { AiConversation } from '@/services/api/ai/types';
 import { AuditPanel } from './AuditPanel';
 import { DiscussionBar } from './DiscussionBar';
 import { IntentGallery } from './IntentGallery';
+import { AI_INTENTS } from './intents';
 import { PendingPanel } from './PendingPanel';
 import { RuleSplit } from './RuleSplit';
 import { useAiLists } from './useAiLists';
@@ -105,15 +103,16 @@ export function AiWorkspaceWide({
     undefined,
   );
   const [creating, setCreating] = useState(false);
-  /** 输入区（点了意图卡片之后要滚过去）。 */
-  const chatRef = useRef<HTMLDivElement>(null);
 
-  /** 点意图卡片：只把问句填进输入框，**不发送**。 */
-  const pickIntent = useCallback((example: string): void => {
-    setDraft(example);
-    // 输入区在页面下方（卡片墙还在文档流里）⇒ 填完之后滚过去，让用户看见自己点了什么
-    chatRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, []);
+  /** 点意图卡片：只把问句填进输入框，**不发送**；并把抽屉收起来。 */
+  const handlePickIntent = useCallback(
+    (example: string, close: () => void): void => {
+      setDraft(example);
+      // 抽屉就在输入框上方 ⇒ 不用滚，填完直接收起就行
+      close();
+    },
+    [],
+  );
 
   /** 发送一句话。 */
   const handleSend = useCallback((): void => {
@@ -163,9 +162,10 @@ export function AiWorkspaceWide({
         height: '100%',
         flex: '1 1 0%',
         minHeight: 0,
-        // ⚠️ **这一轮页面照旧能滚**：意图卡片墙还在文档流里（下一个任务才折进抽屉）
-        //    ⇒ 内容比视口高，页面就该能滚。
-        //    「整页不滚」要等卡片墙离开文档流之后才成立（那时再关滚动）。
+        // ⚠️ 意图卡片墙已经折进抽屉（不在文档流里）⇒ 内容不再比视口高
+        //    ⇒ 正常情况下**不会滚**（e2e 里有守卫）。
+        //    这里保留 `auto` 而不是 `hidden`：万一某个宿主里高度链塌了，
+        //    还能滚到输入框，而不是把它裁掉。
         overflowY: 'auto',
       }}
     >
@@ -289,18 +289,17 @@ export function AiWorkspaceWide({
       {/*
         **两栏**：左边对话，右边 360px 的侧栏（待确认 / 审计 / 规则分工）。
 
-        ⚠️ 这一行是**自然高度行**（`flex: none`）⇒ 高度由**对话区自己**决定
-        （对话区现在还是固定高度 `min(560px, 55vh)`，Task 3 才吃满剩余高度）。
-        ⇒ 行**不会被压缩** ⇒ 底部的意图卡片墙压不到对话区（发送按钮点得到），
-        侧栏与对话区等高。
-        ⚠️ **不要**把它改回 `flex: 1 1 0%` —— 那样它会被压缩到剩余高度
-        （视口矮时只有 ~235px）⇒ 对话区（固定高度）溢出这一行 ⇒ 卡片墙盖住输入框。
+        ⚠️ 这一行**吃满剩余高度**（`flex: 1 1 0%`）⇒ 整页不滚：
+           意图卡片墙已经折进输入框上方的抽屉（不在文档流里了），
+           剩下的内容（头部 + 模型条 + 这一行）正好是视口高度。
+        ⚠️ 对话区自己还是**固定高度**（`min(560px, 55vh)`）——
+           「对话区吃满这一行」是下一个任务的事。
       */}
       <div
         style={{
           display: 'flex',
           gap: token.size,
-          flex: 'none',
+          flex: '1 1 0%',
           minHeight: 0,
         }}
       >
@@ -313,7 +312,6 @@ export function AiWorkspaceWide({
         消息在里面滚，输入区固定在面板底部 ⇒ 面板里只有一个滚动条。
       */}
         <div
-          ref={chatRef}
           data-role="ai-wide-chat-column"
           style={{
             flex: '1 1 0%',
@@ -347,6 +345,19 @@ export function AiWorkspaceWide({
               void workspace.abort();
             }}
             stopping={workspace.aborting}
+            /*
+              意图卡片折进**输入框上方的抽屉**（不再是页面底部铺开的一片）。
+
+              ⚠️ render prop：`WideChat` 掌握抽屉的开合 ⇒ 收起动作由它给。
+            */
+            intentSlot={(close) => (
+              <IntentGallery
+                onPick={(example) => {
+                  handlePickIntent(example, close);
+                }}
+              />
+            )}
+            intentCount={AI_INTENTS.length}
           />
         </div>
 
@@ -468,9 +479,6 @@ export function AiWorkspaceWide({
           />
         </aside>
       </div>
-
-      {/* 10 类意图 */}
-      <IntentGallery onPick={pickIntent} />
     </div>
   );
 }
