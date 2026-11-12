@@ -1,5 +1,5 @@
 import { CommentOutlined } from '@ant-design/icons';
-import { Link, useAccess, useModel, useSearchParams } from '@umijs/max';
+import { useAccess, useModel } from '@umijs/max';
 import {
   Alert,
   Avatar,
@@ -23,11 +23,10 @@ import type { TaskOut } from '@/services/api/pm/task';
 import { type BoardStatus, useBoardColumns } from './useBoardColumns';
 
 /**
- * 任务看板页 —— 路由 /pm/task/board。
+ * 任务看板 —— **视图**（不是页面了）。
  *
- * 看板**没有菜单入口**:后端的菜单种子只种了列表页,看板是子页面 ——
- * 入口在任务列表页的工具栏按钮(见 src/pages/module_pm/task/index.tsx),
- * 本页顶部给一条回列表的路。
+ * 现在它挂在任务页面的 Segmented 上（`TaskWorkspace`）⇒
+ * 与列表/甘特共用**同一份数据**（`useTaskDataset`）⇒ 切过来不用重新取数。
  *
  * 六列(待规划/待办/进行中/阻塞/评审/已完成),**已取消的任务不进看板** ——
  * 取消掉的任务已经退出工作流,取消操作走列表页的编辑弹窗。
@@ -137,16 +136,19 @@ function TaskCard({
  * 拖拽(改状态)要 `module_pm_project:pm_task:update` —— 没有 update 的角色
  * 看得到卡片,但拖不动。
  */
-const TaskBoard: React.FC = () => {
+/** 看板视图的 props */
+export interface TaskBoardProps {
+  /** 限定到某个项目（项目详情页的任务页签用） */
+  projectId?: number;
+}
+
+/**
+ * 任务看板视图。
+ *
+ * @param props.projectId 限定项目；不传就是全部
+ */
+export function TaskBoard({ projectId }: TaskBoardProps): React.ReactElement {
   const access = useAccess();
-  /*
-    从项目详情页的「任务」页签点「看板」进来时，地址上带着 project_id
-    ⇒ 看板也只看**这个项目**（否则项目限定会在跳转里悄悄丢掉）。
-  */
-  const [searchParams] = useSearchParams();
-  const projectId = searchParams.get('project_id')
-    ? Number(searchParams.get('project_id'))
-    : undefined;
   const { columns, loading, total, truncated, moveTask, reload } =
     useBoardColumns({ projectId });
   /** AI 工作台 ↔ 主工作区的桥 */
@@ -237,9 +239,6 @@ const TaskBoard: React.FC = () => {
       <div className="flex items-center gap-3">
         <span className="text-base font-semibold">任务看板</span>
         {/* 看板没有菜单入口,列表页才是入口 —— 这里给一条回去的路 */}
-        <Link to="/pm/task" className="text-sm">
-          返回任务列表
-        </Link>
       </div>
       {truncated ? (
         <Alert
@@ -299,6 +298,4 @@ const TaskBoard: React.FC = () => {
       )}
     </div>
   );
-};
-
-export default TaskBoard;
+}

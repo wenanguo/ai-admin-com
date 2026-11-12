@@ -165,19 +165,14 @@ export default [
         component: './module_pm/task',
       },
       {
-        // 任务看板页:六列(待规划/待办/进行中/阻塞/评审/已完成),
-        // 拖拽只改 status_code 一个维度
+        // 任务看板/甘特:现在是**同一个页面**的两种视图(顶上的 Segmented 切),
+        // 老地址保留成重定向 ⇒ 以前发出去的链接不失效
         path: '/pm/task/board',
-        name: 'taskBoard',
-        icon: 'appstore',
-        component: './module_pm/task/board',
+        redirect: '/pm/task?view=board',
       },
       {
-        // 任务甘特页:按计划起止日期排期,拖拽改期只改 start_date/due_date
         path: '/pm/task/gantt',
-        name: 'taskGantt',
-        icon: 'barChart',
-        component: './module_pm/task/gantt',
+        redirect: '/pm/task?view=gantt',
       },
       {
         // 风险登记册页:上面是 5×5 热力图(横轴影响、纵轴概率,点格子过滤),

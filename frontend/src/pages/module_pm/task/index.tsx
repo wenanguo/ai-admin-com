@@ -1,13 +1,12 @@
 /**
- * 任务管理列表页 —— 路由 `/pm/task`（菜单由后端下发，后端的路径是插件源码路径，
- * 靠 config/routes.ts 里的重定向路由落到本页）。
+ * 任务管理页 —— 路由 `/pm/task`（菜单由后端下发）。
  *
- * ⚠️ 本页只是**路由壳**：列表界面在 `TaskListView` 里
- * （项目详情页的「任务」页签用的是**同一个组件**，只是限定了当前项目）。
+ * ⚠️ 本页只是**路由壳**：界面在 `TaskWorkspace` 里
+ * （列表 / 看板 / 甘特三种展现形式，用 Segmented 切，共享同一份数据）。
  */
 import type React from 'react';
-import { TaskListView } from '@/components/pm/task/TaskListView';
+import { TaskWorkspace } from '@/components/pm/task/TaskWorkspace';
 
-const TaskManagement: React.FC = () => <TaskListView />;
+const TaskManagement: React.FC = () => <TaskWorkspace />;
 
 export default TaskManagement;

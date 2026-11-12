@@ -19,7 +19,7 @@ import { DictTag } from '@/components/pm/DictTag';
 import { renderJsonTags } from '@/components/pm/JsonTags';
 import { MilestoneListView } from '@/components/pm/milestone/MilestoneListView';
 import { RiskListView } from '@/components/pm/risk/RiskListView';
-import { TaskListView } from '@/components/pm/task/TaskListView';
+import { TaskWorkspace } from '@/components/pm/task/TaskWorkspace';
 import {
   getProjectDetail,
   getProjectMembers,
@@ -280,7 +280,7 @@ const ProjectDetail: React.FC = () => {
           {
             key: 'tasks',
             label: '任务',
-            children: <TaskListView projectId={projectId} />,
+            children: <TaskWorkspace projectId={projectId} />,
           },
           {
             key: 'risks',

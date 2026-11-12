@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { GanttMapping } from '@/components/pm/gantt/mapping';
 import {
   isTaskRowId,
@@ -28,9 +28,6 @@ import { updateTask } from '@/services/api/pm/task';
  *    错误提示由请求层统一弹。**回滚不在这里做** —— 调用方拿 false 就去
  *    `chartRef.current?.revertTask(rowId)`(hook 不知道甘特图长什么样)。
  */
-
-/** 一次拉一页(后端 page_size 的上限就是 100) */
-const GANTT_LIST_PARAMS = { page_no: 1, page_size: 100 } as const;
 
 /** useGanttTasks 的返回值 */
 export interface UseGanttTasksResult {
@@ -92,12 +89,16 @@ export function rowIdToTaskId(rowId: string): number | null {
 /**
  * 甘特视图的数据。
  *
- * @param options.projectId 给了就按项目筛(后端列表接口的 project_id 参数)
+ * @param options.projectId 数据集的**范围**（限定到某个项目 ⇒ 后端请求带 project_id）
+ * @param options.filterProjectId 在**已加载的数据集**里再收窄（甘特页面上的项目下拉）
+ *   ⚠️ 不再改后端请求 ⇒ 改下拉不用重新取数 ⇒ 切视图也不用重新取数
  */
 export function useGanttTasks(options?: {
   projectId?: number;
+  filterProjectId?: number;
 }): UseGanttTasksResult {
   const projectId = options?.projectId;
+  const filterProjectId = options?.filterProjectId;
 
   // 项目名/里程碑名:侧载(useProjectNames),不自己发请求
   const {
@@ -114,14 +115,23 @@ export function useGanttTasks(options?: {
   const { tasks, total, loading, truncated, reload, patchTask } =
     useTaskDataset({ projectId });
 
+  // ⚠️ **本地按项目收窄**：下拉选的项目只在这份数据里筛（不再改后端请求）
+  const visibleTasks = useMemo(
+    () =>
+      filterProjectId == null
+        ? tasks
+        : tasks.filter((task) => task.project_id === filterProjectId),
+    [filterProjectId, tasks],
+  );
+
   // 行数据:任务 + 侧载名字 ⇒ 甘特行
   const mapping = useMemo(
     () =>
-      mapTasksToGantt(tasks, {
+      mapTasksToGantt(visibleTasks, {
         projects: projectNames,
         milestones: milestoneNames,
       }),
-    [tasks, projectNames, milestoneNames],
+    [visibleTasks, projectNames, milestoneNames],
   );
 
   const applyDateChange = useCallback(

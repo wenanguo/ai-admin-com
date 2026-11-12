@@ -22,13 +22,9 @@
  * <TaskListView projectId={projectId} />   // 只看某个项目
  * ```
  */
-import {
-  AppstoreOutlined,
-  BarChartOutlined,
-  PlusOutlined,
-} from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import { type ProColumns, ProTable } from '@ant-design/pro-components';
-import { useAccess, useModel, useNavigate } from '@umijs/max';
+import { useAccess, useModel } from '@umijs/max';
 import { Alert, Button } from 'antd';
 import type React from 'react';
 import { useCallback, useMemo } from 'react';
@@ -80,7 +76,6 @@ export function TaskListView({
   projectId,
 }: TaskListViewProps): React.ReactElement {
   const access = useAccess();
-  const navigate = useNavigate();
   /** AI 工作台 ↔ 主工作区的桥（讨论上下文 / 写回信号 / 展开侧栏） */
   const aiBridge = useModel('ai-bridge');
 
@@ -246,15 +241,6 @@ export function TaskListView({
     .filter((part): part is string => part !== null)
     .join(';');
 
-  /**
-   * 看板/甘特的入口地址。
-   *
-   * ⚠️ **带着项目限定**：从项目详情页进来时，点了看板/甘特**还是这个项目**的
-   *    ⇒ 否则项目限定会在跳转里悄悄丢掉（用户以为在看这个项目，实际看的是全部）。
-   */
-  const scopedPath = (path: string): string =>
-    projectId ? `${path}?project_id=${projectId}` : path;
-
   return (
     <>
       {sideLoadTruncated ? (
@@ -293,32 +279,9 @@ export function TaskListView({
         onRequestError={() => {}}
         toolBarRender={() => [
           /*
-            看板页(/pm/task/board)的入口:后端的菜单种子**没有**看板这一项
-            (看板是子页面,不是独立菜单),所以入口放在列表页的工具栏上,
-            与项目列表用「项目名称」链到详情页是同一个路子。
+            ⚠️ 看板/甘特的入口**不在这里了** —— 它们现在是**同一个页面**的
+            另外两种视图（顶上的 Segmented 切）。
           */
-          <Button
-            key="board"
-            icon={<AppstoreOutlined />}
-            onClick={() => {
-              navigate(scopedPath('/pm/task/board'));
-            }}
-          >
-            看板
-          </Button>,
-          /*
-            甘特页(/pm/task/gantt)的入口:与看板同理 —— 后端的菜单种子没有
-            这一项(它是子页面,不是独立菜单),所以入口放在列表页工具栏上。
-          */
-          <Button
-            key="gantt"
-            icon={<BarChartOutlined />}
-            onClick={() => {
-              navigate(scopedPath('/pm/task/gantt'));
-            }}
-          >
-            甘特
-          </Button>,
           <Button
             key="create"
             type="primary"

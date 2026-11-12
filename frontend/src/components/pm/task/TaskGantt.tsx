@@ -1,5 +1,5 @@
 import { PlusOutlined } from '@ant-design/icons';
-import { Link, useAccess, useModel, useSearchParams } from '@umijs/max';
+import { useAccess, useModel } from '@umijs/max';
 import { Alert, App, Button, Empty, Segmented, Select, Spin } from 'antd';
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -27,7 +27,10 @@ import { createTask, deleteTasks, updateTask } from '@/services/api/pm/task';
 import { rowIdToTaskId, useGanttTasks } from './useGanttTasks';
 
 /**
- * 任务甘特页 —— 路由 /pm/task/gantt。
+ * 任务甘特 —— **视图**（不是页面了）。
+ *
+ * 现在它挂在任务页面的 Segmented 上（`TaskWorkspace`）⇒
+ * 与列表/看板共用**同一份数据**（`useTaskDataset`）⇒ 切过来不用重新取数。
  *
  * 甘特**没有菜单入口**:后端的菜单种子只种了列表页,甘特是子页面 ——
  * 入口在任务列表页的工具栏按钮(见 src/pages/module_pm/task/index.tsx),
@@ -114,25 +117,35 @@ function spaceBelow(page: HTMLElement, scrollParent: HTMLElement): number {
   return total;
 }
 
-/** 甘特页 */
-const TaskGantt: React.FC = () => {
+/** 甘特视图的 props */
+export interface TaskGanttProps {
+  /** 限定到某个项目（项目详情页的任务页签用） */
+  projectId?: number;
+}
+
+/**
+ * 任务甘特视图。
+ *
+ * @param props.projectId 限定项目；不传就是全部
+ */
+export function TaskGantt({ projectId }: TaskGanttProps): React.ReactElement {
   const access = useAccess();
   /** 二次确认弹窗(用 App 的实例,主题才跟着) */
   const { modal } = App.useApp();
   /** AI 工作台 ↔ 主工作区的桥(讨论上下文 / 写回信号 / 展开侧栏) */
   const aiBridge = useModel('ai-bridge');
 
-  /** 按项目筛选(后端列表接口的 project_id 参数) */
   /*
-    从项目详情页的「任务」页签点「甘特」进来时，地址上带着 project_id
-    ⇒ 甘特也只看**这个项目**（否则项目限定会在跳转里悄悄丢掉）。
+    按项目筛选 —— 现在是**在已加载的数据集里本地筛**。
+    ⚠️ 数据集的范围由 `projectId`（工作台传进来）决定；下拉只是在
+    这份数据里再收窄 ⇒ 不用改后端请求 ⇒ 切视图也不用重新取数。
   */
-  const [searchParams] = useSearchParams();
-  const [projectId, setProjectId] = useState<number | undefined>(
-    searchParams.get('project_id')
-      ? Number(searchParams.get('project_id'))
-      : undefined,
+  const [filterProjectId, setFilterProjectId] = useState<number | undefined>(
+    projectId,
   );
+  useEffect(() => {
+    setFilterProjectId(projectId);
+  }, [projectId]);
   /** 缩放级别(「日/周/月」 */
   const [zoom, setZoom] = useState<ZoomLevel>('week');
 
@@ -148,7 +161,7 @@ const TaskGantt: React.FC = () => {
     optionsLoading,
     projectNames,
     milestoneNames,
-  } = useGanttTasks({ projectId });
+  } = useGanttTasks({ projectId, filterProjectId });
 
   /** 甘特图的命令式句柄(回滚 / 缩放 / 滚动) */
   const chartRef = useRef<GanttChartHandle | null>(null);
@@ -390,10 +403,6 @@ const TaskGantt: React.FC = () => {
       {/* 页面标题:与看板页同款 */}
       <div className="flex items-center gap-3">
         <span className="text-base font-semibold">任务甘特</span>
-        {/* 甘特没有菜单入口,列表页才是入口 —— 这里给一条回去的路 */}
-        <Link to="/pm/task" className="text-sm">
-          返回任务列表
-        </Link>
       </div>
 
       {truncated ? (
@@ -433,9 +442,9 @@ const TaskGantt: React.FC = () => {
           allowClear
           className="w-60"
           placeholder="按项目筛选"
-          value={projectId}
+          value={filterProjectId}
           options={projectOptions}
-          onChange={(value) => setProjectId(value ?? undefined)}
+          onChange={(value) => setFilterProjectId(value ?? undefined)}
         />
         <Segmented<ZoomLevel>
           disabled={!hasChart}
@@ -519,6 +528,4 @@ const TaskGantt: React.FC = () => {
       />
     </div>
   );
-};
-
-export default TaskGantt;
+}

@@ -30,7 +30,8 @@ import {
  * 必须与前端路由表对齐。
  */
 
-const BOARD_PAGE_PATH = '/pm/task/board';
+/** 看板现在是**同一个页面**的一种视图（`?view=board`） */
+const BOARD_PAGE_PATH = '/pm/task?view=board';
 const TASK_LIST_URL = `**/api/v1${PM_TASK_PREFIX}/list**`;
 const TASK_DETAIL_URL = `**/api/v1${PM_TASK_PREFIX}/detail/**`;
 const TASK_UPDATE_URL = `**/api/v1${PM_TASK_PREFIX}/update/**`;

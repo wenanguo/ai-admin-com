@@ -47,8 +47,6 @@ export const SEARCHABLE_FIELDS = [
   'assignee_id',
 ] as const;
 
-type SearchableField = (typeof SEARCHABLE_FIELDS)[number];
-
 /** 值的「空」判定：与后端「参数为 None / 空串就不加条件」一致 */
 function isEmptyValue(value: unknown): boolean {
   if (value === undefined || value === null || value === '') return true;

@@ -30,7 +30,8 @@ import {
  * 必须与前端路由表对齐。
  */
 
-const GANTT_PAGE_PATH = '/pm/task/gantt';
+/** 甘特现在是**同一个页面**的一种视图（`?view=gantt`） */
+const GANTT_PAGE_PATH = '/pm/task?view=gantt';
 const TASK_LIST_URL = `**/api/v1${PM_TASK_PREFIX}/list**`;
 const TASK_UPDATE_URL = `**/api/v1${PM_TASK_PREFIX}/update/**`;
 const PROJECT_LIST_URL = `**/api/v1${PM_PROJECT_PREFIX}/list**`;
@@ -435,14 +436,17 @@ test.describe('任务甘特页', () => {
     await expect(page.locator('.gantt_row')).toHaveCount(5);
   });
 
-  test('列表页工具栏的「甘特」按钮能进甘特页', async ({ page }) => {
+  test('顶上的 Segmented 能切到甘特视图', async ({ page }) => {
     await setupGanttPage(page);
 
-    // 回列表页点入口
+    // 回列表页,用视图切换器切过去
     await page.goto('/pm/task');
-    await page.getByRole('button', { name: '甘特' }).click();
+    await page
+      .locator('.ant-segmented-item', { hasText: '甘特' })
+      .first()
+      .click();
 
-    await expect(page).toHaveURL(/\/pm\/task\/gantt$/);
+    await expect(page).toHaveURL(/\/pm\/task\?view=gantt$/);
     await expect(page.locator('.gantt_container')).toBeVisible();
   });
 
