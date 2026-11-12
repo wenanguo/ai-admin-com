@@ -1020,8 +1020,11 @@ test.describe('内容区窄（< 900px）', () => {
       .locator('[data-role="ai-wide-chat-column"]')
       .boundingBox();
     const overlayBox = await wideOverlay(page).boundingBox();
-    if (!chatBox || !overlayBox) {
-      throw new Error('对话列或宽版浮层没有布局盒');
+    const pageBox = await page
+      .locator('[data-testid="ai-workspace-page"]')
+      .boundingBox();
+    if (!chatBox || !overlayBox || !pageBox) {
+      throw new Error('对话列、宽版浮层或宽版内容盒没有布局盒');
     }
     // 对话区比侧栏（360px）宽
     expect(chatBox.width).toBeGreaterThan(360);
@@ -1029,8 +1032,45 @@ test.describe('内容区窄（< 900px）', () => {
     expect(chatBox.x + chatBox.width).toBeGreaterThan(
       overlayBox.x + overlayBox.width / 2,
     );
+    // ⚠️ **对话区 ≈ 内容区宽度**（这条才有区分度）：
+    //    侧栏若是**内联**的（360px 窄栏 + 间隙），对话列就只剩「内容区宽度
+    //    减去 400 多一点」⇒ 上面那两条**不一定挂**（实测：内容区 1200px 时
+    //    对话列 669px ⇒ `> 360` 与「越过中线」都过）⇒ 只有这条能分辨
+    //    「并排」与「抽屉」。
+    //    （内容区自己那 32px 内边距扣掉 ⇒ 差值不超过 48px 就算「占满」。）
+    expect(chatBox.width).toBeGreaterThan(pageBox.width - 48);
+    expect(chatBox.width).toBeGreaterThan(overlayBox.width - 64);
 
-    // ④ 点「侧栏」⇒ 抽屉滑出来，那三个页签都在（用户还够得着待确认/审计/规则）
+    // ④ ⚠️ **竖向也不滚**（窄形态的竖向守卫）。
+    //    窄形态下头部多了一个「侧栏」按钮 ⇒ 它换行会挤压对话区
+    //    ⇒ 光断言宽度看不见这类回归 ⇒ 这里量高度。
+    const narrowPageBox = await page
+      .locator('[data-testid="ai-workspace-page"]')
+      .evaluate((el) => ({
+        clientH: el.clientHeight,
+        scrollH: el.scrollHeight,
+      }));
+    expect(narrowPageBox.scrollH).toBeLessThanOrEqual(narrowPageBox.clientH);
+
+    // ⑤ ⚠️ **发送按钮在窄形态下还点得到**（没被换行的头部挤没）。
+    //    命中测试：按钮中心点到的**就是按钮自己**（不是被别的东西盖住）。
+    const narrowColumn = page.locator('[data-role="ai-wide-chat-column"]');
+    const narrowSendButton = narrowColumn.getByRole('button', {
+      name: /^发\s*送$/,
+    });
+    await expect(narrowSendButton).toBeVisible();
+    await narrowSendButton.scrollIntoViewIfNeeded();
+    const narrowCovered = await narrowSendButton.evaluate((button) => {
+      const rect = button.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        rect.x + rect.width / 2,
+        rect.y + rect.height / 2,
+      );
+      return hit ? !button.contains(hit) : true;
+    });
+    expect(narrowCovered).toBe(false);
+
+    // ⑥ 点「侧栏」⇒ 抽屉滑出来，那三个页签都在（用户还够得着待确认/审计/规则）
     await toggle.click();
     const sidebar = page.locator('[data-role="ai-wide-sidebar"]');
     await expect(sidebar).toBeVisible();
@@ -1040,7 +1080,7 @@ test.describe('内容区窄（< 900px）', () => {
       sidebar.getByRole('tab', { name: '规则与 AI 的分工' }),
     ).toBeVisible();
 
-    // ⑤ 抽屉在**右边**（贴视口右边缘）
+    // ⑦ 抽屉在**右边**（贴视口右边缘）
     //    ⚠️ 抽屉是**滑进来**的 ⇒ 量位置之前先等它停下来
     //    （否则量到的是动画中间的位置，右侧会多出半个抽屉的宽度）。
     let lastRight = -1;
@@ -1066,12 +1106,132 @@ test.describe('内容区窄（< 900px）', () => {
       viewport.width - 24,
     );
 
-    // ⑥ 点抽屉的「关闭」⇒ 抽屉收起来（侧栏滑回屏幕外）
+    // ⑧ 点抽屉的「关闭」⇒ 抽屉收起来（侧栏滑回屏幕外）
     //    ⚠️ antd v6 的抽屉**不处理 Esc** ⇒ 用关闭按钮。
     //    ⚠️ 关掉后抽屉的 DOM **还在**（只是滑出屏幕、不可见）⇒ 断言「不可见」。
     await page.getByRole('button', { name: '关闭', exact: true }).click();
     await expect(sidebar).toBeHidden();
     await expect(page.locator('.ant-drawer.ant-drawer-open')).toHaveCount(0);
+  });
+
+  /**
+   * ⚠️ **离开窄形态时抽屉状态要复位**（真 bug 的回归守卫）。
+   *
+   * ## 原来的症状
+   *
+   * 窄形态下打开抽屉 ⇒ 把窗口拉宽到 900px 以上 ⇒ 抽屉**卸载**了，
+   * 但「抽屉开着」那个状态还是 `true` ⇒ 再变窄时抽屉**自己弹出来**，
+   * 盖住对话区（用户莫名其妙被遮住）。
+   */
+  test('拉宽到并排形态后再变窄,抽屉不会自己弹出来', async ({ page }) => {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+    await waitForStableLayout(page);
+
+    await page.setViewportSize({ width: 760, height: 900 });
+    await waitForStableLayout(page);
+
+    await openPanel(page);
+    await expandButton(page).click();
+    await expect(wideOverlay(page)).toBeVisible();
+
+    // 窄形态 ⇒ 打开抽屉
+    const toggle = page.locator('[data-role="ai-wide-sidebar-toggle"]');
+    await expect(toggle).toBeVisible();
+    await toggle.click();
+    await expect(page.locator('[data-role="ai-wide-sidebar"]')).toBeVisible();
+    await expect(page.locator('.ant-drawer.ant-drawer-open')).toHaveCount(1);
+
+    // 拉宽 ⇒ 变回**并排**形态（抽屉卸载，侧栏常驻）
+    await page.setViewportSize({ width: 1200, height: 900 });
+    await waitForStableLayout(page);
+    await expect(
+      page.locator('[data-role="ai-wide-sidebar-toggle"]'),
+    ).toHaveCount(0);
+    await expect(page.locator('[data-role="ai-wide-sidebar"]')).toBeVisible();
+
+    // 再变窄 ⇒ 抽屉**不该自己弹出来**（状态已复位）
+    await page.setViewportSize({ width: 760, height: 900 });
+    await waitForStableLayout(page);
+    await expect(
+      page.locator('[data-role="ai-wide-sidebar-toggle"]'),
+    ).toBeVisible();
+    await expect(page.locator('.ant-drawer.ant-drawer-open')).toHaveCount(0);
+    await expect(page.locator('[data-role="ai-wide-sidebar"]')).toHaveCount(0);
+  });
+
+  /**
+   * ⚠️ **内容区比抽屉还窄时，抽屉要自己收窄**（不溢出屏幕）。
+   *
+   * 抽屉固定 360px 时，内容区窄到 ~380px 时，靠右的抽屉会**伸出左边**
+   * ⇒ 侧栏左侧的东西（例如「待确认」的同意 / 拒绝按钮）够不着。
+   * ⇒ 抽屉宽度取 `min(360, 内容区宽度 - 32)`。
+   */
+  test('内容区比抽屉还窄时,抽屉自动收窄(不溢出屏幕)', async ({ page }) => {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+    await waitForStableLayout(page);
+
+    // 视口调窄 ⇒ 内容区比 360 + 32 还窄
+    await page.setViewportSize({ width: 380, height: 900 });
+    await waitForStableLayout(page);
+
+    await openPanel(page);
+    await expandButton(page).click();
+    await expect(wideOverlay(page)).toBeVisible();
+
+    const pageBox = await page
+      .locator('[data-testid="ai-workspace-page"]')
+      .boundingBox();
+    if (!pageBox) {
+      throw new Error('宽版内容盒没有布局盒');
+    }
+    // 内容区确实比「360 + 32」还窄（这条用例的前提）
+    expect(pageBox.width).toBeLessThan(392);
+
+    // 打开抽屉
+    await page.locator('[data-role="ai-wide-sidebar-toggle"]').click();
+    const drawer = page.locator('.ant-drawer-content-wrapper');
+    await expect(drawer).toBeVisible();
+    // ⚠️ 抽屉是**滑进来**的 ⇒ 量之前先等它停下来
+    let lastWidth = -1;
+    await expect
+      .poll(async () => {
+        const box = await drawer.boundingBox();
+        const width = box ? Math.round(box.width) : -1;
+        const stable = width === lastWidth;
+        lastWidth = width;
+        return stable;
+      })
+      .toBe(true);
+
+    const drawerBox = await drawer.boundingBox();
+    if (!drawerBox) {
+      throw new Error('抽屉没有布局盒');
+    }
+    // 抽屉跟着内容区收了（不再是死的 360px）
+    expect(drawerBox.width).toBeLessThan(360);
+    expect(drawerBox.width).toBeCloseTo(pageBox.width - 32, 0);
+    // 没有伸出屏幕左边
+    expect(drawerBox.x).toBeGreaterThanOrEqual(0);
   });
 });
 

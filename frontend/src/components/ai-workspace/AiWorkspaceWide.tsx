@@ -43,7 +43,13 @@ import {
   theme,
 } from 'antd';
 import type React from 'react';
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { listAiConversations } from '@/services/api/ai/client';
 import type { AiConversation } from '@/services/api/ai/types';
 import { AuditPanel } from './AuditPanel';
@@ -173,6 +179,36 @@ export function AiWorkspaceWide({
     contentWidth !== undefined && contentWidth < NARROW_CONTENT_WIDTH;
   /** 抽屉开着没有（窄形态下侧栏在抽屉里）。 */
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  /**
+   * ⚠️ **离开窄形态时把抽屉状态复位**（真 bug 的修复）。
+   *
+   * ## 原来的症状
+   *
+   * 窄形态下打开抽屉 ⇒ 把窗口拉宽到 900px 以上 ⇒ 抽屉**卸载**了，
+   * 但 `sidebarOpen` 还是 `true` ⇒ 再变窄时抽屉**自己弹出来**，
+   * 盖住对话区（用户莫名其妙被遮住）。
+   *
+   * ⇒ 形态一变回并排（`collapsed` 变 false）就把 `sidebarOpen` 置回 false。
+   */
+  useEffect(() => {
+    if (!collapsed) {
+      setSidebarOpen(false);
+    }
+  }, [collapsed]);
+
+  /**
+   * 抽屉的宽度（px）。
+   *
+   * ⚠️ **不能固定 360px**：内容区比它还窄时，靠右的抽屉会**伸出左边**
+   *    （超出视口）⇒ 侧栏左侧的东西（例如「待确认」的同意 / 拒绝按钮）
+   *    够不着。
+   * ⇒ 取「360px」与「内容区宽度 - 32px」的**小者** ⇒ 窄内容区下自动收窄。
+   */
+  const drawerWidth =
+    contentWidth !== undefined
+      ? Math.max(0, Math.min(SIDEBAR_WIDTH, contentWidth - 32))
+      : SIDEBAR_WIDTH;
 
   /** 点意图卡片：只把问句填进输入框，**不发送**；并把抽屉收起来。 */
   const handlePickIntent = useCallback(
@@ -639,6 +675,8 @@ export function AiWorkspaceWide({
         ⚠️ 抽屉是**浮层**（portal + 遮罩）⇒ 不占布局宽度
            ⇒ 对话区真的占满了整个内容区。
         ⚠️ `size` 而不是 `width`（antd v6 里 `width` 已废弃）。
+        ⚠️ 宽度是 `drawerWidth`（不是固定的 360px）⇒ 内容区比它窄时自动收窄，
+           不会伸出屏幕左边。
       */}
       {collapsed ? (
         <Drawer
@@ -647,7 +685,7 @@ export function AiWorkspaceWide({
             setSidebarOpen(false);
           }}
           placement="right"
-          size={SIDEBAR_WIDTH}
+          size={drawerWidth}
           title="工作台视图"
           styles={{
             body: {
