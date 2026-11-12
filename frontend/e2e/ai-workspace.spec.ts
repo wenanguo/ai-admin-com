@@ -640,6 +640,53 @@ test.describe('最大化（宽版浮层）', () => {
     ).length;
     expect(after).toBe(before);
   });
+
+  /**
+   * 最大化之后是**两栏**：左边对话，右边 360px 的侧栏。
+   *
+   * ⚠️ 「一屏铺满」（页面自己不滚 + 对话区吃满）那条断言**不在这里** ——
+   *    意图卡片墙还在页面底部（Task 3 才折进输入框上方的抽屉），
+   *    对话区的高度也还是固定的（Task 2 才吃满）⇒ 本任务只钉两栏骨架。
+   */
+  test('最大化后右侧栏出现,对话在左、侧栏在右', async ({ page }) => {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+
+    await openPanel(page);
+    await expandButton(page).click();
+    await expect(wideOverlay(page)).toBeVisible();
+
+    // 右侧栏存在
+    const sidebar = page.locator('[data-role="ai-wide-sidebar"]');
+    await expect(sidebar).toBeVisible();
+
+    // 侧栏里就是「待确认 / 审计 / 规则与 AI 的分工」那三个页签
+    await expect(sidebar.getByRole('tab', { name: '待确认' })).toBeVisible();
+
+    // 对话在左、侧栏在右
+    const chatColumn = page.locator('[data-role="ai-wide-chat-column"]');
+    await expect(chatColumn).toBeVisible();
+    const chatBox = await chatColumn.boundingBox();
+    const sidebarBox = await sidebar.boundingBox();
+    if (!chatBox || !sidebarBox) {
+      throw new Error('对话列或侧栏没有布局盒');
+    }
+    expect(chatBox.x).toBeLessThan(sidebarBox.x);
+    // 两栏**不重叠**（对话列的右边缘 ≤ 侧栏的左边缘）
+    expect(chatBox.x + chatBox.width).toBeLessThanOrEqual(sidebarBox.x + 1);
+
+    // 侧栏是固定宽度的窄栏（360px），不是把对话挤掉的那种自适应
+    expect(sidebarBox.width).toBeCloseTo(360, 0);
+  });
 });
 
 /**

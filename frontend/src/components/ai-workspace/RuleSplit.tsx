@@ -44,6 +44,18 @@ const LLM_ITEMS: readonly string[] = [
  */
 const LLM_BACKGROUND = '#F9F0FF';
 
+/**
+ * 「规则与 AI 的分工」的 props。
+ */
+export interface RuleSplitProps {
+  /**
+   * 侧栏窄 ⇒ 两栏并排放不下 ⇒ 改成上下堆叠。
+   *
+   * ⚠️ 默认**不**堆叠（保持原来的并排双栏）。
+   */
+  stacked?: boolean;
+}
+
 /** 一栏（标题 + 条目）。 */
 interface SplitColumnProps {
   /** 栏的标识（挂成 `data-role`，给测试与样式用）。 */
@@ -58,6 +70,12 @@ interface SplitColumnProps {
   background: string;
   /** 标题颜色。 */
   titleColor: string;
+  /**
+   * 上下堆叠（侧栏里两栏并排放不下）。
+   *
+   * ⇒ 栏**不抢**宽度（`flex: none`），自己占满整行。
+   */
+  stacked?: boolean;
 }
 
 /** 一栏。 */
@@ -68,13 +86,16 @@ function SplitColumn({
   items,
   background,
   titleColor,
+  stacked = false,
 }: SplitColumnProps): React.ReactElement {
   const { token } = theme.useToken();
   return (
     <div
       data-role={testId}
       style={{
-        flex: 1,
+        // ⚠️ 并排时两栏平分宽度；堆叠时**不抢**宽度（自己占满整行）。
+        flex: stacked ? 'none' : 1,
+        width: stacked ? '100%' : undefined,
         minWidth: 0,
         padding: token.padding,
         borderRadius: token.borderRadiusLG,
@@ -104,8 +125,12 @@ function SplitColumn({
 
 /**
  * 「规则与 AI 的分工」双栏。
+ *
+ * @param props `stacked` = 侧栏窄 ⇒ 两栏并排放不下 ⇒ 改成上下堆叠。
  */
-export function RuleSplit(): React.ReactElement {
+export function RuleSplit({
+  stacked = false,
+}: RuleSplitProps = {}): React.ReactElement {
   const { token } = theme.useToken();
 
   return (
@@ -114,7 +139,9 @@ export function RuleSplit(): React.ReactElement {
         style={{
           display: 'flex',
           gap: token.size,
-          flexWrap: 'wrap',
+          // ⚠️ 并排时两栏平分一行；堆叠时改成**上下**（一行放不下 360px）。
+          flexDirection: stacked ? 'column' : 'row',
+          flexWrap: stacked ? 'nowrap' : 'wrap',
         }}
       >
         <SplitColumn
@@ -124,6 +151,7 @@ export function RuleSplit(): React.ReactElement {
           items={RULE_ENGINE_ITEMS}
           background={token.colorSuccessBg}
           titleColor={token.colorSuccessText}
+          stacked={stacked}
         />
         <SplitColumn
           testId="ai-split-llm"
@@ -132,6 +160,7 @@ export function RuleSplit(): React.ReactElement {
           items={LLM_ITEMS}
           background={LLM_BACKGROUND}
           titleColor="#722ED1"
+          stacked={stacked}
         />
       </div>
       <div style={{ marginTop: token.sizeSM }}>

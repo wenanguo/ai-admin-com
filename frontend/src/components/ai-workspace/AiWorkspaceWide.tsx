@@ -20,6 +20,13 @@
  * - **不画配额条**：服务端没有配额端点 ⇒ 没有数据源就不画假数字（规格 §4.3）。
  * - **ETA 只写 burndown**：后端没有依赖图接口 ⇒ 没有关键路径、没有 P50/P90。
  * - **意图卡片标「暂未开放」**：AI 服务当前只有 `create_task` 一条命令。
+ *
+ * ## 骨架：两栏
+ *
+ * - **左边**：对话（这一页的主用途）；
+ * - **右边**：360px 的侧栏（待确认 / 审计 / 规则与 AI 的分工）。
+ *
+ * ⚠️ 根容器 `overflow: hidden` ⇒ **整页不滚**，滚动条都在各面板**里面**。
  */
 import { useModel } from '@umijs/max';
 import { Alert, Button, Dropdown, Space, Tabs, Typography, theme } from 'antd';
@@ -146,8 +153,14 @@ export function AiWorkspaceWide({
         flexDirection: 'column',
         gap: token.size,
         padding: token.padding,
+        // ⚠️ **高度链**：它是 `AiWorkspace` 根（flex 列）的子项
+        //    ⇒ 靠 `flex: 1 1 0%` 吃满，比只写 `height: 100%` 更稳。
+        //    `height: 100%` 也留着（路由页那条链靠它）。
         height: '100%',
-        overflowY: 'auto',
+        flex: '1 1 0%',
+        minHeight: 0,
+        // ⚠️ **整页不滚**：滚动条只在各个面板**里面**（消息区 / 列表区）。
+        overflow: 'hidden',
       }}
     >
       {/* 头部 */}
@@ -268,106 +281,179 @@ export function AiWorkspaceWide({
       ) : null}
 
       {/*
-        宽版对话。
+        **两栏**：左边对话，右边 360px 的侧栏（待确认 / 审计 / 规则分工）。
 
-        ⚠️ **对话区放在三视图上面**：这一页的主用途是**聊天**，
-        而三视图（待确认 / 审计 / 规则分工）只是参考。先把对话放在前面，
-        **打开就能聊** —— 发送按钮不用先滚过一屏才能看到。
+        ⚠️ 这一行是**弹性行**（`flex: 1 1 0%`）⇒ 吃满头部与模型条剩下的高度
+        ⇒ 整页不滚（滚动条都在各面板**里面**）。
+      */}
+      <div
+        style={{
+          display: 'flex',
+          gap: token.size,
+          flex: '1 1 0%',
+          minHeight: 0,
+        }}
+      >
+        {/*
+        宽版对话（左边这一栏）。
+
+        ⚠️ **对话区是主页面的主用途**：左边整列都留给它，
+        右边那 360px 才是参考用的三视图（待确认 / 审计 / 规则分工）。
         对话区自己有个视口相对的高度（`min(560px, 55vh)`，见 `WideChat`），
         消息在里面滚，输入区固定在面板底部 ⇒ 面板里只有一个滚动条。
       */}
-      <div ref={chatRef}>
-        {/* ⚠️ 「当前讨论」条：宽版也要看得见在聊哪条任务 */}
-        <DiscussionBar
-          context={aiBridge.context ?? null}
-          onClear={() => {
-            aiBridge.clearContext();
+        <div
+          ref={chatRef}
+          data-role="ai-wide-chat-column"
+          style={{
+            flex: '1 1 0%',
+            minWidth: 0,
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
           }}
-        />
-        <WideChat
-          messages={workspace.messages}
-          thinking={workspace.thinking}
-          pendingItems={workspace.pendingItems}
-          draft={draft}
-          onDraftChange={setDraft}
-          onSend={handleSend}
-          streaming={workspace.streaming}
-          sending={workspace.sending}
-          sendError={workspace.sendError}
-          onRetry={() => {
-            void workspace.retry();
-          }}
-          onStop={() => {
-            void workspace.abort();
-          }}
-          stopping={workspace.aborting}
-        />
-      </div>
+        >
+          {/* ⚠️ 「当前讨论」条：宽版也要看得见在聊哪条任务 */}
+          <DiscussionBar
+            context={aiBridge.context ?? null}
+            onClear={() => {
+              aiBridge.clearContext();
+            }}
+          />
+          <WideChat
+            messages={workspace.messages}
+            thinking={workspace.thinking}
+            pendingItems={workspace.pendingItems}
+            draft={draft}
+            onDraftChange={setDraft}
+            onSend={handleSend}
+            streaming={workspace.streaming}
+            sending={workspace.sending}
+            sendError={workspace.sendError}
+            onRetry={() => {
+              void workspace.retry();
+            }}
+            onStop={() => {
+              void workspace.abort();
+            }}
+            stopping={workspace.aborting}
+          />
+        </div>
 
-      {/* 工作台视图：待确认 / 审计 / 规则与 AI 的分工 */}
-      <Tabs
-        activeKey={view}
-        onChange={(key) => {
-          setView(key as WorkspaceView);
-        }}
-        items={[
-          {
-            key: 'pending',
-            label: '待确认',
-            children: (
-              <div
-                style={{
-                  height: 360,
-                  border: `1px solid ${token.colorBorderSecondary}`,
-                  borderRadius: token.borderRadiusLG,
-                  overflow: 'hidden',
-                }}
-              >
-                <PendingPanel
-                  items={lists.pending}
-                  loading={lists.pendingLoading}
-                  error={lists.pendingError}
-                  onApprove={(id) => {
-                    void workspace.approvePending(id).then(() => {
-                      lists.reload();
-                    });
-                  }}
-                  onReject={(id) => {
-                    void workspace.rejectPending(id).then(() => {
-                      lists.reload();
-                    });
-                  }}
-                />
-              </div>
-            ),
-          },
-          {
-            key: 'audit',
-            label: '审计',
-            children: (
-              <div
-                style={{
-                  height: 360,
-                  border: `1px solid ${token.colorBorderSecondary}`,
-                  borderRadius: token.borderRadiusLG,
-                  overflow: 'hidden',
-                }}
-              >
-                <AuditPanel
-                  items={lists.audit}
-                  loading={lists.auditLoading}
-                  error={lists.auditError}
-                />
-              </div>
-            ),
-          },
-          {
-            key: 'rules',
-            label: '规则与 AI 的分工',
-            children: <RuleSplit />,
-          },
-        ]}
-      />
+        {/*
+        右侧栏：工作台视图（待确认 / 审计 / 规则与 AI 的分工）。
+
+        ⚠️ 固定 **360px** 窄栏 ⇒ 对话区不会被挤没（内容区窄时怎么办，
+        见 Task 5：那时候侧栏改成抽屉）。
+        */}
+        <aside
+          data-role="ai-wide-sidebar"
+          style={{
+            width: 360,
+            flexShrink: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            minHeight: 0,
+          }}
+        >
+          <Tabs
+            activeKey={view}
+            onChange={(key) => {
+              setView(key as WorkspaceView);
+            }}
+            style={{ flex: '1 1 0%', minHeight: 0 }}
+            styles={{
+              /*
+            ⚠️ 高度链（与窄面板那套一样）：
+              .ant-tabs → .ant-tabs-body-holder → .ant-tabs-body → .ant-tabs-content
+            侧栏是**确定高度**的 ⇒ 这里给一个确定的高度并藏掉溢出，
+            否则内容会溢出到侧栏外面。
+            `body` 给 `.ant-tabs-body`、`content` 给页签面板。
+          */
+              body: { height: '100%' },
+              content: {
+                height: '100%',
+                overflow: 'hidden',
+                // ⇒ 页签面板是 flex 列 ⇒ 里面的内容能吃满面板高度。
+                display: 'flex',
+                flexDirection: 'column',
+              },
+            }}
+            items={[
+              {
+                key: 'pending',
+                label: '待确认',
+                children: (
+                  <div
+                    style={{
+                      flex: '1 1 0%',
+                      minHeight: 0,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      borderRadius: token.borderRadiusLG,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <PendingPanel
+                      items={lists.pending}
+                      loading={lists.pendingLoading}
+                      error={lists.pendingError}
+                      onApprove={(id) => {
+                        void workspace.approvePending(id).then(() => {
+                          lists.reload();
+                        });
+                      }}
+                      onReject={(id) => {
+                        void workspace.rejectPending(id).then(() => {
+                          lists.reload();
+                        });
+                      }}
+                    />
+                  </div>
+                ),
+              },
+              {
+                key: 'audit',
+                label: '审计',
+                children: (
+                  <div
+                    style={{
+                      flex: '1 1 0%',
+                      minHeight: 0,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      borderRadius: token.borderRadiusLG,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <AuditPanel
+                      items={lists.audit}
+                      loading={lists.auditLoading}
+                      error={lists.auditError}
+                    />
+                  </div>
+                ),
+              },
+              {
+                key: 'rules',
+                label: '规则与 AI 的分工',
+                children: (
+                  <div
+                    style={{
+                      flex: '1 1 0%',
+                      minHeight: 0,
+                      // ⚠️ 这一块**自己滚**：`RuleSplit` 内部没有滚动区
+                      //    ⇒ 不给它滚动区的话，360px 窄栏里下半截看不到。
+                      overflowY: 'auto',
+                    }}
+                  >
+                    {/* 侧栏窄 ⇒ 两栏并排放不下 ⇒ 上下堆叠 */}
+                    <RuleSplit stacked />
+                  </div>
+                ),
+              },
+            ]}
+          />
+        </aside>
+      </div>
 
       {/* 10 类意图 */}
       <IntentGallery onPick={pickIntent} />
