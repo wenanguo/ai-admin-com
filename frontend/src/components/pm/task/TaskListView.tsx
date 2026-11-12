@@ -48,16 +48,10 @@ import type {
   TaskOut,
   TaskUpdateParams,
 } from '@/services/api/pm/task';
-import {
-  createTask,
-  deleteTasks,
-  listTasks,
-  updateTask,
-} from '@/services/api/pm/task';
-import { toProTableRequest } from '@/services/paginate';
+import { createTask, deleteTasks, updateTask } from '@/services/api/pm/task';
+import { filterTasks } from './filterTasks';
 import TaskModalForm from './TaskModalForm';
-
-const requestTasks = toProTableRequest<TaskOut>(listTasks);
+import { useTaskDataset } from './useTaskDataset';
 
 /** 任务列表界面的 props。 */
 export interface TaskListViewProps {
@@ -90,11 +84,20 @@ export function TaskListView({
   /** AI 工作台 ↔ 主工作区的桥（讨论上下文 / 写回信号 / 展开侧栏） */
   const aiBridge = useModel('ai-bridge');
 
+  /*
+    **共享任务数据集** —— 与看板/甘特用的是同一份数据。
+    ⇒ 切视图不用重新取数；看板拖完状态，列表里立刻能看到变化。
+  */
+  const dataset = useTaskDataset({ projectId });
+
   // 载荷有两种形状:新增带创建三列,更新不带 —— 见 services/api/pm/task.ts
   const crud = useCrudTable<TaskOut, TaskCreateParams | TaskUpdateParams>({
     create: createTask,
     update: updateTask,
     remove: deleteTasks,
+    // ⚠️ 写操作后要**重新取全量**（本地筛选的数据源变了），
+    //    而不是刷 ProTable（刷了也只是把同一份数据重新切一遍）。
+    reload: dataset.reload,
   });
 
   // 侧载的项目/里程碑名字:一次拉两张表,列里查表映射成名字
@@ -166,6 +169,30 @@ export function TaskListView({
     ],
   );
 
+  /**
+   * 列表的取数：**在本地做**（过滤 + 分页）。
+   *
+   * ⚠️ 筛选语义照后端（LIKE / eq 的区别）—— 见 ./filterTasks。
+   */
+  const requestLocal = useCallback(
+    async (params: {
+      current?: number;
+      pageSize?: number;
+      [key: string]: unknown;
+    }) => {
+      const { current, pageSize, ...filters } = params;
+      const filtered = filterTasks(dataset.tasks, filters);
+      const size = pageSize ?? 10;
+      const start = ((current ?? 1) - 1) * size;
+      return {
+        data: filtered.slice(start, start + size),
+        total: filtered.length,
+        success: true,
+      };
+    },
+    [dataset.tasks],
+  );
+
   const columns: ProColumns<TaskOut>[] = [
     ...taskColumns({
       statusValueEnum,
@@ -193,8 +220,8 @@ export function TaskListView({
    *    ⇒ 看着像没生效。
    */
   const reloadTasks = useCallback(() => {
-    crud.actionRef.current?.reload();
-  }, [crud.actionRef]);
+    dataset.reload();
+  }, [dataset]);
   const { rowClassName } = useAiTaskUpdate(reloadTasks);
 
   /*
@@ -243,10 +270,17 @@ export function TaskListView({
         rowKey="id"
         actionRef={crud.actionRef}
         columns={[...columns, ...operationColumns]}
-        request={requestTasks}
-        // ⚠️ **项目限定**：项目详情页的页签传了 projectId ⇒ 只看这个项目；
-        //    菜单里的入口不传 ⇒ 全部项目。
-        params={projectId ? { project_id: projectId } : undefined}
+        request={requestLocal}
+        /*
+          ⚠️ **项目限定不在这里**：数据集取数时就已经限定了项目
+          （useTaskDataset({ projectId })）⇒ 这里再传一遍是多余的。
+
+          `__v` 是**数据集的版本号**（react-query 的 dataUpdatedAt）：
+          数据集变了（写操作后重新取数、看板拖拽改状态）⇒ ProTable 重跑
+          一次本地切片 ⇒ 表格立刻是新的。
+          ⚠️ 它不在可搜索字段的白名单里 ⇒ 不会被当成筛选条件（见 filterTasks）。
+        */
+        params={{ __v: dataset.dataUpdatedAt }}
         search={{ labelWidth: 80 }}
         pagination={CRUD_PAGINATION}
         // 列多的时候横向滚动,不要把表头挤成竖排的一列字

@@ -124,6 +124,13 @@ export interface TaskDatasetResult {
    * 页面据此给一条提示 —— **上限不静默**。
    */
   truncated: boolean;
+  /**
+   * 数据集的**版本号**（react-query 的 `dataUpdatedAt`）。
+   *
+   * 数据一变它就变 ⇒ 视图可以拿它当 `params` 的钥匙，
+   * 让依赖本地数据的表格重跑一次（ProTable 靠 `params` 变化触发重取）。
+   */
+  dataUpdatedAt: number;
   /** 重新取数 */
   reload: () => void;
   /**
@@ -184,6 +191,7 @@ export function useTaskDataset(options?: {
     loading: query.isLoading,
     error: (query.error as Error | null) ?? null,
     truncated: (query.data?.total ?? 0) > tasks.length,
+    dataUpdatedAt: query.dataUpdatedAt,
     reload,
     patchTask,
   };
