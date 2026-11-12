@@ -90,6 +90,9 @@ const ParamManagement: React.FC = () => {
         request={requestParams}
         search={{ labelWidth: 80 }}
         pagination={CRUD_PAGINATION}
+        // 列多的时候横向滚动,不要把表头挤成竖排的一列字
+        // (操作列 fixed:'right' ⇒ 必须有 scroll.x 才有粘性效果)
+        scroll={{ x: 'max-content' }}
         // 错误提示由请求层统一弹,这里只需阻止 ProTable 把 rejection 重新抛出
         // (ProComponents v3 在 onRequestError 未定义时会 rethrow,产生未捕获的 promise rejection)
         onRequestError={() => {}}

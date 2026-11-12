@@ -229,6 +229,9 @@ const DictManagement: React.FC = () => {
               loading={typesLoading}
               // 类型数量有限,一次拉够(左栏不分页);上限 100 见 useDictTypes 的注释
               pagination={false}
+              // 左栏只有 420px 宽,列肯定放不下 ⇒ 横向滚动
+              // (操作列 fixed:'right' ⇒ 必须有 scroll.x 才有粘性效果)
+              scroll={{ x: 'max-content' }}
               onRow={(record) => ({
                 onClick: () => setSelected(record),
                 // 选中的行高亮 —— 用内联样式,不必为一行底色新增样式文件

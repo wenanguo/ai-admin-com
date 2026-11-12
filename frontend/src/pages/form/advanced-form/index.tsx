@@ -159,6 +159,9 @@ const AdvancedForm: FC<Record<string, any>> = () => {
       title: '操作',
       key: 'action',
       valueType: 'option',
+      // ⚠️ 钉在右边:列一多就横向滚,操作列不能被滚出屏幕
+      // (必须有 scroll.x 才有粘性效果,见下面的 EditableProTable)
+      fixed: 'right',
       render: (_, record: TableFormDateType, _index, action) => {
         return [
           <Button
@@ -543,6 +546,8 @@ const AdvancedForm: FC<Record<string, any>> = () => {
               }}
               columns={columns}
               rowKey="key"
+              // 列多的时候横向滚动(操作列 fixed:'right' ⇒ 必须有 scroll.x 才有粘性效果)
+              scroll={{ x: 'max-content' }}
             />
           </ProForm.Item>
         </Card>

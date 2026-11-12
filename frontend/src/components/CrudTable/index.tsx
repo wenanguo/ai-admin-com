@@ -250,6 +250,15 @@ export type CrudColumnOptions<T> =
  *
  * `onEdit` / `editPerm` 都不给时**不渲染「编辑」按钮** —— 只读页(只有删除)走同一份实现,
  * 页面不用再抄一遍权限门控;只给一个则在**编译期**就报错。
+ *
+ * ## 为什么 `fixed: 'right'`
+ *
+ * 列一多就要横向滚 ⇒ 操作列(编辑/删除)会被滚出屏幕 ⇒ 用户得先滚回去才能改一行。
+ * ⇒ 把它**钉在右边**:表格横滚时它一直���着。
+ *
+ * ⚠️ antd 的 `fixed` 列**必须配 `scroll.x`** 才有粘性效果
+ *    （没配的话只是普通的列,还会报 warning）
+ *    ⇒ 用到本列的每个 `ProTable` 都要设 `scroll={{ x: 'max-content' }}`。
  */
 export function useCrudColumns<T>(
   options: CrudColumnOptions<T>,
@@ -264,6 +273,9 @@ export function useCrudColumns<T>(
       title: '操作',
       valueType: 'option',
       width: 160,
+      // ⚠️ 钉在右边(见上面的注释)。页面若改了这一列的宽度,
+      //    记得也留够宽度,否则按钮会被挤掉。
+      fixed: 'right',
       render: (_, record) => [
         // 类型上已保证 onEdit / editPerm 成对(见 CrudColumnOptions),
         // 这里再兜一层:万一有人用 as 绕过类型,缺一也不渲染(只读页)

@@ -193,6 +193,9 @@ const TableList: React.FC = () => {
       ),
       dataIndex: 'option',
       valueType: 'option',
+      // ⚠️ 钉在右边:列一多就横向滚,操作列不能被滚出屏幕
+      // (必须有 scroll.x 才有粘性效果,见下面的 ProTable)
+      fixed: 'right',
       render: (_, record) => [
         <UpdateForm
           trigger={
@@ -258,6 +261,8 @@ const TableList: React.FC = () => {
         ]}
         request={rule}
         columns={columns}
+        // 列多的时候横向滚动(操作列 fixed:'right' ⇒ 必须有 scroll.x 才有粘性效果)
+        scroll={{ x: 'max-content' }}
         rowSelection={{
           onChange: (_, selectedRows) => {
             setSelectedRows(selectedRows);
