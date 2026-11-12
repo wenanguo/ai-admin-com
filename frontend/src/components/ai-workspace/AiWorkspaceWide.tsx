@@ -34,6 +34,7 @@ import { useModel } from '@umijs/max';
 import {
   Alert,
   Button,
+  Drawer,
   Dropdown,
   Space,
   Tabs,
@@ -42,7 +43,7 @@ import {
   theme,
 } from 'antd';
 import type React from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { listAiConversations } from '@/services/api/ai/client';
 import type { AiConversation } from '@/services/api/ai/types';
 import { AuditPanel } from './AuditPanel';
@@ -57,6 +58,21 @@ import { WideChat } from './WideChat';
 
 /** 工作台视图（页签）。 */
 type WorkspaceView = 'pending' | 'audit' | 'rules';
+
+/** 右侧栏的宽度（px）：并排时是常驻窄栏，抽屉时是抽屉的宽度。 */
+const SIDEBAR_WIDTH = 360;
+
+/**
+ * 内容区窄于它（px）⇒ 右侧栏改成**抽屉**。
+ *
+ * ## 为什么是这个数
+ *
+ * 并排形态下侧栏是**固定 360px** 且 `flexShrink: 0` ⇒ 内容区一窄，
+ * 侧栏就把对话区挤到没法用（窄到 376px 以下时侧栏还会被
+ * 根容器的 `overflowX: hidden` **裁掉**，用户根本够不着）。
+ * ⇒ 900px 以下干脆**不并排**：对话区占满整宽，侧栏改成右侧抽屉。
+ */
+const NARROW_CONTENT_WIDTH = 900;
 
 /** 未知错误转成一句话。 */
 function toMessage(error: unknown): string {
@@ -114,6 +130,50 @@ export function AiWorkspaceWide({
   );
   const [creating, setCreating] = useState(false);
 
+  /**
+   * **自己量宽度**（不靠宿主传 prop）。
+   *
+   * ⚠️ 宽版有**两个宿主**：最大化浮层与路由页 `/ai/workspace`。
+   *    浮层那边拿得到「内容区宽度」，路由页那边**没有**这个值
+   *    ⇒ 从宿主传 prop 只能覆盖一半宿主。
+   * ⇒ 这里在**自己的根容器**上挂 `ResizeObserver` ⇒ 两个宿主行为一致。
+   */
+  const rootRef = useRef<HTMLDivElement>(null);
+  /** 根容器有多宽（px）；还没量到时是 `undefined`。 */
+  const [contentWidth, setContentWidth] = useState<number | undefined>(
+    undefined,
+  );
+  useLayoutEffect(() => {
+    const element = rootRef.current;
+    if (!element) {
+      return;
+    }
+    const measure = (): void => {
+      setContentWidth(element.getBoundingClientRect().width);
+    };
+    // ⚠️ 用 `useLayoutEffect`：**首帧就量** ⇒ 不会出现「先并排、下一帧变抽屉」
+    //    的闪一下（那是 `useEffect` 才有的问题）。
+    measure();
+    // 内容区变宽变窄（收起菜单、改窗口大小）⇒ 形态跟着换。
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  /**
+   * 内容区窄 ⇒ 右侧栏改成抽屉。
+   *
+   * ⚠️ 还没量到宽度时**按宽的算**（并排）：先给一个能用的布局，
+   *    量到真实宽度后再纠正（`useLayoutEffect` 在首帧就跑完了，
+   *    所以实际上看不到中间态）。
+   */
+  const collapsed =
+    contentWidth !== undefined && contentWidth < NARROW_CONTENT_WIDTH;
+  /** 抽屉开着没有（窄形态下侧栏在抽屉里）。 */
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   /** 点意图卡片：只把问句填进输入框，**不发送**；并把抽屉收起来。 */
   const handlePickIntent = useCallback(
     (example: string, close: () => void): void => {
@@ -158,8 +218,136 @@ export function AiWorkspaceWide({
       });
   }, []);
 
+  /**
+   * 右侧栏（待确认 / 审计 / 规则与 AI 的分工）。
+   *
+   * ⚠️ **两种形态共用这一份**：
+   * - 内容区够宽 ⇒ 它是**并排**的常驻窄栏（360px）；
+   * - 内容区窄 ⇒ 它被放进**右侧抽屉**（对话区占满整宽）。
+   *
+   * ⚠️ 为什么提成变量：它是同一个 React 元素，宿主换地方渲染它
+   *    （行内 ↔ 抽屉的 portal）⇒ 不用把这份标记抄两遍。
+   */
+  const sidebar = (
+    <aside
+      data-role="ai-wide-sidebar"
+      style={{
+        // ⚠️ **两种形态的父容器方向不同**（并排时是**行**，抽屉里是**列**）
+        //    ⇒ `flex` 只能给其中一种 ⇒ 这里按形态给。
+        ...(collapsed
+          ? { width: '100%', flex: '1 1 0%', minWidth: 0 }
+          : { width: SIDEBAR_WIDTH, flexShrink: 0 }),
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+      }}
+    >
+      <Tabs
+        activeKey={view}
+        onChange={(key) => {
+          setView(key as WorkspaceView);
+        }}
+        style={{ flex: '1 1 0%', minHeight: 0 }}
+        styles={{
+          /*
+            ⚠️ 高度链（与窄面板那套一样）：
+              .ant-tabs → .ant-tabs-body-holder → .ant-tabs-body → .ant-tabs-content
+            侧栏是**确定高度**的 ⇒ 这里给一个确定的高度并藏掉溢出，
+            否则内容会溢出到侧栏外面。
+            `body` 给 `.ant-tabs-body`、`content` 给页签面板。
+          */
+          body: { height: '100%' },
+          content: {
+            height: '100%',
+            overflow: 'hidden',
+            // ⇒ 页签面板是 flex 列 ⇒ 里面的内容能吃满面板高度。
+            display: 'flex',
+            flexDirection: 'column',
+          },
+        }}
+        items={[
+          {
+            key: 'pending',
+            label: '待确认',
+            children: (
+              <div
+                style={{
+                  flex: '1 1 0%',
+                  minHeight: 0,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                  borderRadius: token.borderRadiusLG,
+                  overflow: 'hidden',
+                }}
+              >
+                <PendingPanel
+                  items={lists.pending}
+                  loading={lists.pendingLoading}
+                  error={lists.pendingError}
+                  onApprove={(id) => {
+                    void workspace.approvePending(id).then(() => {
+                      lists.reload();
+                    });
+                  }}
+                  onReject={(id) => {
+                    void workspace.rejectPending(id).then(() => {
+                      lists.reload();
+                    });
+                  }}
+                />
+              </div>
+            ),
+          },
+          {
+            key: 'audit',
+            label: '审计',
+            children: (
+              <div
+                style={{
+                  flex: '1 1 0%',
+                  minHeight: 0,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                  borderRadius: token.borderRadiusLG,
+                  overflow: 'hidden',
+                }}
+              >
+                <AuditPanel
+                  items={lists.audit}
+                  loading={lists.auditLoading}
+                  error={lists.auditError}
+                />
+              </div>
+            ),
+          },
+          {
+            key: 'rules',
+            label: '规则与 AI 的分工',
+            children: (
+              <div
+                style={{
+                  flex: '1 1 0%',
+                  minHeight: 0,
+                  // ⚠️ 这一块**自己滚**：`RuleSplit` 内部没有滚动区
+                  //    ⇒ 不给它滚动区的话，360px 窄栏里下半截看不到。
+                  // ⚠️ `overflowX` 也写上：只写 `overflowY: auto` 时，
+                  //    CSS 会把 `overflowX` 算成 `auto` ⇒ 一段长的不可断字符串
+                  //    会多出一条横向滚动条。
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                }}
+              >
+                {/* 侧栏窄 ⇒ 两栏并排放不下 ⇒ 上下堆叠 */}
+                <RuleSplit stacked />
+              </div>
+            ),
+          },
+        ]}
+      />
+    </aside>
+  );
+
   return (
     <div
+      ref={rootRef}
       data-testid="ai-workspace-page"
       style={{
         display: 'flex',
@@ -203,6 +391,23 @@ export function AiWorkspaceWide({
           </Typography.Text>
         </div>
         <Space wrap>
+          {/*
+            「侧栏」：**只在内容区窄的时候出现**。
+            ⇒ 窄的时候侧栏在**抽屉**里（常驻的 360px 会把对话区挤没），
+              这个按钮是抽屉的开关。
+            ⚠️ 宽的时候不出现（那时候侧栏本来就在右边）。
+          */}
+          {collapsed ? (
+            <Button
+              data-role="ai-wide-sidebar-toggle"
+              aria-expanded={sidebarOpen}
+              onClick={() => {
+                setSidebarOpen(true);
+              }}
+            >
+              侧栏
+            </Button>
+          ) : null}
           <Dropdown
             open={historyOpen}
             onOpenChange={handleHistoryOpen}
@@ -420,121 +625,44 @@ export function AiWorkspaceWide({
         {/*
         右侧栏：工作台视图（待确认 / 审计 / 规则与 AI 的分工）。
 
-        ⚠️ 固定 **360px** 窄栏 ⇒ 对话区不会被挤没（内容区窄时怎么办，
-        见 Task 5：那时候侧栏改成抽屉）。
+        ⚠️ **并排形态**：固定 **360px** 窄栏（`flexShrink: 0`）⇒ 对话区不会被挤没。
+        ⚠️ **窄形态**（内容区 < 900px）：侧栏**不并排**（它在抽屉里）
+           ⇒ 否则 360px 的常驻窄栏会把对话区挤成一条
+           （窄到 376px 以下还会被根容器的 `overflowX: hidden` 裁掉）。
         */}
-        <aside
-          data-role="ai-wide-sidebar"
-          style={{
-            width: 360,
-            flexShrink: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            minHeight: 0,
+        {collapsed ? null : sidebar}
+      </div>
+
+      {/*
+        **窄形态的右侧栏**：一个**右侧抽屉**。
+
+        ⚠️ 抽屉是**浮层**（portal + 遮罩）⇒ 不占布局宽度
+           ⇒ 对话区真的占满了整个内容区。
+        ⚠️ `size` 而不是 `width`（antd v6 里 `width` 已废弃）。
+      */}
+      {collapsed ? (
+        <Drawer
+          open={sidebarOpen}
+          onClose={() => {
+            setSidebarOpen(false);
+          }}
+          placement="right"
+          size={SIDEBAR_WIDTH}
+          title="工作台视图"
+          styles={{
+            body: {
+              // ⇒ 抽屉里的侧栏要**吃满抽屉高度**（页签面板各自滚）。
+              display: 'flex',
+              flexDirection: 'column',
+              // ⚠️ 抽屉**自己别再滚一层**（里面的页签面板自己滚）。
+              overflow: 'hidden',
+              padding: token.paddingSM,
+            },
           }}
         >
-          <Tabs
-            activeKey={view}
-            onChange={(key) => {
-              setView(key as WorkspaceView);
-            }}
-            style={{ flex: '1 1 0%', minHeight: 0 }}
-            styles={{
-              /*
-            ⚠️ 高度链（与窄面板那套一样）：
-              .ant-tabs → .ant-tabs-body-holder → .ant-tabs-body → .ant-tabs-content
-            侧栏是**确定高度**的 ⇒ 这里给一个确定的高度并藏掉溢出，
-            否则内容会溢出到侧栏外面。
-            `body` 给 `.ant-tabs-body`、`content` 给页签面板。
-          */
-              body: { height: '100%' },
-              content: {
-                height: '100%',
-                overflow: 'hidden',
-                // ⇒ 页签面板是 flex 列 ⇒ 里面的内容能吃满面板高度。
-                display: 'flex',
-                flexDirection: 'column',
-              },
-            }}
-            items={[
-              {
-                key: 'pending',
-                label: '待确认',
-                children: (
-                  <div
-                    style={{
-                      flex: '1 1 0%',
-                      minHeight: 0,
-                      border: `1px solid ${token.colorBorderSecondary}`,
-                      borderRadius: token.borderRadiusLG,
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <PendingPanel
-                      items={lists.pending}
-                      loading={lists.pendingLoading}
-                      error={lists.pendingError}
-                      onApprove={(id) => {
-                        void workspace.approvePending(id).then(() => {
-                          lists.reload();
-                        });
-                      }}
-                      onReject={(id) => {
-                        void workspace.rejectPending(id).then(() => {
-                          lists.reload();
-                        });
-                      }}
-                    />
-                  </div>
-                ),
-              },
-              {
-                key: 'audit',
-                label: '审计',
-                children: (
-                  <div
-                    style={{
-                      flex: '1 1 0%',
-                      minHeight: 0,
-                      border: `1px solid ${token.colorBorderSecondary}`,
-                      borderRadius: token.borderRadiusLG,
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <AuditPanel
-                      items={lists.audit}
-                      loading={lists.auditLoading}
-                      error={lists.auditError}
-                    />
-                  </div>
-                ),
-              },
-              {
-                key: 'rules',
-                label: '规则与 AI 的分工',
-                children: (
-                  <div
-                    style={{
-                      flex: '1 1 0%',
-                      minHeight: 0,
-                      // ⚠️ 这一块**自己滚**：`RuleSplit` 内部没有滚动区
-                      //    ⇒ 不给它滚动区的话，360px 窄栏里下半截看不到。
-                      // ⚠️ `overflowX` 也写上：只写 `overflowY: auto` 时，
-                      //    CSS 会把 `overflowX` 算成 `auto` ⇒ 一段长的不可断字符串
-                      //    会多出一条横向滚动条。
-                      overflowY: 'auto',
-                      overflowX: 'hidden',
-                    }}
-                  >
-                    {/* 侧栏窄 ⇒ 两栏并排放不下 ⇒ 上下堆叠 */}
-                    <RuleSplit stacked />
-                  </div>
-                ),
-              },
-            ]}
-          />
-        </aside>
-      </div>
+          {sidebar}
+        </Drawer>
+      ) : null}
     </div>
   );
 }

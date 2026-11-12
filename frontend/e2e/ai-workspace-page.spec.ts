@@ -244,6 +244,48 @@ test.describe('AI 工作台全宽页', () => {
     expect(geo.panelHeight).toBeGreaterThan(geo.viewportHeight * 0.55);
   });
 
+  /**
+   * ⚠️ **内容区窄**（< 900px）：右侧栏改成**抽屉**。
+   *
+   * ## 为什么路由页这边也要有
+   *
+   * 宽版内容是**两个宿主**共用的（最大化浮层 / 这个路由页）
+   * ⇒ 断点按**内容区宽度**算（组件自己量，不靠宿主传值）
+   * ⇒ 两个宿主自动一致 ⇒ 这里钉住路由页这一半。
+   */
+  test('内容区窄时右侧栏变成抽屉,对话区不被挤扁', async ({ page }) => {
+    await openWorkspacePage(page);
+
+    // 把视口调窄 ⇒ 内容区也窄（< 900px）
+    await page.setViewportSize({ width: 760, height: 900 });
+
+    // 窄形态 ⇒ 有一个「侧栏」按钮（侧栏在抽屉里）
+    const toggle = page.locator('[data-role="ai-wide-sidebar-toggle"]');
+    await expect(toggle).toBeVisible();
+
+    // 侧栏**默认收起**（页面里没有那块 360px 的窄栏）
+    await expect(page.locator('[data-role="ai-wide-sidebar"]')).toHaveCount(0);
+
+    // 对话区**占满整个宽度**（没被 360px 的侧栏挤扁）
+    const chatBox = await page
+      .locator('[data-role="ai-wide-chat-column"]')
+      .boundingBox();
+    if (!chatBox) {
+      throw new Error('对话列没有布局盒');
+    }
+    expect(chatBox.width).toBeGreaterThan(360);
+
+    // 点「侧栏」⇒ 抽屉滑出来，那三个页签都还在
+    await toggle.click();
+    const sidebar = page.locator('[data-role="ai-wide-sidebar"]');
+    await expect(sidebar).toBeVisible();
+    await expect(sidebar.getByRole('tab', { name: '待确认' })).toBeVisible();
+    await expect(sidebar.getByRole('tab', { name: '审计' })).toBeVisible();
+    await expect(
+      sidebar.getByRole('tab', { name: '规则与 AI 的分工' }),
+    ).toBeVisible();
+  });
+
   test('规则与 AI 的分工两栏都在,ETA 按实情写', async ({ page }) => {
     await openWorkspacePage(page);
 

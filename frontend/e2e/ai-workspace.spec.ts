@@ -972,6 +972,110 @@ test.describe('最大化（宽版浮层）', () => {
 });
 
 /**
+ * **内容区窄**（< 900px）：右侧栏改成**抽屉**。
+ *
+ * ## 为什么
+ *
+ * 最大化后的浮层宽度 = **内容区**的宽度 ⇒ 手机上只有 ~400px。
+ * 侧栏是固定 360px 且 `flexShrink: 0` ⇒ 它会把对话区挤成一条
+ * （窄到 376px 以下还会被根容器的 `overflowX: hidden` **裁掉**，用户够不着）。
+ * ⇒ 内容区 < 900px 时侧栏改成**右侧抽屉**，对话区占满整宽。
+ *
+ * ⚠️ 断点看的是**内容区**的宽度（不是视口）⇒ 两个宿主
+ *    （最大化浮层 / 路由页 `/ai/workspace`）自动一致。
+ */
+test.describe('内容区窄（< 900px）', () => {
+  test('内容区窄时右侧栏变成抽屉,对话区不被挤扁', async ({ page }) => {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+    await waitForStableLayout(page);
+
+    // ⚠️ **先在宽视口下进页面**（菜单可见），再把视口调窄 ——
+    //    反过来的话 ProLayout 会把菜单收进抽屉 ⇒ 等不到那个菜单项。
+    await page.setViewportSize({ width: 760, height: 900 });
+    await waitForStableLayout(page);
+
+    await openPanel(page);
+    await expandButton(page).click();
+    await expect(wideOverlay(page)).toBeVisible();
+
+    // ① 有一个「侧栏」按钮 ⇒ 说明已经是**窄形态**（侧栏在抽屉里）
+    const toggle = page.locator('[data-role="ai-wide-sidebar-toggle"]');
+    await expect(toggle).toBeVisible();
+
+    // ② **侧栏默认收起**（页面里没有那块 360px 的窄栏）
+    await expect(page.locator('[data-role="ai-wide-sidebar"]')).toHaveCount(0);
+
+    // ③ **对话区占满整个宽度**（没被 360px 的侧栏挤扁）
+    const chatBox = await page
+      .locator('[data-role="ai-wide-chat-column"]')
+      .boundingBox();
+    const overlayBox = await wideOverlay(page).boundingBox();
+    if (!chatBox || !overlayBox) {
+      throw new Error('对话列或宽版浮层没有布局盒');
+    }
+    // 对话区比侧栏（360px）宽
+    expect(chatBox.width).toBeGreaterThan(360);
+    // 对话区吃掉了浮层的一大半（不是被挤到左边一条缝）
+    expect(chatBox.x + chatBox.width).toBeGreaterThan(
+      overlayBox.x + overlayBox.width / 2,
+    );
+
+    // ④ 点「侧栏」⇒ 抽屉滑出来，那三个页签都在（用户还够得着待确认/审计/规则）
+    await toggle.click();
+    const sidebar = page.locator('[data-role="ai-wide-sidebar"]');
+    await expect(sidebar).toBeVisible();
+    await expect(sidebar.getByRole('tab', { name: '待确认' })).toBeVisible();
+    await expect(sidebar.getByRole('tab', { name: '审计' })).toBeVisible();
+    await expect(
+      sidebar.getByRole('tab', { name: '规则与 AI 的分工' }),
+    ).toBeVisible();
+
+    // ⑤ 抽屉在**右边**（贴视口右边缘）
+    //    ⚠️ 抽屉是**滑进来**的 ⇒ 量位置之前先等它停下来
+    //    （否则量到的是动画中间的位置，右侧会多出半个抽屉的宽度）。
+    let lastRight = -1;
+    await expect
+      .poll(async () => {
+        const box = await sidebar.boundingBox();
+        const right = box ? Math.round(box.x + box.width) : -1;
+        const stable = right === lastRight;
+        lastRight = right;
+        return stable;
+      })
+      .toBe(true);
+
+    const sidebarBox = await sidebar.boundingBox();
+    const viewport = page.viewportSize();
+    if (!sidebarBox || !viewport) {
+      throw new Error('侧栏或视口没有布局盒');
+    }
+    // 在视口的**右半边**
+    expect(sidebarBox.x).toBeGreaterThan(viewport.width / 2);
+    // 贴视口右边缘（抽屉自己的内边距是 12px ⇒ 差值不超过 24px）
+    expect(sidebarBox.x + sidebarBox.width).toBeGreaterThan(
+      viewport.width - 24,
+    );
+
+    // ⑥ 点抽屉的「关闭」⇒ 抽屉收起来（侧栏滑回屏幕外）
+    //    ⚠️ antd v6 的抽屉**不处理 Esc** ⇒ 用关闭按钮。
+    //    ⚠️ 关掉后抽屉的 DOM **还在**（只是滑出屏幕、不可见）⇒ 断言「不可见」。
+    await page.getByRole('button', { name: '关闭', exact: true }).click();
+    await expect(sidebar).toBeHidden();
+    await expect(page.locator('.ant-drawer.ant-drawer-open')).toHaveCount(0);
+  });
+});
+
+/**
  * 一次采样：用户气泡数、助手气泡数、命令卡片数。
  */
 async function sampleChat(page: Page): Promise<string> {
