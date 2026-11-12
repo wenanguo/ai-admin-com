@@ -48,7 +48,7 @@ frontend/e2e/ai-workspace.spec.ts   # 改：新增「最大化（一屏铺满）
 
 ---
 
-### Task 1: 两栏骨架 + 整页不滚
+### Task 1: 两栏骨架（中间态不破：页面照旧能滚、输入框可点）
 
 **Files:**
 - Modify: `frontend/src/components/ai-workspace/AiWorkspaceWide.tsx`
@@ -93,14 +93,16 @@ Expected: FAIL —— 侧栏不存在（`data-role="ai-wide-sidebar"` 找不到�
 
 - [ ] **Step 3: 改 `AiWorkspaceWide.tsx` 的骨架**
 
-1. 根容器：`overflowY: 'auto'` ⇒ **`overflow: 'hidden'`**，并加 `flex: '1 1 0%'`、`minHeight: 0`
-   （它是 `AiWorkspace` 根（flex 列）的子项 ⇒ 靠 flex 吃满，比只写 `height:'100%'` 更稳）。
-   ⚠️ 保留 `height: '100%'`（路由页那条链靠它）。
+1. 根容器：**保持 `overflowY: 'auto'`**（这一轮**不要**改成 `overflow: 'hidden'`），
+   加 `flex: '1 1 0%'`、`minHeight: 0`；保留 `height: '100%'`（路由页那条链靠它）。
+   ⚠️ **为什么这一轮不关滚动**：意图卡片墙还在文档流里（Task 2 才折进抽屉）⇒
+   关了滚动 + 中间行压缩 ⇒ 卡片墙会压住对话区，**发送按钮点不到**（评审在 9247d07 上实测过）。
+   ⇒ 这一轮的中间态必须是「页面照旧能滚、输入框可点」，「整页不滚」是 Task 3 的断言。
 2. 头部、模型条、连接错误 Alert **原样不动**（它们是 `flexShrink: 0` 的固定高块）。
 3. 头部与模型条之后，插一个**中间行**：
 
 ```tsx
-<div style={{ display: 'flex', gap: token.size, flex: '1 1 0%', minHeight: 0 }}>
+<div style={{ display: 'flex', gap: token.size, flex: 'none' }}>
   {/* 左：对话 */}
   <div style={{ flex: '1 1 0%', minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
     <DiscussionBar ... />
@@ -140,7 +142,7 @@ git commit -m "feat(ai): 最大化的工作台改成两栏(对话 + 右侧栏),�
 
 ---
 
-### Task 2: 对话区吃满剩余高度
+### Task 2: 意图卡片折进输入框上方的抽屉
 
 **Files:**
 - Modify: `frontend/src/components/ai-workspace/WideChat.tsx`
@@ -148,68 +150,7 @@ git commit -m "feat(ai): 最大化的工作台改成两栏(对话 + 右侧栏),�
 - Test: `frontend/e2e/ai-workspace.spec.ts`
 
 **Interfaces:**
-- Consumes: Task 1 的两栏骨架
-- Produces: 无新导出（只改样式与结构）
-
-- [ ] **Step 1: 写失败的 e2e**
-
-在同文件的「最大化（宽版浮层）」里加：
-
-```ts
-test('对话区吃满剩余高度:底边贴着内容区底边', async ({ page }) => {
-  // 最大化 → 取对话区(带 data-role 的聊天容器)与宽版内容盒的 boundingBox
-  // 断言: 对话区底边与内容盒底边的差 <= 8px
-  //      对话区高度 > 视口高度的 55%(不再是固定 560/55vh)
-});
-```
-
-⚠️ 对话区容器现在**没有** `data-role` ⇒ 给 `WideChat` 的那个盒子加一个
-`data-role="ai-wide-chat"`（实现时加；e2e 依赖它）。
-
-- [ ] **Step 2: 跑 e2e，确认失败**
-
-```bash
-cd frontend && npx playwright test e2e/ai-workspace.spec.ts -g "吃满剩余高度"
-```
-Expected: FAIL —— 对话区仍是固定高度，底边远高于内容区底边。
-
-- [ ] **Step 3: 实现**
-
-1. `WideChat.tsx`：那个盒子的 `height: 'min(560px, 55vh)'` ⇒
-   **`flex: '1 1 0%'; minHeight: 0`**；并加 `data-role="ai-wide-chat"`。
-   里面的消息列表已经是 `flex: '1 1 0%'; minHeight: 0; overflowY: 'auto'` ⇒ 不动。
-2. `AiWorkspaceWide.tsx`：左列（对话）那个 `div` 要能把它撑满 ⇒
-   `display: flex; flexDirection: column`（已有）+ 对话区是它的最后一个子项 ⇒ `flex:1` 生效。
-   ⚠️ `DiscussionBar` 是对话区**上面**的一块 ⇒ 它不能被压扁 ⇒ 给它 `flexShrink: 0`。
-3. 兜底：宽版根容器加 `minHeight: 320px`（高度链万一塌了，整页不至于变成一条）。
-   ⚠️ **不要**给对话区加 `minHeight: 320px` —— 那会把头部顶出可视区。
-
-- [ ] **Step 4: 跑 e2e + 现有的最大化守卫**
-
-```bash
-cd frontend && npx playwright test e2e/ai-workspace.spec.ts
-```
-Expected: 全过（Task 1 那个 + 本任务 + 既有的三条最大化守卫）。
-
-- [ ] **Step 5: 提交**
-
-```bash
-cd /Users/ruanying/project/ai-admin-com
-git add frontend/src/components/ai-workspace/ frontend/e2e/ai-workspace.spec.ts
-git commit -m "feat(ai): 最大化的对话区吃满剩余高度,滚动只在消息区里"
-```
-
----
-
-### Task 3: 意图卡片折进输入框上方的抽屉
-
-**Files:**
-- Modify: `frontend/src/components/ai-workspace/WideChat.tsx`
-- Modify: `frontend/src/components/ai-workspace/AiWorkspaceWide.tsx`
-- Test: `frontend/e2e/ai-workspace.spec.ts`
-
-**Interfaces:**
-- Consumes: `IntentGallery`（既有，props 不变）
+- Consumes: `IntentGallery`（既有，props 不变）、Task 1 的两栏骨架
 - Produces:
   ```ts
   // WideChat.tsx 新增 prop
@@ -268,6 +209,8 @@ Expected: 全过。
 - [ ] **Step 5: 加「页面不滚」的守卫（Task 1 留下的）**
 
 在 Task 1 那条 e2e 里补上第 2 条断言：宽版内容盒 `scrollHeight <= clientHeight`。
+（此刻意图卡片墙已经折进抽屉 ⇒ 页面不该再滚了。**这一步必须早于 Task 3** ——
+意图卡片墙还在文档流里时，对话区吃不到剩余高度。）
 （此刻意图卡片墙已经折进抽屉 ⇒ 页面不该再滚了。）
 
 ⚠️ 若仍会滚：查是不是有块没进 flex 链（例如 `IntentGallery` 的外层 `section` 还在文档流里）。
@@ -278,6 +221,67 @@ Expected: 全过。
 cd /Users/ruanying/project/ai-admin-com
 git add frontend/src/components/ai-workspace/ frontend/e2e/ai-workspace.spec.ts
 git commit -m "feat(ai): 意图卡片折进输入框上方的抽屉,最大化的页面不用再滚"
+```
+
+---
+
+### Task 3: 对话区吃满剩余高度（根容器这时才关滚动）
+
+**Files:**
+- Modify: `frontend/src/components/ai-workspace/WideChat.tsx`
+- Modify: `frontend/src/components/ai-workspace/AiWorkspaceWide.tsx`
+- Test: `frontend/e2e/ai-workspace.spec.ts`
+
+**Interfaces:**
+- Consumes: Task 1 的两栏骨架、Task 2 的意图抽屉（抽屉浮在对话区上方，不占高度）
+- Produces: 无新导出（只改样式与结构）
+
+- [ ] **Step 1: 写失败的 e2e**
+
+在同文件的「最大化（宽版浮层）」里加：
+
+```ts
+test('对话区吃满剩余高度:底边贴着内容区底边', async ({ page }) => {
+  // 最大化 → 取对话区(带 data-role 的聊天容器)与宽版内容盒的 boundingBox
+  // 断言: 对话区底边与内容盒底边的差 <= 8px
+  //      对话区高度 > 视口高度的 55%(不再是固定 560/55vh)
+});
+```
+
+⚠️ 对话区容器现在**没有** `data-role` ⇒ 给 `WideChat` 的那个盒子加一个
+`data-role="ai-wide-chat"`（实现时加；e2e 依赖它）。
+
+- [ ] **Step 2: 跑 e2e，确认失败**
+
+```bash
+cd frontend && npx playwright test e2e/ai-workspace.spec.ts -g "吃满剩余高度"
+```
+Expected: FAIL —— 对话区仍是固定高度，底边远高于内容区底边。
+
+- [ ] **Step 3: 实现**
+
+1. `WideChat.tsx`：那个盒子的 `height: 'min(560px, 55vh)'` ⇒
+   **`flex: '1 1 0%'; minHeight: 0`**；并加 `data-role="ai-wide-chat"`。
+   里面的消息列表已经是 `flex: '1 1 0%'; minHeight: 0; overflowY: 'auto'` ⇒ 不动。
+2. `AiWorkspaceWide.tsx`：左列（对话）那个 `div` 要能把它撑满 ⇒
+   `display: flex; flexDirection: column`（已有）+ 对话区是它的最后一个子项 ⇒ `flex:1` 生效。
+   ⚠️ `DiscussionBar` 是对话区**上面**的一块 ⇒ 它不能被压扁 ⇒ 给它 `flexShrink: 0`。
+3. 兜底：宽版根容器加 `minHeight: 320px`（高度链万一塌了，整页不至于变成一条）。
+   ⚠️ **不要**给对话区加 `minHeight: 320px` —— 那会把头部顶出可视区。
+
+- [ ] **Step 4: 跑 e2e + 现有的最大化守卫**
+
+```bash
+cd frontend && npx playwright test e2e/ai-workspace.spec.ts
+```
+Expected: 全过（Task 1 那个 + Task 2 那个 + 本任务 + 既有的三条最大化守卫）。
+
+- [ ] **Step 5: 提交**
+
+```bash
+cd /Users/ruanying/project/ai-admin-com
+git add frontend/src/components/ai-workspace/ frontend/e2e/ai-workspace.spec.ts
+git commit -m "feat(ai): 最大化的对话区吃满剩余高度,滚动只在消息区里"
 ```
 
 ---
@@ -398,9 +402,9 @@ git commit -m "feat(ai): 内容区窄时右侧栏改成抽屉,对话区不被挤
 
 | 规格条目 | 在哪个任务 |
 | -------- | ---------- |
-| 宽版容器：整页不滚（`overflow:hidden` + flex） | Task 1、Task 3（不滚的断言） |
-| 对话区吃满剩余高度 | Task 2 |
-| 意图卡片墙 → 输入框上方的抽屉 | Task 3 |
+| 宽版容器：整页不滚（`overflow:hidden` + flex） | Task 3（根容器关滚动）、Task 2（不滚的断言） |
+| 对话区吃满剩余高度 | Task 3 |
+| 意图卡片墙 → 输入框上方的抽屉 | Task 2 |
 | 右侧栏 = 待确认/审计/规则 | Task 1 |
 | 规则与 AI 的分工在侧栏里单栏堆叠 | Task 1（`RuleSplit` 的 `stacked`） |
 | 模型条做减法（解释进 tooltip） | Task 4 |
@@ -410,3 +414,12 @@ git commit -m "feat(ai): 内容区窄时右侧栏改成抽屉,对话区不被挤
 | 不动窄版 400px 浮层 | 全程（只改 `AiWorkspaceWide`/`WideChat`，窄版走 `ChatPanel`） |
 | 不动后端 / 会话 / 流式 | 全程 |
 | 守卫：不滚、抽屉能开能收、右侧栏可切页签 | Task 1/2/3 的 e2e |
+
+## ⚠️ 执行顺序（计划写完后修正）
+
+**T1 → T2（意图抽屉）→ T3（对话区吃满）→ T4 → T5**
+
+原计划是「T2 = 对话区吃满、T3 = 意图抽屉」，**顺序反了**：
+意图卡片墙还在文档流里时，它会占掉根容器的空间（flex 列里它 basis:auto、shrink:1，
+而中间行 basis:0 不缩）⇒ 对话区吃不到剩余高度、甚至被压住。
+⇒ 意图卡片墙**必须先**离开文档流（折进抽屉），对话区才吃得到剩余高度。
