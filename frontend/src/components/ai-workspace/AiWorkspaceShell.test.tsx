@@ -36,7 +36,7 @@ vi.mock('@umijs/max', () => ({
     requestExpand: vi.fn(),
     requestFocus: vi.fn(),
   }),
-  // 外壳要知道当前路由（全宽页上不挂侧栏）⇒ 给一个固定的路径。
+  // 外壳要知道当前路由（全宽页上不挂浮层）⇒ 给一个固定的路径。
   //
   // ⚠️ 用的是 `history` 而不是 `useLocation`：这个外壳挂在 `rootContainer` 上，
   // 不在 React Router 的上下文里 ⇒ `useLocation` 那套 hook 用不了。
@@ -44,10 +44,6 @@ vi.mock('@umijs/max', () => ({
     location: { pathname: '/' },
     listen: () => () => undefined,
   },
-  // 侧栏头部有进全宽页的入口（一个 `Link`）。
-  Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
-    <a href={to}>{children}</a>
-  ),
 }));
 
 vi.mock('@/services/api/ai/client', () => ({

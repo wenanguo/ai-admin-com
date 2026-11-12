@@ -31,7 +31,7 @@ import { RobotOutlined } from '@ant-design/icons';
 import { history, useModel } from '@umijs/max';
 import { Button, theme } from 'antd';
 import type React from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AiWorkspace } from './index';
 import { AI_WORKSPACE_PAGE_PATH } from './paths';
 import { readWorkspaceStorage, writeWorkspaceStorage } from './storage';
@@ -108,6 +108,16 @@ export function AiWorkspaceShell({
 }: AiWorkspaceShellProps): React.ReactElement {
   const { token } = theme.useToken();
   /**
+   * 面板是不是**最大化**（宽版）。
+   *
+   * ⚠️ **不是路由跳转**（以前「全宽页」是个 `<Link to="/ai/workspace">`）
+   * ⇒ 跳转会把原页面**卸载**，返回时重新挂载 ⇒ 用户看到「原界面刷新了」。
+   * ⇒ 改成状态切换：宽版也是浮层 ⇒ **原页面始终不卸载**。
+   *
+   * ⚠️ **不持久化**：刷新页面回到窄版（小浮层）比较安全。
+   */
+  const [wide, setWide] = useState(false);
+  /**
    * 全宽页上**不挂浮层**。
    *
    * ## 为什么
@@ -130,6 +140,9 @@ export function AiWorkspaceShell({
   useEffect(() => {
     const unlisten = history.listen(({ location }) => {
       setPathname(location.pathname);
+      // ⚠️ **换页了就回到窄版**。
+      //    否则「在宽版状态下跳到全宽页」再返回时，会突然盖出一个大浮层。
+      setWide(false);
     });
     return () => {
       unlisten();
@@ -210,6 +223,48 @@ export function AiWorkspaceShell({
   const [headerHeight, setHeaderHeight] = useState<number>(
     FALLBACK_HEADER_HEIGHT,
   );
+  /**
+   * 内容区（在视口里）的盒子。
+   *
+   * ⚠️ 宽版浮层要**正好盖住内容区**（用户选的方案 B）：
+   *    顶栏与左侧菜单**留着**，AI 工作台浮在内容区上面。
+   *
+   * ⚠️ 内容区的左边缘**不等于 0**（左边有 ProLayout 的菜单，且它能收起）
+   *    ⇒ 这里**量**而不是写死。
+   */
+  const [contentBox, setContentBox] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const measure = (): void => {
+      const element = contentRef.current;
+      if (!element) {
+        return;
+      }
+      const box = element.getBoundingClientRect();
+      setContentBox({
+        top: box.top,
+        left: box.left,
+        width: box.width,
+        height: box.height,
+      });
+    };
+    measure();
+    // ⚠️ 内容区变宽变窄（收起菜单、改窗口大小）⇒ 浮层要跟着变
+    const observer = new ResizeObserver(measure);
+    if (contentRef.current) {
+      observer.observe(contentRef.current);
+    }
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
   useEffect(() => {
     const onResize = (): void => {
       setNarrow(window.innerWidth < AI_WORKSPACE_NARROW_WIDTH);
@@ -229,6 +284,7 @@ export function AiWorkspaceShell({
         ⇒ 这里不需要再给右边留 400px ⇒ 表格不再被挤窄。
       */}
       <div
+        ref={contentRef}
         data-testid="ai-workspace-content"
         style={{
           width: '100%',
@@ -260,32 +316,59 @@ export function AiWorkspaceShell({
       {isFullWidthPage ? null : (
         <>
           {/*
-            ⚠️ **浮层**：`position: fixed` ⇒ 浮在页面内容**之上**，不占布局宽度。
+            ⚠️ **窄版**：贴视口右边缘、顶栏之下的 400px 浮层。
+            ⚠️ **宽版（最大化）**：盖住**内容区**的浮层（顶栏与左侧菜单留着）。
 
-            - 贴在视口右边缘、顶栏之下 ⇒ 跟右上角那个「设置」按钮不打架；
-            - 有阴影 ⇒ 看得出它浮在内容上面，不是内容的一部分；
-            - 窄屏时占满整宽 ⇒ 不会只露出 400px 的一条。
+            ⚠️ **两个版本共用同一个 `<AiWorkspace>` 组件实例**
+            （只是外层盒子的样式变了）⇒ 切换时它**不卸载**
+            ⇒ 里面的 `useWorkspace` 实例存活 ⇒ 会话不变、SSE 不断、流式输出不断。
           */}
           {open ? (
             <div
-              data-testid="ai-workspace-panel"
+              data-testid={
+                wide ? 'ai-workspace-wide-overlay' : 'ai-workspace-panel'
+              }
               role="dialog"
               aria-label="AI 工作台"
-              style={{
-                position: 'fixed',
-                top: headerHeight,
-                right: 0,
-                bottom: 0,
-                width: narrow ? '100vw' : AI_WORKSPACE_WIDTH,
-                zIndex: 100,
-                display: 'flex',
-                flexDirection: 'column',
-                background: token.colorBgContainer,
-                boxShadow: '-4px 0 16px rgba(0, 0, 0, 0.12)',
-                borderLeft: `1px solid ${token.colorBorder}`,
-              }}
+              style={
+                wide && contentBox
+                  ? {
+                      position: 'fixed',
+                      top: contentBox.top,
+                      left: contentBox.left,
+                      width: contentBox.width,
+                      height: contentBox.height,
+                      zIndex: 100,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      background: token.colorBgContainer,
+                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.18)',
+                    }
+                  : {
+                      position: 'fixed',
+                      top: headerHeight,
+                      right: 0,
+                      bottom: 0,
+                      width: narrow ? '100vw' : AI_WORKSPACE_WIDTH,
+                      zIndex: 100,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      background: token.colorBgContainer,
+                      boxShadow: '-4px 0 16px rgba(0, 0, 0, 0.12)',
+                      borderLeft: `1px solid ${token.colorBorder}`,
+                    }
+              }
             >
-              <AiWorkspace onCollapse={toggle} />
+              <AiWorkspace
+                variant={wide ? 'wide' : 'narrow'}
+                onCollapse={toggle}
+                onExpandWide={() => {
+                  setWide(true);
+                }}
+                onBack={() => {
+                  setWide(false);
+                }}
+              />
             </div>
           ) : null}
 

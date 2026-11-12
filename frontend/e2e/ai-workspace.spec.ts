@@ -273,6 +273,21 @@ function launcher(page: Page) {
   return page.getByTestId('ai-workspace-launcher');
 }
 
+/** 宽版浮层（最大化后）。 */
+function wideOverlay(page: Page) {
+  return page.getByTestId('ai-workspace-wide-overlay');
+}
+
+/** 宽版头部的「返回」按钮。 */
+function backButton(page: Page) {
+  return page.locator('[data-role="ai-back-button"]');
+}
+
+/** 窄版头部的「最大化」按钮。 */
+function expandButton(page: Page) {
+  return page.getByRole('button', { name: '最大化' });
+}
+
 /** 主内容那一列。 */
 function content(page: Page) {
   return page.getByTestId('ai-workspace-content');
@@ -468,6 +483,162 @@ test.describe('AI 工作台侧栏', () => {
         url.endsWith(`/api/agent/${CONVERSATION_ID}/command`),
       ),
     ).toBe(true);
+  });
+});
+
+/**
+ * 最大化（宽版浮层）**不重载原界面**。
+ *
+ * ## 这条用例钉的是什么
+ *
+ * 以前「全宽页」是个 `<Link to="/ai/workspace">` ⇒ 点它 = **路由跳转**
+ * ⇒ 原页面被**卸载** ⇒ 点「返回」再跳回来 = 重新挂载
+ * ⇒ 用户看到的是「原界面刷新了」（滚动位置、筛选条件、页码全丢）。
+ *
+ * ⇒ 现在最大化是**状态切换**：宽版也是浮层 ⇒ **原页面始终不卸载**。
+ */
+test.describe('最大化（宽版浮层）', () => {
+  test('最大化与返回都不动原界面:URL、筛选、页码、滚动位置全保留', async ({
+    page,
+  }) => {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      // ⚠️ **给足行数**：要能翻页、内容区也要能滚动
+      //    （否则「页码 / 滚动位置」这两个状态压根不存在，测不到东西）
+      listBody: {
+        ...LIST_BODY,
+        data: {
+          ...LIST_BODY.data,
+          items: Array.from({ length: 20 }, (_, index) => ({
+            id: index + 1,
+            name: `岗位 ${index + 1}`,
+            code: `code-${index + 1}`,
+            order: index,
+            status: 0,
+            description: `第 ${index + 1} 行`,
+          })),
+          total: 20,
+        },
+      },
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+    await waitForStableLayout(page);
+
+    // 在主界面上做点动作（这些状态在刷新后就全没了）
+    await page.getByPlaceholder('支持模糊查询').fill('后端');
+    await page.waitForTimeout(500);
+    await page.locator('.ant-pagination-item-2').click();
+    await page.waitForTimeout(1000);
+    await content(page).evaluate((element) => {
+      element.scrollTop = 120;
+    });
+
+    const snapshot = async (): Promise<string> =>
+      page.evaluate(() => {
+        const root = document.querySelector(
+          '[data-testid="ai-workspace-content"]',
+        );
+        const input = document.querySelector(
+          'input[placeholder="支持模糊查询"]',
+        ) as HTMLInputElement | null;
+        return JSON.stringify({
+          url: location.pathname + location.search,
+          filter: input?.value,
+          page: document.querySelector('.ant-pagination-item-active')
+            ?.textContent,
+          scroll: root?.scrollTop,
+        });
+      });
+
+    const before = await snapshot();
+
+    // 打开小浮层 ⇒ 最大化
+    await openPanel(page);
+    await expandButton(page).click();
+    await expect(wideOverlay(page)).toBeVisible();
+
+    // ⚠️ **没有发生路由跳转**（原来这里是 `to="/ai/workspace"`）
+    expect(page.url()).not.toContain('/ai/workspace');
+
+    // ⚠️ 原界面**一点没变**（没被卸载 ⇒ 没被重新渲染成初始状态）
+    expect(await snapshot()).toBe(before);
+
+    // 返回 ⇒ 回到小浮层，原界面还是原样
+    await backButton(page).click();
+    await expect(panel(page)).toBeVisible();
+    await expect(wideOverlay(page)).toHaveCount(0);
+    expect(await snapshot()).toBe(before);
+  });
+
+  test('宽版盖住内容区,顶栏与左侧菜单留着', async ({ page }) => {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+    await waitForStableLayout(page);
+
+    await openPanel(page);
+    await expandButton(page).click();
+    await expect(wideOverlay(page)).toBeVisible();
+
+    const overlay = await wideOverlay(page).boundingBox();
+    const contentBox = await content(page).boundingBox();
+    if (!overlay || !contentBox) {
+      throw new Error('宽版浮层或主内容没有布局盒');
+    }
+    // ⚠️ **正好盖住内容区**（不是整个视口）
+    expect(overlay.x).toBeCloseTo(contentBox.x, 0);
+    expect(overlay.y).toBeCloseTo(contentBox.y, 0);
+    expect(overlay.width).toBeCloseTo(contentBox.width, 0);
+    expect(overlay.height).toBeCloseTo(contentBox.height, 0);
+
+    // 顶栏与左侧菜单**没有被盖住**（用户还要用它们）
+    await expect(page.locator('.ant-pro-layout-header')).toBeVisible();
+    await expect(page.locator('.ant-menu').first()).toBeVisible();
+  });
+
+  test('宽窄切换不新建会话(同一个 useWorkspace 实例)', async ({ page }) => {
+    const requests = await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+
+    await openPanel(page);
+    const before = requests.filter((url) =>
+      url.endsWith('/api/agent/conversations'),
+    ).length;
+
+    await expandButton(page).click();
+    await expect(wideOverlay(page)).toBeVisible();
+    await backButton(page).click();
+    await expect(panel(page)).toBeVisible();
+
+    // ⚠️ **没有再新建会话** ⇒ 宽窄切换时 `useWorkspace` 实例没被重建
+    //    （重建的话会重连 SSE、消息区闪一下、正在生成的回答会断）
+    const after = requests.filter((url) =>
+      url.endsWith('/api/agent/conversations'),
+    ).length;
+    expect(after).toBe(before);
   });
 });
 

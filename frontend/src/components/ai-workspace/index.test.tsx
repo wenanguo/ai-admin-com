@@ -38,10 +38,6 @@ vi.mock('@umijs/max', () => ({
     requestExpand: vi.fn(),
     requestFocus: vi.fn(),
   }),
-  // 侧栏头部有进全宽页的入口（一个 `Link`）。
-  Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
-    <a href={to}>{children}</a>
-  ),
 }));
 
 vi.mock('@/services/api/ai/client', () => ({
