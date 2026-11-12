@@ -157,9 +157,10 @@ test.describe('登录与登录态', () => {
     expect(loginRequests[0].body).toContain('username=admin');
     expect(loginRequests[0].body).toContain('captcha_key=e2e-captcha-key');
 
-    // 登录后落到**默认首页**（`/` 重定向到 `/welcome`）
-    await expect(page).toHaveURL(/\/welcome/);
-    await expect(page.getByText('欢迎使用 AiAdmin')).toBeVisible();
+    // 登录后落到**默认首页**（`/` 重定向到 `/app/home`）
+    await expect(page).toHaveURL(/\/app\/home/);
+    // 看板页用演示数据渲染（不发请求 ⇒ 任何环境都能出图）
+    await expect(page.getByText('总销售额').first()).toBeVisible();
 
     // --- 从侧边栏进「用户管理」 ---
     // ⚠️ 菜单**默认是收缩的** ⇒ 菜单项的文字看不见 ⇒ 先展开

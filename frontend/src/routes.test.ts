@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 interface RouteNode {
   path?: string;
   redirect?: string;
+  component?: string;
   routes?: RouteNode[];
 }
 
@@ -64,16 +65,35 @@ describe('路由重定向约定', () => {
    * ⚠️ 别改回 `/dashboard/analysis`：那个演示看板的数据接口不存在，
    *    打开就是「Not Found」⇒ 登录后第一屏报错。
    */
-  it('/ 重定向到默认首页(/welcome)', () => {
+  it('/ 重定向到默认首页(/app/home)', () => {
     const root = (routes as RouteNode[]).find((r) => r.path === '/');
 
-    expect(root?.redirect).toBe('/welcome');
+    expect(root?.redirect).toBe('/app/home');
     // ⚠️ 父路由带 redirect **又有**子路由 ⇒ 无限重定向（React error #185）
     expect(root?.routes ?? []).toHaveLength(0);
-    // 默认首页本身得存在
-    expect((routes as RouteNode[]).some((r) => r.path === '/welcome')).toBe(
-      true,
-    );
+    // 默认首页本身得存在（在 `/app` 这一组里）
+    const app = (routes as RouteNode[]).find((r) => r.path === '/app');
+    expect(app?.routes?.some((r) => r.path === '/app/home')).toBe(true);
+  });
+
+  /**
+   * 后端菜单的「首页」⇒ 前端必须有 `/app/home` 这条路由。
+   *
+   * ## 为什么
+   *
+   * 菜单适配器的规则：菜单(type=2)的路径必须已在前端路由表里注册，
+   * 否则**整条跳过**并告警 ⇒ 没有这条路由，侧边栏里就**看不到「首页」**。
+   *
+   * ⚠️ 后端 `platform_menu` 里「首页」的 route_path 是 `/app/home`
+   *    （顶层菜单项，component_path 为空 —— 适配器只看 route_path）。
+   */
+  it('后端菜单「首页」的 /app/home 有对应的前端路由', () => {
+    const app = (routes as RouteNode[]).find((r) => r.path === '/app');
+    const home = app?.routes?.find((r) => r.path === '/app/home');
+
+    expect(home).toBeDefined();
+    // 挂的是看板页（它已经改成用演示数据，不发请求）
+    expect(home?.component).toBe('./dashboard/analysis');
   });
 
   /**

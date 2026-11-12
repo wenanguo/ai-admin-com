@@ -316,6 +316,34 @@ export default [
     ],
   },
   {
+    /*
+     * **首页**（后端菜单里的「首页」项指的就是这条路径）。
+     *
+     * ## 为什么要有这一组
+     *
+     * 后端 `platform_menu` 里有一个**顶层**菜单项「首页」，它的
+     * `route_path` 是 **`/app/home`**。
+     *
+     * ⚠️ 菜单适配器的规则是「菜单(type=2)的路径必须已在前端路由表里注册，
+     *    否则整条跳过并告警」⇒ 前端**没有** `/app/home` 这条路由时，
+     *    「首页」这个菜单项就**根本不会出现**在侧边栏。
+     *
+     * ⇒ 这里注册 `/app/home`，它挂的就是**看板页**（`dashboard/analysis`）
+     *    —— 那页已经改成用演示数据（不发请求）⇒ 任何环境都能出图。
+     */
+    path: '/app',
+    name: 'app',
+    icon: 'home',
+    routes: [
+      {
+        name: 'home',
+        icon: 'home',
+        path: '/app/home',
+        component: './dashboard/analysis',
+      },
+    ],
+  },
+  {
     path: '/dashboard',
     name: 'dashboard',
     icon: 'dashboard',
@@ -537,22 +565,23 @@ export default [
   },
   {
     /*
-     * 根路径 ⇒ **默认首页**（`/welcome`，Pro 模板的「欢迎使用 AiAdmin」页）。
+     * 根路径 ⇒ **默认首页**（`/app/home`）。
      *
-     * ⚠️ 这里是「登录后落在哪」的**唯一决定点**：
-     *    登录页登录成功后 `window.location.href = '/'`
-     *    （`getSafeRedirectUrl` 在没有 `redirect` 参数时返回 `'/'`）
-     *    ⇒ 改这一行就改了登录后的落点。
+     * ## 落点是怎么定的
+     *
+     * 登录页登录成功后 `window.location.href = '/'`
+     * （`getSafeRedirectUrl` 在没有 `redirect` 参数时返回 `'/'`）
+     * ⇒ **这一行就是「登录后落在哪」的唯一决定点**。
+     *
+     * `/app/home` 正是后端菜单里「首页」那一项的 `route_path`
+     * ⇒ 落点与侧边栏里那个「首页」是**同一个页面**。
      *
      * ⚠️ **父路由带 `redirect` 又有子路由会无限重定向**（React error #185）
      *    ⇒ 这里必须**没有** `routes`。
-     *
-     * ⚠️ 为什么不是 `/dashboard/analysis`：那个演示看板的数据接口不存在，
-     *    打开就是「Not Found」⇒ 登录后第一屏报错。
      */
     path: '/',
     layout: false,
-    redirect: '/welcome',
+    redirect: '/app/home',
   },
   {
     component: './exception/404',
