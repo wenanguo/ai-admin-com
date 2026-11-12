@@ -800,6 +800,70 @@ test.describe('最大化（宽版浮层）', () => {
   });
 
   /**
+   * ⚠️ **宿主很矮时，发送按钮仍然可见、而且点得到**（回归守卫）。
+   *
+   * ## 原来的症状（本次 diff 引入的）
+   *
+   * 对话面板从固定高度 `min(560px, 55vh)` 改成「吃满剩余高度」
+   * （`flex:1 1 0%` + `minHeight:0` + `overflow:hidden`）之后，
+   * 面板高度 = 剩余高度 ⇒ **不再跟着视口缩**。
+   * ⇒ 宿主很矮时（横屏手机、很矮的窗口）**面板比输入区还矮**
+   * ⇒ 输入区被 `overflow:hidden` **裁掉** ⇒ 发送按钮点不到。
+   *
+   * ## 为什么这条要单独钉
+   *
+   * 改之前面板是 `min(560px, 55vh)` ⇒ 390px 高的视口下是 214px，
+   * 输入区放得下 ⇒ 这是一条**真回归**，不是「本来就那样」。
+   *
+   * ⚠️ 断言用**命中测试**（`elementFromPoint`）：按钮被裁掉时
+   *    `toBeVisible()` **照样过**（它只看盒子非空 + 没被 `visibility:hidden`）
+   *    ⇒ 只有「点上去命中的是不是按钮自己」才拦得住。
+   */
+  test('宿主很矮时(横屏手机),发送按钮仍然可见且点得到', async ({ page }) => {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+    await waitForStableLayout(page);
+
+    // ⚠️ **把视口调矮**（横屏手机 / 很矮的窗口）
+    //    ⇒ 宿主（内容区）只剩 ~240px 高 ⇒ 输入区放不下 ⇒ 这里会红。
+    await page.setViewportSize({ width: 1600, height: 300 });
+    await waitForStableLayout(page);
+
+    await openPanel(page);
+    await expandButton(page).click();
+    await expect(wideOverlay(page)).toBeVisible();
+
+    const column = page.locator('[data-role="ai-wide-chat-column"]');
+    // ⚠️ `^发\s*送$`：antd 会把按钮里**两个汉字**之间插一个空格
+    //    ⇒ 按钮的可访问名是「发 送」而不是「发送」。
+    const sendButton = column.getByRole('button', { name: /^发\s*送$/ });
+    await expect(sendButton).toBeVisible();
+
+    // 矮宿主时输入区在**下面** ⇒ 先滚进视野（根容器是 `overflowY:auto`）
+    await sendButton.scrollIntoViewIfNeeded();
+
+    // ⚠️ **命中测试**：按钮中心点到的**就是按钮自己**（不是被裁掉、不是被盖住）
+    const covered = await sendButton.evaluate((button) => {
+      const rect = button.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        rect.x + rect.width / 2,
+        rect.y + rect.height / 2,
+      );
+      return hit ? !button.contains(hit) : true;
+    });
+    expect(covered).toBe(false);
+  });
+
+  /**
    * 意图卡片**折进输入框上方的抽屉**（不再是页面底部铺开的一片卡片）。
    *
    * 抽屉是**绝对定位**的浮层 ⇒ 不占高度 ⇒ 页面不用滚。

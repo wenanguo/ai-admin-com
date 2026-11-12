@@ -80,6 +80,14 @@ const SIDEBAR_WIDTH = 360;
  */
 const NARROW_CONTENT_WIDTH = 900;
 
+/**
+ * 抽屉宽度的**下限**（px）。
+ *
+ * ⚠️ 抽屉太窄的话，侧栏里的「同意 / 拒绝」按钮会被挤得很难点。
+ * ⇒ 宽度算出来是 0（内容区还没布局好就被量到）时，至少给这么多。
+ */
+const MIN_DRAWER_WIDTH = 240;
+
 /** 未知错误转成一句话。 */
 function toMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
@@ -203,11 +211,22 @@ export function AiWorkspaceWide({
    * ⚠️ **不能固定 360px**：内容区比它还窄时，靠右的抽屉会**伸出左边**
    *    （超出视口）⇒ 侧栏左侧的东西（例如「待确认」的同意 / 拒绝按钮）
    *    够不着。
-   * ⇒ 取「360px」与「内容区宽度 - 32px」的**小者** ⇒ 窄内容区下自动收窄。
+   * ⇒ 取「360px」与「内容区宽度 - 左右内边距」的**小者** ⇒ 窄内容区下自动收窄。
+   *
+   * ⚠️ **左右内边距用 `token.padding * 2`**（不是写死的 32）：
+   *    那个 32 就是根容器的 `padding: token.padding` × 2（16 × 2）
+   *    ⇒ 写死的话，主题一改内边距就跟不上了。
+   *
+   * ⚠️ **有正的下限**（{@link MIN_DRAWER_WIDTH}）：原来写的是 `Math.max(0, …)`
+   *    ⇒ 内容区宽度**量到 0** 时（还没布局好就被量到）会算出 **0 宽抽屉**
+   *    ⇒ 侧栏彻底看不见（用户连页签都点不到）。
    */
   const drawerWidth =
     contentWidth !== undefined
-      ? Math.max(0, Math.min(SIDEBAR_WIDTH, contentWidth - 32))
+      ? Math.min(
+          SIDEBAR_WIDTH,
+          Math.max(MIN_DRAWER_WIDTH, contentWidth - token.padding * 2),
+        )
       : SIDEBAR_WIDTH;
 
   /** 点意图卡片：只把问句填进输入框，**不发送**；并把抽屉收起来。 */
@@ -285,6 +304,15 @@ export function AiWorkspaceWide({
         }}
         style={{ flex: '1 1 0%', minHeight: 0 }}
         styles={{
+          /*
+            ⚠️ 页签条要**自己留左右内边距**（与窄面板那套一样，
+            见 `index.tsx` 里同名的那段注释）：
+            antd 的 Tabs 根节点没有内边距 ⇒ `.ant-tabs-nav` 的 padding-left = 0
+            ⇒ 第一个页签的标题（「待确认」）会**紧贴**这一列的左边缘，
+            看上去像没渲染完。
+            `header` 落到的就是 `.ant-tabs-nav`。
+          */
+          header: { paddingInline: token.paddingSM },
           /*
             ⚠️ 高度链（与窄面板那套一样）：
               .ant-tabs → .ant-tabs-body-holder → .ant-tabs-body → .ant-tabs-content
@@ -391,19 +419,25 @@ export function AiWorkspaceWide({
         gap: token.size,
         padding: token.padding,
         // ⚠️ **高度链**：它是 `AiWorkspace` 根（flex 列）的子项
-        //    ⇒ 靠 `flex: 1 1 0%` 吃满，比只写 `height: 100%` 更稳。
+        //    ⇒ 靠 `flex: 1 1 auto` 吃满，比只写 `height: 100%` 更稳。
         //    `height: 100%` 也留着（路由页那条链靠它）。
+        // ⚠️ **`flex-basis` 用 `auto`（不是 `0%`）**：高度链万一塌了
+        //    （某个宿主没给出确定高度），`0%` 会让这一项塌成 0 高
+        //    ⇒ 整页什么都看不见；`auto` 则退回**内容高度** ⇒ 还能看。
         height: '100%',
-        flex: '1 1 0%',
-        // ⚠️ **兜底**：高度链万一塌了（某个宿主没给出确定高度），
-        //    整页不至于塌成一条 ⇒ 至少 320px 高。
-        minHeight: 320,
+        flex: '1 1 auto',
+        // ⚠️ **不设 `minHeight`**：以前这里是 `minHeight: 320`（高度链塌了的兜底），
+        //    但它有个更糟的后果 —— 宿主比 320px 还矮时（横屏手机），
+        //    根容器比宿主**高** ⇒ 多出来的那截落在**视口外** ⇒ 发送按钮够不着。
+        //    ⇒ 兜底挪到**对话区**（`ai-wide-chat-column` 的 `minHeight: 320`）：
+        //    对话区不会缩成一条，而根容器**留在宿主的高度里** ⇒ 矮宿主时
+        //    根容器自己滚（下面那句 `overflowY: auto`），输入框滚得到。
         // ⚠️ **滚动**：意图卡片墙已经折进抽屉（不在文档流里），对话区又吃满了
         //    剩余高度 ⇒ 内容**装得下** ⇒ `auto` **不会**出现滚动条 ⇒ 整页不用滚。
         //    （中间那一行、对话区、侧栏各自内部滚。）
-        // ⚠️ 这里保留 `auto` 而不是 `hidden`：根容器还有 `minHeight: 320` 兜底 ⇒
-        //    宿主比 320px 还矮时，根容器比宿主高 ⇒ 用 `hidden` 会把内容**裁掉**、
-        //    连滚动条都没有 ⇒ 发送按钮够不着。用 `auto` 则仍能滚到输入框。
+        // ⚠️ 这里保留 `auto` 而不是 `hidden`：**只有宿主足够高**时内容才装得下；
+        //    宿主很矮时对话区有 320px 的下限 ⇒ 内容比容器高 ⇒ 靠这个 `auto`
+        //    把输入框**滚进视野**（`hidden` 的话就直接裁没了）。
         overflowY: 'auto',
         overflowX: 'hidden',
       }}
@@ -606,7 +640,21 @@ export function AiWorkspaceWide({
           style={{
             flex: '1 1 0%',
             minWidth: 0,
-            minHeight: 0,
+            /*
+              ⚠️ **对话区的下限 320px**（规格 §2 的兜底）。
+
+              ## 为什么在这儿，而不是在根容器上
+
+              根容器原来写的是 `minHeight: 320` ⇒ 宿主（内容区）比 320px 还矮时
+              （横屏手机、很矮的窗口），根容器比宿主**高** ⇒ 多出来的那截
+              落在**视口外** ⇒ 输入框（发送按钮）够不着。
+
+              ⇒ 挪到**对话区**：根容器留在宿主的高度里（自己滚），
+              对话区保持 320px ⇒ 输入区**不会被裁掉**，根容器滚一下就看得见。
+
+              ⚠️ 这也是「高度链塌了」的兜底：对话区不会缩成一条。
+            */
+            minHeight: 320,
             display: 'flex',
             flexDirection: 'column',
           }}
@@ -655,6 +703,11 @@ export function AiWorkspaceWide({
               />
             )}
             intentCount={AI_INTENTS.length}
+            /*
+              ⚠️ 窄形态下「待确认」在**抽屉**里（要点「侧栏」才出来）
+              ⇒ 提示语要告诉用户**去哪找**（宽形态就不用说了）。
+            */
+            sidebarInDrawer={collapsed}
           />
         </div>
 

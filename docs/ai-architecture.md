@@ -348,7 +348,7 @@ src/components/ai-workspace/  ← 状态层与展示层
 └── AiWorkspaceShell.tsx  ★ 应用外壳：右侧常驻 Sider
 
 src/pages/ai/workspace/    ← 全宽页
-├── index.tsx          宽版对话 + 三视图 + 意图卡片墙
+├── index.tsx          宽版对话 + 右侧栏三视图 + 意图卡片抽屉
 ├── WideChat.tsx       宽版聊天
 ├── RuleSplit.tsx      规则与 AI 的分工
 ├── IntentGallery.tsx  10 类意图

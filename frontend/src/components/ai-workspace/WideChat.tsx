@@ -71,6 +71,14 @@ export interface WideChatProps {
   intentSlot?: (close: () => void) => React.ReactNode;
   /** 抽屉里有多少张意图卡片（只用来在按钮上写个计数）。 */
   intentCount?: number;
+  /**
+   * 「待确认」是不是**藏在抽屉里**（窄形态：内容区 < 900px）。
+   *
+   * ⚠️ 窄形态下右侧栏收进了**右侧抽屉**（要点「侧栏」才出来）
+   *    ⇒ 光说「在「待确认」里点头」用户**不知道去哪找**
+   *    ⇒ 这时候要写成「点「侧栏」在「待确认」里点头」。
+   */
+  sidebarInDrawer?: boolean;
 }
 
 /**
@@ -93,6 +101,7 @@ export function WideChat({
   stopping,
   intentSlot,
   intentCount,
+  sidebarInDrawer,
 }: WideChatProps): React.ReactElement {
   const { token } = theme.useToken();
   const listRef = useRef<HTMLDivElement>(null);
@@ -360,11 +369,15 @@ export function WideChat({
               <span style={{ color: token.colorTextSecondary }}>
                 {pendingItems.map((item) => item.command).join('、')}
                 {/*
-                  ⚠️ **不带方位**（「在「待确认」里点头」）：
+                  ⚠️ **宽形态不带方位**（「在「待确认」里点头」）：
                   宽版里「待确认」在**右侧栏**里，窄版里它是一个**页签**
                   ⇒ 写死方位（以前的「去「待确认」页签点头」）总有一边是错的。
+                  ⚠️ **窄形态要带方位**：侧栏收进了**抽屉**（要点「侧栏」才出来）
+                  ⇒ 不说清楚的话，用户根本不知道「待确认」在哪儿。
                 */}
-                （在「待确认」里点头）
+                {sidebarInDrawer === true
+                  ? '（点「侧栏」在「待确认」里点头）'
+                  : '（在「待确认」里点头）'}
               </span>
             </div>
           ) : null}
