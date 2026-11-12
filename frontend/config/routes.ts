@@ -10,6 +10,8 @@
  * @param icon 配置路由的图标，取值参考 https://ant.design/components/icon-cn， 注意去除风格后缀和大小写，如想要配置图标为 <StepBackwardOutlined /> 则取值应为 stepBackward 或 StepBackward，如想要配置图标为 <UserOutlined /> 则取值应为 user 或者 User
  * @doc https://umijs.org/docs/guides/routes
  */
+import { AI_WORKSPACE_PAGE_PATH } from '../src/components/ai-workspace/paths';
+
 export default [
   {
     path: '/user',
@@ -246,18 +248,55 @@ export default [
   },
   {
     /*
-      AI 工作台**全宽页**（规格 §4）。
+      后端 AI 菜单的**源码路径** → 前端 AI 工作台全宽页。
 
-      侧栏只有 400px —— 「规则与 AI 的分工」的双栏、10 类意图卡片墙
-      与宽一点的对话在那边放不下 ⇒ 单独开一页。
+      后端 `platform_menu` 里 AI 菜单的 route_path 是**插件的源码路径**
+      （`AI智能助手` 的 route_path='chat' 拼在父目录 `/ai` 下 ⇒ `/ai/chat`），
+      不是前端的 /ai/*。前端菜单适配器只保留「已在前端路由表注册过」的菜单路径
+      ⇒ `/ai/chat` 不注册,整块「AI管理」菜单就会被跳过(控制台打印
+      `[menu] 前端缺少路由: /ai/chat`)。注册成重定向路由,侧边栏点「AI智能助手」
+      就落到 AI 工作台全屏页。
 
-      ⚠️ 菜单是**后端下发**的（`src/app.tsx` 的 `menuDataRender`），
-      这一页**不出现在侧边栏**里；入口在 AI 工作台侧栏的头部（「全宽页」链接）。
+      为什么挂在**顶层**而不是别的目录下面:React Router 要求子路由的绝对路径
+      必须以父路由的路径开头 —— `/ai/chat` 以 `/ai` 开头,挂在 /ai 下面合法。
+
+      redirect 挂在**子路由**上(与 /system 同理):挂在父路由上会让所有子路径
+      都重定向到自己 ⇒ React Router 无限重定向(error #185,页面空白)。
+
+      ⚠️ **只在前端兜这一层**:后端那条菜单是**两个前端共用**的
+      (AiAdmin 自己的 Vue 后台也在用同一个 `platform_menu`),
+      改它的 route_path 会把那边的 AI 对话页也一起挪走 ⇒ 不动后端数据。
+
+      icon 是给侧边栏用的:菜单图标取前端路由表的(collectRouteIcons 按 path 取),
+      后端下发的 icon 是 Remix Icon 类名,ProLayout 认不出来 —— 这两条路径
+      各自要一份自己的图标。
     */
-    path: '/ai/workspace',
-    name: 'aiWorkspace',
+    path: '/ai',
     icon: 'robot',
-    component: './ai/workspace',
+    routes: [
+      {
+        // 后端菜单「AI管理 → AI智能助手」的落点 ⇒ 指向 AI 工作台全屏页
+        path: '/ai/chat',
+        icon: 'robot',
+        redirect: AI_WORKSPACE_PAGE_PATH,
+      },
+      {
+        /*
+          AI 工作台**全宽页**（规格 §4）。
+
+          侧栏只有 400px —— 「规则与 AI 的分工」的双栏、10 类意图卡片墙
+          与宽一点的对话在那边放不下 ⇒ 单独开一页。
+
+          ⚠️ 菜单是**后端下发**的（`src/app.tsx` 的 `menuDataRender`）,
+          这一页**不出现在侧边栏**里;入口在 AI 工作台侧栏的头部（「全宽页」链接）
+          以及上面的「AI管理 → AI智能助手」。
+        */
+        path: AI_WORKSPACE_PAGE_PATH,
+        name: 'aiWorkspace',
+        icon: 'robot',
+        component: './ai/workspace',
+      },
+    ],
   },
   {
     path: '/admin',

@@ -51,4 +51,24 @@ describe('路由重定向约定', () => {
     );
     expect(system?.routes?.some((r) => r.path === '/system/user')).toBe(true);
   });
+
+  /**
+   * 后端 AI 菜单的源码路径 → 前端 AI 工作台全屏页。
+   *
+   * 后端 `platform_menu` 里「AI智能助手」的 route_path 是 'chat'
+   * （拼在父目录 `/ai` 下 ⇒ `/ai/chat`）⇒ 前端必须注册这条路径，
+   * 否则菜单适配器会判定「前端缺少路由」把它整条跳过，
+   * 「AI管理」这一组菜单就**根本不会出现**在侧边栏。
+   */
+  it('AI 菜单的源码路径 /ai/chat 指向 AI 工作台全屏页', () => {
+    const ai = (routes as RouteNode[]).find((r) => r.path === '/ai');
+    const chat = ai?.routes?.find((r) => r.path === '/ai/chat');
+
+    expect(chat).toBeDefined();
+    expect(chat?.redirect).toBe('/ai/workspace');
+    // 全屏页本身也在同一组里（菜单点进去的落点）
+    expect(
+      ai?.routes?.some((r) => r.path === '/ai/workspace' && !r.redirect),
+    ).toBe(true);
+  });
 });
