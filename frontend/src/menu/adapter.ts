@@ -41,6 +41,41 @@ export interface RouteLike {
   children?: RouteLike[];
 }
 
+/**
+ * 前端自有的「首页」菜单项。
+ *
+ * ## 为什么需要它
+ *
+ * 后端 `platform_menu` 里**确实有**一个叫「首页」的菜单行，
+ * 但它的 `client` 是 **`app`** —— 那是**移动端 APP** 的首页
+ * （描述写着「APP 移动端-首页」）。
+ *
+ * ⚠️ Web 端的 `current/info` 只下发 `client = 'pc'` 的菜单
+ *    ⇒ **Web 侧边栏里本来就没有「首页」**，前端注册多少路由都没用。
+ *
+ * ⇒ 所以这条菜单项由**前端自己加**（不是后端下发的）。
+ *
+ * ⚠️ 它指向 `/app/home` —— 那条路由挂的是**看板页**（用演示数据，不发请求）。
+ */
+export const HOME_MENU_PATH = '/app/home';
+
+/**
+ * 造一个前端自有的「首页」菜单项。
+ *
+ * @param routeIcons 前端路由派生的图标（按 path 查）
+ * @returns 菜单项；没有图标时 `icon` 为 undefined
+ */
+export function buildHomeMenuItem(
+  routeIcons?: Map<string, ReactNode>,
+): MenuItem {
+  return {
+    path: HOME_MENU_PATH,
+    name: '首页',
+    icon: routeIcons?.get(HOME_MENU_PATH),
+    locale: false,
+  };
+}
+
 const MENU_TYPE_DIRECTORY = 1;
 const MENU_TYPE_BUTTON = 3;
 const MENU_TYPE_EXTERNAL = 4;

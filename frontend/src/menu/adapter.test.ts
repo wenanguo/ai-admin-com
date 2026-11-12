@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   type BackendMenu,
+  buildHomeMenuItem,
   buildMenuItems,
   collectPaths,
   collectPermissions,
   collectRouteIcons,
+  HOME_MENU_PATH,
   joinAbsolutePath,
 } from './adapter';
 
@@ -434,5 +436,32 @@ describe('buildMenuItems', () => {
     );
 
     expect(items.map((i) => i.name)).toEqual(['A', 'Z']);
+  });
+});
+
+/**
+ * 前端自有的「首页」菜单项。
+ *
+ * ⚠️ 后端 `platform_menu` 里那个叫「首页」的行是 `client='app'`
+ *    （**移动端 APP** 的首页）⇒ Web 端的下发菜单里**没有**首页
+ *    ⇒ 这条菜单项由前端自己加。
+ */
+describe('前端自有的「首页」菜单项', () => {
+  it('指向 /app/home,标题是「首页」', () => {
+    const item = buildHomeMenuItem();
+
+    expect(item.path).toBe(HOME_MENU_PATH);
+    expect(HOME_MENU_PATH).toBe('/app/home');
+    expect(item.name).toBe('首页');
+    expect(item.locale).toBe(false);
+  });
+
+  it('图标取自前端路由表(按 path 查)', () => {
+    const icons = new Map([['/app/home', 'HomeOutlined']]);
+
+    expect(buildHomeMenuItem(icons).icon).toBe('HomeOutlined');
+    // 路由表里没有 ⇒ 就没有图标(而不是报错)
+    expect(buildHomeMenuItem(new Map()).icon).toBeUndefined();
+    expect(buildHomeMenuItem().icon).toBeUndefined();
   });
 });

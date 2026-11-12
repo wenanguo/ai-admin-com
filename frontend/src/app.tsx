@@ -25,10 +25,12 @@ import {
 import { AiWorkspaceShell } from '@/components/ai-workspace/AiWorkspaceShell';
 import type { BackendMenu } from '@/menu/adapter';
 import {
+  buildHomeMenuItem,
   buildMenuItems,
   collectPaths,
   collectPermissions,
   collectRouteIcons,
+  HOME_MENU_PATH,
 } from '@/menu/adapter';
 import type { UserOut } from '@/services/api/system/types';
 import { API_BASE_URL } from '@/services/http';
@@ -193,7 +195,23 @@ export const layout: RunTimeLayoutConfig = ({
     menuDataRender: (menuData) => {
       const knownPaths = collectPaths(menuData);
       const routeIcons = collectRouteIcons(menuData);
-      return buildMenuItems(initialState?.menus ?? [], knownPaths, routeIcons);
+      const items = buildMenuItems(
+        initialState?.menus ?? [],
+        knownPaths,
+        routeIcons,
+      );
+      /*
+       * 前端自有的「首页」放在**最上面**。
+       *
+       * ⚠️ 后端 `platform_menu` 里那个叫「首页」的行是 `client='app'`
+       *    （移动端 APP 的首页）⇒ Web 端的下发菜单里**没有**首页
+       *    ⇒ 这条得前端自己加。
+       *
+       * ⚠️ 后端**将来**若补了一条 `client='pc'` 的首页，
+       *    就会出现两个「首页」⇒ 所以先查一下后端菜单里有没有。
+       */
+      const hasHome = items.some((item) => item.path === HOME_MENU_PATH);
+      return hasHome ? items : [buildHomeMenuItem(routeIcons), ...items];
     },
     actionsRender: () => {
       // `locale: false` opts out of the language switcher. ProLayout's own

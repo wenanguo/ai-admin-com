@@ -297,6 +297,20 @@ describe('app layout menuDataRender', () => {
     ] as any);
 
     expect(items).toEqual([
+      /*
+       * ⚠️ **前端自有的「首页」排在最前面**。
+       *
+       * 后端 `platform_menu` 里那个叫「首页」的行是 `client='app'`
+       * （移动端 APP 的首页）⇒ Web 端下发的菜单里**没有**首页
+       * ⇒ 这条由前端自己加。
+       */
+      {
+        path: '/app/home',
+        name: '首页',
+        // 图标取前端路由表的(这里没给 /app/home ⇒ 没有图标)
+        icon: undefined,
+        locale: false,
+      },
       {
         path: '/system',
         name: '系统管理',
@@ -325,7 +339,10 @@ describe('app layout menuDataRender', () => {
       setInitialState: vi.fn(),
     } as any);
 
-    expect(config.menuDataRender?.([])).toEqual([]);
+    // ⚠️ 仍然有前端自有的「首页」(它不依赖后端菜单)
+    expect(config.menuDataRender?.([])).toEqual([
+      { path: '/app/home', name: '首页', icon: undefined, locale: false },
+    ]);
   });
 
   it('keeps a ReactElement icon coming from the frontend routes', async () => {
@@ -354,7 +371,8 @@ describe('app layout menuDataRender', () => {
       { path: '/system/user', icon },
     ] as any);
 
-    expect(items?.[0].icon).toBe(icon);
+    // ⚠️ `items[0]` 是前端自有的「首页」⇒ 后端那项在 `items[1]`
+    expect(items?.[1].icon).toBe(icon);
   });
 });
 

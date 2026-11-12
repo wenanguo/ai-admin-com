@@ -1,17 +1,17 @@
 /**
- * 后端菜单里的**「首页」**项 ⇒ 侧边栏能看见 ⇒ 点进去是能出图的看板。
+ * 侧边栏的**「首页」**项 ⇒ 点进去是能出图的看板。
  *
  * ## 这条用例钉的是什么
  *
- * 后端 `platform_menu` 里有一个**顶层**菜单项「首页」：
- * `route_path = /app/home`、`component_path = null`、`hidden = false`。
+ * 后端 `platform_menu` 里**确实有**一个叫「首页」的菜单行，但它的
+ * `client` 是 **`app`** —— 那是**移动端 APP** 的首页
+ * （描述写着「APP 移动端-首页」，`route_path = /app/home`）。
  *
- * ⚠️ 菜单适配器的规则是「菜单(type=2)的路径必须已在前端路由表里注册，
- *    否则**整条跳过**并告警」⇒
- *    前端**没有** `/app/home` 这条路由时，「首页」这个菜单项
- *    就**根本不会出现**在侧边栏（用户侧看到的就是「菜单里有首页，界面上没有」）。
+ * ⚠️ Web 端的 `current/info` 只下发 `client = 'pc'` 的菜单
+ *    ⇒ **Web 侧边栏里本来就没有「首页」**，前端注册多少路由都没用。
  *
- * ⇒ 前端注册了 `/app/home`（挂看板页）⇒ 菜单项出现、且点进去能出图。
+ * ⇒ 所以「首页」这条菜单项由**前端自己加**（`buildHomeMenuItem`），
+ *    排在侧边栏最上面，指向 `/app/home`（看板页）。
  *
  * ## 为什么看板要改成演示数据
  *
@@ -29,25 +29,20 @@ import { expandSider, seedAuthState, waitForApp } from './helpers';
 
 const CURRENT_INFO_URL = '**/api/v1/system/user/current/info';
 
-/**
- * 菜单树：**照后端 platform_menu 的真实行写**。
- *
- * ⚠️ 「首页」是**顶层**菜单项（`parent_id = null`、`type = 2`），
- *    路径 `/app/home`、`component_path` 为空 —— 这正是后端种的样子。
- */
-const menuTree: MenuNode[] = [
+/** 一条**不含**「首页」的 Web 端菜单（= 后端 `client='pc'` 的真实样子）。 */
+const pcMenuTree: MenuNode[] = [
   {
-    id: 1,
+    id: 339,
     parent_id: null,
-    name: '首页',
-    type: 2,
+    name: '项目管理',
+    type: 1,
     order: 1,
-    route_path: '/app/home',
-    title: '首页',
+    route_path: '/module_pm_project/pm_project',
+    title: '项目管理',
     permission: null,
     status: 0,
     hidden: false,
-    children: null,
+    children: [],
   },
 ];
 
@@ -70,20 +65,20 @@ function currentUserResponse(menus: MenuNode[]) {
   };
 }
 
-async function setupHomeMenu(page: Page): Promise<void> {
+async function setupMenu(page: Page, menus: MenuNode[]): Promise<void> {
   await page.route(CURRENT_INFO_URL, (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(currentUserResponse(menuTree)),
+      body: JSON.stringify(currentUserResponse(menus)),
     }),
   );
   await seedAuthState(page);
 }
 
-test.describe('后端菜单里的「首页」', () => {
-  test('侧边栏出现「首页」,点进去是能出图的看板', async ({ page }) => {
-    await setupHomeMenu(page);
+test.describe('侧边栏的「首页」', () => {
+  test('后端没下发首页时,前端自己加一条在最上面', async ({ page }) => {
+    await setupMenu(page, pcMenuTree);
 
     /*
      * ⚠️ 只访问**不发请求**的页面。
@@ -104,12 +99,45 @@ test.describe('后端菜单里的「首页」', () => {
     await expandSider(page);
     const home = page.locator('.ant-menu a[href="/app/home"]');
     await expect(home).toBeVisible();
-    // 它的标题就是后端下发的那个
     await expect(home).toHaveText('首页');
+
+    // ⚠️ 排在**最上面**（在「项目管理」之前）
+    const titles = await page
+      .locator('.ant-menu .ant-menu-item, .ant-menu .ant-menu-submenu-title')
+      .allTextContents();
+    expect(titles[0]?.trim()).toBe('首页');
+  });
+
+  test('后端若下发了一条首页,就不会出现两个', async ({ page }) => {
+    await setupMenu(page, [
+      {
+        id: 9,
+        parent_id: null,
+        name: '首页',
+        type: 2,
+        order: 1,
+        route_path: '/app/home',
+        title: '首页',
+        permission: null,
+        status: 0,
+        hidden: false,
+        children: null,
+      },
+      ...pcMenuTree,
+    ]);
+
+    await page.goto('/app/home');
+    await waitForApp(page);
+    await expandSider(page);
+
+    const homeCount = await page
+      .locator('.ant-menu a[href="/app/home"]')
+      .count();
+    expect(homeCount).toBe(1);
   });
 
   test('看板不发那个假接口的请求(它在生产构建里不存在)', async ({ page }) => {
-    await setupHomeMenu(page);
+    await setupMenu(page, pcMenuTree);
 
     const fakeRequests: string[] = [];
     page.on('request', (request) => {
@@ -127,7 +155,7 @@ test.describe('后端菜单里的「首页」', () => {
   });
 
   test('根路径(登录后的落点)就是它', async ({ page }) => {
-    await setupHomeMenu(page);
+    await setupMenu(page, pcMenuTree);
 
     await page.goto('/');
     await waitForApp(page);
