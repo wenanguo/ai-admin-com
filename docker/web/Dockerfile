@@ -55,6 +55,12 @@ RUN cd frontend && npm ci --ignore-scripts --no-audit --no-fund
 # ② 源码层
 COPY frontend/ ./frontend/
 
+# ②b 仓库根的 docs/ 里有两个文件是**构建输入**：
+#     frontend/src/pages/Welcome.tsx 直接 import 了它们
+#     （import enUS from '../../../docs/cheatsheet.en-US.md'）
+#     ⇒ 不拷进来，构建会报 "Module not found: Can't resolve '../../../docs/cheatsheet.en-US.md'"。
+COPY docs/cheatsheet.en-US.md docs/cheatsheet.zh-CN.md ./docs/
+
 # esbuild 的安装脚本负责把平台二进制就位（--ignore-scripts 跳过了它 ⇒ 补回来）
 RUN cd frontend && npm rebuild esbuild
 

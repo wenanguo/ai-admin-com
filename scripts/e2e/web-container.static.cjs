@@ -92,6 +92,8 @@ containsAll(
     'FROM node:${NODE_VERSION}-bookworm-slim',
     'FROM nginx:${NGINX_VERSION}-alpine',
     'COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./frontend/',
+    'COPY frontend/ ./frontend/',
+    'COPY docs/cheatsheet.en-US.md docs/cheatsheet.zh-CN.md ./docs/',
     'npm ci --ignore-scripts',
     'npm rebuild esbuild',
     'npm run build',
