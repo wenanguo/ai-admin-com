@@ -62,11 +62,16 @@ const worktreeRoot = process.env.AI_WORKTREE_ROOT
 
 /** 跑一条命令。 */
 function run(cmd, args, options = {}) {
-  // ⚠️ Windows 上 `npx` 是 `npx.cmd` ⇒ 直接 spawn 会 ENOENT
-  //    （不用 shell:true ⇒ 不会有参数拼接的安全警告）
-  const finalCmd =
-    process.platform === 'win32' && cmd === 'npx' ? 'npx.cmd' : cmd;
-  return execFileSync(finalCmd, args, {
+  /*
+    ⚠️ Windows 上 `npx` 是 `npx.cmd`：
+    - 直接 spawn `.cmd` ⇒ `EINVAL`（Node 不允许直接跑批处理）
+    - 用 `shell: true` ⇒ 有参数拼接的安全警告
+    ⇒ 走 `cmd.exe /c`（参数仍是数组 ⇒ 不会被 shell 重新解释）。
+  */
+  const isWindows = process.platform === 'win32';
+  const finalCmd = isWindows && cmd === 'npx' ? 'cmd.exe' : cmd;
+  const finalArgs = isWindows && cmd === 'npx' ? ['/c', 'npx', ...args] : args;
+  return execFileSync(finalCmd, finalArgs, {
     encoding: 'utf8',
     cwd: options.cwd ?? repoRoot,
     stdio: options.inherit ? 'inherit' : 'pipe',
@@ -218,9 +223,10 @@ switch (command) {
       ⇒ 删之前先自查：有没有未合并的提交 / 有没有脏改动 ⇒ 有就拒绝。
     */
     const dirty = tryRun('git', ['status', '--porcelain'], { cwd: target });
+    // ⚠️ 方向：`base..branch` = **branch 有而 base 没有的** ⇒ 那才是未合并的提交
     const unmerged = tryRun(
       'git',
-      ['log', '--oneline', `${branch}..${base}`],
+      ['log', '--oneline', `${base}..${branch}`],
       { cwd: target },
     );
     if (dirty.length > 0 || unmerged.length > 0) {
@@ -237,6 +243,16 @@ switch (command) {
         console.error('  ⇒ 先把它们合进 main（或 cherry-pick 到别的分支）再删。');
       }
       console.error('  · 确认要丢的话：git worktree remove --force <路径>');
+      process.exit(1);
+    }
+
+    // ⚠️ cwd 在这个目录里 ⇒ Windows 删不掉（Permission denied）⇒ 先拦住
+    const here = path.resolve(process.cwd());
+    if (path.resolve(target) === here) {
+      console.error(
+        `\n拒绝删除：当前 shell 就在 ${target} 里 ⇒ Windows 不允许删它。`,
+      );
+      console.error('  ⇒ 先 cd 到别处，再跑这条命令。');
       process.exit(1);
     }
 

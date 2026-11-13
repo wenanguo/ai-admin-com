@@ -263,6 +263,15 @@ node scripts/agent/worktree.cjs remove pm
 
 ⚠️ 最初放在仓库内的 `.worktrees/` ⇒ **被另一个 agent 删掉了** ⇒ 放外面更安全。
 
+### ⚠️ 两个防呆（都实测踩过）
+
+| 坑 | 脚本现在怎么挡 |
+| ---- | ------------ |
+| **另一个 agent 照文档跑 remove，想删别人的工作区** | remove 前自查：有未提交改动 / 有**未合并**的提交 ⇒ 拒绝删并列出原因 |
+| **在自己的工作区里跑 remove** | cwd 就在该目录 ⇒ Windows 删不掉（还会把 worktree 元数据搞坏）⇒ 拒绝并提示先 cd 出去 |
+
+⚠️ 目录名**带角色前缀**（`agent-dev` / `agent-pm`）⇒ 两个 agent 不会选到同一个名字。
+
 ### 干活时的规矩
 
 - 干活前**先看自己在哪个工作区**：`git worktree list`

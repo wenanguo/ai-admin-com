@@ -136,6 +136,7 @@ husky / lint-staged / commitlint 都用 `frontend/node_modules/.bin/` 里的二�
   · 已摘掉 junction：frontend/node_modules
   · 已摘掉 junction：backend/ai/node_modules
 - 目录在**仓库外**（仓库内的 .worktrees/ 被另一个 agent 删过）
+- **名字带角色前缀**（开发 agent ⇒ agent-dev；PM 调度 agent ⇒ agent-pm）⇒ 不会撞车
 - 脚本会接好 node_modules（junction）并生成前端类型（max setup）⇒ 新工作区立刻能跑测试
 - 合并在**主 checkout** 里跑（merge-pr.cjs 常驻 main）
 
