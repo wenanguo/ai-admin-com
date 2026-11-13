@@ -110,8 +110,14 @@ async function main() {
 
   // ─────────────────────── 2. nginx 配置校验 ───────────────────────
   console.log('\n[2] nginx -t');
-  const nginxT = run('docker', ['run', '--rm', '--entrypoint', 'nginx', IMAGE, '-t']);
-  check('容器内 nginx -t 通过', /syntax is ok|test is successful/i.test(nginxT), nginxT.slice(-500));
+  // ⚠️ nginx -t 的结果打在 **stderr** ⇒ stdout+stderr 都要看
+  const nginxT = tryRun('docker', ['run', '--rm', '--entrypoint', 'nginx', IMAGE, '-t']);
+  const nginxTText = `${nginxT.stdout}\n${nginxT.stderr}`;
+  check(
+    '容器内 nginx -t 通过',
+    nginxT.status === 0 && /syntax is ok|test is successful/i.test(nginxTText),
+    nginxTText.slice(-500),
+  );
 
   // ─────────────────────── 3. 镜像里没有 node_modules ───────────────────────
   console.log('\n[3] 镜像内容');
@@ -126,16 +132,20 @@ async function main() {
   ]);
   check('镜像里没有 node_modules 目录', nodeModulesDirs === '', nodeModulesDirs.slice(0, 500));
 
-  const htmlFiles = run('docker', [
+  const indexHtml = tryRun('docker', [
     'run',
     '--rm',
     '--entrypoint',
     'sh',
     IMAGE,
     '-c',
-    'ls /usr/share/nginx/html | head -5',
+    'ls -l /usr/share/nginx/html/index.html',
   ]);
-  check('镜像里有前端构建产物', htmlFiles.includes('index.html'), htmlFiles);
+  check(
+    '镜像里有前端构建产物（index.html）',
+    indexHtml.status === 0 && indexHtml.stdout.includes('index.html'),
+    `${indexHtml.stdout}${indexHtml.stderr}`.slice(-300),
+  );
 
   // ─────────────────────── 4. 起容器并验收 HTTP ───────────────────────
   console.log('\n[4] 起容器并验收 HTTP');
