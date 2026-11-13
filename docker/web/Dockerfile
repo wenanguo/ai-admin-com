@@ -65,7 +65,8 @@ COPY docs/cheatsheet.en-US.md docs/cheatsheet.zh-CN.md ./docs/
 RUN cd frontend && npm rebuild esbuild
 
 # ③ 构建：产物在 frontend/dist（= UMI_OUTPUT_PATH=dist max build）
-RUN cd frontend && npm run build
+#    先 ls 一下构建输入（docs/cheatsheet.*.md）⇒ 报 “Can't resolve” 时能一眼看出是不是文件没进镜像
+RUN cd frontend && ls -la ../docs ../config && npm run build
 
 # ─────────────────────────── 运行阶段 ───────────────────────────
 FROM nginx:${NGINX_VERSION}-alpine AS runtime
