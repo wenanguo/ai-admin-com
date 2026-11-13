@@ -70,6 +70,59 @@ npm start                 # node --env-file=.env dist/main.js
 
 ---
 
+## 容器（issue #39）
+
+```bash
+# 在**仓根**执行（构建上下文 = 仓根）
+docker build -f backend/ai/Dockerfile -t ai-admin-ai .
+
+docker run -d --name ai-admin-ai -p 3100:3100 \
+  -e MINIMAX_CN_API_KEY=... \
+  -e AI_MODEL=minimax-cn/MiniMax-M3.1-Flash \
+  -e AIADMIN_BASE_URL=... \
+  -e DATABASE_URL=... \
+  -e ALLOWED_ORIGINS=http://localhost:8000 \
+  -v /secure/ai-admin-ai/.ai:/app/.ai \
+  ai-admin-ai
+```
+
+镜像里有什么：`dist/`（ESM 产物）+ 生产依赖 + prisma 生成的客户端 + `/app/.pi/skills`（技能）。
+镜像里**没有**：源码、`node_modules` 里的 devDependencies（typescript / prisma CLI）、任何凭据。
+
+### 硬约束（踩了就不work）
+
+| 约束 | 为什么 | 怎么满足 |
+| ---- | ------ | -------- |
+| **技能是 cwd 相对** | `load_skill` / `/api/agent/skills` 都按 `join(process.cwd(), ".pi", "skills")` 找 | `WORKDIR /app` ⇒ 技能必须在 `/app/.pi/skills`（镜像里已就位） |
+| **凭据不入镜像** | `.ai/auth.json` 是 pi 的凭据文件 | 镜像里**没有** `/app/.ai` ⇒ 运行时挂载（`-v ...:/app/.ai`） |
+| **启动命令不读 `.env`** | 容器里没有 `.env` ⇒ `node --env-file=.env` 会直接退出 | `CMD ["node", "dist/main.js"]`（`src/load-env.ts` 会「有就读、没有就用环境变量」） |
+| **ESM-only** | pi SDK 是 ESM-only | 基础镜像 node 22 + `dist/` 是 ESM |
+
+### 健康检查 `GET /health`
+
+- **不要 token**（编排系统没有用户 token）⇒ 不进 `src/routes/contract.ts`（那张表锁的是业务端点）。
+- **恒回 200**：依赖（数据库 / AiAdmin / 模型）挂了也 200 ⇒ 编排系统不会把**还活着的容器**杀掉重启。
+  依赖状态在 `checks` 里，`status` 汇总成 `ok` / `degraded`。
+
+```bash
+curl -s http://127.0.0.1:3100/health
+# => {"status":"ok","uptimeSeconds":12.3,"checks":{"database":{"status":"up","detail":"..."}, ...}}
+```
+
+### 经 nginx 代理时的 SSE
+
+`/api/agent/:id/events` 的响应头已经带了 `X-Accel-Buffering: no` 与 `Cache-Control: no-cache, no-transform`
+⇒ **nginx 侧**还要 `proxy_buffering off;`（代理编排是 #C 的活）。
+
+### 验收
+
+```bash
+node scripts/e2e/ai-container.static.cjs   # 静态断言（不需要 docker）
+node scripts/e2e/ai-container.cjs          # 真起容器验收（需要 docker；没 docker ⇒ SKIP）
+```
+
+---
+
 ## 接口（前端按这份契约接）
 
 对话那四件套在 `/api/agent` 下，审计流水在 `/api/audit`，待确认列表在 `/api/pending`；
@@ -333,9 +386,10 @@ src/audit-query.ts                审计的**读侧**（只看自己的行 + 筛
 src/pending-query.ts              待确认的**读侧**（只看自己的行 + status 缺省 PENDING + preview 原样透出）
 src/tools/                        命令目录（create_task 一个命令 + 闸门形状）
 src/http/                         HTTP 通用件（cors / respond 信封 / auth 取 token / sse 帧格式 / errors 错误映射 / body 读 JSON）
-src/routes/                       ★ Express 路由（agent 会话与命令 / pending 待确认 / audit 审计 / events SSE / support 小工具 / contract **契约表**）
+src/routes/                       ★ Express 路由（agent 会话与命令 / pending 待确认 / audit 审计 / events SSE / support 小工具 / contract **契约表** / **health 健康检查**）
 src/server.ts                     ★ Express app 装配（createApp / start / CORS 中间件 / JSON 404 / 错误中间件）
 src/main.ts                       ★ 进程入口（node dist/main.js 就是它）
+Dockerfile                        ★ 多阶段镜像（issue #39；构建上下文 = 仓根 ⇒ `docker build -f backend/ai/Dockerfile .`）
 .pi/skills/<name>/SKILL.md        ★ 技能（**加 AI 能力不用改代码**；见下面那节）
 spike/                            Task 1 的风险尖峰（一次性，结论在 spike/FINDINGS.md）
 ```

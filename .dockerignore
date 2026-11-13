@@ -58,7 +58,12 @@ node_modules
 #    `docs/cheatsheet.en-US.md` / `docs/cheatsheet.zh-CN.md`
 #    （utoopack 的 `*.md` loader）⇒ 排掉它 ⇒ 镜像里构建直接报
 #    "Module not found: Can't resolve '../../../docs/cheatsheet.en-US.md'"。
-backend/
+# ⚠️ **backend/ 不能整目录排掉**：AI 服务的镜像（`backend/ai/Dockerfile`）要从
+#    这里取 `package.json` / `src` / `prisma` / `.pi`（技能）⇒ 整目录排掉 ⇒
+#    镜像构建直接失败（找不到 package.json）。
+#    只排掉 AI 服务用不到的东西（依赖与产物已由 **/node_modules、**/dist 排掉）。
+backend/ai/spike
+backend/ai/docs
 frontend/cloudflare-worker/
 frontend/e2e/
 frontend/tests/

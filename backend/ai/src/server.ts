@@ -18,6 +18,8 @@ import { MISSING_TOKEN_MESSAGE, allowedOrigins, errorBody } from "./http/respond
 import { agentRouter } from "./routes/agent.ts";
 import { auditRouter } from "./routes/audit.ts";
 import { eventsRouter } from "./routes/events.ts";
+import { HEALTH_CACHE_TTL_MS, createHealthRouter } from "./routes/health.ts";
+import { probeAiAdmin, probeDatabase, probeModel } from "./routes/health-probes.ts";
 import { pendingRouter } from "./routes/pending.ts";
 
 export { MISSING_TOKEN_MESSAGE };
@@ -62,6 +64,23 @@ export function errorHandler(
 }
 
 /**
+ * 健康检查路由（**真实自检**）。
+ *
+ * ⚠️ **恒回 200**（依赖挂了也 200）⇒ 编排系统不会把还活着的容器杀掉重启。
+ * ⚠️ **不要 token**：这是基础设施端点，不是业务端点 ⇒ 不进 `contract.ts`。
+ */
+export const healthRouter = createHealthRouter({
+	probes: {
+		database: probeDatabase,
+		aiadmin: probeAiAdmin,
+		model: probeModel,
+	},
+	now: () => Date.now(),
+	startedAt: Date.now(),
+	ttlMs: HEALTH_CACHE_TTL_MS,
+});
+
+/**
  * 装配 app（**不监听**）。
  *
  * 中间件顺序：预检/CORS → 路由 → 404 → 错误处理。
@@ -71,6 +90,8 @@ export function createApp(): Express {
 	// 别让外部看到框架名（也少一条信息泄露）
 	app.disable("x-powered-by");
 	app.use(corsMiddleware);
+	// 健康检查**先挂**（探针不该被业务路由的任何前置逻辑影响）
+	app.use("/health", healthRouter);
 	// ⚠️ **不挂 `express.json()`**：body 由各路由自己读（`readJsonBody`），
 	//    这样「没有 body」「body 坏了」「这个路由不关心 body」三种情况的
 	//    语义与迁移前逐字一致。

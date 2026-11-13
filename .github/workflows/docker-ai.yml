@@ -1,0 +1,36 @@
+name: docker ai
+
+# AI 服务镜像（issue #39）的 CI：
+#   static —— 静态断言配置（不需要 docker，任何机器都能跑）
+#   image  —— 真构建镜像 + 真起容器验收（GitHub runner 自带 docker）
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: 静态断言（镜像配置）
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - run: node scripts/e2e/ai-container.static.cjs
+
+  image:
+    name: 构建镜像并跑容器验收
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # 构建镜像（要 npm ci + tsc + prisma generate，要几分钟）+ 起容器验收
+      - run: node scripts/e2e/ai-container.cjs

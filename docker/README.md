@@ -67,3 +67,19 @@ CI（`.github/workflows/docker-web.yml`）会在 PR 上跑这两条。
 - **#C**：API 代理（`/api/`、`/ai-api/`）+ compose 编排 ⇒ 在 `nginx.conf` 里加 `location` + `proxy_pass`。
 - **#D**：`deploy.sh` 部署脚本。
 - **#E**：部署文档汇总 + 端到端部署验收脚本。
+
+## AI 服务镜像（issue #39）
+
+⚠️ **AI 服务的镜像不在本目录**：它是 `backend/ai/Dockerfile`（多阶段：node 22 ⇒ tsc ⇒
+生产依赖 + 技能 + prisma 客户端），细节见 `backend/ai/README.md` 的「容器」那节。
+
+```bash
+# 同样在**仓根**执行（构建上下文 = 仓根）
+docker build -f backend/ai/Dockerfile -t ai-admin-ai .
+```
+
+| 镜像名 | 说明 | 端口 | 健康检查 |
+| ------ | ---- | ---- | -------- |
+| `ai-admin-ai` | AI 编排服务（Express 5 + pi SDK + Prisma） | `3100` | `GET /health` ⇒ **恒 200**（含 `status` / `checks`） |
+
+验收：`node scripts/e2e/ai-container.static.cjs`（不需要 docker）/ `node scripts/e2e/ai-container.cjs`（要 docker）。
