@@ -67,6 +67,12 @@ const wronglyExcluded = mustKeep.filter((p) => {
   return Boolean(line);
 });
 check('没有排除构建必需的 frontend 文件', wronglyExcluded.length === 0, wronglyExcluded.join(' / '));
+// ⚠️ docs/ 不能排掉：frontend/src/pages/Welcome.tsx import 了 docs/cheatsheet.*.md
+const docsExcluded = dockerignore
+  .split(/\r?\n/)
+  .map((l) => l.trim())
+  .some((l) => l && !l.startsWith('#') && (l === 'docs' || l === 'docs/' || l === '/docs'));
+check('没有排除 docs/（Welcome.tsx 会 import docs/cheatsheet.*.md）', !docsExcluded);
 
 // ───────────────────────────── frontend/.npmrc ─────────────────────────────
 // ⚠️ 本仓的 lock 是按 legacy-peer-deps 生成的 ⇒ 镜像里必须带上这个 .npmrc
