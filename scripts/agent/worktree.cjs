@@ -149,6 +149,8 @@ function generateUmiTypes(target) {
 const args = process.argv.slice(2);
 const command = args[0];
 const name = args[1];
+/** 合并目标分支（算「未合并提交」时要用）。 */
+const base = 'main';
 
 switch (command) {
   case 'list': {
@@ -199,11 +201,45 @@ switch (command) {
       process.exit(2);
     }
     const target = path.join(worktreeRoot, name);
-    const branch = `agent/${name}`;
+    // ⚠️ 分支名**从 worktree 列表读**（不猜）⇒ 目录名与分支名可以不一致
+    const entry = listWorktrees().find(
+      (item) => path.resolve(item.path) === path.resolve(target),
+    );
+    const branch = entry?.branch ?? `agent/${name}`;
     if (!fs.existsSync(target)) {
       console.log(`工作区不存在：${target}`);
       break;
     }
+
+    /*
+      ⚠️ **防误删**（实测教训）：另一个 agent 照着文档跑 `remove dev`
+      ⇒ 想删掉**别人**的工作区 ⇒ git 只拦「工作区脏」，**已提交但未合并**的
+      提交会被直接删掉（⇒ 丢代码）。
+      ⇒ 删之前先自查：有没有未合并的提交 / 有没有脏改动 ⇒ 有就拒绝。
+    */
+    const dirty = tryRun('git', ['status', '--porcelain'], { cwd: target });
+    const unmerged = tryRun(
+      'git',
+      ['log', '--oneline', `${branch}..${base}`],
+      { cwd: target },
+    );
+    if (dirty.length > 0 || unmerged.length > 0) {
+      console.error(`\n拒绝删除 ${target}：`);
+      if (dirty.length > 0) {
+        console.error('  · 有未提交改动：');
+        console.error(dirty.split('\n').map((line) => `      ${line}`).join('\n'));
+      }
+      if (unmerged.length > 0) {
+        console.error('  · 分支上有**未合并**的提交（删了会丢代码）：');
+        console.error(
+          unmerged.split('\n').map((line) => `      ${line}`).join('\n'),
+        );
+        console.error('  ⇒ 先把它们合进 main（或 cherry-pick 到别的分支）再删。');
+      }
+      console.error('  · 确认要丢的话：git worktree remove --force <路径>');
+      process.exit(1);
+    }
+
     // ⚠️ 先删 junction（不然 `git worktree remove` 会把主仓的 node_modules 删掉！）
     for (const dep of ['frontend', 'backend/ai']) {
       const link = path.join(target, dep, 'node_modules');
