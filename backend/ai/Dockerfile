@@ -71,6 +71,17 @@ ENV NODE_ENV=production \
 COPY backend/ai/package.json backend/ai/package-lock.json ./
 RUN npm install -g npm@10.9.9 && npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 
+# ①b **删掉被“可选 peer 依赖”带进来的开发工具**
+#     ⚠️ **实测坑**：`@prisma/client` 把 `prisma`（CLI）与 `typescript` 声明成了
+#     **peerOptional** 依赖 ⇒ npm 会把它们当「可选 peer」装上 ⇒
+#     **`--omit=dev` 拦不住**（`npm prune --omit=dev` 也拦不住）⇒
+#     镜像里会多出 prisma CLI（还带 50MB 的查询引擎）和 typescript。
+#     ⇒ 运行时用不到它们（CLI 只在构建阶段 generate 用）⇒ 显式删掉。
+#     （验收脚本 `ai-container.cjs` 会断言镜像里没有 typescript / prisma。）
+RUN rm -rf node_modules/prisma node_modules/typescript node_modules/@prisma/engines \
+    node_modules/@prisma/debug \
+    node_modules/.bin/prisma node_modules/.bin/tsc node_modules/.bin/tsserver
+
 # ② 编译产物（ESM）
 COPY --from=builder /app/dist ./dist
 

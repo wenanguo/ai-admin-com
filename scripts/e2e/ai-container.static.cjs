@@ -131,6 +131,13 @@ check(
   '运行时阶段用 --omit=dev（镜像里没有 devDependencies）',
   /npm ci[^\n]*--omit=dev/.test(runtimePart),
 );
+// ⚠️ **--omit=dev 拦不住 peerOptional**：`@prisma/client` 把 prisma CLI 与 typescript
+//    声明成 peerOptional ⇒ npm 会装上 ⇒ 必须显式删（实测：npm prune --omit=dev 也不行）
+check(
+  '运行时阶段显式删掉了 peerOptional 带进来的 prisma CLI / typescript',
+  /rm -rf[^\n]*node_modules\/prisma/.test(runtimePart) &&
+    /node_modules\/typescript/.test(runtimePart),
+);
 check(
   '构建阶段装了完整依赖（tsc / prisma CLI 要 devDependencies）',
   /npm ci[^\n]*--ignore-scripts/.test(dockerfile.split(/AS runtime/)[0] || ''),
