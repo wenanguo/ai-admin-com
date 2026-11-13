@@ -16,7 +16,6 @@
  * ```
  */
 const { execFileSync } = require('node:child_process');
-const fs = require('node:fs');
 const path = require('node:path');
 
 /** 跑一条命令（拿文本输出）。 */
@@ -108,32 +107,75 @@ if (!yes) {
 
 // ── ④ 合并（公共动作 ⇒ 显式 --yes 才做）──────────────────────
 //
-// ⚠️ **自我保护**：`gh pr merge --delete-branch` 会删**本地分支** ⇒
-//    如果这个脚本正躺在那个分支上，它会把自己删掉（合并仍然成功，只是脚本没了）。
-//    ⇒ 先把自己 copy 到临时目录再继续。
-const SELF = __filename;
-const SELF_COPY = path.join(
-  require('node:os').tmpdir(),
-  `merge-pr-${process.pid}.cjs`,
-);
-try {
-  fs.copyFileSync(SELF, SELF_COPY);
-  console.log(`(脚本已复制到临时目录，避免随分支被删：${SELF_COPY})`);
-} catch {
-  // 复制失败就继续（顶多脚本被删，重跑时从 main 上恢复即可）
-}
-console.log('\n合并中…');
-tryRun('gh', ['pr', 'merge', String(info.number), `--${strategy}`, '--delete-branch'], { inherit: true });
-
-// ── ⑤ 本地清理 ──────────────────────────────────────────────
+// ⚠️ **先切回 base 分支**：`gh pr merge --delete-branch` 会删**本地分支**
+//    ⇒ 如果这个脚本正躺在那个分支上，它会把自己删掉。
+//    ⇒ 脚本**常驻 main** ⇒ 先切到 main，脚本就活着了。
 const repoRoot = path.resolve(__dirname, '..', '..');
 const branch = info.headRefName;
-console.log(`\n本地清理（${branch}）：`);
-tryRun('git', ['checkout', info.baseRefName], { cwd: repoRoot, inherit: true });
+const base = info.baseRefName;
+
+const currentBranch = tryRun('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+  cwd: repoRoot,
+});
+if (currentBranch === branch) {
+  console.log(`\n（先切回 ${base}：脚本常驻 base 分支，免得随 ${branch} 被删）`);
+  tryRun('git', ['checkout', base], { cwd: repoRoot, inherit: true });
+}
+
+console.log('\n合并中…');
+try {
+  tryRun(
+    'gh',
+    ['pr', 'merge', String(info.number), `--${strategy}`, '--delete-branch'],
+    { inherit: true },
+  );
+} catch (error) {
+  /*
+    ⚠️ **gh 会在「删分支」收尾时抛自己的内部错误**（实测：
+       `Cannot read properties of null (reading 'trim')`），
+       但**合并其实已经成功**了 ⇒ 别把它当成失败。
+       ⇒ 核对 PR 的**真实状态**再决定。
+  */
+  const after = JSON.parse(
+    tryRun(
+      'gh',
+      ['pr', 'view', String(info.number), '--json', 'state,mergedAt'],
+      { cwd: repoRoot },
+    ),
+  );
+  if (after.state !== 'MERGED') {
+    console.error(`\n合并失败：${error.message}`);
+    console.error('（若是网络断了 ⇒ 远端不会有变化，等网络恢复后重跑同一条命令即可）');
+    process.exit(1);
+  }
+  console.log('(gh 收尾时报错，但 PR 实际已合并 ⇒ 继续清理)');
+}
+
+// ── ⑤ 清理 ──────────────────────────────────────────────────
+console.log(`\n清理（${branch}）：`);
+
+// 远端分支（gh 删过了 ⇒ 这里容忍「不存在」）
+try {
+  tryRun('git', ['push', 'origin', '--delete', branch], {
+    cwd: repoRoot,
+    inherit: true,
+  });
+} catch {
+  console.log('  · 远端分支已不存在（gh 已删）');
+}
+
+// 本地分支
+// ⚠️ **squash 合并后必须用 `-D`**：`git branch -d` 会说「分支未合并」
+//    （squash 产生的是新提交，原分支的提交不在 main 的历史里）⇒ 删不掉。
+tryRun('git', ['branch', '-D', branch], { cwd: repoRoot, inherit: true });
+
+// 切回 base 并同步
+if (currentBranch !== base) {
+  tryRun('git', ['checkout', base], { cwd: repoRoot, inherit: true });
+}
 tryRun('git', ['pull', '--ff-only'], { cwd: repoRoot, inherit: true });
-tryRun('git', ['branch', '-d', branch], { cwd: repoRoot, inherit: true });
 
 console.log('\n完成：');
 console.log(`  · PR #${info.number} 已合并（${strategy}）`);
 console.log('  · 远端分支已删');
-console.log(`  · 本地已切回 ${info.baseRefName} 并同步`);
+console.log(`  · 本地分支已删，已切回 ${base} 并同步`);

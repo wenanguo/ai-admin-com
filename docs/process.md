@@ -207,3 +207,17 @@ PM **只替换 §2 的第 ① 步「人提 issue」**：
 - **合并 + 关 issue + 删分支**：开发 agent（PR 正文写 `Closes #xx`）。
 - **PM 抽查**：AI 闸门 / 权限 / 数据模型 / 动 AiAdmin（FastAPI）那个仓 —— 这四类 PR PM 要亲自看内容。
 - **合并脚本**：`node scripts/agent/merge-pr.cjs <PR号> --yes`（见 §9），**常驻 main**。
+
+### ⚠️ 合并脚本的第四个坑：`gh` 收尾报错 ≠ 合并失败
+
+实测（2026-11-13，PR #18）：`gh pr merge --squash --delete-branch` 在**删分支收尾**时抛自己的内部错误
+（`Cannot read properties of null (reading 'trim')`），但**合并早已成功**。
+
+⇒ 脚本现在：**报错后核对 PR 的真实状态**（`gh pr view --json state`）⇒ 已 `MERGED` 就继续走清理流程。
+
+另外两条一起改了：
+
+| 坑 | 处理 |
+|---|---|
+| **squash 合并后 `git branch -d` 会说「分支未合并」** | 改用 `-D`（squash 产生的是新提交，原分支提交不在 main 历史里） |
+| **脚本可能躺在要删的分支上** | 合并**前**先切回 base（脚本常驻 main ⇒ 活着） |
