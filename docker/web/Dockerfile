@@ -33,8 +33,15 @@ ENV COMMIT_HASH=${COMMIT_HASH}
 # ① 依赖层：先只拷清单文件 ⇒ 改源码不会让 npm ci 这一层失效
 COPY frontend/package.json frontend/package-lock.json ./frontend/
 
-# 打印版本（构建日志里能看出用的是什么 node/npm ⇒ 排查问题第一眼就看它）
-RUN node -v && npm -v
+# 打印版本 + **钉住 npm 版本**（构建日志里能看出用的是什么 node/npm）
+#
+# ⚠️ **为什么钉 npm 10.9.9**：
+#    node:22 现在默认带 **npm 11** ⇒ 它的「package.json 与 package-lock.json 必须同步」
+#    检查比 npm 10 严 ⇒ 本仓现有的 frontend/package-lock.json（npm 10 生成的）
+#    会被 npm 11 判为不同步 ⇒ `npm ci` 直接 EUSAGE 失败
+#    （报错长这样：Invalid: lock file's xxx does not satisfy ... / Missing: ... from lock file）。
+#    ⇒ 钉到 **仓库 CI 正在用的 npm 10.9.9**（见 .github/workflows/ci.yml）⇒ 镜像与 CI 装出同一棵树。
+RUN node -v && npm install -g npm@10.9.9 && npm -v
 
 # ⚠️ --ignore-scripts：此刻源码还没拷进来，root 包的 prepare（husky + max setup）
 #    会因为找不到 config/ 而失败 ⇒ 跳过脚本；esbuild 的安装脚本随后用 rebuild 补回来。
