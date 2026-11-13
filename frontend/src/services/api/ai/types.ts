@@ -152,6 +152,18 @@ export type AiEvent =
       fields: string[];
     };
 
+/**
+ * 一个技能的摘要（服务端 `GET /api/agent/skills`）。
+ *
+ * ⚠️ 技能是**业务同学自己写的** markdown ⇒ 这一项让写的人能确认「我写的生效了」。
+ */
+export interface AiSkillSummary {
+  /** 技能名（frontmatter 的 `name`）。 */
+  name: string;
+  /** 技能说明（frontmatter 的 `description`）—— 模型靠它决定要不要加载。 */
+  description: string;
+}
+
 /** 一条审计（服务端 `src/audit-query.ts` 的 `AuditItem`）。 */
 export interface AiAuditRow {
   id: string;

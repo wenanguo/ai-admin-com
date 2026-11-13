@@ -25,6 +25,7 @@ import type {
   AiConversation,
   AiEnvelope,
   AiPendingRow,
+  AiSkillSummary,
   AiState,
   AiTaskContext,
 } from './types';
@@ -270,6 +271,15 @@ export async function listAiAudit(params?: AiAuditQuery): Promise<AiAuditPage> {
  * ⚠️ 服务端当前**没有任何命令会进待确认**（唯一的 `create_task` 是非破坏性的）
  * ⇒ 这个列表现在是空的，但端点是**真的读表**的。
  */
+/**
+ * 列出当前可用的技能（服务端 `GET /api/agent/skills`）。
+ *
+ * ⚠️ 读的是**真文件** ⇒ 改完 SKILL.md 重启服务就能看到新说明。
+ */
+export async function listAiSkills(): Promise<AiSkillSummary[]> {
+  return aiRequest<AiSkillSummary[]>('/api/agent/skills', { method: 'GET' });
+}
+
 export async function listAiPending(status?: string): Promise<AiPendingRow[]> {
   return aiRequest<AiPendingRow[]>('/api/pending', {
     method: 'GET',

@@ -58,6 +58,7 @@ import { IntentGallery } from './IntentGallery';
 import { AI_INTENTS } from './intents';
 import { PendingPanel } from './PendingPanel';
 import { RuleSplit } from './RuleSplit';
+import { SkillList } from './SkillList';
 import { useAiLists } from './useAiLists';
 import type { Workspace } from './useWorkspace';
 import { WideChat } from './WideChat';
@@ -594,6 +595,9 @@ export function AiWorkspaceWide({
           </button>
         </Tooltip>
       </div>
+
+      {/* 可用技能：让写技能的人看得见自己写的技能生效了 */}
+      <SkillList />
 
       {/* AI 服务连不上时在这里说一声（不弹全局提示） */}
       {workspace.connectionError ? (
