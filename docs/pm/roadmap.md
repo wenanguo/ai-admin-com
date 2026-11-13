@@ -39,14 +39,14 @@
 - **依赖**：无（本块是 M2/M3 的前置）。
 - **候选需求**（→ issue 列表）：
 
-  | # | 需求 | 规模 | 依赖 |
-  | - | ---- | ---- | ---- |
-  | 1 | 项目域**只读**命令：`list_projects` / `get_project` / `get_project_overview` | 小 | 无 |
-  | 2 | 任务域**只读**命令：`list_tasks` / `get_task` / `search` | 小 | 无 |
-  | 3 | 项目与里程碑**写**命令走闸门：`create_*` / `update_*` / `transition_milestone` / `split_milestone` | 中 | #1 |
-  | 4 | 风险域命令：`register_risk` / `update_risk` / `transition_risk` / `convert_risk_to_task` | 中 | #3 |
-  | 5 | 洞察域命令：`get_progress` / `predict_milestone_slip` / `predict_project_eta` / `generate_weekly_report` | 中 | #4 |
-  | 6 | 撤销与审计闭环：每条写命令可查、可撤销 | 中 | #3 |
+  | # | 需求 | 规模 | 依赖 | issue |
+  | - | ---- | ---- | ---- | ----- |
+  | 1 | 项目域**只读**命令：`list_projects` / `get_project` / `get_project_overview` | 小 | 无 | [#10](https://github.com/wenanguo/ai-admin-com/issues/10) ★ready |
+  | 2 | 任务域**只读**命令：`list_tasks` / `get_task` / `search` | 小 | 无 | #11 |
+  | 3 | 项目与里程碑**写**命令走闸门：`create_*` / `update_*` / `transition_milestone` / `split_milestone` | 中 | #10 | #12 |
+  | 4 | 风险域命令：`register_risk` / `update_risk` / `transition_risk` / `convert_risk_to_task` | 中 | #12 | #13 |
+  | 5 | 洞察域命令：`get_progress` / `predict_milestone_slip` / `predict_project_eta` / `generate_weekly_report` | 中 | #13 | #14 |
+  | 6 | 撤销与审计闭环：每条写命令可查、可撤销 | 中 | #12 | #15 |
 
 ### M2 · 项目·里程碑·任务视图　`v0.9 · M2 项目·里程碑·任务视图`（milestone #2）
 
@@ -61,10 +61,10 @@
 - **在途**：issue #9（任务页三视图高度统一）—— 分支 `feat/9-task-view-height`。
 - **候选需求**：
 
-  | # | 需求 | 规模 | 依赖 |
-  | - | ---- | ---- | ---- |
-  | 7 | AI 工作台发 PM 命令后回填视图 | 中 | #2 |
-  | 8 | 里程碑页与风险页接真实接口数据 | 中 | 无 |
+  | # | 需求 | 规模 | 依赖 | issue |
+  | - | ---- | ---- | ---- | ----- |
+  | 7 | AI 工作台发 PM 命令后回填视图 | 中 | #11 | #16 |
+  | 8 | 里程碑页与风险页接真实接口数据 | 中 | 无 | #17 |
 
 ### M3 · 风险与洞察　`v0.9 · M3 风险与洞察`（milestone #3）
 
@@ -76,9 +76,9 @@
 - **依赖**：M1（命令层）→ M2（里程碑/项目数据）。
 - **候选需求**：
 
-  | # | 需求 | 规模 | 依赖 |
-  | - | ---- | ---- | ---- |
-  | 9 | 风险预警到待执行命令（一键转） | 中 | #4 |
+  | # | 需求 | 规模 | 依赖 | issue |
+  | - | ---- | ---- | ---- | ----- |
+  | 9 | 风险预警到待执行命令（一键转） | 中 | #13 | #19 |
 
 ---
 
@@ -96,9 +96,9 @@
   - 它引用的 issue 号（#11772 等）是**上游 Ant Design Pro 的 issue，不是本仓的** ⇒ 不可直接引用。
 - **候选需求**：
 
-  | # | 需求 | 规模 | 依赖 |
-  | - | ---- | ---- | ---- |
-  | 10 | 核对 v6.1.0 升级项在本仓的现状，产出待修清单（调研型，不改代码） | 小 | 无 |
+  | # | 需求 | 规模 | 依赖 | issue |
+  | - | ---- | ---- | ---- | ----- |
+  | 10 | 核对 v6.1.0 升级项在本仓的现状，产出待修清单（调研型，不改代码） | 小 | 无 | [#20](https://github.com/wenanguo/ai-admin-com/issues/20) ★ready |
 
 ---
 
@@ -106,6 +106,7 @@
 
 - **一个 issue = 一个分支 = 一个 PR**（`docs/process.md` §5）。
 - **只给队首打 `ready`**（每个 milestone 的第一条）⇒ 块内串行、块间并行。
+  当前队首：**#10**（M1）、**#20**（L1）。
 - **依赖链**：M1 → M2 → M3；M1 与 L1 无依赖，可同时开工。
 - **滚动 due**：每两周一个块，做不完就往后挪，不作废已建 issue。
 
@@ -114,3 +115,4 @@
 | 日期 | 变更 |
 | ---- | ---- |
 | 2026-11-13 | 首版：v0.9 三个能力块 + 基建线 L1；首批 10 条候选需求 |
+| 2026-11-13 | 首批 10 条 issue 已建（#10–#17、#19、#20），依赖编号回写；#9（任务页高度）归入 M2；队首 #10 / #20 已打 `ready` |
