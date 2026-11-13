@@ -148,6 +148,26 @@ console.log(`\n${claim ? '🎯 认领' : '👀 会挑'}：#${issue.number} ${iss
 console.log(`   里程碑：${issue.milestone?.title ?? '无'}${chosen.due !== '9999-12-31' ? `（due ${chosen.due.slice(0, 10)}）` : ''}`);
 console.log(`   依赖：${chosen.deps.length > 0 ? chosen.deps.map((d) => `#${d}`).join(' ') : '无'}`);
 console.log(`   建议分支：feat/${issue.number}-<简短关键词>`);
+
+/**
+ * 本 milestone 里还剩几条没做（**汇报点判断的依据**）：
+ * 「这个块的活全做完了」= 开发 agent 该停下来汇报的信号。
+ */
+if (issue.milestone) {
+  const sameBlock = JSON.parse(
+    tryRun('gh', [
+      'issue', 'list', '--state', 'open', '--milestone', issue.milestone.title,
+      '--limit', '100', '--json', 'number,title',
+    ]),
+  );
+  const rest = sameBlock.filter((i) => i.number !== issue.number);
+  if (rest.length === 0) {
+    console.log(`   ⚠️ 本 milestone（${issue.milestone.title}）**只剩这一条** ⇒ 做完就是汇报点`);
+  } else {
+    console.log(`   本 milestone（${issue.milestone.title}）做完这条还剩 ${rest.length} 条：${rest.map((i) => `#${i.number}`).join(' ')}`);
+  }
+}
+
 console.log('\n─── issue 正文 ───');
 console.log(issue.body ?? '（空）');
 console.log('─────────────────');
