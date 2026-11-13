@@ -33,7 +33,9 @@ function tryRun(cmd, args, options = {}) {
   try {
     return run(cmd, args, options);
   } catch (error) {
-    const detail = error.stderr ? String(error.stderr).trim() : error.message;
+    // ⚠️ stderr 可能是 **null**（网络掐断时）⇒ 不能无条件 .trim()
+    const stderr = error.stderr ? String(error.stderr).trim() : '';
+    const detail = stderr.length > 0 ? stderr : error.message;
     throw new Error(`${cmd} ${args.join(' ')} 失败：${detail}`);
   }
 }
@@ -105,6 +107,21 @@ if (!yes) {
 }
 
 // ── ④ 合并（公共动作 ⇒ 显式 --yes 才做）──────────────────────
+//
+// ⚠️ **自我保护**：`gh pr merge --delete-branch` 会删**本地分支** ⇒
+//    如果这个脚本正躺在那个分支上，它会把自己删掉（合并仍然成功，只是脚本没了）。
+//    ⇒ 先把自己 copy 到临时目录再继续。
+const SELF = __filename;
+const SELF_COPY = path.join(
+  require('node:os').tmpdir(),
+  `merge-pr-${process.pid}.cjs`,
+);
+try {
+  fs.copyFileSync(SELF, SELF_COPY);
+  console.log(`(脚本已复制到临时目录，避免随分支被删：${SELF_COPY})`);
+} catch {
+  // 复制失败就继续（顶多脚本被删，重跑时从 main 上恢复即可）
+}
 console.log('\n合并中…');
 tryRun('gh', ['pr', 'merge', String(info.number), `--${strategy}`, '--delete-branch'], { inherit: true });
 
