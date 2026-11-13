@@ -1,14 +1,17 @@
 /**
- * 「可用技能」区块 —— 让**写技能的人**看得见自己写的技能生效了。
+ * 「可用技能」入口 —— 让**写技能的人**看得见自己写的技能生效了。
  *
- * ## 为什么要有它
+ * ## 为什么是「按钮 + 弹层」而不是一块常驻内容
  *
- * 技能（`backend/ai/.pi/skills` 下的 SKILL.md）是业务同学自己写的
- * ⇒ 写完要能确认「它被加载了」⇒ 界面上列出来。
+ * ⚠️ 宽屏页是「**一屏铺满**」的布局：对话区要吃满剩余高度（e2e 里有断言）
+ * ⇒ 任何**纵向**的常驻内容都会把对话区挤矮 ⇒ 布局回归。
+ * ⇒ 所以这里做成**一行按钮**（放在「当前模型」那一行里）⇒ 零纵向占用。
  *
- * ⚠️ **只读**：这里不提供编辑/新建（那是以后的事）。
+ * ## 只读
+ *
+ * 这里不提供编辑/新建（那是以后的事）。
  */
-import { Alert, Empty, Spin, Tag, theme } from 'antd';
+import { Button, Empty, Popover, Spin, Tag, theme } from 'antd';
 import type React from 'react';
 import { useEffect, useState } from 'react';
 import { listAiSkills } from '@/services/api/ai/client';
@@ -21,7 +24,7 @@ export interface SkillListProps {
 }
 
 /**
- * 可用技能清单。
+ * 可用技能入口（点开看清单）。
  */
 export function SkillList({ skills }: SkillListProps): React.ReactElement {
   const { token } = theme.useToken();
@@ -58,33 +61,11 @@ export function SkillList({ skills }: SkillListProps): React.ReactElement {
 
   const items = loaded ?? [];
 
-  return (
-    <section
-      data-role="ai-skill-list"
-      style={{
-        padding: `${token.paddingSM}px ${token.padding}px`,
-        borderRadius: token.borderRadiusLG,
-        background: token.colorFillQuaternary,
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'baseline',
-          gap: token.sizeXS,
-          marginBottom: token.sizeXS,
-        }}
-      >
-        <span style={{ fontWeight: 600 }}>可用技能</span>
-        <span
-          style={{ fontSize: token.fontSizeSM, color: token.colorTextTertiary }}
-        >
-          写在 backend/ai/.pi/skills 下的 SKILL.md —— 改完重启即可生效
-        </span>
-      </div>
-
+  /** 弹层内容。 */
+  const content = (
+    <div style={{ width: 320 }}>
       {error ? (
-        <Alert type="error" showIcon title={error} />
+        <span style={{ color: token.colorError }}>{error}</span>
       ) : loading && items.length === 0 ? (
         <Spin size="small" />
       ) : items.length === 0 ? (
@@ -105,7 +86,6 @@ export function SkillList({ skills }: SkillListProps): React.ReactElement {
                 display: 'flex',
                 alignItems: 'baseline',
                 gap: token.sizeXS,
-                flexWrap: 'wrap',
               }}
             >
               <Tag
@@ -131,6 +111,19 @@ export function SkillList({ skills }: SkillListProps): React.ReactElement {
           ))}
         </div>
       )}
-    </section>
+    </div>
+  );
+
+  return (
+    <Popover
+      content={content}
+      title="可用技能（写在 backend/ai/.pi/skills 下的 SKILL.md）"
+      trigger="click"
+      placement="bottom"
+    >
+      <Button size="small" data-role="ai-skill-list">
+        可用技能 {items.length}
+      </Button>
+    </Popover>
   );
 }
