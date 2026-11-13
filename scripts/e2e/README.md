@@ -8,6 +8,8 @@
 | `ai-gate.cjs` | 浏览器跑一遍「AI 改任务 → 挂起等人点头 → 同意 → 任务真被改」 |
 | `web-container.static.cjs` | **静态断言**前端镜像的配置（Dockerfile / nginx.conf / .dockerignore）⇒ **不需要 docker** |
 | `web-container.cjs` | **真起容器**验收前端镜像（构建 → `nginx -t` → 首页 → SPA fallback → 缓存头 → `/healthz`）⇒ 需要 docker |
+| `ai-container.static.cjs` | **静态断言**AI 服务镜像的配置（Dockerfile / .dockerignore / 健康检查路由 / SSE 头）⇒ **不需要 docker** |
+| `ai-container.cjs` | **真起容器**验收 AI 服务镜像（构建 → 镜像里没凭据/没 devDeps → 技能就位 → `/health` 200 → 业务路由挂载）⇒ 需要 docker |
 
 ## 用法
 
@@ -45,6 +47,31 @@ CI（`.github/workflows/docker-web.yml`）在 PR 上跑这两条 —— runner �
 | `IMAGE` | `ai-admin-web:local` | 容器验收用的镜像名 |
 | `PORT` | `18080` | 容器验收占用的宿主机端口 |
 | `SKIP_BUILD` | — | `=1` 时跳过构建（用已有镜像） |
+
+## AI 服务镜像验收（issue #39）
+
+```bash
+# 静态断言（不需要 docker，任何机器都能跑）
+node scripts/e2e/ai-container.static.cjs
+# 或
+npm run e2e:ai:static
+
+# 真起容器（需要 docker；没 docker ⇒ 打印 SKIP 并退出 0）
+node scripts/e2e/ai-container.cjs
+# 或
+npm run e2e:ai
+```
+
+CI（`.github/workflows/docker-ai.yml`）在 PR 上跑这两条。
+
+| 变量 | 默认 | 说明 |
+| ---- | ---- | ---- |
+| `IMAGE` | `ai-admin-ai:local` | 容器验收用的镜像名 |
+| `PORT` | `13100` | 容器验收占用的宿主机端口 |
+| `SKIP_BUILD` | — | `=1` 时跳过构建（用已有镜像） |
+
+> ⚠️ 容器里**没有真凭据**：验收用假的 `MINIMAX_CN_API_KEY` 与**黑洞地址**的
+> `AIADMIN_BASE_URL` / `DATABASE_URL` ⇒ 顺便验了「依赖不可用时 `/health` 仍是 200」。
 
 ## 环境变量
 
