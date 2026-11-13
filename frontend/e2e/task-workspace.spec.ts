@@ -321,6 +321,105 @@ test.describe('任务工作台(列表/看板/甘特)', () => {
     await expect(rowAfter).not.toContainText('待办');
   });
 
+  /**
+   * **三个视图高度一致**（issue #9）。
+   *
+   * ⚠️ 以前看板列高只有 276px（内容区的三分之一）⇒ 三个视图切过去「塌一下」。
+   * ⇒ 现在三个视图都用同一套高度口径（`useContentHeight`）⇒ 容器等高。
+   */
+  test('三个视图高度一致：都吃满内容区，内容区不出现外层滚动条', async ({
+    page,
+  }) => {
+    await setupWorkspace(page);
+    await page.goto('/');
+    await page.waitForTimeout(1000);
+
+    const heights: number[] = [];
+
+    for (const view of ['list', 'board', 'gantt']) {
+      await gotoModulePage(page, `/pm/task?view=${view}`);
+      await page.waitForTimeout(2000);
+
+      const measured = await page.evaluate(() => {
+        const content = document.querySelector(
+          '.ant-pro-layout-content',
+        ) as HTMLElement | null;
+        // 视图容器 = 内容区里那个带 flex-col 的 div
+        const viewRoot = content?.querySelector(':scope > div > div');
+        return {
+          viewHeight: viewRoot
+            ? Math.round(viewRoot.getBoundingClientRect().height)
+            : 0,
+          // 内容区自己滚不滚（0 = 不滚，页面不出现外层滚动条）
+          overflow: content ? content.scrollHeight - content.clientHeight : -1,
+        };
+      });
+
+      heights.push(measured.viewHeight);
+      // 内容区不该有溢出（页面自己滚了）
+      expect(measured.overflow).toBeLessThanOrEqual(1);
+      expect(measured.viewHeight).toBeGreaterThan(400);
+    }
+
+    // 三个视图的容器高度应该一致（允许 1px 取整误差）
+    expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(1);
+  });
+
+  /**
+   * **载入中要有提示**（issue #9）。
+   *
+   * ⚠️ 列表视图的 `request` 是**同步的本地切片** ⇒ 数据集没回来时
+   *    它立刻 resolve 空数组 ⇒ ProTable 以为「加载完了」⇒ 显示「暂无数据」
+   *    ⇒ 用户看到「空列表 → 数据突然冒出来」。
+   *
+   * ⚠️ **断言放在接口拦截处**：那时页面已挂载、数据还没到 ⇒ 正是「载入中」的时刻。
+   *    （在页面侧断言会抢时间：数据一回来，覆盖层就没了。）
+   */
+  test('列表视图载入时显示 loading，不是空列表', async ({ page }) => {
+    await setupWorkspace(page);
+
+    let gateSeen = false;
+    await page.route(TASK_LIST_URL, async (route) => {
+      gateSeen = true;
+      const overlay = page.locator('[data-role="task-list-loading"]');
+      // ⚠️ **直接量 box**，不用 toBeVisible：
+      //    Playwright 的可见性判定在这里会误报（元素确实在、也有尺寸）。
+      //    量 box 更直白：载入指示得真的占着地方，不是 0×0 的摆设。
+      await expect(overlay).toBeAttached({ timeout: 5000 });
+      const box = await overlay.evaluate((el) => {
+        const rect = el.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      });
+      expect(box.width, '载入指示要有宽度').toBeGreaterThan(0);
+      expect(box.height, '载入指示要有高度').toBeGreaterThan(0);
+      // 旋转的圈圈也得在（antd Spin）
+      await expect(
+        overlay.locator('.ant-spin-dot').first(),
+        '载入指示里要有转圈',
+      ).toBeAttached({ timeout: 5000 });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(listResponse),
+      });
+    });
+
+    await page.goto('/');
+    await page.waitForTimeout(1000);
+    await gotoModulePage(page, '/pm/task?view=list');
+
+    // 接口确实被拦到了（否则上面的断言根本没跑 ⇒ 假通过）
+    await expect.poll(() => gateSeen).toBe(true);
+
+    // 数据到位后 ⇒ 行出现
+    // ⚠️ 不能用 .ant-table-tbody tr 的 first：那是 antd 的**隐藏测量行**
+    await expect(
+      page.locator('.ant-table-tbody tr.ant-table-row').first(),
+    ).toBeVisible({
+      timeout: 10_000,
+    });
+  });
+
   test('旧地址重定向到新界面', async ({ page }) => {
     await setupWorkspace(page);
 

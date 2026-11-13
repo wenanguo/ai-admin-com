@@ -24,6 +24,7 @@ import type {
   TaskUpdateParams,
 } from '@/services/api/pm/task';
 import { createTask, deleteTasks, updateTask } from '@/services/api/pm/task';
+import { useContentHeight } from './useContentHeight';
 import { rowIdToTaskId, useGanttTasks } from './useGanttTasks';
 
 /**
@@ -57,65 +58,16 @@ import { rowIdToTaskId, useGanttTasks } from './useGanttTasks';
 /** 缩放级别(与 GanttChart 的 setZoom 一致) */
 type ZoomLevel = 'day' | 'week' | 'month';
 
-/** 页面可用高度的兜底值(还没量到之前的初值) */
-const DEFAULT_PAGE_HEIGHT = 640;
-
 /** 图表高度的兜底值 */
 const DEFAULT_CHART_HEIGHT = 420;
 
-/** 页面可用高度的下限(太矮就没法看了) */
-const MIN_PAGE_HEIGHT = 320;
-
 /**
- * 最近的「**自己会滚**」的祖先(内容区)。
+ * 页面可用高度的下限(太矮就没法看了)
  *
- * ⚠️ app shell 的内容区(`ai-workspace-content`)是 `overflow-y: auto` 的
- * 满高容器 ⇒ 页面要跟着它的**可用高度**走,而不是跟着视口走
- * (顶栏、AI 工作台、面包屑都在它上面)。
+ * ⚠️ 以前是 320 ⇒ 用户反馈「甘特只显示了很小的一部分」(issue #9)
+ *    ⇒ 提到 420（与共享 hook 的默认值一致）。
  */
-function findScrollParent(element: HTMLElement): HTMLElement | null {
-  let node = element.parentElement;
-  while (node) {
-    const overflowY = window.getComputedStyle(node).overflowY;
-    if (overflowY === 'auto' || overflowY === 'scroll') return node;
-    node = node.parentElement;
-  }
-  return null;
-}
-
-/**
- * 页面**下面**还占着多少高度(页脚等)。
- *
- * ⚠️ app shell 的页脚是内容区里页面的**兄弟节点** ⇒ 页面高度必须把它
- * 也算进去,否则内容区就会多出一条滚动条(页面自己滚了)。
- */
-function spaceBelow(page: HTMLElement, scrollParent: HTMLElement): number {
-  /** 一个元素占的总高度(内容 + 上下外边距) */
-  const occupied = (element: HTMLElement): number => {
-    const style = window.getComputedStyle(element);
-    const marginTop = Number.parseFloat(style.marginTop) || 0;
-    const marginBottom = Number.parseFloat(style.marginBottom) || 0;
-    return element.getBoundingClientRect().height + marginTop + marginBottom;
-  };
-
-  let total = 0;
-  let node: HTMLElement = page;
-  while (node.parentElement && node.parentElement !== scrollParent) {
-    let sibling = node.nextElementSibling as HTMLElement | null;
-    while (sibling) {
-      total += occupied(sibling);
-      sibling = sibling.nextElementSibling as HTMLElement | null;
-    }
-    node = node.parentElement;
-  }
-  // node 现在是内容区的直接子元素 ⇒ 它的后续兄弟(页脚)也要算
-  let sibling = node.nextElementSibling as HTMLElement | null;
-  while (sibling) {
-    total += occupied(sibling);
-    sibling = sibling.nextElementSibling as HTMLElement | null;
-  }
-  return total;
-}
+const MIN_PAGE_HEIGHT = 420;
 
 /** 甘特视图的 props */
 export interface TaskGanttProps {
@@ -165,12 +117,19 @@ export function TaskGantt({ projectId }: TaskGanttProps): React.ReactElement {
 
   /** 甘特图的命令式句柄(回滚 / 缩放 / 滚动) */
   const chartRef = useRef<GanttChartHandle | null>(null);
-  /** 页面根元素(量「可用高度」用) */
-  const pageRef = useRef<HTMLDivElement | null>(null);
   /** 宽度观察器(容器出现/消失时都要重建) */
   const observerRef = useRef<ResizeObserver | null>(null);
-  /** 页面可用高度(内容区里还剩多少) */
-  const [pageHeight, setPageHeight] = useState(DEFAULT_PAGE_HEIGHT);
+  /**
+   * 页面可用高度(内容区里还剩多少)。
+   *
+   * ⚠️ 现在走**共享 hook**(与列表/看板同一口径，issue #9)
+   *    ⇒ 三个视图的高度一致,切过去不再「塌一下」。
+   */
+  const { ref: pageRef, height: pageHeight } = useContentHeight<HTMLDivElement>(
+    {
+      min: MIN_PAGE_HEIGHT,
+    },
+  );
   /** 图表高度(跟着容器走) */
   const [chartHeight, setChartHeight] = useState(DEFAULT_CHART_HEIGHT);
   /** 图表容器宽度(用来算时间轴还剩多宽) */
@@ -215,40 +174,6 @@ export function TaskGantt({ projectId }: TaskGanttProps): React.ReactElement {
    * ⇒ 页面高度 = 可用高度 ⇒ **页面自己不滚**(规格 §5.5),
    * 滚动条只在 dhtmlx 的左表格/时间轴里。
    */
-  const measurePageHeight = useCallback(() => {
-    const page = pageRef.current;
-    if (!page) return;
-    const scrollParent = findScrollParent(page);
-    if (!scrollParent) return;
-    const pageRect = page.getBoundingClientRect();
-    const parentStyle = window.getComputedStyle(scrollParent);
-    const paddingBottom = Number.parseFloat(parentStyle.paddingBottom) || 0;
-    const pageStyle = window.getComputedStyle(page);
-    const marginBottom = Number.parseFloat(pageStyle.marginBottom) || 0;
-    const available = Math.round(
-      scrollParent.clientHeight -
-        // 页面已经占掉的顶部空间(内容区的内边距 + 页面自己的外边距)
-        (pageRect.top - scrollParent.getBoundingClientRect().top) -
-        // 页面下面还有的东西(页脚)
-        spaceBelow(page, scrollParent) -
-        marginBottom -
-        paddingBottom,
-    );
-    setPageHeight(Math.max(MIN_PAGE_HEIGHT, available));
-  }, []);
-
-  // 内容区尺寸变了(窗口缩放、AI 工作台收放)⇒ 重新量可用高度
-  useEffect(() => {
-    const page = pageRef.current;
-    if (!page) return;
-    const scrollParent = findScrollParent(page);
-    if (!scrollParent) return;
-    measurePageHeight();
-    const observer = new ResizeObserver(() => measurePageHeight());
-    observer.observe(scrollParent);
-    return () => observer.disconnect();
-  }, [measurePageHeight]);
-
   // 量容器宽度与图表高度
   //
   // ⚠️ 用**回调 ref**而不是 useEffect:图表容器只在「加载完了且有任务」时

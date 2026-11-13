@@ -25,9 +25,9 @@
 import { PlusOutlined } from '@ant-design/icons';
 import { type ProColumns, ProTable } from '@ant-design/pro-components';
 import { useAccess, useModel } from '@umijs/max';
-import { Alert, Button } from 'antd';
+import { Alert, Button, Spin } from 'antd';
 import type React from 'react';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import {
   CRUD_PAGINATION,
   useCrudColumns,
@@ -47,6 +47,8 @@ import type {
 import { createTask, deleteTasks, updateTask } from '@/services/api/pm/task';
 import { filterTasks } from './filterTasks';
 import TaskModalForm from './TaskModalForm';
+import { useContentHeight } from './useContentHeight';
+import { useTableBodyHeight } from './useTableBodyHeight';
 import { useTaskDataset } from './useTaskDataset';
 
 /** 任务列表界面的 props。 */
@@ -84,6 +86,52 @@ export function TaskListView({
     ⇒ 切视图不用重新取数；看板拖完状态，列表里立刻能看到变化。
   */
   const dataset = useTaskDataset({ projectId });
+
+  /**
+   * 数据集的**最新快照**（给异步回调用）。
+   *
+   * ⚠️ `requestLocal` 是个 async 回调 ⇒ 它拿到的必须是**调用那一刻**的
+   *    dataset ⇒ 用 ref 每次渲染时更新（而不是闭包捕获旧值）。
+   */
+  const datasetRef = useRef(dataset);
+  datasetRef.current = dataset;
+
+  /**
+   * 等数据集到位（issue #9）。
+   *
+   * ⚠️ **为什么必须等**：ProTable 的 `request` 是**同步的本地切片** ⇒ 数据集没回来时
+   *    它立即 resolve 空数组 ⇒ ProTable 以为「加载完了」⇒ 不显示 loading
+   *    ⇒ 用户看到「空列表 → 数据突然冒出来」。
+   *
+   * ⚠️ **为什么不能靠 ProTable 的 `loading` prop**：它会被 ProTable 的
+   *    **内部请求状态覆盖**（外部 loading 只在 useFetchData 里当初值用）。
+   *
+   * ⚠️ **为什么不用 `ensureQueryData` 的 promise**：那个 promise 会被 memo 复用
+   *    ⇒ 可能早就 resolved ⇒ `await` 它等于没等。
+   *
+   * ⇒ 轮询 `loading`（最多 10 秒）⇒ 表格不会被永远卡住。
+   */
+  const waitForDataset = useCallback(async () => {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      if (!datasetRef.current.loading) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }, []);
+
+  /**
+   * 列表视图的高度 = 内容区的可用高度（与看板/甘特同一口径，issue #9）。
+   *
+   * ⚠️ 以前是 ProTable 的**自然高度**（10 行/页 ≈ 600px）⇒ 三个视图高度对不上。
+   */
+  const {
+    ref: listRef,
+    element: listElement,
+    height: listHeight,
+  } = useContentHeight<HTMLDivElement>();
+  /** 表格体的高度（让表格体吃满剩余高度、表头固定） */
+  const tableBodyHeight = useTableBodyHeight(listElement, listHeight);
 
   // 载荷有两种形状:新增带创建三列,更新不带 —— 见 services/api/pm/task.ts
   const crud = useCrudTable<TaskOut, TaskCreateParams | TaskUpdateParams>({
@@ -175,8 +223,10 @@ export function TaskListView({
       pageSize?: number;
       [key: string]: unknown;
     }) => {
+      // ⚠️ **等数据集到位**（issue #9）：见 `waitForDataset` 的注释。
+      await waitForDataset();
       const { current, pageSize, ...filters } = params;
-      const filtered = filterTasks(dataset.tasks, filters);
+      const filtered = filterTasks(datasetRef.current.tasks, filters);
       const size = pageSize ?? 10;
       const start = ((current ?? 1) - 1) * size;
       return {
@@ -185,7 +235,7 @@ export function TaskListView({
         success: true,
       };
     },
-    [dataset.tasks],
+    [waitForDataset],
   );
 
   const columns: ProColumns<TaskOut>[] = [
@@ -242,7 +292,7 @@ export function TaskListView({
     .join(';');
 
   return (
-    <>
+    <div ref={listRef} style={{ height: listHeight, position: 'relative' }}>
       {sideLoadTruncated ? (
         <Alert
           type="info"
@@ -270,9 +320,23 @@ export function TaskListView({
         params={{ __v: dataset.dataUpdatedAt }}
         search={{ labelWidth: 80 }}
         pagination={CRUD_PAGINATION}
+        /*
+          ⚠️ **载入中要有提示**（issue #9）：
+          `request` 是**同步的本地切片**（数据来自 `useTaskDataset`）⇒ 数据集没回来时
+          它立即 resolve 一个空数组 ⇒ ProTable 认为「加载完成」⇒ 显示「暂无数据」
+          ⇒ 用户看到「空列表 → 数据突然冒出来」。
+          ⇒ 真正的解法在 `requestLocal` 里（`await dataset.ready`）：
+            外部的 `loading` prop 会被 ProTable 的内部请求状态覆盖，不可靠。
+        */
         // 列多的时候横向滚动,不要把表头挤成竖排的一列字
         // (内容区被右侧的 AI 工作台占掉一块,列宽被压到最小就会这样)
-        scroll={{ x: 'max-content' }}
+        //
+        // ⚠️ `y` = 表格体高度 ⇒ 表格体**内部滚动**、表头固定，
+        //    高度跟着内容区走（三个视图统一，issue #9）
+        scroll={{
+          x: 'max-content',
+          ...(tableBodyHeight === undefined ? {} : { y: tableBodyHeight }),
+        }}
         // AI 写回成功 ⇒ 刚改的那一行高亮一下
         rowClassName={rowClassName}
         // 错误提示由请求层统一弹,这里只需阻止 ProTable 把 rejection 重新抛出
@@ -302,6 +366,42 @@ export function TaskListView({
         projectOptions={projectOptions}
         optionsLoading={optionsLoading}
       />
-    </>
+      {/*
+        ⚠️ **载入指示自己做**（issue #9）：
+        ProTable 自带的 loading 遮罩挂在**表格体**上 ⇒ 表格体还没数据时高度为 0
+        ⇒ 遮罩看不见 ⇒ 用户只看到「空列表」。
+
+        ⇒ 这里在视图层画一个覆盖层（居中 Spin + 半透明底）⇒ 跟其它页面的
+           载入表现一致，用户不会以为「这就是全部数据」。
+      */}
+      {dataset.loading ? (
+        <div
+          data-role="task-list-loading"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(255, 255, 255, 0.55)',
+            zIndex: 10,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <Spin />
+            <span style={{ fontSize: 12, color: 'rgba(0, 0, 0, 0.45)' }}>
+              载入中…
+            </span>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }

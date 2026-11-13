@@ -21,6 +21,7 @@ import { useDictOptions } from '@/components/pm/useDictOptions';
 import { useProjectNames } from '@/components/pm/useProjectNames';
 import type { TaskOut } from '@/services/api/pm/task';
 import { type BoardStatus, useBoardColumns } from './useBoardColumns';
+import { useContentHeight } from './useContentHeight';
 
 /**
  * 任务看板 —— **视图**（不是页面了）。
@@ -159,6 +160,15 @@ export function TaskBoard({ projectId }: TaskBoardProps): React.ReactElement {
   const { options: statusOptions } = useDictOptions('module_pm_task_status');
 
   /**
+   * 看板高度 = 内容区的可用高度（与列表/甘特同一口径）。
+   *
+   * ⚠️ 以前看板**没有高度概念** ⇒ 列高 = 内容高 ⇒ 卡片少时只有两百多像素，
+   *    下面空一大片（issue #9）⇒ 三种视图高度对不上。
+   */
+  const { ref: boardRef, height: boardHeight } =
+    useContentHeight<HTMLDivElement>();
+
+  /**
    * 「与 AI 讨论」：把这一张卡片设为当前讨论对象。
    *
    * ⚠️ 上下文由前端组装（不发请求）—— 卡片上的数据就是用户看到的那份。
@@ -234,7 +244,11 @@ export function TaskBoard({ projectId }: TaskBoardProps): React.ReactElement {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div
+      ref={boardRef}
+      className="flex flex-col gap-4"
+      style={{ height: boardHeight }}
+    >
       {/* ⚠️ **这里不写标题**:工作台顶上有「任务管理」+ Segmented ⇒ 再写一个
           「任务看板」就是同一个地方两个标题。 */}
       {truncated ? (
@@ -250,7 +264,7 @@ export function TaskBoard({ projectId }: TaskBoardProps): React.ReactElement {
           <Spin />
         </div>
       ) : (
-        <Row gutter={[16, 16]}>
+        <Row gutter={[16, 16]} className="min-h-0 flex-1">
           {columns.map((column) => (
             <Col key={column.status} xs={24} sm={12} lg={8} xl={4}>
               <div
@@ -268,7 +282,9 @@ export function TaskBoard({ projectId }: TaskBoardProps): React.ReactElement {
                     {column.tasks.length}
                   </span>
                 </div>
-                <div className="flex flex-col gap-2">
+                {/* ⚠️ **卡片区自己滚**：列高固定 ⇒ 卡片多了就在列内滚，
+                    不把整页撑高（页面本身不滚，滚动条在列里）。 */}
+                <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
                   {column.tasks.length === 0 ? (
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
