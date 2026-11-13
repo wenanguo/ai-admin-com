@@ -13,6 +13,19 @@
 ⚠️ **依赖各装各的**（两套 npm）⇒ 根目录**没有** node_modules ⇒
 husky / lint-staged / commitlint 都用 `frontend/node_modules/.bin/` 里的二进制。
 
+## Workflow（★ 干活前先看这里）
+
+**完整流程见 [`docs/process.md`](docs/process.md)** —— 「人提 issue → agent 开发 → 提 PR」。
+
+硬规矩：
+
+1. **不直落 main** ⇒ 一个 issue 一个分支（`feat/<短号>-<关键词>`），完工提 PR。
+2. **接手的会话先读 [`docs/notes/`](docs/notes/)** —— 上一棒做到哪、**为什么这么定**。
+   做一条就更新对应的 note（模板：`docs/notes/TEMPLATE.md`）。
+3. **规模分级**（`docs/process.md` §3）：小改动不写设计文档；大改造才写 spec + plan。
+4. **改动要有测试**；端到端行为要有**入库的**验收脚本（`scripts/e2e/`）。
+5. **AiAdmin（FastAPI）是另一个仓** ⇒ 改它要单独提 PR 到那个仓。
+
 ## Commands
 
 **根目录（聚合）**：`npm run dev:frontend` · `npm run dev:ai` · `npm run test` ·
