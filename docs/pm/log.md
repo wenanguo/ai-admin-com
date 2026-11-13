@@ -100,3 +100,12 @@
 **怎么定的 ready**：每个 milestone 只放行第一条 ⇒ #10（M1）与 #20（L1）。M2/M3 的队首等 M1 出货后再放行（避免依赖没到位就被领走）。
 
 **另外**：在途的 issue #9（任务页三视图高度，已由开发 agent 提 PR #18）归入 **M2**。
+
+### 2026-11-13 · 决定：所有文档一律用中文
+
+- **定了什么**：PM 产出的全部文档（规划、issue 正文、设计、计划、决策日志）用中文；
+  只保留不可翻译的专有名词：GitHub 产品术语（milestone / issue / label / PR）、代码标识、命令、产品名。
+- **为什么**：人定的规矩——文档是给人看的，也是给下一个 agent 读的，中文能显著降低读写的门槛。
+- **怎么落地**：已把 `docs/superpowers/plans/2026-11-13-pm-dispatch.md` 里的英文骨架
+  （Goal/Architecture/Tech Stack/Global Constraints/Task/Step/Files/Interfaces）全部译成中文；
+  `docs/pm/README.md` §7 已写入这条常驻规矩。

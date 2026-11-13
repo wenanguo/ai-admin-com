@@ -109,6 +109,8 @@ tail -40 docs/pm/log.md
 4. **AiAdmin 是另一个仓** —— 涉及它的需求，issue 里写明「在那边单独提 PR」。
 5. **规模不过度** —— 「加一个按钮」不写长设计、不拆三个 issue。
 6. 我自己改的仓库文件也**走分支 + PR**，不直落 main。
+7. **所有文档一律用中文**（规划、issue 正文、设计、计划、决策日志）。仅保留不可翻译的专有名词：
+   GitHub 产品术语（milestone / issue / label / PR）、代码标识、命令、产品名（Ant Design Pro）。
 
 ---
 
