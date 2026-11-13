@@ -16,6 +16,8 @@
     "test:frontend": "npm --prefix frontend run test",
     "test:ai": "npm --prefix backend/ai run test",
     "e2e": "npm --prefix frontend run e2e",
+    "e2e:web": "node scripts/e2e/web-container.cjs",
+    "e2e:web:static": "node scripts/e2e/web-container.static.cjs",
     "biome": "npm --prefix frontend run biome",
     "tsc": "npm --prefix frontend run tsc && npm --prefix backend/ai run typecheck",
     "prepare": "npm --prefix frontend run prepare"
