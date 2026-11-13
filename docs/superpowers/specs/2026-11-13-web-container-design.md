@@ -75,9 +75,13 @@ docker/
 ### 4.2 Dockerfile
 
 - **构建上下文 = 仓根**（验收命令 `docker build -f docker/web/Dockerfile -t ai-admin-web .`）⇒ `.dockerignore` 放仓根。
-- **builder**：`node:22-bookworm-slim`（**不用 alpine**：`@umijs/mako`、`esbuild` 等预编译二进制是 glibc 版，musl 跑不起来）。
-  - 依赖层缓存：先 `COPY frontend/package.json frontend/package-lock.json` → `npm ci --ignore-scripts` → 再 `COPY frontend/` → 源码改动不重装依赖。
+- **builder**：`node:22-bookworm-slim`（**不用 alpine**：`@utoo/pack`（utoopack 内核）、`esbuild` 等预编译二进制是 glibc 版，musl 跑不起来）。
+  - 依赖层缓存：先 `COPY frontend/package.json frontend/package-lock.json frontend/.npmrc` → `npm ci --ignore-scripts` → 再 `COPY frontend/` → 源码改动不重装依赖。
+  - ⚠️ **必须带 `frontend/.npmrc`**（`legacy-peer-deps=true`）：本仓的 lock 是按 legacy-peer-deps 生成的；少了它 ⇒ `npm ci` 报 lock 不同步（EUSAGE）。
+  - ⚠️ **钉 `npm@10.9.9`**（= 仓库 CI 用的版本）：`node:22` 自带 npm 11 ⇒ lock 同步检查更严 ⇒ 同样会 EUSAGE。
   - `--ignore-scripts` 会跳过 `esbuild` 的安装脚本（它负责把二进制就位）⇒ 紧跟一条 `npm rebuild esbuild` 补回来。
+  - ⚠️ **仓根的 `package.json` + `package-lock.json` 也要拷进构建目录**：utoopack（`@utoo/pack` 的 `findRootDir`）靠 **lock 文件链**找项目根 ⇒ 本地根 = 仓根；镜像里少了根 lock ⇒ 根退化成 `frontend/` ⇒ `Welcome.tsx` 里 `import '../../../docs/cheatsheet.*.md'` 变成「跳根」⇒ 解析失败。
+  - ⚠️ **要拷 `docs/cheatsheet.en-US.md` / `docs/cheatsheet.zh-CN.md`**：它们是 `frontend/src/pages/Welcome.tsx` 的构建输入（utoopack 的 `*.md` loader）。
   - 构建：`npm run build`（= `cross-env UMI_OUTPUT_PATH=dist max build`）⇒ 产物在 `frontend/dist`。
   - `ENV HUSKY=0`（不装 git hooks）、`NODE_OPTIONS=--max_old_space_size=4096`（照抄 CI 的构建参数）。
   - `ARG COMMIT_HASH` ⇒ 可选注入构建版本（`config.ts` 认这个变量；不给也不报错）。
@@ -117,8 +121,10 @@ docker/
 ### 4.5 `.dockerignore`（仓根）
 
 排除：`**/node_modules`、`**/dist`、`**/dist-dev`、`**/.umi`、`**/e2e-out`、`**/coverage`、`.git`、`.github`、
-`**/.scratch`、`**/.env*`、`**/.ai`、`**/auth.json`、`**/*.pem`、`backend/`、`docs/`、`frontend/cloudflare-worker/`。
+`**/.scratch`、`**/.env*`、`**/.ai`、`**/auth.json`、`**/*.pem`、`backend/`、`frontend/cloudflare-worker/`。
 ⇒ 镜像构建阶段拿不到源码依赖目录，也拿不到任何凭据。
+
+⚠️ **`docs/` 不能排掉**：`frontend/src/pages/Welcome.tsx` import 了 `docs/cheatsheet.*.md` ⇒ 排掉它 ⇒ 构建报 “Can't resolve”。
 
 ---
 

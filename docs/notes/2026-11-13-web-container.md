@@ -19,6 +19,7 @@
 | `f08b5a1` | 设计文档 + 实施计划（PM 判「大规模」⇒ spec + plan） |
 | `b5ff697` | `.dockerignore` + `docker/web/Dockerfile` + `docker/web/nginx.conf` + 安全头片段 + `docker/README.md` |
 | `129ac88` | 验收脚本（静态断言 + 起容器）+ CI workflow + `scripts/e2e/README.md` + 根 `package.json` 脚本 |
+| `08b133d` → 后续若干次 | 修 CI 里暴露的构建问题（`.npmrc` / npm 版本 / 根 lock / docs 构建输入 / 验收脚本自身的两处误判） |
 
 **下一步（具体到文件与命令）**：
 
@@ -35,6 +36,10 @@
 | 决定 | 为什么 | 错了的代价 |
 | ---- | ------ | ---------- |
 | **构建上下文 = 仓根**，`.dockerignore` 放仓根 | 验收命令是 `docker build -f docker/web/Dockerfile -t ai-admin-web .` ⇒ 上下文就是仓根；`.dockerignore` 放 `docker/` 下**不生效** | `node_modules`（2.5GB，含 Windows 二进制）进上下文 ⇒ 构建慢到不可接受 |
+| **依赖层要拷 `frontend/.npmrc`**（内容：`legacy-peer-deps=true`） | 本仓的 `frontend/package-lock.json` 是**按 legacy-peer-deps 生成的**；少了这个 .npmrc ⇒ npm 按「自动装 peer」算出的树与 lock 不同 ⇒ `npm ci` 直接 EUSAGE | 镜像构建第一步就挂：`npm ci can only install packages when your package.json and package-lock.json ... are in sync` |
+| **钉 `npm@10.9.9`**（= 仓库 CI 用的版本） | `node:22` 现在默认带 **npm 11** ⇒ 它的 lock 同步检查比 npm 10 严 ⇒ 本仓的 lock 被判不同步 ⇒ `npm ci` EUSAGE | 同上（换个错误信息而已）。钉住后镜像与 CI 装出**同一棵树**（2183 个包） |
+| **仓根的 `package.json` + `package-lock.json` 也要拷进构建目录** | utoopack 找「项目根」的规则（`@utoo/pack` 的 `findRootDir`）：从 cwd 往上找**最近的 lock 文件**，再往上找**还有 lock 文件的目录** ⇒ 本地根 = 仓根（frontend/ 与 仓根都有 lock）⇒ `frontend/src/pages/Welcome.tsx` 里 `import '../../../docs/cheatsheet.en-US.md'` 在根之内 | 镜像里根退化成 `frontend/` ⇒ 那个 import 变成「跳出根目录」⇒ utoopack 报 `Module not found: Can't resolve '../../../docs/cheatsheet.en-US.md'`（**踩了 4 次才定位**） |
+| **要拷 `docs/cheatsheet.en-US.md` / `docs/cheatsheet.zh-CN.md`** | 它们是 `frontend/src/pages/Welcome.tsx` 的**构建输入**（utoopack 的 `*.md` loader）；而 `.dockerignore` 里原本排掉了 `docs/` | 同上（文件不在镜像里 ⇒ 解析不到） |
 | builder 用 `node:22-bookworm-slim`，**不用 alpine** | `@utoo/pack`（utoopack 的 Rust 内核）、`esbuild` 的预编译二进制是 **glibc** 版；alpine=musl ⇒ 跑不起来 | 镜像构建在最后一步炸（而且只在 Linux 上炸，本机还验不出来） |
 | `npm ci --ignore-scripts` + `npm rebuild esbuild` | 依赖层要能缓存（先只 COPY `package.json`/`package-lock.json`）；此时**源码还没拷进来**，root 包的 `prepare`（husky + max setup）会失败 ⇒ 跳过脚本；`--ignore-scripts` 顺带跳过 esbuild 的安装脚本 ⇒ 单独 rebuild 补回来 | 不跳过 ⇒ 依赖层缓存失效（每次改源码都重装依赖）；不 rebuild ⇒ esbuild 二进制没就位 |
 | **nginx 整份替换 `/etc/nginx/nginx.conf`**（而不是塞进 `conf.d/default.conf`） | 要控制日志到 stdout、gzip、安全头、`server_tokens off` ⇒ 这些都得在主配置里写 | 只能用默认站点配置的一半能力，日志进不了 `docker logs` |
@@ -68,6 +73,9 @@ npm run e2e:web
 
 - **本机（Windows + git-bash）没有 docker** ⇒ 本地跑不了 `docker build` / `nginx -t`；
   容器验收靠 **CI**（新增的 `docker-web.yml`）。改完 nginx 配置**必须看 CI 的 image job**。
+- **本条在 CI 上迭代了 5 轮才把镜像构建跑通**（每轮 ~2 分钟）。教训：
+  「本机没有 docker ⇒ 只能靠 CI 验」时，**先把最可能踩的坑写进 Dockerfile 注释**，
+  并在验收脚本里打印**失败输出**（一开始只打 stderr 尾部，把真正的错误原因截没了，定位慢了 3 轮）。
 - **utoopack 在 Windows 上解不开 junction**：worktree 里 `frontend/node_modules` 是指向主 checkout 的
   junction ⇒ `npx max build` 报 `Symlink frontend/node_modules could not be resolved`。
   **这不是本条的问题**（Docker 里 `node_modules` 是真目录），
