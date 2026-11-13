@@ -240,6 +240,18 @@ PM **只替换 §2 的第 ① 步「人提 issue」**：
 
 ---
 
+### ⚠️ 合并脚本的第六个坑：`statusCheckRollup` 含**历史**的失败
+
+实测（2026-11-13）：`gh pr view --json statusCheckRollup` 会把**历史**的 check run 也列进来
+（同名 check 会出现多次）⇒ 一次失败就把 PR **永久卡住**。
+
+⇒ 场景：我故意让 `body-check` 失败一次做负向测试 ⇒ 修好、重跑绿了 ⇒ rollup 里那个 failure 还在
+⇒ 脚本永远说「有 CI 失败」⇒ **合不了**（GitHub 自己的合并按钮只看最新那次，没这个问题）。
+
+⇒ 现在脚本改走 **check-runs API**，按**检查名**分组取**最新一次**；
+⚠️ 顺带注意：check-runs 的 `conclusion` 是**小写**（`success`），rollup 是大写（`SUCCESS`）
+⇒ 比较要大小写不敏感。
+
 ## 10. agent 工作区隔离（worktree）
 
 ### 为什么
