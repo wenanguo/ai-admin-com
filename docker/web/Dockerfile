@@ -31,7 +31,12 @@ ARG COMMIT_HASH=""
 ENV COMMIT_HASH=${COMMIT_HASH}
 
 # ① 依赖层：先只拷清单文件 ⇒ 改源码不会让 npm ci 这一层失效
-COPY frontend/package.json frontend/package-lock.json ./frontend/
+#
+# ⚠️ **必须带上 frontend/.npmrc**（内容：`legacy-peer-deps=true`）：
+#    本仓的 package-lock.json 是**按 legacy-peer-deps 生成的**（不自动装 peer 依赖）。
+#    少了这个 .npmrc ⇒ npm 会按「自动装 peer」算出一棵不同的树 ⇒
+#    `npm ci` 直接 EUSAGE 失败（Invalid: lock file's xxx does not satisfy ... / Missing: ... from lock file）。
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./frontend/
 
 # 打印版本 + **钉住 npm 版本**（构建日志里能看出用的是什么 node/npm）
 #

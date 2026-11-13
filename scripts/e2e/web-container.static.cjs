@@ -52,7 +52,13 @@ containsAll(
   '排除了依赖 / 旧产物 / 版本控制 / 凭据',
 );
 // ⚠️ 反向断言：不能把构建真正需要的东西排掉
-const mustKeep = ['frontend/package.json', 'frontend/package-lock.json', 'frontend/config', 'frontend/src'];
+const mustKeep = [
+  'frontend/package.json',
+  'frontend/package-lock.json',
+  'frontend/.npmrc',
+  'frontend/config',
+  'frontend/src',
+];
 const wronglyExcluded = mustKeep.filter((p) => {
   const line = dockerignore
     .split(/\r?\n/)
@@ -61,6 +67,13 @@ const wronglyExcluded = mustKeep.filter((p) => {
   return Boolean(line);
 });
 check('没有排除构建必需的 frontend 文件', wronglyExcluded.length === 0, wronglyExcluded.join(' / '));
+
+// ───────────────────────────── frontend/.npmrc ─────────────────────────────
+// ⚠️ 本仓的 lock 是按 legacy-peer-deps 生成的 ⇒ 镜像里必须带上这个 .npmrc
+//    （少了它 ⇒ npm ci 报 EUSAGE：lock 与 package.json 不同步）
+console.log('\nfrontend/.npmrc');
+const npmrc = read('frontend/.npmrc');
+check('带上了 legacy-peer-deps（与 lock 的生成方式一致）', /legacy-peer-deps\s*=\s*true/.test(npmrc));
 
 // ───────────────────────────── Dockerfile ─────────────────────────────
 console.log('\ndocker/web/Dockerfile（多阶段）');
@@ -72,7 +85,7 @@ containsAll(
     'AS runtime',
     'FROM node:${NODE_VERSION}-bookworm-slim',
     'FROM nginx:${NGINX_VERSION}-alpine',
-    'COPY frontend/package.json frontend/package-lock.json ./frontend/',
+    'COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./frontend/',
     'npm ci --ignore-scripts',
     'npm rebuild esbuild',
     'npm run build',
