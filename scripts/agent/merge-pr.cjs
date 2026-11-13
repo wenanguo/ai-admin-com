@@ -60,7 +60,7 @@ if (!['squash', 'merge', 'rebase'].includes(strategy)) {
 const info = JSON.parse(
   tryRun('gh', [
     'pr', 'view', prNumber, '--json',
-    'number,title,state,mergeable,mergeStateStatus,statusCheckRollup,headRefName,baseRefName,url,reviewDecision,isDraft',
+    'number,title,state,mergeable,mergeStateStatus,headRefOid,headRefName,baseRefName,url,reviewDecision,isDraft',
   ]),
 );
 
@@ -70,10 +70,47 @@ console.log(`  分支：${info.headRefName} → ${info.baseRefName}`);
 console.log(`  状态：${info.state}${info.isDraft ? '（草稿）' : ''} · 可合并：${info.mergeable} · ${info.mergeStateStatus}`);
 
 // ── ② 检查项 ────────────────────────────────────────────────
-const checks = info.statusCheckRollup ?? [];
-const failed = checks.filter(
-  (c) => c.conclusion && c.conclusion !== 'SUCCESS' && c.conclusion !== 'NEUTRAL' && c.conclusion !== 'SKIPPED',
-);
+/**
+ * 取 CI 状态：**每个检查名只看最新一次**。
+ *
+ * ⚠️ **为什么不用 `statusCheckRollup`**：它会把**历史**的 run 也列进来
+ *    （同名 check 会出现多次）⇒ 实测：我故意让 body-check 失败一次做负向测试，
+ *    之后即使修好了、重新跑绿了，`statusCheckRollup` 里那个 failure 还在
+ *    ⇒ 脚本永远说「有 CI 失败」⇒ PR 被永久卡住。
+ *
+ * ⇒ 走 check-runs API，按名字分组取最新（GitHub 自己的合并按钮也是这么判的）。
+ */
+function collectLatestChecks(sha) {
+  const raw = tryRun('gh', [
+    'api',
+    `repos/{owner}/{repo}/commits/${sha}/check-runs?per_page=100`,
+    '--jq',
+    '.check_runs[] | {name, status, conclusion, completed_at}',
+  ]);
+  const latest = new Map();
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    const item = JSON.parse(line);
+    const seen = latest.get(item.name);
+    if (!seen || (item.completed_at ?? '') > (seen.completed_at ?? '')) {
+      latest.set(item.name, item);
+    }
+  }
+  return [...latest.values()];
+}
+
+const checks = collectLatestChecks(info.headRefOid);
+// ⚠️ check-runs API 的 `conclusion` 是**小写**（`success`），
+//    而 `statusCheckRollup` 里是大写（`SUCCESS`）⇒ 比较要大小写不敏感。
+const failed = checks.filter((c) => {
+  const conclusion = (c.conclusion ?? '').toUpperCase();
+  return (
+    conclusion.length > 0 &&
+    conclusion !== 'SUCCESS' &&
+    conclusion !== 'NEUTRAL' &&
+    conclusion !== 'SKIPPED'
+  );
+});
 const pending = checks.filter((c) => c.status === 'QUEUED' || c.status === 'IN_PROGRESS' || c.status === 'PENDING');
 
 console.log(`  CI：${checks.length} 项（失败 ${failed.length} · 未完成 ${pending.length}）`);
