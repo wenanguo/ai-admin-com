@@ -42,11 +42,12 @@
   | # | 需求 | 规模 | 依赖 | issue |
   | - | ---- | ---- | ---- | ----- |
   | 1 | 项目域**只读**命令：`list_projects` / `get_project` / `get_project_overview` | 小 | 无 | [#10](https://github.com/wenanguo/ai-admin-com/issues/10) ★ready |
-  | 2 | 任务域**只读**命令：`list_tasks` / `get_task` / `search` | 小 | 无 | #11 |
+  | 2 | 任务域**只读**命令：`list_tasks` / `get_task` / `search` | 小 | 无 | [#11](https://github.com/wenanguo/ai-admin-com/issues/11) ★ready |
   | 3 | 项目与里程碑**写**命令走闸门：`create_*` / `update_*` / `transition_milestone` / `split_milestone` | 中 | #10 | #12 |
   | 4 | 风险域命令：`register_risk` / `update_risk` / `transition_risk` / `convert_risk_to_task` | 中 | #12 | #13 |
   | 5 | 洞察域命令：`get_progress` / `predict_milestone_slip` / `predict_project_eta` / `generate_weekly_report` | 中 | #13 | #14 |
   | 6 | 撤销与审计闭环：每条写命令可查、可撤销 | 中 | #12 | #15 |
+  | 11 | **任务域写命令**走闸门：`update_task` / `transition_task` / `split_task` / `delete_task` / `batch_update_tasks` | 中 | #11 #12 | #22 |
 
 ### M2 · 项目·里程碑·任务视图　`v0.9 · M2 项目·里程碑·任务视图`（milestone #2）
 
