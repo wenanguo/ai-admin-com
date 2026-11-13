@@ -4,6 +4,7 @@
  * | 方法 | 路径 | 作用 |
  * |---|---|---|
  * | GET | `/conversations` | 会话列表 |
+ * | GET | `/skills` | 可用技能清单（`.pi/skills` 下的 SKILL.md）|
  * | POST | `/conversations` | 新建会话 |
  * | POST | `/pending/:id/approve` | 批准一条待确认 |
  * | POST | `/pending/:id/reject` | 拒绝一条待确认 |
@@ -15,8 +16,10 @@
  * ⚠️ **注册顺序敏感**：具体的路径必须先于 `/:conversationId/*`。
  */
 
+import { join } from "node:path";
 import { Router } from "express";
 import { agentRuntime } from "../agent/runtime.ts";
+import { listSkillSummaries } from "../agent/skill-catalog.ts";
 import { pendingWaiters } from "../agent/pending-waiters.ts";
 import { readJsonBody } from "../http/body.ts";
 import { errorBody, okBody } from "../http/respond.ts";
@@ -29,8 +32,36 @@ const SUPPORTED_COMMAND_TYPES = ["prompt", "prompt-followup", "prompt-steer"] as
 /** 命令类型。 */
 type CommandType = (typeof SUPPORTED_COMMAND_TYPES)[number];
 
+/** 技能目录（**cwd 相对** —— 与 pi-session.ts 的发现逻辑一致）。 */
+function skillsDir(): string {
+	return join(process.cwd(), ".pi", "skills");
+}
+
 /** 会话与命令的路由。 */
 export const agentRouter = Router();
+
+/* ------------------------------------------------------------ 技能 */
+
+/**
+ * 可用技能清单。
+ *
+ * ⚠️ **要 token**：这是 AI 能力的一部分 ⇒ 只给登录用户看。
+ * ⚠️ **读真文件**（不缓存）⇒ 改完 SKILL.md 重启就能看到新说明。
+ */
+agentRouter.get("/skills", async (req, res) => {
+	const token = requireToken(req, res);
+	if (token === undefined) {
+		return;
+	}
+	try {
+		// ⚠️ **身份要验**（与 /conversations 等端点一致）：token 认不出用户 ⇒ 401。
+		//    技能清单本身不敏感，但口径要统一（别开一个「随便传个 token 就能用」的口子）。
+		await agentRuntime.resolveCurrentUser(token);
+		res.json(okBody(listSkillSummaries(skillsDir())));
+	} catch (error) {
+		sendError(res, error);
+	}
+});
 
 /* ------------------------------------------------------------ 会话 */
 

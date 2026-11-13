@@ -58,6 +58,7 @@ import { IntentGallery } from './IntentGallery';
 import { AI_INTENTS } from './intents';
 import { PendingPanel } from './PendingPanel';
 import { RuleSplit } from './RuleSplit';
+import { SkillList } from './SkillList';
 import { useAiLists } from './useAiLists';
 import type { Workspace } from './useWorkspace';
 import { WideChat } from './WideChat';
@@ -553,6 +554,10 @@ export function AiWorkspaceWide({
         }}
       >
         <span>当前模型：</span>
+        {/* ⚠️ **放在这一行**（水平排列）⇒ 零纵向占用：
+            宽屏页是「一屏铺满」布局，对话区要吃满剩余高度（e2e 有断言）
+            ⇒ 纵向加任何常驻内容都会把对话区挤矮。 */}
+        <SkillList />
         <span style={{ fontFamily: token.fontFamilyCode }}>
           {workspace.model ?? '未知'}
         </span>
