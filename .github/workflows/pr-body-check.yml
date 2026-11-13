@@ -51,8 +51,15 @@ jobs:
             missing="${missing}高风险（命中就写「高风险：<类别> -> <影响面>」，没命中写「高风险：无」）\n"
           fi
           # 关联 issue：一条 issue 一个分支一个 PR
+          # ⚠️ **PM 的流程维护类 PR 没有对应的 issue**（它改的是流程本身，不是某个 issue 的功能）
+          #    ⇒ 允许显式写一行「关联 issue：无」来通过检查。
+          #    要求**行首独立成行**（与高风险那条一个道理 ⇒ 不许随便提一句就骗过检查）。
           if ! printf '%s' "$BODY" | grep -qiE "closes #[0-9]+|fixes #[0-9]+"; then
-            missing="${missing}关联 issue（正文里写 Closes #<issue 号>）\n"
+            if printf '%s' "$BODY" | grep -qE '^关联 issue：无'; then
+              echo "::notice::本 PR 声明「关联 issue：无」（PM 流程维护类，豁免）"
+            else
+              missing="${missing}关联 issue（正文里写 Closes #<issue 号>；若是 PM 流程维护类，显式写一行「关联 issue：无」）\n"
+            fi
           fi
 
           if [ -n "$missing" ]; then
