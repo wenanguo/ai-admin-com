@@ -4,13 +4,26 @@
 
 ## 目标
 
-- **关联**：issue #39 · PR #（待填）
+- **关联**：issue #39 · PR #45（已合并）
 - **一句话**：把 `backend/ai/` 做成可独立运行的镜像（多阶段 Dockerfile），并**新增**
   `GET /health`（**恒 200**、带逐依赖自检结果）。
 
 ## 状态
 
-已完成（PR 已合并、CI 绿）—— 实现要点见下。
+已完成（PR #45 已合并、CI 全绿）—— 实现要点见下。
+
+⚠️ **收尾时踩的坑（工具链的，不是本条的）**：
+
+- `scripts/agent/merge-pr.cjs` **合并成功后仍会崩**（`git pull --ff-only` 之后：
+  它的 `tryRun` 对 `stdout === null` 直接 `.trim()` ⇒ `TypeError`）⇒ 合并本身成功，
+  但脚本后半段（切回 main / 删本地分支 / `fetch --prune`）没跑 ⇒ **要手工收尾**。
+  （上一棒在 #38 就踩过同一个坑，**还没修** ⇒ 该给 PM 单独开单。）
+- 这次还发现：**合并脚本清理分支时会把「工作区」（worktree）里的文件删掉**
+  ⇒ `gh pr merge --delete-branch` 把 agent 的工作区（`D:/project/ai-admin-com-worktrees/dev`）
+  删得只剩两个 `node_modules` 软链 ⇒ **下一棒开工前先确认工作区还在**，
+  不在就 `node scripts/agent/worktree.cjs add dev` 重建（它会重接 node_modules）。
+  ⚠️ 重建前先把残留的软链 `rm` 掉（**用 `rm` 不要用 `rm -r`** ⇒ 别把主 checkout 的
+  `node_modules` 删了）。
 
 ## 短设计（规模：中 ⇒ 几段话，不写 spec）
 
