@@ -1,0 +1,61 @@
+name: PR body check
+
+# ⚠️ **PR 正文里必须有「高风险」与「关联 issue」** —— 否则 PM/review 只能靠人盯。
+#
+# 背景：`/dev.md` 要求 agent 提 PR 时必写一行高风险标注，
+# 但模板里曾经没有那一栏 ⇒ agent 不知道要写（PR #18 是手补的）。
+# 现在模板补上了（#25）⇒ 这个 workflow 负责**盯住**。
+#
+# ⚠️ **草稿 PR 与 bot PR 跳过**：
+# - 草稿还没写完 ⇒ 不该被打回
+# - dependabot 之类的 bot 不会写正文 ⇒ 不该被卡
+#
+# ⚠️ 这个检查目前只是**提示**（main 还没开分支保护 ⇒ 红了也能合）。
+# 要真强制 ⇒ 给 main 加 required status check：`pr-body-check`。
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  body-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 跳过草稿与 bot 的 PR
+        id: skip
+        run: |
+          if [ "${{ github.event.pull_request.draft }}" = "true" ]; then
+            echo "reason=草稿 PR，还没写完" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ github.event.pull_request.user.type }}" = "Bot" ]; then
+            echo "reason=bot 提的 PR（不写正文）" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "reason=" >> "$GITHUB_OUTPUT"
+
+      - name: 检查正文里的必填项
+        if: steps.skip.outputs.reason == ''
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          missing=""
+          # 高风险：命中就写清楚是哪一项 + 影响面；没命中写「高风险：无」
+          if ! printf '%s' "$BODY" | grep -q "高风险："; then
+            missing="${missing}高风险（命中就写「高风险：<类别> -> <影响面>」，没命中写「高风险：无」）\n"
+          fi
+          # 关联 issue：一条 issue 一个分支一个 PR
+          if ! printf '%s' "$BODY" | grep -qiE "closes #[0-9]+|fixes #[0-9]+"; then
+            missing="${missing}关联 issue（正文里写 Closes #<issue 号>）\n"
+          fi
+
+          if [ -n "$missing" ]; then
+            echo "::error::PR 正文缺少必填项："
+            printf "%b" "$missing"
+            echo "::error::模板见 .github/PULL_REQUEST_TEMPLATE.md（补完再推一次即可）"
+            exit 1
+          fi
+          echo "✅ PR 正文包含高风险标注与关联 issue"

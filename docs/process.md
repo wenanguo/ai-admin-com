@@ -55,6 +55,11 @@
 
 ⚠️ 高风险那栏**不要用复选框**（两个都勾或都不勾都说不清）⇒ 直接写一行字。
 
+**机器会盯**：[.github/workflows/pr-body-check.yml](../.github/workflows/pr-body-check.yml) 会在 PR 上检查正文有没有
+「高风险：」与「Closes #」⇒ 缺了就报出来（草稿 PR 与 bot 的 PR 跳过）。
+
+⚠️ 目前它只是**提示**（main 还没开分支保护 ⇒ 红了也能合）⇒ 要真强制 ⇒ 给 main 加 required status check。
+
 ## 3. 规模分级（决定写多少文档）
 
 | 规模 | 判据 | 流程 |
