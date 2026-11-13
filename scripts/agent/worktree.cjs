@@ -202,7 +202,7 @@ switch (command) {
 
   case 'remove': {
     if (!name) {
-      console.error('用法：node scripts/agent/worktree.cjs remove <名字>');
+      console.error('用法：node scripts/agent/worktree.cjs remove <名字> [--force]');
       process.exit(2);
     }
     const target = path.join(worktreeRoot, name);
@@ -244,6 +244,20 @@ switch (command) {
       }
       console.error('  · 确认要丢的话：git worktree remove --force <路径>');
       process.exit(1);
+    }
+
+    /*
+      ⚠️ **删别人的工作区**（实测）：另一个 agent 照着文档跑
+      `node scripts/agent/worktree.cjs remove agent-dev` ⇒ 把我（开发 agent）的
+      工作区删了（它的分支已合并 ⇒ 上面的检查放行）。
+      ⇒ 所以：**删除必须显式确认**（--force），否则只打印要删什么、不动手。
+    */
+    if (!args.includes('--force')) {
+      console.log(`\n将要删除工作区：${target}`);
+      console.log(`  · 分支：${branch}`);
+      console.log(`  · 里面有 git 不管的东西（node_modules 的 junction、生成的 .umi…）`);
+      console.log('\n（这是检查模式：确认要删再加 --force）');
+      break;
     }
 
     // ⚠️ cwd 在这个目录里 ⇒ Windows 删不掉（Permission denied）⇒ 先拦住
