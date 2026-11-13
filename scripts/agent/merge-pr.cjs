@@ -167,13 +167,22 @@ try {
 // 本地分支
 // ⚠️ **squash 合并后必须用 `-D`**：`git branch -d` 会说「分支未合并」
 //    （squash 产生的是新提交，原分支的提交不在 main 的历史里）⇒ 删不掉。
-tryRun('git', ['branch', '-D', branch], { cwd: repoRoot, inherit: true });
+//
+// ⚠️ **也可能已经不在了**：`gh pr merge --delete-branch` 会**连本地分支一起删**
+//    ⇒ 再删一次会报「branch not found」⇒ 容忍它。
+try {
+  tryRun('git', ['branch', '-D', branch], { cwd: repoRoot, inherit: true });
+} catch {
+  console.log('  · 本地分支已不存在（gh 已删）');
+}
 
 // 切回 base 并同步
 if (currentBranch !== base) {
   tryRun('git', ['checkout', base], { cwd: repoRoot, inherit: true });
 }
 tryRun('git', ['pull', '--ff-only'], { cwd: repoRoot, inherit: true });
+// ⚠️ 清掉已删分支的**远端引用**（`git branch -a` 里还挂着 origin/xxx 看着像还在）
+tryRun('git', ['fetch', '--prune'], { cwd: repoRoot });
 
 console.log('\n完成：');
 console.log(`  · PR #${info.number} 已合并（${strategy}）`);

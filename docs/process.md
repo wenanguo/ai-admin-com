@@ -278,3 +278,11 @@ node scripts/agent/worktree.cjs remove pm
 - 一个工作区 = 一个 agent；工作区之间**不共享未提交改动**
 - ⚠️ `git add -A` 只在自己的工作区里用（别把别人的文件带进自己的提交）
 - 合并走 `scripts/agent/merge-pr.cjs`（在**主 checkout** 里跑，脚本常驻 main）
+
+### ⚠️ 第五个坑：`gh --delete-branch` 会连**本地**分支一起删
+
+实测：脚本先删远端分支、再删本地分支 ⇒ 但 `gh pr merge --delete-branch` **已经把本地分支删了**
+⇒ 再删一次报「branch not found」⇒ 脚本在那里抛错 ⇒ **后面的 `pull` 没跑到**（本地 main 落后远端）。
+
+⇒ 现在：删本地分支时**容忍「已不存在」**，并在最后补一次 `git fetch --prune`
+（否则 `git branch -a` 里还挂着 `origin/xxx`，看着像分支还在）。
