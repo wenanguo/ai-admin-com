@@ -1,0 +1,64 @@
+# ============================================================
+# 构建上下文卫生（构建上下文 = **仓根**）
+#
+#   docker build -f docker/web/Dockerfile -t ai-admin-web .
+#
+# ⚠️ 为什么放仓根：上面那条命令的上下文是 `.`（仓根）⇒ .dockerignore 必须在仓根，
+#    放在 docker/ 下**不生效**。
+#
+# 目标：上下文里只留「构建前端镜像真正需要的东西」⇒
+#   ① 镜像里不会有 node_modules / 旧产物 / 源码依赖目录；
+#   ② 构建阶段拿不到任何凭据（.env / .ai/auth.json / *.pem）。
+# ============================================================
+
+# ──────────── 依赖（最大头：宿主机的 node_modules 不该进上下文）────────────
+**/node_modules
+node_modules
+
+# ──────────── 构建产物与缓存（不进上下文 ⇒ 镜像里只有镜像内新构建的那份）────────────
+**/dist
+**/dist-dev
+**/build
+**/out
+**/coverage
+**/.umi
+**/.umi-production
+**/.umi-test
+**/e2e-out
+**/.vitest
+**/.cache
+
+# ──────────── 版本控制与 CI ────────────
+.git
+.gitignore
+.github
+
+# ──────────── 凭据与环境变量（一律不进镜像）────────────
+**/.env
+**/.env.*
+**/.ai
+**/auth.json
+**/*.pem
+**/*.key
+**/*.p12
+**/id_rsa*
+
+# ──────────── 本地一次性产物 ────────────
+**/.scratch
+**/.temp
+**/.vscode
+**/.idea
+**/.DS_Store
+**/*.log
+**/npm-debug.log*
+
+# ──────────── 本条镜像用不到的目录（减小上下文）────────────
+#
+# ⚠️ **docs/ 不能排掉**：`frontend/src/pages/Welcome.tsx` 直接 import 了
+#    `docs/cheatsheet.en-US.md` / `docs/cheatsheet.zh-CN.md`
+#    （utoopack 的 `*.md` loader）⇒ 排掉它 ⇒ 镜像里构建直接报
+#    "Module not found: Can't resolve '../../../docs/cheatsheet.en-US.md'"。
+backend/
+frontend/cloudflare-worker/
+frontend/e2e/
+frontend/tests/
