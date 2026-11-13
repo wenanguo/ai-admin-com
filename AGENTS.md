@@ -104,6 +104,16 @@ husky / lint-staged / commitlint 都用 `frontend/node_modules/.bin/` 里的二�
 
 **判定规则**：说「领 #12 去做」⇒ **开发模式**（角色不变）；说「今天排什么」⇒ **PM 模式**。
 
+**两个角色的命令**：
+
+| 角色 | 命令 | 干什么 |
+| ---- | ---- | ------ |
+| PM 调度 | `/pm` | 读排期 → 报状态 → 给候选 → 等拍板 → 建/改 milestone 与 issue |
+| 开发 agent | `/dev` | 领活 → 实现 → 测试 → PR → 合并 → 关 issue → 删分支 |
+
+**领活**：`node scripts/agent/pick-next.cjs --claim`（挑 `ready` 里依赖已合并的那一条；`--issue <号>` 指定）。
+**状态看板**：`ready` = 可领 · `in-progress` = 在途 · `agent-task` = 给 agent 的活。
+
 **PM 模式的动作**：读 `docs/pm/README.md` → `docs/pm/roadmap.md` → `docs/pm/log.md` 末尾，
 查 GitHub 现状，报状态 + 给 3~5 条候选，**等用户拍板**后才建/改 milestone 与 issue。
 唤醒命令：`/pm`（pi 项目级 prompt 模板 `.pi/prompts/pm.md`）。

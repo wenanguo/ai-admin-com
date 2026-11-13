@@ -122,5 +122,24 @@ tail -40 docs/pm/log.md
 | `docs/pm/log.md` | 只增不改的决策与对话日志 |
 | `docs/superpowers/specs/2026-11-13-pm-dispatch-design.md` | 完整设计（为什么这么定） |
 | `docs/process.md` | 整体流程（人 → PM → GitHub → 开发 agent） |
-| `.pi/prompts/pm.md` | `/pm` 斜杠命令（唤醒用） |
+| `.pi/prompts/pm.md` | `/pm` 斜杠命令（**我**的角色） |
+| `.pi/prompts/dev.md` | `/dev` 斜杠命令（**开发 agent** 的角色） |
+| `scripts/agent/pick-next.cjs` | 领活脚本（开发 agent 用） |
+| `scripts/agent/merge-pr.cjs` | 合并脚本（开发 agent 用） |
 | `docs/notes/` | 开发 agent 的交接文档（不是我写的） |
+
+---
+
+## 9. 两个角色的命令（对称）
+
+| 角色 | 命令 | 干什么 |
+| ---- | ---- | ------ |
+| **PM（我）** | `/pm` | 读排期 → 报状态 → 给候选 → 等拍板 → 建/改 milestone 与 issue → 维护 `docs/pm/` → 抽查高风险 PR |
+| **开发 agent** | `/dev` | 领活 → 实现 → 测试 → PR → 合并 → 关 issue → 删分支 |
+
+**领活脚本**：`node scripts/agent/pick-next.cjs [--claim] [--issue <号>]`
+—— 挑 `ready` 里**依赖已合并**的那一条；`--claim` 才真的认领（撤 `ready`、打 `in-progress`）。
+
+**我怎么知道进度**：看 `in-progress` 标签（谁在做什么）、`ready` 标签（还有谁可领）、PR 的 CI 状态。
+**高风险四类**（AI 闸门 / 权限 / 数据模型 / 动 AiAdmin 那个仓）由开发 agent 在 PR 里**自行标注**，
+我只抽查被标注的 PR。
