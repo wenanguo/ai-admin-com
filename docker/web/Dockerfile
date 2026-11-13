@@ -15,9 +15,7 @@ ARG NODE_VERSION=22
 ARG NGINX_VERSION=1.27
 
 # ─────────────────────────── 构建阶段 ───────────────────────────
-# ⚠️ 用**完整版** node 镜像（不是 -slim）：镜像里要有 git（下面要 `git init`）。
-#    构建阶段的体积不进最终镜像 ⇒ 用完整版没代价。
-FROM node:${NODE_VERSION}-bookworm AS builder
+FROM node:${NODE_VERSION}-bookworm-slim AS builder
 
 WORKDIR /app
 
@@ -63,17 +61,18 @@ COPY frontend/ ./frontend/
 #     ⇒ 不拷进来，构建会报 "Module not found: Can't resolve '../../../docs/cheatsheet.en-US.md'"。
 COPY docs/cheatsheet.en-US.md docs/cheatsheet.zh-CN.md ./docs/
 
-# ②c 仓根的 package.json（与本地构建同构）
-COPY package.json ./package.json
-
-# ②d **把 /app 变成一个 git 仓**（空仓，只为让 utoopack 的「项目根」探测落在这里）：
-#     utoopack 跟 turbopack 一样，以 **git 仓根**（没有就用最近的 workspace 根）作为项目根。
-#     本地构建时根 = 仓根（/…/ai-admin-com）⇒ `frontend/src/pages/Welcome.tsx` 里
-#     `import '../../../docs/cheatsheet.en-US.md'` 是在根**之内**的 ⇒ 能解析。
-#     镜像里没有 .git ⇒ 根退化成 frontend/ ⇒ 那个 import 变成「跳出根目录」⇒
-#     utoopack 直接报 "Module not found: Can't resolve '../../../docs/cheatsheet.en-US.md'"。
-#     ⇒ git init /app ⇒ 根 = /app ⇒ 行为与本地一致。
-RUN git init -q /app && git -C /app rev-parse --show-toplevel
+# ②c **仓根的 package.json + package-lock.json 也要拷进来**（与本地构建同构）：
+#     utoopack 找「项目根」的规则（@utoo/pack 的 findRootDir）：
+#       从 cwd 往上找**最近的 lock 文件**，再往上找**还有 lock 文件的目录**，
+#       最顶层那个 lock 所在目录 = 项目根。
+#     本地：frontend/package-lock.json → 仓根还有 package-lock.json ⇒ 根 = **仓根**
+#           ⇒ `frontend/src/pages/Welcome.tsx` 里
+#             `import '../../../docs/cheatsheet.en-US.md'` 在根**之内** ⇒ 能解析。
+#     镜像（若不拷根 lock）：只找到 frontend/package-lock.json ⇒ 根 = frontend/
+#           ⇒ 那个 import 变成「跳出根目录」⇒
+#             utoopack 报 "Module not found: Can't resolve '../../../docs/cheatsheet.en-US.md'"。
+#     ⇒ 把根的 lock 也拷进来 ⇒ 根 = /app ⇒ 与本地一致。
+COPY package.json package-lock.json ./
 
 # esbuild 的安装脚本负责把平台二进制就位（--ignore-scripts 跳过了它 ⇒ 补回来）
 RUN cd frontend && npm rebuild esbuild
