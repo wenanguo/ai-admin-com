@@ -300,6 +300,15 @@ node scripts/agent/worktree.cjs remove pm
 
 ⚠️ 目录名**带角色前缀**（`agent-dev` / `agent-pm`）⇒ 两个 agent 不会选到同一个名字。
 
+### ⚠️ 删除工作区要显式确认（实测踩过）
+
+`remove` **默认只打印要删什么，不动手** ⇒ 真删要加 `--force`。
+
+⚠️ 原因：另一个 agent 照着本文档跑 `remove agent-dev` ⇒ 把**开发 agent 的工作区整个删了**
+（它的分支恰好已合并 ⇒ 原来的检查放行）⇒ 里面的 junction 与生成的 `.umi` 一起没了。
+
+⚠️ **每个 agent 只删自己的工作区**（开发 agent ⇒ `agent-dev`，PM 调度 agent ⇒ `agent-pm`）。
+
 ### 干活时的规矩
 
 - 干活前**先看自己在哪个工作区**：`git worktree list`
