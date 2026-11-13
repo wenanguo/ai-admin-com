@@ -4,13 +4,14 @@
 
 ## 目标
 
-- **关联**：issue #38（前端容器化）· PR 见 `feat/38-web-container` 分支
+- **关联**：issue #38（前端容器化）· **PR #43（已合并，squash 提交 c1adb2e）**
 - **一句话**：把 `frontend/` 做成多阶段镜像 `ai-admin-web`（node 构建 → nginx 托管 `frontend/dist`），
   并把「镜像能跑起来」变成**入库的**验收脚本 + CI。
 
 ## 状态
 
-**已完成**（CI 全绿后合并；合并后本条应标记「已完成」）。
+**已完成** —— PR #43 已合并（issue #38 自动关闭），CI 全绿（含新增的 `docker-web.yml` 两个 job：
+`静态断言` + `构建镜像并跑容器验收`）。
 
 ## 已完成
 
@@ -86,3 +87,8 @@ npm run e2e:web
   ⇒ 镜像里**不需要**额外跑 `max setup`。
 - 验收脚本里断言「镜像里没有 node_modules」用的是 `find / -maxdepth 4 -type d -name node_modules`；
   ⚠️ 产物里**文件名**含 `node_modules__xxx.css`（打包器把模块路径拼进了文件名）⇒ 别用字符串包含来判断。
+- ⚠️ **`scripts/agent/merge-pr.cjs` 在合并成功后会崩**（`git pull --ff-only` 之后）：
+  它的 `tryRun` 对 `stdout` 为 `null` 的情况直接 `.trim()` ⇒ `TypeError: Cannot read properties of null (reading 'trim')`。
+  ⇒ **合并本身已经成功**（远端分支已删、issue 已关），但脚本后半段（切回 main / 删本地分支 / 删工作区）没跑
+  ⇒ 需要手工收尾（`git fetch --prune`、删本地分支、清理工作区残留的 node_modules 软链）。
+  **这不在 issue #38 的范围内**（没在本 PR 里改）⇒ 留给下一棒或 PM 单独开单修。
