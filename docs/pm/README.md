@@ -174,10 +174,16 @@ tail -40 docs/pm/log.md
 | 角色 | 命令 | 干什么 |
 | ---- | ---- | ------ |
 | **PM（我）** | `/pm` | 读排期 → 报状态 → 给候选 → 等拍板 → 建/改 milestone 与 issue → 维护 `docs/pm/` → 抽查高风险 PR |
-| **开发 agent** | `/dev` | 领活 → 实现 → 测试 → PR → 合并 → 关 issue → 删分支 |
+| **开发 agent** | `/dev` | 领活 → 实现 → 测试 → PR → 合并 → 关 issue → 删分支 → **自动领下一条** |
+
+**自动续做**：开发 agent 做完一条、收尾干净后，只要 `ready` 队列里还有、依赖已满足、且**不是高风险四类**，
+就**直接领下一条继续干**，不用每次都问人。必停的情况见 `.pi/prompts/dev.md` §⑨
+（高风险四类 / 队列空 / 超范围 / 卡住 / 本 milestone 做完）。
+**人仍然掌握「做什么」**：能领什么由 PM 往 `ready` 里放什么决定。
 
 **领活脚本**：`node scripts/agent/pick-next.cjs [--claim] [--issue <号>]`
-—— 挑 `ready` 里**依赖已合并**的那一条；`--claim` 才真的认领（撤 `ready`、打 `in-progress`）。
+—— 挑 `ready` 里**依赖已合并**的那一条；`--claim` 才真的认领（撤 `ready`、打 `in-progress`）；
+还会告诉你**本 milestone 做完这条还剩几条**（块边界 = 汇报点）。
 
 **我怎么知道进度**：看 `in-progress` 标签（谁在做什么）、`ready` 标签（还有谁可领）、PR 的 CI 状态。
 **高风险四类**（AI 闸门 / 权限 / 数据模型 / 动 AiAdmin 那个仓）由开发 agent 在 PR 里**自行标注**，
