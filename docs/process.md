@@ -221,3 +221,51 @@ PM **只替换 §2 的第 ① 步「人提 issue」**：
 |---|---|
 | **squash 合并后 `git branch -d` 会说「分支未合并」** | 改用 `-D`（squash 产生的是新提交，原分支提交不在 main 历史里） |
 | **脚本可能躺在要删的分支上** | 合并**前**先切回 base（脚本常驻 main ⇒ 活着） |
+
+---
+
+## 10. agent 工作区隔离（worktree）
+
+### 为什么
+
+**一个 agent 一个工作区**，别共用同一个 checkout。
+
+实测教训（2026-11-13）：开发 agent 与 PM 调度 agent 共用 `D:/project/ai-admin-com`
+⇒ 对方把我的工作区切到了 main；它的设计文档差点被我 `git add -A` 带进我的提交；
+后来仓库内的 `.worktrees/` 目录**被另一个 agent 整个删掉**（只���下分支）。
+
+⇒ 规矩：**每个 agent 一个独立工作区**（`git worktree`），目录彼此独立 ⇒ 切分支互不影响。
+
+### 怎么用
+
+```bash
+# 建一个工作区（开发 agent 用 dev，PM 用 pm）
+node scripts/agent/worktree.cjs add dev
+node scripts/agent/worktree.cjs add pm
+
+# 看有哪些工作区
+node scripts/agent/worktree.cjs list
+
+# 删一个（合并完、活干完）
+node scripts/agent/worktree.cjs remove pm
+```
+
+脚本会顺手做掉两件**每次新建都要做**的事：
+
+| 事 | 为什么 |
+| -- | ---- |
+| 把主 checkout 的 `node_modules` 用 **junction** 接过来 | 两个子项目共 2.5GB ⇒ 每个工作区重装太慢。⚠️ 改依赖时要在**主 checkout** 装，或删掉 junction 重装 |
+| 跑一次 `max setup` 生成 `frontend/src/.umi` | `.umi` 被 gitignore ⇒ 新工作区没有它 ⇒ `tsc` 会报 `@umijs/max` 类型缺失 |
+
+### 目录放哪
+
+**仓库外**：`D:/project/ai-admin-com-worktrees/<名字>`（可用 `AI_WORKTREE_ROOT` 覆盖）。
+
+⚠️ 最初放在仓库内的 `.worktrees/` ⇒ **被另一个 agent 删掉了** ⇒ 放外面更安全。
+
+### 干活时的规矩
+
+- 干活前**先看自己在哪个工作区**：`git worktree list`
+- 一个工作区 = 一个 agent；工作区之间**不共享未提交改动**
+- ⚠️ `git add -A` 只在自己的工作区里用（别把别人的文件带进自己的提交）
+- 合并走 `scripts/agent/merge-pr.cjs`（在**主 checkout** 里跑，脚本常驻 main）

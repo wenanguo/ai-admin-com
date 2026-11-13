@@ -62,7 +62,11 @@ const worktreeRoot = process.env.AI_WORKTREE_ROOT
 
 /** 跑一条命令。 */
 function run(cmd, args, options = {}) {
-  return execFileSync(cmd, args, {
+  // ⚠️ Windows 上 `npx` 是 `npx.cmd` ⇒ 直接 spawn 会 ENOENT
+  //    （不用 shell:true ⇒ 不会有参数拼接的安全警告）
+  const finalCmd =
+    process.platform === 'win32' && cmd === 'npx' ? 'npx.cmd' : cmd;
+  return execFileSync(finalCmd, args, {
     encoding: 'utf8',
     cwd: options.cwd ?? repoRoot,
     stdio: options.inherit ? 'inherit' : 'pipe',
@@ -124,7 +128,22 @@ function generateUmiTypes(target) {
     return;
   }
   console.log('  · 生成前端类型（max setup）…');
-  tryRun('npx', ['max', 'setup'], { cwd: frontend, inherit: true });
+  try {
+    tryRun('npx', ['max', 'setup'], { cwd: frontend, inherit: true });
+  } catch (error) {
+    /*
+      ⚠️ `max setup` 会在**生成完文件之后**抛自己的内部错误
+      （实测：`Cannot read properties of null (reading 'trim')`）⇒ 退出码非 0，
+      但 `src/.umi` 已经生成好了。
+      ⇒ 以**产物是否生成**判定成败，不看退出码。
+    */
+    const generated = fs.existsSync(path.join(frontend, 'src', '.umi'));
+    if (generated) {
+      console.log('  · max setup 退出码非 0，但类型已生成 ⇒ 视为成功');
+    } else {
+      throw error;
+    }
+  }
 }
 
 const args = process.argv.slice(2);
@@ -152,6 +171,10 @@ switch (command) {
     const branch = `agent/${name}`;
     if (fs.existsSync(target)) {
       console.log(`工作区已存在：${target}`);
+      // ⚠️ 已存在也要**补做**接依赖与生成类型（新机器/新会话时可能是半成品）
+      console.log('补做：');
+      linkDependencies(target);
+      generateUmiTypes(target);
       break;
     }
     fs.mkdirSync(worktreeRoot, { recursive: true });
