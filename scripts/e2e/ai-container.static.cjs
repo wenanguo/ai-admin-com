@@ -136,6 +136,13 @@ check(
   /npm ci[^\n]*--ignore-scripts/.test(dockerfile.split(/AS runtime/)[0] || ''),
 );
 
+check(
+  '**prisma generate 在 tsc 之前**（@prisma/client 的类型从 .prisma/client re-export ⇒ 先生成才编得过）',
+  dockerfile.indexOf('prisma generate') > -1 &&
+    dockerfile.indexOf('prisma generate') < dockerfile.indexOf('npm run build'),
+  'generate 必须在 build 之前',
+);
+
 // 凭据不能进镜像层
 const credentialCopy = copyLines(dockerfile).filter((l) =>
   [/\.env\b/i, /\.ai\b/i, /auth\.json/i].some((re) => re.test(l)),

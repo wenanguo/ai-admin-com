@@ -41,14 +41,16 @@ COPY backend/ai/src ./src
 # ③ prisma schema（`prisma generate` 要它；**不拷进运行时镜像** ⇒ 运行时不需要 schema）
 COPY backend/ai/prisma ./prisma
 
-# ④ 编译：tsc ⇒ dist/（ESM，pi SDK 是 ESM-only ⇒ 必须是 ESM）
-RUN npm run build
-
-# ⑤ 生成 prisma 客户端（**必须在构建阶段做**：prisma CLI 是 devDependency，
-#    运行时镜像里没有它 ⇒ 生成的产物拷过去）
+# ④ 生成 prisma 客户端（**必须在 tsc 之前**）
+#    ⚠️ **顺序很重要**：`@prisma/client` 的类型是从 `.prisma/client` 里 re-export 的
+#    ⇒ 客户端没生成时 `tsc` 会报 "Module '@prisma/client' has no exported member 'PrismaClient'"。
+#    ⚠️ **必须在构建阶段做**：prisma CLI 是 devDependency，运行时镜像里没有它 ⇒ 生成的产物拷过去。
 #    ⚠️ DATABASE_URL 给个假的：generate 只读 schema，不需要真库（真口令绝不入镜像）。
 ENV DATABASE_URL=mysql://build:build@127.0.0.1:3306/build
 RUN npx prisma generate && ls -la node_modules/.prisma/client | head -20
+
+# ⑤ 编译：tsc ⇒ dist/（ESM，pi SDK 是 ESM-only ⇒ 必须是 ESM）
+RUN npm run build
 
 # ─────────────────────────── 运行阶段 ───────────────────────────
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
