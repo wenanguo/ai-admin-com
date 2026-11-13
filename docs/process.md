@@ -160,3 +160,50 @@ node scripts/agent/merge-pr.cjs 8 --yes --strategy merge
 | **`stderr` 可能是 null** | 错误处理里 `.trim()` 崩掉，把真正的错误盖住 | 取 stderr 前先判空 |
 
 ⇒ **合并脚本要常驻 main**（它是流程的一部分，不是某个功能的附属）。
+
+---
+
+## 10. PM 调度层（多角色协作）
+
+> §1–§9 讲的是「**一条 issue 从提出到合并**」的流水线。
+> §10 讲的是它**前面那一段**：谁来把人的想法变成合格的 issue。
+
+### 10.1 三个角色
+
+```bash
+人（说需求）→ PM 调度 agent → GitHub（milestone + issue）→ 开发 agent → PR → 人合并
+```
+
+| 角色 | 干什么 | 不干什么 |
+| ---- | ------ | -------- |
+| **人** | 说需求 · 拍板排期 · review 高风险 PR · 合并 | 手写 issue 正文 |
+| **PM 调度 agent** | 沟通 · 拆需求 · 排版本/能力块 · 写 milestone + issue · 维护 `docs/pm/` · 抽查高风险 PR | ❌ 写产品代码 ❌ 合并 PR |
+| **开发 agent** | 领 issue · 读代码 · 设计/计划 · 实现 · 自审 · 提 PR · 测试 · 合并 · 关 issue · 删分支 | 决定排期 · 自造需求 |
+
+**角色判定**：说「排期 / 里程碑 / 今天做什么 / 建 issue」⇒ PM 模式；
+说「领 #xx 去做」⇒ 开发模式。PM 是**可选角色**，开发 agent 的默认行为不变。
+
+### 10.2 PM 的产物落在哪
+
+| 东西 | 位置 | 性质 |
+| ---- | ---- | ---- |
+| 排期（版本 × 能力块） | GitHub **milestone**（命名 `版本 · 能力块`） | 执行侧真相 |
+| 待办 | GitHub **issue**（正文按 `.github/ISSUE_TEMPLATE/agent-task.md` 写满） | 执行侧真相 |
+| 可领取标记 | label `ready`（队首）/ `in-progress`（在途）/ `agent-task`（给 agent 的活） | 队列控制 |
+| 规划与理由 | `docs/pm/roadmap.md`（活）/ `docs/pm/log.md`（只增不改） | 规划侧真相 |
+| 角色说明 | `docs/pm/README.md` | 流程 |
+| 唤醒入口 | `.pi/prompts/pm.md`（斜杠命令 `/pm`） | 入口 |
+
+### 10.3 与 §2 流水线的关系
+
+PM **只替换 §2 的第 ① 步「人提 issue」**：
+原来是人手写，现在由 PM 拆解并写满（目标 / 可观察的验收标准 / 范围「要做+不做」/ 上下文真实路径 / 依赖 / 规模）。
+②～⑦（领 issue → 实现 → 自审 → PR → CI → 合并）**完全不变**，仍由开发 agent 走。
+
+**依赖规则**：块内按依赖排序（只给队首打 `ready`），块与块之间可并行。
+
+### 10.4 收尾分工
+
+- **合并 + 关 issue + 删分支**：开发 agent（PR 正文写 `Closes #xx`）。
+- **PM 抽查**：AI 闸门 / 权限 / 数据模型 / 动 AiAdmin（FastAPI）那个仓 —— 这四类 PR PM 要亲自看内容。
+- **合并脚本**：`node scripts/agent/merge-pr.cjs <PR号> --yes`（见 §9），**常驻 main**。

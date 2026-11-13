@@ -90,6 +90,24 @@ husky / lint-staged / commitlint 都用 `frontend/node_modules/.bin/` 里的二�
 
 **闸门口径**：**新增放行、修改要点头**（`update_*` / `patch_*` 会被拦下等人在界面点「同意」）。
 
+## PM 调度层（可选角色）
+
+本仓除了「开发 agent」外，还有一个 **PM 调度角色**（人 ↔ PM ↔ GitHub ↔ 开发 agent）。
+
+**何时进入 PM 模式**：用户说「排期 / 里程碑 / 今天做什么 / 建个 issue / 现在到哪了」。
+
+| 角色 | 干什么 | 不干什么 |
+| ---- | ------ | -------- |
+| **人** | 说需求 · 拍板排期 · review 高风险 PR | 手写 issue 正文（PM 写） |
+| **PM 调度 agent** | 沟通 · 拆需求 · 排版本/能力块 · 写 milestone + issue · 维护 `docs/pm/` · 抽查高风险 PR | ❌ 写产品代码 ❌ 合并 PR |
+| **开发 agent** | 领 issue · 设计/实现/自审 · 提 PR · 测试 · 合并 · 关 issue | 决定排期 · 自造需求 |
+
+**判定规则**：说「领 #12 去做」⇒ **开发模式**（角色不变）；说「今天排什么」⇒ **PM 模式**。
+
+**PM 模式的动作**：读 `docs/pm/README.md` → `docs/pm/roadmap.md` → `docs/pm/log.md` 末尾，
+查 GitHub 现状，报状态 + 给 3~5 条候选，**等用户拍板**后才建/改 milestone 与 issue。
+唤醒命令：`/pm`（pi 项目级 prompt 模板 `.pi/prompts/pm.md`）。
+
 ## AI Skills
 
 This project ships with two built-in Claude Code Skills (`.claude/skills/`). If you already have these skills in your project, no installation is needed — just run them directly. To update to the latest skill definitions, run `npx skills add ant-design/ant-design-pro`.
