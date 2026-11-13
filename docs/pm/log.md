@@ -185,3 +185,25 @@
   - 「多问一次」的成本 ≪「误建一堆 issue + 开发 agent 抢跑」的成本。
   - 事故后的第一动作是**冻结领活**（撤 `ready`），不是先解释。
   - 需求是真的、方案也可以留（草稿），**但没拍板的东西不许出现在 GitHub 上**。
+
+### 2026-11-13 · 人定新规矩：GitHub 清零，往后先沟通再开单
+
+- **人说的**：「把 GitHub 上所有的 milestone 和 issue 都删了，后续的具体功能，你跟我沟通完成之后再建立 issue。」
+- **做了什么**：
+  - **导出存档**（删之前）：`docs/pm/drafts/2026-11-13-GitHub清零存档.md`
+    —— 4 个 milestone + 21 条 issue 的**完整正文**（1295 行），连同连带 PR 的引用关系。
+  - **删掉 4 个 milestone**（#1 M1 · #2 M2 · #3 M3 · #4 L1）。
+  - **删掉全部 21 条 issue**（open 与 closed 都删）。
+    ⚠️ **技术细节**：REST 的 `DELETE /repos/{owner}/{repo}/issues/{n}` 返回 404（删不掉），
+    改用 **GraphQL `deleteIssue`** 成功 ⇒ 以后要删 issue 走 GraphQL。
+  - **保留 label**（`agent-task` / `ready` / `in-progress`）—— 机制要用，只是队列暂时是空的。
+- **新的基线**：GitHub 上 0 milestone / 0 issue。
+  **roadmap 改成「候选清单」**（C1–C16，不再用 issue 号），每个候选在 `docs/pm/drafts/` 里有正文草稿。
+- **新规矩**：**具体功能一律先跟人沟通，谈清楚、拿到明确拍板，才建立 issue。**
+  （这跟之前立的「指令 ≠ 授权」闸门是同一件事的两面：闸门管**怎么开单**，这条管**什么时候开单**。）
+- **连带影响**：
+  1. PR #37（开发 agent 的 `worktree remove` 安全修复）正文里的 `Closes #36` **引用悬空**了
+     ⇒ 建议它把该行改掉（合并不受影响，GitHub 只是关不到东西）。
+  2. `pr-body-check`（开发 agent 加的闸门）要求 PR 正文有 `closes #N` ⇒
+     **PM 的流程维护类 PR 天然过不了** ⇒ 需要给它加一个「关联 issue：无」的出口（待人拍板）。
+- **教训（补）**：需求是真的 ≠ 方案可以先斩后奏。**需求可以先谈、方案必须先批。**
