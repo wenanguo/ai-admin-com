@@ -160,3 +160,23 @@
   理由：它不是 AIPM 产品能力，不该进 M1/M2/M3；也不值得单开一个能力块（会多一个假看板）。
 - **观察到的风险**：`pick-next.cjs` 只认 `ready` 标签 ⇒ **agent 自提的 issue 会游离在队列外**，
   状态只能靠人/PM 补标。以后开发 agent 自提 issue 时，要顺手打 `in-progress` 并挂 milestone（PM 校对）。
+
+### 2026-11-13 · 新增 M0 部署块（人定：先做部署，再做其他）
+
+- **人定的**：部署功能**优先级最高**，先做这个再做其他的。
+- **做了什么**：新建 milestone **#5 `v0.9 · M0 部署（前端 + AI 服务）`**（due **11-19**，比 M1 的 11-26 更早 ⇒ 队首）。
+  5 条 issue：#27 前端镜像 · #28 AI 服务镜像 · #29 compose · #30 deploy.sh · #31 文档+验收。
+- **参考的基准**：`D:/project/AiAdmin/docker/`（`docker-compose.yaml` + `backend/Dockerfile` + `nginx/nginx.conf`）
+  与 `deploy.sh`。**但区分前后端**：前端静态由 nginx 托管；AI 服务是独立容器；
+  AiAdmin 后端（另一个仓）**只连不装**（compose 里用 `AIADMIN_BASE_URL` / `AIADMIN_MCP_URL` 指过去）。
+- **写 issue 时定下的五条硬约束**（从 AiAdmin 的真实踩坑 + 本仓的路由口径提炼）：
+  1. 容器必须监听 `0.0.0.0`（否则 nginx 502，而容器 healthcheck 走 localhost **仍显示 healthy**）
+  2. AI 的 SSE 必须关 `proxy_buffering`（否则对话憋很久才一次性蹦出来）
+  3. AI 服务的技能路径是 **cwd 相对** ⇒ 镜像 WORKDIR 要对
+  4. `.ai/auth.json` 是凭据 ⇒ 不进镜像层
+  5. `/ai-api/` 前缀不能省（会与 `/api/` 前缀匹配抢路由）
+- **发现并记下的缺口**：AI 服务**没有 `/health` 端点** ⇒ 容器健康检查无处可探 ⇒ 写进了 #28 的验收标准。
+- **队列处置**：人定了「先做部署」⇒ **#10/#11（M1）与 #20（L1）撒回 `ready`**，
+  队列里只留 **#27 / #28**（两者无依赖，可并行）。等 M0 收工再放行 M1。
+- **方法论**：优先级用 **milestone 的 due 从早到晚**表达 ⇒ 一眼能看出「现在该做哪块」，
+  不用另开一个「优先级」字段（那个字段会被忘记维护）。
