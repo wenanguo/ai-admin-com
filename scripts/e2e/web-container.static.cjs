@@ -89,7 +89,7 @@ containsAll(
   [
     'AS builder',
     'AS runtime',
-    'FROM node:${NODE_VERSION}-bookworm-slim',
+    'FROM node:${NODE_VERSION}-bookworm',
     'FROM nginx:${NGINX_VERSION}-alpine',
     'COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./frontend/',
     'COPY frontend/ ./frontend/',

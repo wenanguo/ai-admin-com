@@ -15,7 +15,9 @@ ARG NODE_VERSION=22
 ARG NGINX_VERSION=1.27
 
 # ─────────────────────────── 构建阶段 ───────────────────────────
-FROM node:${NODE_VERSION}-bookworm-slim AS builder
+# ⚠️ 用**完整版** node 镜像（不是 -slim）：镜像里要有 git（下面要 `git init`）。
+#    构建阶段的体积不进最终镜像 ⇒ 用完整版没代价。
+FROM node:${NODE_VERSION}-bookworm AS builder
 
 WORKDIR /app
 
@@ -60,6 +62,18 @@ COPY frontend/ ./frontend/
 #     （import enUS from '../../../docs/cheatsheet.en-US.md'）
 #     ⇒ 不拷进来，构建会报 "Module not found: Can't resolve '../../../docs/cheatsheet.en-US.md'"。
 COPY docs/cheatsheet.en-US.md docs/cheatsheet.zh-CN.md ./docs/
+
+# ②c 仓根的 package.json（与本地构建同构）
+COPY package.json ./package.json
+
+# ②d **把 /app 变成一个 git 仓**（空仓，只为让 utoopack 的「项目根」探测落在这里）：
+#     utoopack 跟 turbopack 一样，以 **git 仓根**（没有就用最近的 workspace 根）作为项目根。
+#     本地构建时根 = 仓根（/…/ai-admin-com）⇒ `frontend/src/pages/Welcome.tsx` 里
+#     `import '../../../docs/cheatsheet.en-US.md'` 是在根**之内**的 ⇒ 能解析。
+#     镜像里没有 .git ⇒ 根退化成 frontend/ ⇒ 那个 import 变成「跳出根目录」⇒
+#     utoopack 直接报 "Module not found: Can't resolve '../../../docs/cheatsheet.en-US.md'"。
+#     ⇒ git init /app ⇒ 根 = /app ⇒ 行为与本地一致。
+RUN git init -q /app && git -C /app rev-parse --show-toplevel
 
 # esbuild 的安装脚本负责把平台二进制就位（--ignore-scripts 跳过了它 ⇒ 补回来）
 RUN cd frontend && npm rebuild esbuild
