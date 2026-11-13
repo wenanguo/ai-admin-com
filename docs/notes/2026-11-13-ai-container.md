@@ -52,6 +52,8 @@
 | **基础镜像用 `node:22-bookworm-slim`，不用 alpine** | prisma 查询引擎在 musl 上要另配 openssl、还要挑对引擎变体 | 容器一起来就报引擎找不到 |
 | **`npm ci --omit=dev --ignore-scripts`（runtime）** | `prisma` CLI 是 devDependency ⇒ 运行时生成不了客户端 ⇒ 必须从 builder 拷 `.prisma`；`--ignore-scripts` 免得 `@prisma/client` 的 postinstall 在没有 schema 的容器里失败 | 镜像里没有 prisma 客户端 ⇒ 服务一起来就炸 |
 | **启动命令 `node dist/main.js`（不用 `--env-file=.env`）** | 容器里没有 `.env` ⇒ `--env-file` 缺文件会**直接退出**；`src/load-env.ts` 本来就是「有就读、没有就用环境变量」 | 容器一起来就退出，日志只有一行 `ENOENT` |
+| **`prisma generate` 排在 `tsc` 之前** | `@prisma/client` 的类型是从 `.prisma/client` re-export 的 ⇒ 客户端没生成时 tsc 编译不过 | 镜像构建直接失败（CI 第一版就踩了） |
+| **运行时显式删掉 `prisma` CLI / `typescript`** | 它们是 `@prisma/client` 的 **peerOptional** 依赖 ⇒ npm 会装上 ⇒ `--omit=dev` 拦不住（`npm prune --omit=dev` 也不行） | 镜像里多出开发工具（还带 50MB 查询引擎）⇒ 违反「镜像里没有 devDependencies」 |
 | **仓根 `.dockerignore` 放行 `backend/ai`** | AI 镜像要从这里取 `package.json` / `src` / `prisma` / `.pi` ⇒ 整目录排掉 ⇒ 构建直接失败 | 镜像构建失败（`backend/` 被排掉） |
 | **技能拷到 `/app/.pi`（WORKDIR=/app）** | 技能是 **cwd 相对**（`join(process.cwd(), ".pi", "skills")`）⇒ 相对位置必须一致 | `load_skill` 读不到技能 ⇒ AI 少一半能力，且**不报错** |
 
@@ -70,6 +72,13 @@ node scripts/e2e/ai-container.cjs
 
 ## 坑与提醒
 
+- ⚠️ **镜像里的 prisma 客户端要先 generate 再 tsc**：`@prisma/client` 的类型是从
+  `.prisma/client` re-export 的 ⇒ 客户端没生成时 `tsc` 报
+  `Module '"@prisma/client"' has no exported member 'PrismaClient'`。
+- ⚠️ **`--omit=dev` 拦不住 peerOptional**：`@prisma/client` 把 `prisma`（CLI）与 `typescript`
+  声明成 peerOptional ⇒ npm 会把它们装上（`npm prune --omit=dev` 也不行）⇒ 镜像里会多出
+  CLI（还带 50MB 的查询引擎）与 typescript ⇒ **运行时阶段要显式 `rm -rf`**。
+  （两条都是 CI 的 container job 真跑出来的，本机没有 docker。）
 - ⚠️ **本机没有 docker** ⇒ 镜像**没有在本地真构建过**；构建正确性靠 CI
   （`.github/workflows/docker-ai.yml` 的 image job，GitHub runner 自带 docker）。
   第一次在本地跑容器验收前，先 `docker build` 一次。
