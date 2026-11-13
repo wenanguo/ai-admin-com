@@ -39,7 +39,7 @@
       ▼
 ⑥ CI：lint + tsc + 单测 + e2e（绿了才能合）
       ▼
-⑦ 人 review → 合并 → 删分支
+⑦ 人 review → 合并 + 清理分支（一条命令，见 §9）
 ```
 
 ---
@@ -121,3 +121,32 @@
 4. **技能是提示词** ⇒ `.pi/skills/**` 进模型上下文 ⇒ 走评审，别写凭据。
 5. **破坏性操作要人点头** ⇒ 写操作类工具必须走闸门。
 6. **ai-admin（FastAPI）是独立仓** ⇒ 改它要单独提 PR 到那个仓。
+
+---
+
+## 9. 合并与清理分支（一条命令）
+
+仓库的 `delete_branch_on_merge = false` ⇒ **合并后分支不会自动删** ⇒ 忘了删就堆积死分支。
+
+```bash
+# ① 只检查（默认，什么都不改）
+node scripts/agent/merge-pr.cjs 8
+
+# ② 检查通过就合并 + 删分支（本地与远端都删）
+node scripts/agent/merge-pr.cjs 8 --yes
+
+# ③ 换合并方式（默认 squash：一个 PR 一个提交）
+node scripts/agent/merge-pr.cjs 8 --yes --strategy merge
+```
+
+脚本做的四件事：
+
+| # | 动作 |
+| - | ---- |
+| 1 | **检查**：PR 状态 · 是否草稿 · 是否可合并 · CI 有无失败/未完成 · 有无「要求修改」的 review |
+| 2 | 检查不通过 ⇒ **打印问题并退出**，什么都不动 |
+| 3 | 通过且带 `--yes` ⇒ 合并（`gh pr merge --delete-branch`） |
+| 4 | 本地清理：切回 main → `pull --ff-only` → 删本地分支 |
+
+⚠️ **合并是公共动作** ⇒ 脚本默认**只检查** ⇒ 真合并必须显式 `--yes`。
+⚠️ 合并方式默认 `squash`（main 上一个提交对应一个 PR/issue）；想保留 PR 内的细粒度提交用 `--strategy merge`。
