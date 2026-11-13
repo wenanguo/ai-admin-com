@@ -60,11 +60,9 @@ function run(cmd, args, options = {}) {
     throw new Error(
       [
         `${cmd} ${args.join(' ')} 退出码 ${res.status}`,
-        '──── stderr（头）────',
-        err.slice(0, 2000),
-        '──── stderr（尾）────',
-        err.slice(-2000),
-        '──── stdout（尾）────',
+        '──── stderr（尾 12000）────',
+        err.slice(-12000),
+        '──── stdout（尾 2000）────',
         out.slice(-2000),
       ].join('\n'),
     );
