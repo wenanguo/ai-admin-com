@@ -118,6 +118,28 @@ husky / lint-staged / commitlint 都用 `frontend/node_modules/.bin/` 里的二�
 查 GitHub 现状，报状态 + 给 3~5 条候选，**等用户拍板**后才建/改 milestone 与 issue。
 唤醒命令：`/pm`（pi 项目级 prompt 模板 `.pi/prompts/pm.md`）。
 
+## agent 工作区隔离（worktree）
+
+**一个 agent 一个工作区**，别共用同一个 checkout（实测：共用会互相切分支、互相带文件进提交）。
+
+\工作区已存在：D:projectai-admin-com-worktreesdev
+补做：
+  · frontend/node_modules 已是链接/目录 ⇒ 跳过
+  · backend/ai/node_modules 已是链接/目录 ⇒ 跳过
+  · 生成前端类型（max setup）…
+  · max setup 退出码非 0，但类型已生成 ⇒ 视为成功
+工作区：
+  · D:/project/ai-admin-com  [main] （主 checkout）
+  · D:/project/ai-admin-com-worktrees/dev  [agent/dev] 
+
+规矩：一个 agent 一个工作区（别共用主 checkout）
+  · 已摘掉 junction：frontend/node_modules
+  · 已摘掉 junction：backend/ai/node_modules
+- 目录在**仓库外**（仓库内的 .worktrees/ 被另一个 agent 删过）
+- **名字带角色前缀**（开发 agent ⇒ agent-dev；PM 调度 agent ⇒ agent-pm）⇒ 不会撞车
+- 脚本会接好 node_modules（junction）并生成前端类型（max setup）⇒ 新工作区立刻能跑测试
+- 合并在**主 checkout** 里跑（merge-pr.cjs 常驻 main）
+
 ## AI Skills
 
 This project ships with two built-in Claude Code Skills (`.claude/skills/`). If you already have these skills in your project, no installation is needed — just run them directly. To update to the latest skill definitions, run `npx skills add ant-design/ant-design-pro`.

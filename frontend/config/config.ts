@@ -33,7 +33,17 @@ const commitHash =
  */
 const PUBLIC_PATH: string = '/';
 
-export default defineConfig({
+/**
+ * ⚠️ **要写显式类型标注**（不要直接 `export default defineConfig({...})`）：
+ *
+ *    直接导出时，TypeScript 推断出的类型会引用 `@umijs/bundler-webpack` 里的
+ *    `IConfig` ⇒ 报错 TS2883「inferred type cannot be named」。
+ *    这个错误只在**依赖目录不在仓内**时出现（比如 node_modules 用 junction
+ *    指到别的目录）⇒ 但它会让那个环境的 `tsc` 直接红。
+ *
+ *    标注成 `ReturnType<typeof defineConfig>` ⇒ 类型不依赖外部路径 ⇒ 哪儿都能编。
+ */
+const config: ReturnType<typeof defineConfig> = {
   alias: {
     '@root': join(__dirname, '..'),
   },
@@ -243,4 +253,6 @@ export default defineConfig({
     __UMI_VERSION__: require('@umijs/max/package.json').version,
     __UTOO_VERSION__: require('@utoo/pack/package.json').version,
   },
-});
+};
+
+export default config;
