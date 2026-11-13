@@ -33,6 +33,9 @@ ENV COMMIT_HASH=${COMMIT_HASH}
 # ① 依赖层：先只拷清单文件 ⇒ 改源码不会让 npm ci 这一层失效
 COPY frontend/package.json frontend/package-lock.json ./frontend/
 
+# 打印版本（构建日志里能看出用的是什么 node/npm ⇒ 排查问题第一眼就看它）
+RUN node -v && npm -v
+
 # ⚠️ --ignore-scripts：此刻源码还没拷进来，root 包的 prepare（husky + max setup）
 #    会因为找不到 config/ 而失败 ⇒ 跳过脚本；esbuild 的安装脚本随后用 rebuild 补回来。
 RUN cd frontend && npm ci --ignore-scripts --no-audit --no-fund

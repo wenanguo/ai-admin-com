@@ -55,8 +55,18 @@ function run(cmd, args, options = {}) {
     ...options,
   });
   if (res.status !== 0) {
+    const err = (res.stderr || '').trim();
+    const out = (res.stdout || '').trim();
     throw new Error(
-      `${cmd} ${args.join(' ')} 退出码 ${res.status}\n${(res.stderr || '').trim().slice(-2000)}`,
+      [
+        `${cmd} ${args.join(' ')} 退出码 ${res.status}`,
+        '──── stderr（头）────',
+        err.slice(0, 2000),
+        '──── stderr（尾）────',
+        err.slice(-2000),
+        '──── stdout（尾）────',
+        out.slice(-2000),
+      ].join('\n'),
     );
   }
   return (res.stdout || '').trim();
