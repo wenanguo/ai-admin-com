@@ -138,11 +138,23 @@ check(
   '没看到 COPY --from=builder .../dist',
 );
 
-// ───────────────────────────── nginx.conf ─────────────────────────────
-console.log('\ndocker/web/nginx.conf（站点配置）');
+// ───────────────────────────── nginx 配置（主配置 + 模板）─────────────────────────────
+console.log('\ndocker/web/nginx.conf（主配置）+ templates/default.conf.template（站点）');
 const nginx = read('docker/web/nginx.conf');
+// ⚠️ #40 起：server 块搬到了**模板**里（envsubst）⇒ 站点级断言要看模板。
+const siteTemplate = read('docker/web/templates/default.conf.template');
 containsAll(
   nginx,
+  [
+    'include /etc/nginx/conf.d/*.conf;',
+    'access_log  /dev/stdout',
+    'gzip           on;',
+    'server_tokens        off;',
+  ],
+  '主配置：日志到 stdout / gzip / 关版本号 / include conf.d',
+);
+containsAll(
+  siteTemplate,
   [
     'root  /usr/share/nginx/html',
     'try_files $uri /index.html;',
@@ -151,20 +163,28 @@ containsAll(
     'location ^~ /assets/',
     'public, max-age=31536000, immutable',
     'no-store, no-cache, must-revalidate',
-    'access_log  /dev/stdout',
-    'gzip           on;',
-    'server_tokens        off;',
   ],
-  'SPA fallback / 缓存策略 / 健康检查 / 日志到 stdout',
+  'SPA fallback / 缓存策略 / 健康检查',
 );
 // ⚠️ nginx 语义：location 里出现 add_header ⇒ 父级 add_header 全部失效
 //    ⇒ 每个带 add_header 的 location 都必须 include 安全头片段
-const addHeaderCount = (nginx.match(/add_header/g) || []).length;
-const includeCount = (nginx.match(/include\s+\/etc\/nginx\/snippets\/security-headers\.conf;/g) || []).length;
+const addHeaderCount = (siteTemplate.match(/add_header/g) || []).length;
+const includeCount = (siteTemplate.match(/include\s+\/etc\/nginx\/snippets\/security-headers\.conf;/g) || []).length;
 check(
   '每个自带 add_header 的 location 都 include 了安全头片段',
   includeCount >= addHeaderCount,
   `add_header ${addHeaderCount} 处，安全头 include ${includeCount} 处`,
+);
+// ⚠️ envsubst 模板：占位符必须有默认值，否则 nginx 起不来
+containsAll(
+  dockerfile,
+  ['COPY docker/web/templates/ /etc/nginx/templates/', 'AIADMIN_PROXY_TARGET=', 'AI_UPSTREAM='],
+  '模板被拷进镜像 + 两个占位符都有 ENV 默认值',
+);
+containsAll(
+  siteTemplate,
+  ['${AIADMIN_PROXY_TARGET}', '${AI_UPSTREAM}'],
+  '模板里有可配的上游占位符',
 );
 
 // ───────────────────────────── docker/README.md ─────────────────────────────

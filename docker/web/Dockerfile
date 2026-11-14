@@ -95,6 +95,19 @@ RUN rm -f /etc/nginx/conf.d/default.conf
 COPY docker/web/nginx.conf /etc/nginx/nginx.conf
 COPY docker/web/snippets/ /etc/nginx/snippets/
 
+# 站点（server 块）模板 ⇒ 容器启动时由 nginx 官方 entrypoint 做 envsubst：
+#   /etc/nginx/templates/default.conf.template → /etc/nginx/conf.d/default.conf
+#   ⇒ 上游地址（AiAdmin / AI 服务）**用环境变量改**，不用重构建镜像。
+COPY docker/web/templates/ /etc/nginx/templates/
+
+# ⚠️ **占位符必须有默认值**：envsubst 只替换**已定义**的环境变量；
+#    未定义时 `${XXX}` 会原样留在配置里 ⇒ nginx 启动报 `unknown "XXX" variable` ⇒ 容器起不来。
+#    ⇒ 这里给默认值（compose 里可覆盖）：
+#      AIADMIN_PROXY_TARGET —— `/api/` 的上游（**站点根**，不含 /api/v1）
+#      AI_UPSTREAM         —— `/ai-api/` 的上游（默认 127.0.0.1:3100 ⇒ 独立跑镜像也能起）
+ENV AIADMIN_PROXY_TARGET=https://www.pmdict.cn \
+    AI_UPSTREAM=127.0.0.1:3100
+
 # 只有构建产物进镜像（没有 node_modules、没有源码、没有凭据）
 COPY --from=builder /app/frontend/dist /usr/share/nginx/html
 

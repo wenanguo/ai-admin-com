@@ -1,0 +1,126 @@
+# ============================================================
+# AiAdmin 前端 —— 站点（server 块）**模板**
+#
+#   这个文件会被 nginx 官方镜像的 entrypoint 在**容器启动时**做 envsubst 替换：
+#     /etc/nginx/templates/default.conf.template
+#        → /etc/nginx/conf.d/default.conf
+#   替换的只有**环境变量**（`${XXX}`）⇒ nginx 自己的变量（$uri / $host …）不受影响。
+#
+# ⚠️ **每个占位符都必须有默认值**（见 Dockerfile 里的 ENV）：
+#    变量未定义时 envsubst **不替换** ⇒ nginx 启动会报
+#    `unknown "AIADMIN_PROXY_TARGET" variable` ⇒ 容器起不来。
+#
+# ⚠️ **三条路由的口径必须与开发期代理一致**（frontend/config/proxy.ts）：
+#   · `/api/`    → AiAdmin 后端，**不 rewrite**（baseURL 已含 /api/v1）
+#   · `/ai-api/` → AI 服务，**去掉 `/ai-api` 前缀**
+#   · `/`        → 前端静态 + SPA fallback
+# ============================================================
+
+server {
+    listen      80;
+    server_name _;
+
+    # 前端产物（构建阶段拷进来的 frontend/dist）
+    root  /usr/share/nginx/html;
+    index index.html;
+
+    # 安全头（片段；自带 add_header 的 location 也要 include，见片段里的说明）
+    include /etc/nginx/snippets/security-headers.conf;
+
+    # ──────────── 健康检查 ────────────
+    # 内容固定 ⇒ 不含版本号 / 提交号等版本敏感信息
+    # ⚠️ 这是**前端静态服务**的健康检查；AI 服务的是 `/health`（在 ai 容器里）。
+    location = /healthz {
+        access_log   off;
+        default_type application/json;
+        add_header   Cache-Control "no-store" always;
+        include      /etc/nginx/snippets/security-headers.conf;
+        return 200 '{"status":"ok"}';
+    }
+
+    # ──────────── 壳：不缓存 ────────────
+    # index.html 缓存 ⇒ 发新版后用户拿旧壳（老 JS + 新页面 ⇒ 白屏）
+    location = /index.html {
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        include    /etc/nginx/snippets/security-headers.conf;
+    }
+
+    # ──────────── 显式 /assets/ 前缀 ────────────
+    # ⚠️ 本仓当前产物是**扁平**的（hash 文件名直接躺在 dist/ 根，没有 assets/ 目录）
+    #    ⇒ 这条现在命中不到；留着是为了产物布局切到 assets/ 时不用改配置。
+    location ^~ /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        include    /etc/nginx/snippets/security-headers.conf;
+        try_files  $uri =404;
+    }
+
+    # ──────────── 带扩展名的静态资源：长缓存 ────────────
+    # 这条才是本仓**真正生效**的长缓存规则（产物扁平在根，文件名带 hash）
+    location ~* \.(?:js|mjs|css|map|png|jpe?g|gif|svg|ico|webp|woff2?|ttf|eot)$ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        include    /etc/nginx/snippets/security-headers.conf;
+        try_files  $uri =404;
+    }
+
+    # ──────────── AiAdmin 后端：/api/ ────────────
+    #
+    # ⚠️ **不 rewrite**：AiAdmin 的 root_path 是 `/api/v1`，而前端的 baseURL
+    #    **已经含** `/api/v1` ⇒ nginx 必须**原样透传**请求路径。
+    #    ⇒ `proxy_pass` **不带 URI 部分**（写成 `.../` 会把 `/api/` 前缀吃掉 ⇒ 404）。
+    #
+    # ⚠️ 上游地址来自环境变量 `AIADMIN_PROXY_TARGET`（**站点根**，不含 /api/v1）。
+    location /api/ {
+        proxy_pass ${AIADMIN_PROXY_TARGET};
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host  $host;
+
+        proxy_connect_timeout 10s;
+        proxy_send_timeout    60s;
+        proxy_read_timeout    60s;
+
+        # 业务接口不缓存
+        proxy_buffering off;
+    }
+
+    # ──────────── AI 服务：/ai-api/ ────────────
+    #
+    # ⚠️ **必须用独立前缀**：AI 服务的路径也是 `/api/agent/...`，
+    #    若浏览器直接打 `/api/agent/...` ⇒ 会被上面那条 `/api/`（归 AiAdmin）接走。
+    #    ⇒ 浏览器侧用 `/ai-api/`，这里把前缀**去掉**再转给 AI 服务
+    #      （与开发期 `pathRewrite: { '^/ai-api': '' }` 逐字一致）。
+    #    ⇒ `proxy_pass` **带 URI 部分 `/`** ⇒ nginx 把匹配到的 `/ai-api/` 换成 `/`。
+    #
+    # ⚠️ **SSE 不缓冲**（AI 的事件流 `/api/agent/:cid/events`）：
+    #    缓冲了 ⇒ 对话要等很久才一次性蹦出来。
+    #    ⇒ proxy_buffering off + 不缓存 + 足够长的读超时；
+    #      AI 服务自己也会发 `X-Accel-Buffering: no`（双保险）。
+    location /ai-api/ {
+        proxy_pass http://${AI_UPSTREAM}/;
+
+        proxy_http_version 1.1;
+        # SSE 要保持到上游的连接不被关掉 ⇒ Connection 置空
+        proxy_set_header Connection        "";
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_buffering off;
+        proxy_cache     off;
+        proxy_read_timeout  3600s;
+        proxy_send_timeout  3600s;
+    }
+
+    # ──────────── 前端静态 + SPA fallback ────────────
+    # 任意前端路由（/pm/task …）直接刷新 ⇒ 回落到根 index.html，不 404
+    # ⚠️ 刻意**不写** `$uri/`：带尾斜杠的目录请求才会命中 umi exportStatic
+    #    预渲染出来的那份 `pm/task/index.html`（同一套壳）；
+    #    不带尾斜杠的 `/pm/task` 精确回落到根 index.html（与验收标准字面一致）。
+    location / {
+        try_files $uri /index.html;
+    }
+}

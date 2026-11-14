@@ -1,0 +1,33 @@
+# ============================================================
+# ★ 验收夹具（**只在 CI / 本地验收时用**；生产部署不要用这个文件）
+#
+#   docker compose -f docker/docker-compose.yaml -f docker/docker-compose.ci.yaml up -d
+#
+# ## 它干什么
+#
+#   起一个 **AiAdmin 桩**（nginx:alpine）：任何请求都回显**原始请求路径**。
+#   ⇒ 验收脚本能断言两件事：
+#     ① `/api/v1/xxx` 到达上游时**仍然是 `/api/v1/xxx`** ⇒ nginx **没有 rewrite**；
+#     ② `/ai-api/...` 到达 AI 服务时**前缀被去掉** ⇒ `/ai-api/health` ⇒ `/health`。
+#
+#   真实的 AiAdmin 是个 FastAPI 服务（另一个仓），CI 里跑不起来 ⇒ 用桩替代。
+#   ⚠️ 桩**只回显路径**，不做任何业务 ⇒ 只能验「路由口径」，不能验业务。
+# ============================================================
+
+services:
+  # ──────────── AiAdmin 桩（回显原始请求路径）────────────
+  aiadmin-stub:
+    image: nginx:alpine
+    command:
+      - sh
+      - -c
+      - |
+        printf 'server { listen 80; location / { return 200 "$request_uri"; } }\n' > /etc/nginx/conf.d/default.conf
+        nginx -g "daemon off;"
+    networks:
+      - aiadmin
+
+  # ──────────── web 的上游改成桩 ────────────
+  web:
+    environment:
+      AIADMIN_PROXY_TARGET: "http://aiadmin-stub:80"
