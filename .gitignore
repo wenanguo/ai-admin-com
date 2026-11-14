@@ -57,3 +57,7 @@
 **/probe-*.cjs
 **/probe-*.png
 **/.scratch/
+
+# ──────────── 部署产物（不入库）────────────
+# 上次成功部署的 commit（docker/deploy.sh 写；用于回退提示）
+docker/.last-deploy
