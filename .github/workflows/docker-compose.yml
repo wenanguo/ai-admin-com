@@ -39,3 +39,15 @@ jobs:
           node-version: 22
       # 只跑「检查模式」⇒ 不会动任何东西；验幂等/回退提示/不打印凭据
       - run: node scripts/e2e/deploy-script.cjs
+
+  deploy-e2e:
+    name: 端到端部署验收（起一套、验路由、清干净）
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # ⚠️ 用**独立的 project name** ⇒ 不碰别的东西；结束时 down -v 清干净
+      - run: node scripts/e2e/deploy.cjs

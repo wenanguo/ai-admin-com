@@ -11,6 +11,7 @@
 | `compose.static.cjs` | **静态断言** compose 编排（服务/端口/网络/限制/日志 + 三条路由口径 + `.env.example`）⇒ **不需要 docker** |
 | `compose.cjs` | **真起 compose** 验收（`config` → `up -d --build` → 两个容器 healthy → 三条路由 + 端口边界）⇒ 需要 docker |
 | `deploy-script.cjs` | 验收 `docker/deploy.sh`（默认只检查、不改东西；有回退提示；不打印凭据）⇒ 只需 **bash** |
+| `deploy.cjs` | **端到端部署验收**（起 compose ⇒ 两个容器 healthy ⇒ 前端 HTML / `/api/` 通 / `/ai-api/` 通 / AI `/health` 200 ⇒ 清干净）⇒ 需要 docker |
 | `ai-container.static.cjs` | **静态断言**AI 服务镜像的配置（Dockerfile / .dockerignore / 健康检查路由 / SSE 头）⇒ **不需要 docker** |
 | `ai-container.cjs` | **真起容器**验收 AI 服务镜像（构建 → 镜像里没凭据/没 devDeps → 技能就位 → `/health` 200 → 业务路由挂载）⇒ 需要 docker |
 
@@ -102,12 +103,29 @@ CI（`.github/workflows/docker-compose.yml`）在 PR 上跑这两条 —— runn
 ## 部署脚本验收（issue #41）
 
 ```bash
-node scripts/e2e/deploy-script.cjs     # 或：npm run e2e:deploy
+node scripts/e2e/deploy-script.cjs     # 或：npm run e2e:deploy-script
 ```
 
 ⚠️ 只需要 **bash**（Windows 用 Git Bash / WSL；CI 是 ubuntu）⇒ **不需要 docker**。
 它会真的跑一次 `bash docker/deploy.sh`（**默认只检查模式**）并断言：**工作区没变**、**没写状态文件**、
 缺依赖时**明确报缺什么**、`--help`/未知参数的退出码对。
+
+## 端到端部署验收（issue #42）
+
+```bash
+node scripts/e2e/deploy.cjs            # 或：npm run e2e:deploy
+```
+
+⚠️ 需要 **docker**（没 docker ⇒ 打印 SKIP 并退出 0）。
+它会**用独立的 compose project name**（`ai-admin-e2e-<pid>`）+ 临时 env 文件（全是占位）
+起一套 ⇒ 验「两个容器 healthy / `/` 是前端 HTML / `/api/` 通 / `/ai-api/` 通 / AI `/health` 200」
+⇒ 结束 `down -v` 清干净 ⇒ **不碰开发者的本地环境与真凭据**。
+
+| 变量 | 默认 | 说明 |
+| ---- | ---- | ---- |
+| `WEB_PORT` / `AI_PORT` | `18080` / `13100` | 验收占用的端口（不抢 8080/3100） |
+| `E2E_AIADMIN_URL` | 用夹具里的桩 | 指向**真实** AiAdmin 后端时用（那时的 `/api/` 会回 401，也算「通」） |
+| `SKIP_BUILD` | — | `=1` 时跳过构建（用已有镜像） |
 
 ## 环境变量
 
