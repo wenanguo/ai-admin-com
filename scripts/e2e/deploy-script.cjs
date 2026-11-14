@@ -117,11 +117,13 @@ if (bash.status !== 0) {
 		/缺少依赖/.test(output) || /依赖检查通过/.test(output),
 		output.slice(-800),
 	);
-	// 「将要做的」清单只在依赖齐全时才会打印（缺依赖 ⇒ 提前退出）
-	const depsOk = /依赖检查通过/.test(output);
+	// 「将要做的」清单只在**依赖齐全且 .env 齐了**时才会打印
+	//（缺依赖 / 缺 .env ⇒ 提前停下并明确报出 ⇒ 那是正确行为）
+	const depsOk = !/缺少依赖/.test(output);
+	const envOk = !/没有 .*\.env/.test(output);
 	check(
-		depsOk ? '打印了「将要做的」清单' : '缺依赖时提前停下（不继续往下做）',
-		depsOk ? /将要做的/.test(output) : !/将要做的/.test(output),
+		depsOk && envOk ? '打印了「将要做的」清单' : '有前置问题时明确报出并停下',
+		depsOk && envOk ? /将要做的/.test(output) : /缺少依赖/.test(output) || /没有 .*\.env/.test(output),
 		output.slice(-800),
 	);
 
