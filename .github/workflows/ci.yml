@@ -26,7 +26,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      - run: node --test scripts/agent/
+      - run: node --test "scripts/agent/*.test.cjs"
 
   lint:
     runs-on: ubuntu-latest

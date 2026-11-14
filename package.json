@@ -13,7 +13,7 @@
     "start:ai": "npm --prefix backend/ai run start",
     "lint": "npm --prefix frontend run lint",
     "test": "npm --prefix frontend run test && npm --prefix backend/ai run test",
-    "test:agent": "node --test scripts/agent/",
+    "test:agent": "node --test scripts/agent/*.test.cjs",
     "test:frontend": "npm --prefix frontend run test",
     "test:ai": "npm --prefix backend/ai run test",
     "e2e": "npm --prefix frontend run e2e",
