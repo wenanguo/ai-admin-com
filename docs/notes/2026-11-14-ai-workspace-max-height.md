@@ -4,7 +4,7 @@
 
 ## 目标
 
-- **关联**：issue #57 · PR 待提
+- **关联**：issue #57 · PR #58
 - **一句话**：最大化的 AI 工作台被**工作区**的高度压着（顶上永远空着一条 56px 的顶栏），
   改成**顶到视口最上面**（盖住顶栏），左侧菜单留着。
 
@@ -21,10 +21,12 @@
 **下一步（具体到文件与命令）**：
 
 ```
-1. 提 PR：
-   cd frontend && npm run build && npx playwright test   # 先确认全绿
-   浏览器手动确认：任意页面点右下角机器人 → 最大化 → 浮层顶到屏幕最上面
-2. 合并（走 scripts/agent/merge-pr.cjs，要 gh）
+1. **PR #58 已提**（mergeable，CI 在跑）
+2. 等 CI 绿 + 人 review ⇒ 合并：
+   node scripts/agent/merge-pr.cjs 58            # 只检查（不动任何东西）
+   node scripts/agent/merge-pr.cjs 58 --yes      # 真合并 + 删分支
+   ⚠️ `gh` 不在 PATH 里 ⇒ 合并前先 export PATH=/tmp/ghbin/gh_2.104.0_macOS_arm64/bin:$PATH
+   ⚠️ /tmp 会被系统清理 ⇒ 要长期用就正式 `brew install gh`
 ```
 
 ## 决策记录（★ 最值钱的部分）
