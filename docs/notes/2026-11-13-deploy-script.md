@@ -4,13 +4,23 @@
 
 ## 目标
 
-- **关联**：issue #41（部署脚本 `deploy.sh`：一条命令起全套 + 失败可回退）· PR 见 `feat/41-deploy-script` 分支
+- **关联**：issue #41（部署脚本 `deploy.sh`：一条命令起全套 + 失败可回退）· PR #48（已合并）
 - **一句话**：把「拉代码 → 构建镜像 → 起服务 → 等健康 → 出摘要」变成**一条命令**（默认**只检查**，
   `--yes` 才动手），失败时**明确告诉人怎么回退**，且**不把凭据写进日志**。
 
 ## 状态
 
-**进行中**（CI 全绿后合并；合并后本条应标记「已完成」）。
+**已完成**（PR #48 已合并、CI 全绿）。
+
+⚠️ **合并后的收尾**（下一棒不用重踩）：
+
+- `scripts/agent/merge-pr.cjs` **合并成功后仍会崩**（`git pull --ff-only` 之后：它的 `tryRun`
+  对 `stdout === null` 直接 `.trim()`）⇒ 合并本身成功，但后半段（切回 main / 删本地分支 /
+  `fetch --prune`）没跑 ⇒ **收尾要手工做**：
+  `git pull --ff-only` + `git fetch --prune` + 删本地分支。
+- 合并脚本清理分支时**会把 agent 的工作区（worktree）删掉**（只剩 `node_modules` 软链）⇒
+  开工前先 `ls` 一下工作区；不在就 `node scripts/agent/worktree.cjs add dev` 重建
+  （重建前先把残留软链 `rm` 掉，**用 `rm` 不要用 `rm -r`**）。
 
 ## 已完成
 
