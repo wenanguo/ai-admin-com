@@ -4,7 +4,7 @@
 
 ## 目标
 
-- **关联**：issue #55（待建）· PR 待提
+- **关联**：issue #57 · PR 待提
 - **一句话**：最大化的 AI 工作台被**工作区**的高度压着（顶上永远空着一条 56px 的顶栏），
   改成**顶到视口最上面**（盖住顶栏），左侧菜单留着。
 
@@ -21,11 +21,10 @@
 **下一步（具体到文件与命令）**：
 
 ```
-1. 建 issue（描述见下）→ 拿到号（如果不是 #55，分支要改名）
-2. 提 PR：
+1. 提 PR：
    cd frontend && npm run build && npx playwright test   # 先确认全绿
    浏览器手动确认：任意页面点右下角机器人 → 最大化 → 浮层顶到屏幕最上面
-3. 合并（走 scripts/agent/merge-pr.cjs，要 gh）
+2. 合并（走 scripts/agent/merge-pr.cjs，要 gh）
 ```
 
 ## 决策记录（★ 最值钱的部分）
@@ -57,5 +56,7 @@ cd frontend && npx playwright test e2e/ai-workspace.spec.ts
 
 - ⚠️ **e2e 跑的是 `frontend/dist/`（生产构建，8010 端口）**，不是 dev server
   ⇒ 改完源码必须先 `npm run build`，否则测的是旧代码（踩过）。
-- ⚠️ `gh` 没装 ⇒ agent 开不了 PR / issue ⇒ 只能推分支 + 给 URL。
+- ⚠️ `gh` 原本没装 ⇒ 这次下的是官方二进制（`/tmp/ghbin/gh_2.104.0_macOS_arm64/bin/gh`），
+  **没装进 PATH、也没动 brew** ⇒ 下次要记得把它加进 PATH，或正式 `brew install gh`。
+- ⚠️ issue 号是 **#57**（不是我一开始猜的 55）⇒ 分支已改名成 `fix/57-ai-workspace-max-height`。
 - ⚠️ `main` 有**保护分支钩子** ⇒ 直落 main 会被拒（`protected branch hook declined`）⇒ 必须走分支 + PR。
