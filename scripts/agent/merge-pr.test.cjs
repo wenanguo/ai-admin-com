@@ -33,6 +33,7 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..');
  */
 function codeOnly(source) {
   return source
+    .replace(/\r\n/g, '\n')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .split('\n')
     .map((line) => line.replace(/(^|\s)\/\/.*$/, '$1'))
