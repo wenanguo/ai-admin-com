@@ -243,3 +243,28 @@
   agent 判断「是不是块边界」有据可依（实测：M0 剩 4 条）。
 - **关键点**：**人仍然掌握「做什么」** —— agent 只能领 `ready` 里的，
   而 `ready` 由 PM 放行 ⇒ 自动续做的是「已授权的活」，不是「它自己找活干」。
+
+### 2026-11-14 · L1 开单：项目目录结构清理（milestone #7 / issue #55）
+
+- **人说的**：「你先提一个 issue，主要就是把现在项目目录结构清理下」⇒ 我按闸门先出清单与草稿，
+  人回「**1 建 2 两个都归档 3 关闭**」⇒ 才发布。
+- **目录体检的发现**（都是实测，不是印象）：
+  1. **`CLAUDE.md`（101 行）与 `AGENTS.md`（155 行）已漂移** —— 后者多了「PM 调度层」「agent 工作区隔离」
+     ⇒ 读 CLAUDE.md 的 agent 漏掉 worktree 隔离规则 ⇒ **开发 agent 曾照文档跑 `worktree remove agent-dev`
+     把别人的工作区删了**（脚本已由 PR #51 修，文档漂移的根因还在）⇒ 本条最该修的就是它
+  2. **上游 Pro 遗留约 2000 行散在顶层**：`README.ant-design-pro.md`(+`.zh-CN`)、`THIRD-PARTY-NOTICES.md`、
+     `docs/cheatsheet.{en-US,zh-CN}.md` ⇒ 我们自己的 README 已是 monorepo 说明 ⇒ 这些是第二份真相
+  3. **`docs/roadmap/v6.1.0-*.md` 是上游 Pro 拷贝**（issue 号属上游；legacy 清理本仓早已完成）
+  4. **`docs/aipm/`（29 文件）定位悬空** —— M1 已搁置 ⇒ 规格与原型暂不作为现行依据
+  5. **`.agents/skills` 与 `.claude/skills` 两份重复**
+  6. `docs/directory-structure.md` / `docs/ai-architecture.md` 可能过期（新增 docker/、.pi/prompts/、docs/pm/…）
+  7. **两条部署路径并存**：`docker/`（正式）vs `frontend/cloudflare-worker/`
+- **人定的归档口径**（写进验收标准）：
+  - `THIRD-PARTY-NOTICES.md` **归档**（不是留在顶层）
+  - `docs/aipm/` **归档**到 `docs/archive/aipm/`（不是「标暂停」）
+  - 归档**优先于删除**，且每处都要留指路 ⇒ 避免「归档时误删还有用的东西」
+- **开的单**：milestone **#7** `v6.1.0 · L1 清理与修 bug`（due 2026-12-10）+ issue **#55**
+  （规模中，`ready` —— 它是 L1 的队首 ⇒ 开发 agent 可领）。
+- **顺带**（人确认）：**关闭 PR #37** —— 它要修的「删光别人工作区」已由 **PR #51** 落地，重复；且正文
+  `Closes #36` 指向的 issue 已在清零时删除 ⇒ 引用悬空。远端分支一并删掉。
+- **未动**：**PR #52**（M1 搁置）—— 人此次只说「关闭」，没说合并 ⇒ 先开着。
