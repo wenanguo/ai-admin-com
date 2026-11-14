@@ -62,7 +62,7 @@ const FALLBACK_HEADER_HEIGHT = 56;
  *    以前内容区右边坐着一个 `Sider` ⇒ 内边距留在内容区上会把侧栏挤开、
  *    贴不到视口右边缘 ⇒ 才挪到这里。
  *    现在 AI 工作台是浮层（不占布局位置）⇒ 这个理由已经**不成立**了，
- *    但内边距挪过来有另一个好处：**宽版浮层正好盖住内容区**，
+ *    但内边距挪过来有另一个好处：**宽版浮层横向正好盖住内容区**，
  *    不会在浮层四周留下一圈空白（见 `contentBox` 的测量）。
  *
  * ⚠️ 值：上下 16px、左右 18px。以前是 `32px 40px` ⇒ 离菜单与顶栏太远，
@@ -241,8 +241,8 @@ export function AiWorkspaceShell({
   /**
    * 内容区（在视口里）的盒子。
    *
-   * ⚠️ 宽版浮层要**正好盖住内容区**（用户选的方案 B）：
-   *    顶栏与左侧菜单**留着**，AI 工作台浮在内容区上面。
+   * ⚠️ 宽版浮层的**横向**正好盖住内容区（左边留着菜单，右边到内容区右边）；
+   *    **纵向顶到视口最上面**（盖住 ProLayout 的顶栏）⇒ 满屏高度。
    *
    * ⚠️ 内容区的左边缘**不等于 0**（左边有 ProLayout 的菜单，且它能收起）
    *    ⇒ 这里**量**而不是写死。
@@ -329,59 +329,98 @@ export function AiWorkspaceShell({
         <>
           {/*
             ⚠️ **窄版**：贴视口右边缘、顶栏之下的 400px 浮层。
-            ⚠️ **宽版（最大化）**：盖住**内容区**的浮层（顶栏与左侧菜单留着）。
+            ⚠️ **宽版（最大化）**：**顶到视口最上面**的浮层（盖住顶栏，
+            左侧菜单留着）。横向盖住内容区，纵向从视口顶到内容区底。
 
             ⚠️ **两个版本共用同一个 `<AiWorkspace>` 组件实例**
             （只是外层盒子的样式变了）⇒ 切换时它**不卸载**
             ⇒ 里面的 `useWorkspace` 实例存活 ⇒ 会话不变、SSE 不断、流式输出不断。
           */}
           {open ? (
-            <div
-              data-testid={
-                wide ? 'ai-workspace-wide-overlay' : 'ai-workspace-panel'
-              }
-              role="dialog"
-              aria-label="AI 工作台"
-              style={
-                wide && contentBox
-                  ? {
-                      position: 'fixed',
-                      top: contentBox.top,
-                      left: contentBox.left,
-                      width: contentBox.width,
-                      height: contentBox.height,
-                      zIndex: 100,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      background: token.colorBgContainer,
-                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.18)',
-                    }
-                  : {
-                      position: 'fixed',
-                      top: headerHeight,
-                      right: 0,
-                      bottom: 0,
-                      width: narrow ? '100vw' : AI_WORKSPACE_WIDTH,
-                      zIndex: 100,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      background: token.colorBgContainer,
-                      boxShadow: '-4px 0 16px rgba(0, 0, 0, 0.12)',
-                      borderLeft: `1px solid ${token.colorBorder}`,
-                    }
-              }
-            >
-              <AiWorkspace
-                variant={wide ? 'wide' : 'narrow'}
-                onCollapse={toggle}
-                onExpandWide={() => {
-                  setWide(true);
-                }}
-                onBack={() => {
-                  setWide(false);
-                }}
-              />
-            </div>
+            <>
+              {/*
+              ⚠️ **顶栏左侧那一小块补丁**（只在宽版/最大化时）。
+
+              浮层从 `left: contentBox.left`（菜单那一列的右边）开始 ⇒ 顶栏的
+              **logo 在 x < contentBox.left**（横跨菜单列与浮层交界）⇒ 会露出半截
+              ⇒ 看着像渲染坏了。
+
+              菜单（sider）是 `position: fixed` 且**从 y = 顶栏高度才开始**
+              ⇒ 顶上那条 0..headerHeight 的横条本来就只有顶栏（logo）⇒ 把它盖上，
+              **不会碰到菜单**。
+            */}
+              {wide && contentBox && headerHeight > 0 && contentBox.left > 0 ? (
+                <div
+                  data-testid="ai-workspace-header-patch"
+                  style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: contentBox.left,
+                    height: headerHeight,
+                    zIndex: 101,
+                    background: token.colorBgContainer,
+                  }}
+                />
+              ) : null}
+              <div
+                data-testid={
+                  wide ? 'ai-workspace-wide-overlay' : 'ai-workspace-panel'
+                }
+                role="dialog"
+                aria-label="AI 工作台"
+                style={
+                  wide && contentBox
+                    ? {
+                        position: 'fixed',
+                        /*
+                        ⚠️ **顶到视口最上面**（盖住 ProLayout 的顶栏）。
+                        以前是 `top: contentBox.top` ⇒ 浮层被工作区的高度「压」着，
+                        顶上永远空着一条顶栏 ⇒ 用户看着不像「最大化」。
+                        现在：从视口顶 (0) 一直到内容区底（= 视口底）⇒ 满屏高度。
+                      */
+                        top: 0,
+                        left: contentBox.left,
+                        width: contentBox.width,
+                        height: contentBox.top + contentBox.height,
+                        /*
+                        ⚠️ **必须比顶栏高**：ProLayout 的顶栏自己也是 `z-index: 100`
+                        （`position: fixed`）⇒ 同层时谁在上面取决于 DOM 顺序，不可靠。
+                        ⇒ 浮层抬到 101，把顶栏压在下面。
+                      */
+                        zIndex: 101,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        background: token.colorBgContainer,
+                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.18)',
+                      }
+                    : {
+                        position: 'fixed',
+                        top: headerHeight,
+                        right: 0,
+                        bottom: 0,
+                        width: narrow ? '100vw' : AI_WORKSPACE_WIDTH,
+                        zIndex: 100,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        background: token.colorBgContainer,
+                        boxShadow: '-4px 0 16px rgba(0, 0, 0, 0.12)',
+                        borderLeft: `1px solid ${token.colorBorder}`,
+                      }
+                }
+              >
+                <AiWorkspace
+                  variant={wide ? 'wide' : 'narrow'}
+                  onCollapse={toggle}
+                  onExpandWide={() => {
+                    setWide(true);
+                  }}
+                  onBack={() => {
+                    setWide(false);
+                  }}
+                />
+              </div>
+            </>
           ) : null}
 
           {/*

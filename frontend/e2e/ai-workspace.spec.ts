@@ -576,7 +576,7 @@ test.describe('最大化（宽版浮层）', () => {
     expect(await snapshot()).toBe(before);
   });
 
-  test('宽版盖住内容区,顶栏与左侧菜单留着', async ({ page }) => {
+  test('宽版顶到视口最上面(盖住顶栏),左侧菜单留着', async ({ page }) => {
     await setupAiService(page);
     await setupModulePage(page, {
       menus: [{ title: '岗位管理', routePath: 'position' }],
@@ -596,18 +596,51 @@ test.describe('最大化（宽版浮层）', () => {
 
     const overlay = await wideOverlay(page).boundingBox();
     const contentBox = await content(page).boundingBox();
-    if (!overlay || !contentBox) {
+    const viewport = page.viewportSize();
+    if (!overlay || !contentBox || !viewport) {
       throw new Error('宽版浮层或主内容没有布局盒');
     }
-    // ⚠️ **正好盖住内容区**（不是整个视口）
+    // ⚠️ **顶到视口最上面**（盖住 ProLayout 的顶栏）——
+    //   用户要的是「AI 工作台占满整屏高度」，不是「只占工作区那一块」。
+    expect(overlay.y).toBeCloseTo(0, 0);
+    // 横向不变：左边还是菜单的位置，右边还是内容区的右边
     expect(overlay.x).toBeCloseTo(contentBox.x, 0);
-    expect(overlay.y).toBeCloseTo(contentBox.y, 0);
     expect(overlay.width).toBeCloseTo(contentBox.width, 0);
-    expect(overlay.height).toBeCloseTo(contentBox.height, 0);
+    // 高度 = 从视口顶到内容区底（= 视口底）⇒ 满屏
+    expect(overlay.height).toBeCloseTo(viewport.height, 0);
 
-    // 顶栏与左侧菜单**没有被盖住**（用户还要用它们）
-    await expect(page.locator('.ant-pro-layout-header')).toBeVisible();
+    // 顶栏**被盖住**了：用命中测试看那个点上最上面的是谁
+    // （不能用 toBeVisible() —— 它只看 CSS 可见性，不看有没有被压住）
+    const headerCovered = await page.evaluate(() => {
+      const el = document.elementFromPoint(
+        Math.round(window.innerWidth / 2),
+        20,
+      );
+      return el?.closest('[data-testid="ai-workspace-wide-overlay"]') !== null;
+    });
+    expect(headerCovered).toBe(true);
+
+    // ⚠️ 顶栏**左侧那一小块**（logo 所在，x < 菜单列的宽度）也要被盖住 ——
+    //   否则 logo 会露出半截，看着像渲染坏了。
+    const logoCovered = await page.evaluate(() => {
+      const el = document.elementFromPoint(30, 20);
+      return el?.closest('.ant-pro-global-header') === null;
+    });
+    expect(logoCovered).toBe(true);
+
+    // 左侧菜单**留着**（用户还要用它导航）⇒ 可见，且没被浮层压住
     await expect(page.locator('.ant-menu').first()).toBeVisible();
+    const menuHit = await page.evaluate(() => {
+      const menu = document.querySelector('.ant-menu');
+      if (!menu) return false;
+      const box = menu.getBoundingClientRect();
+      const el = document.elementFromPoint(
+        Math.round(box.x + box.width / 2),
+        Math.round(box.y + box.height / 2),
+      );
+      return menu.contains(el);
+    });
+    expect(menuHit).toBe(true);
   });
 
   test('宽窄切换不新建会话(同一个 useWorkspace 实例)', async ({ page }) => {
