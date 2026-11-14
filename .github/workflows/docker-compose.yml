@@ -1,0 +1,29 @@
+name: docker compose
+
+# compose 编排（issue #40）的 CI：
+#   真起 compose（config → up -d --build → 两个容器 healthy → 三条路由 → 端口边界）
+#   ⚠️ GitHub runner 自带 docker ⇒ 这里是真跑的。
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    name: 起 compose 验三条路由
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # 构建两个镜像（前端 + AI 服务）+ 起 compose + 跑 curl 断言
+      - run: node scripts/e2e/compose.cjs
+      - name: compose 日志（失败时留证据）
+        if: failure()
+        run: |
+          docker compose --env-file /dev/null -f docker/docker-compose.yaml -f docker/docker-compose.ci.yaml logs --tail 200 || true

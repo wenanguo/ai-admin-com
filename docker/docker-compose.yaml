@@ -1,0 +1,104 @@
+# ============================================================
+# AiAdmin 部署编排（前端 + AI 服务）
+#
+#   docker compose -f docker/docker-compose.yaml up -d
+#
+# ⚠️ **构建上下文 = 仓根**（`context: ..`）⇒ 与 #38/#39 的 Dockerfile 口径一致。
+# ⚠️ **真值放 `docker/.env`**（不入库，已被仓根 `.gitignore` 的 `**/.env` 覆盖）；
+#    `docker/.env.example` 是占位清单 ⇒ 复制成 `.env` 再填。
+#
+# ## 安全边界（重要）
+#
+#   · **公网唯一入口是 nginx 的 80**（宿主机 `${WEB_PORT:-8080}`）；
+#   · **AI 服务只绑回环**（`127.0.0.1:${AI_PORT:-3100}:3100`）⇒ 外网直连不到；
+#     compose 内网走服务名 `ai:3100`。
+#   · AiAdmin 后端**不在本编排内**（外部实例）⇒ 由 `AIADMIN_PROXY_TARGET` /
+#     `AIADMIN_BASE_URL` 指向它。
+# ============================================================
+
+name: ai-admin
+
+services:
+  # ──────────────────── 前端（nginx，唯一公网入口）────────────────────
+  web:
+    image: ai-admin-web:latest
+    build:
+      context: ..
+      dockerfile: docker/web/Dockerfile
+    ports:
+      # 容器内恒 80；宿主机端口可改（`.env` 的 WEB_PORT）
+      - "${WEB_PORT:-8080}:80"
+    environment:
+      # `/api/` 的上游（**站点根，不含 /api/v1** ⇒ nginx 不 rewrite）
+      AIADMIN_PROXY_TARGET: "${AIADMIN_PROXY_TARGET:-https://www.pmdict.cn}"
+      # `/ai-api/` 的上游（compose 内网的服务名）⇒ nginx 会把 `/ai-api` 前缀去掉
+      AI_UPSTREAM: "ai:3100"
+    depends_on:
+      ai:
+        condition: service_healthy
+    networks:
+      - aiadmin
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1.0
+
+  # ──────────────────── AI 服务（只在本机可达）────────────────────
+  ai:
+    image: ai-admin-ai:latest
+    build:
+      context: ..
+      dockerfile: backend/ai/Dockerfile
+    ports:
+      # ⚠️ **只绑回环** ⇒ 公网唯一入口是 nginx；compose 内网用 `ai:3100`
+      - "127.0.0.1:${AI_PORT:-3100}:3100"
+    environment:
+      PORT: "3100"
+      # AiAdmin 后端（AI 服务自己调它用；base 里已含 /api/v1）
+      AIADMIN_BASE_URL: "${AIADMIN_BASE_URL:-https://www.pmdict.cn/api/v1}"
+      # AiAdmin 的 MCP（工具的来源）；不配就不接 MCP（AI 仍能用，只是没那些工具）
+      AIADMIN_MCP_URL: "${AIADMIN_MCP_URL:-}"
+      # AiAdmin 的 MySQL（ai_* 元数据表与业务表同库）
+      DATABASE_URL: "${DATABASE_URL:-}"
+      # 模型 key（真值只放 docker/.env）
+      MINIMAX_CN_API_KEY: "${MINIMAX_CN_API_KEY:-}"
+      AI_MODEL: "${AI_MODEL:-minimax-cn/MiniMax-M3.1-Flash}"
+      AI_THINKING_LEVEL: "${AI_THINKING_LEVEL:-off}"
+      # 允许跨域的前端源
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}"
+    networks:
+      - aiadmin
+    healthcheck:
+      # ⚠️ `/health` **恒 200**（依赖挂了也 200，只在 status 里体现 degraded）
+      #    ⇒ 依赖没配好不会把容器判死重启。
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:'+(process.env.PORT||3100)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1.0
+
+networks:
+  aiadmin:
+    driver: bridge
