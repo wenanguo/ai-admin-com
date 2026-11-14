@@ -199,6 +199,16 @@ check('docker/.env.example 是入库的（要能提交）', fs.existsSync(path.j
 console.log('\ndocker/docker-compose.ci.yaml（验收夹具）');
 const ci = read('docker/docker-compose.ci.yaml');
 containsAll(ci, ['aiadmin-stub:', 'AIADMIN_PROXY_TARGET: "http://aiadmin-stub:80"'], '有 AiAdmin 桩并把 web 上游指过去');
+// ⚠️ compose 会做变量插值（$VAR / ${VAR} 都插）⇒ 桩里的 nginx 变量必须写成 $$request_uri
+const ciCode = ci
+	.split(/\r?\n/)
+	.filter((l) => !l.trim().startsWith('#'))
+	.join('\n');
+check(
+	'桩里的 nginx 变量用 $$ 转义（否则被 compose 插成空串）',
+	ciCode.includes('$$request_uri') && !/(^|[^$])\$request_uri/.test(ciCode),
+	'没看到 $$request_uri',
+);
 
 // ───────────────────────────── 结果 ─────────────────────────────
 console.log('');

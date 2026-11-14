@@ -12,6 +12,10 @@
 #
 #   真实的 AiAdmin 是个 FastAPI 服务（另一个仓），CI 里跑不起来 ⇒ 用桩替代。
 #   ⚠️ 桩**只回显路径**，不做任何业务 ⇒ 只能验「路由口径」，不能验业务。
+#
+# ⚠️ **为什么是 `$$request_uri`**：docker compose 会做变量插值（`$VAR` 与 `${VAR}` 都插值）
+#    ⇒ 写 `$request_uri` 会被 compose 插成空串 ⇒ 桩永远回显空。
+#    ⇒ compose 里写 `$$` 转义（`$$` ⇒ 容器里看到 `$`）。
 # ============================================================
 
 services:
@@ -22,7 +26,7 @@ services:
       - sh
       - -c
       - |
-        printf 'server { listen 80; location / { return 200 "$request_uri"; } }\n' > /etc/nginx/conf.d/default.conf
+        printf 'server { listen 80; location / { return 200 "$$request_uri"; } }\n' > /etc/nginx/conf.d/default.conf
         nginx -g "daemon off;"
     networks:
       - aiadmin
