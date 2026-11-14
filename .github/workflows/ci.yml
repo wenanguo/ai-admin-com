@@ -11,6 +11,23 @@ defaults:
     working-directory: frontend
 
 jobs:
+  # agent 自己的脚本（scripts/agent/**）—— 零依赖，node:test 直接跑。
+  # ⚠️ 这些脚本**平时没人跑** ⇒ 它们的 bug（例如 execFileSync 在 inherit 下返回 null
+  #    ⇒ 合并脚本在“合并成功后”崩）要等到**真的合并一次**才暴露 ⇒ 必须有 CI 兵。
+  agent-scripts:
+    name: agent 脚本测试
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - run: node --test scripts/agent/
+
   lint:
     runs-on: ubuntu-latest
     steps:
