@@ -20,6 +20,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const { run, tryRun, branchCheckedOutInWorktree } = require('./lib/exec.cjs');
@@ -69,9 +70,20 @@ test('tryRun：命令失败 ⇒ 错误信息里有 stderr（不是空）', () =>
   );
 });
 
-test('branchCheckedOutInWorktree：当前工作区的分支 ⇒ true', () => {
-  const current = run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: REPO_ROOT });
-  assert.strictEqual(branchCheckedOutInWorktree(current, REPO_ROOT), true);
+test('branchCheckedOutInWorktree：被工作区签出的分支 ⇒ true', () => {
+  // ⚠️ **不能假设「当前分支被签出」**：CI 的 pull_request 事件是**游离 HEAD**（合并提交）
+  //    ⇒ `git worktree list` 里那条没有 branch 行 ⇒ 断言会假失败。
+  //    ⇒ 自己造一个临时工作区来验。
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-wt-'));
+  const branch = 'tmp/agent-worktree-probe';
+  try {
+    run('git', ['worktree', 'add', '-b', branch, tmp, 'HEAD'], { cwd: REPO_ROOT });
+    assert.strictEqual(branchCheckedOutInWorktree(branch, REPO_ROOT), true);
+  } finally {
+    tryRun('git', ['worktree', 'remove', '--force', tmp], { cwd: REPO_ROOT });
+    tryRun('git', ['branch', '-D', branch], { cwd: REPO_ROOT });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test('branchCheckedOutInWorktree：不存在的分支 ⇒ false', () => {
