@@ -210,6 +210,55 @@ check(
 	'没看到 $$request_uri',
 );
 
+// ───────────────────────────── docker/README.md（部署手册）─────────────────────────────
+console.log('\ndocker/README.md（部署手册）');
+const manual = read('docker/README.md');
+containsAll(
+	manual,
+	[
+		// 目录结构
+		'## 2. 目录结构',
+		// 环境变量清单（每个变量干什么 + 示例 + 是不是凭据）
+		'## 3. 环境变量清单',
+		'WEB_PORT',
+		'AI_PORT',
+		'AIADMIN_PROXY_TARGET',
+		'AIADMIN_BASE_URL',
+		'AIADMIN_MCP_URL',
+		'DATABASE_URL',
+		'MINIMAX_CN_API_KEY',
+		'AI_MODEL',
+		'AI_THINKING_LEVEL',
+		'ALLOWED_ORIGINS',
+		// 启动步骤 + 访问地址
+		'## 4. 启动步骤',
+		'cp docker/.env.example docker/.env',
+		'## 5. 常见故障与排查',
+		// 三层分工
+		'前端静态站',
+		'AI 服务',
+		'AiAdmin 后端',
+		// 凭据处理
+		'凭据从哪来',
+		'.ai/auth.json',
+		// 上线前置
+		'上线前置',
+		'migrate deploy',
+		// 已知坑（关键词）
+		'0.0.0.0',
+		'proxy_buffering',
+		'cwd 相对',
+		'/ai-api/',
+		'ENVIRONMENT',
+	],
+	'目录结构 / 环境变量清单 / 启动步骤 / 访问地址 / 常见故障 / 三层分工 / 凭据处理 / 上线前置 / 已知坑',
+);
+// ⚠️ 部署手册里不许出现真值（模型 key / 真口令）
+const manualSecrets = manual
+	.split(/\r?\n/)
+	.filter((l) => /^\s*(MINIMAX_CN_API_KEY|DATABASE_URL|AIADMIN_MCP_URL)\s*=/.test(l) && !/=\s*$/.test(l) && !/USER:PASSWORD/.test(l));
+check('部署手册里没有真值形状的凭据', manualSecrets.length === 0, manualSecrets.join(' | '));
+
 // ───────────────────────────── 结果 ─────────────────────────────
 console.log('');
 if (failures.length > 0) {

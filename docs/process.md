@@ -314,3 +314,21 @@ node scripts/agent/worktree.cjs remove pm
 
 ⇒ 现在：删本地分支时**容忍「已不存在」**，并在最后补一次 `git fetch --prune`
 （否则 `git branch -a` 里还挂着 `origin/xxx`，看着像分支还在）。
+
+---
+
+## 11. 部署（`docker/`）
+
+**部署手册在 [`docker/README.md`](../docker/README.md)** —— 换一台机器照着它就能把整套跑起来。
+
+| 想干什么 | 用什么 |
+| -------- | ------ |
+| 只想知道「要配哪些变量 / 出错了怎么办」 | 读 [`docker/README.md`](../docker/README.md) |
+| 想真的部署 | `bash docker/deploy.sh --yes`（默认是**只检查**模式） |
+| 想验「这套真能跑起来」 | `node scripts/e2e/deploy.cjs`（独立 compose project ⇒ 不碰本地环境） |
+
+⚠️ 三条硬规矩：
+
+1. **真值只进 `docker/.env`**（不入库）⇒ 模型 key / 数据库口令不进镜像、不进日志。
+2. **AI 服务端口只绑 `127.0.0.1`** ⇒ 公网唯一入口是 nginx 的 80。
+3. **数据库迁移不在部署范围** ⇒ `ai_*` 那几张表必须**已经存在**（只允许 `migrate deploy`）。
