@@ -139,6 +139,29 @@ node scripts/e2e/compose.cjs          # 真起 compose 验收（需要 docker；
 
 CI（`.github/workflows/docker-compose.yml`）会在 PR 上跑这两条（runner 自带 docker ⇒ 真跑）。
 
+---
+
+# 部署脚本（issue #41）
+
+## 一条命令
+
+```bash
+bash docker/deploy.sh          # **默认只检查**（不改任何东西）
+bash docker/deploy.sh --check  # 同上（显式写法）
+bash docker/deploy.sh --yes    # 真执行
+```
+
+`--yes` 会做：**拉最新代码 → 构建镜像（层缓存，没变化不重建）→ `compose up -d` → 等两个容器 healthy → 写状态记录 + 打印摘要**。
+
+- **幂等**：再跑一次不报错，也不重建没变化的东西。
+- **失败可回退**：任何一步失败都会打印**怎么回退**（`git reset --hard <上一个 commit>` + `docker compose up -d --build`）。
+- **不把凭据写进日志**：只打印环境变量的**名字**，不打印值。
+- **状态记录**：`docker/.last-deploy`（记录上次成功部署的 commit ⇒ 回退提示用；**已 gitignore**）。
+
+Windows（只有 Docker Desktop 的机器）：用 `docker\deploy.bat`（功能是 bash 版的简化版；**推荐在 Git Bash / WSL 里用 `deploy.sh`**）。
+
+⚠️ 部署**不需要**宿主机装 node（构建在镜像里做）；但本机跑 `scripts/e2e/**` 的验收脚本需要 node ≥ 22。
+
 ## AI 服务镜像（issue #39）
 
 ⚠️ **AI 服务的镜像不在本目录**：它是 `backend/ai/Dockerfile`（多阶段：node 22 ⇒ tsc ⇒

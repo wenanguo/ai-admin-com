@@ -10,6 +10,7 @@
 | `web-container.cjs` | **真起容器**验收前端镜像（构建 → `nginx -t` → 首页 → SPA fallback → 缓存头 → `/healthz`）⇒ 需要 docker |
 | `compose.static.cjs` | **静态断言** compose 编排（服务/端口/网络/限制/日志 + 三条路由口径 + `.env.example`）⇒ **不需要 docker** |
 | `compose.cjs` | **真起 compose** 验收（`config` → `up -d --build` → 两个容器 healthy → 三条路由 + 端口边界）⇒ 需要 docker |
+| `deploy-script.cjs` | 验收 `docker/deploy.sh`（默认只检查、不改东西；有回退提示；不打印凭据）⇒ 只需 **bash** |
 | `ai-container.static.cjs` | **静态断言**AI 服务镜像的配置（Dockerfile / .dockerignore / 健康检查路由 / SSE 头）⇒ **不需要 docker** |
 | `ai-container.cjs` | **真起容器**验收 AI 服务镜像（构建 → 镜像里没凭据/没 devDeps → 技能就位 → `/health` 200 → 业务路由挂载）⇒ 需要 docker |
 
@@ -97,6 +98,16 @@ CI（`.github/workflows/docker-compose.yml`）在 PR 上跑这两条 —— runn
 | ---- | ---- | ---- |
 | `WEB_PORT` / `AI_PORT` | `8080` / `3100` | 验收占用的宿主机端口 |
 | `SKIP_BUILD` | — | `=1` 时跳过构建（用已有镜像） |
+
+## 部署脚本验收（issue #41）
+
+```bash
+node scripts/e2e/deploy-script.cjs     # 或：npm run e2e:deploy
+```
+
+⚠️ 只需要 **bash**（Windows 用 Git Bash / WSL；CI 是 ubuntu）⇒ **不需要 docker**。
+它会真的跑一次 `bash docker/deploy.sh`（**默认只检查模式**）并断言：**工作区没变**、**没写状态文件**、
+缺依赖时**明确报缺什么**、`--help`/未知参数的退出码对。
 
 ## 环境变量
 
