@@ -71,11 +71,14 @@ function run(cmd, args, options = {}) {
   const isWindows = process.platform === 'win32';
   const finalCmd = isWindows && cmd === 'npx' ? 'cmd.exe' : cmd;
   const finalArgs = isWindows && cmd === 'npx' ? ['/c', 'npx', ...args] : args;
-  return execFileSync(finalCmd, finalArgs, {
+  const out = execFileSync(finalCmd, finalArgs, {
     encoding: 'utf8',
     cwd: options.cwd ?? repoRoot,
     stdio: options.inherit ? 'inherit' : 'pipe',
-  }).trim();
+  });
+  // ⚠️ **inherit 模式下 execFileSync 返回 null** ⇒ 不能无条件 .trim()
+  //    （同一个坑在 merge-pr.cjs 上连炸三棒 ⇒ 见 scripts/agent/lib/exec.cjs）
+  return (out ?? '').trim();
 }
 
 /** 跑一条命令（失败就抛出，错误信息带上）。 */
