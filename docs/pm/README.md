@@ -97,6 +97,40 @@ tail -40 docs/pm/log.md
 
 ---
 
+## 2.6 开单纪律：一条 issue 算「已开单」必须同时满足三条件
+
+> **2026-11-15 立**。来历：#57（最大化工作台）**既没 `agent-task` 标签，也没挂 milestone**
+> ⇒ 开发 agent 的领活脚本只认 `ready` ⇒ 根本看不到它；看板（各块完成度）也对不上。
+
+| # | 条件 | 缺了会怎样 |
+| - | ---- | ---------- |
+| ① | 有 **`agent-task`** 标签 | 开发 agent 的队列里看不见 |
+| ② | **挂了 milestone** | 看板对不上，也无处排队 |
+| ③ | **`docs/pm/log.md` 里有它的 #号** | 下次接手的 PM 不知道这事怎么定的 |
+
+**巡检器**（只读，不改任何 GitHub 对象、不改任何文件）：
+
+```bash
+node scripts/pm/check-queue.cjs          # 报告不合规的 issue + 空壳 milestone
+node scripts/pm/check-queue.cjs --json   # 机器可读
+```
+
+⇒ 开完单跑一遍；有输出就说明有 issue 没按规矩开。
+
+### 同时只有一个 PM 会话在开单
+
+**接班前先读 `docs/pm/log.md` 的最后 40 行**（那里记着谁开过什么、为什么），
+再查 GitHub 的 open issue / milestone ⇒ 避免两个 PM 各开各的、撞车或重复。
+万一真出现了第二个 PM 会话：**以 `log.md` 为准**，它没记的就不算数。
+
+### milestone 的收尾
+
+- 一条 issue 都没有的 milestone = **假看板** ⇒ 删掉，或装上活；
+- 全部 issue 都关了的 milestone ⇒ **关掉它**（把 state 改成 closed），归到「已完成」，
+  别让它一直挂在「open」列表里。
+
+---
+
 ## 4. 排期结构（我建 GitHub 时的规矩）
 
 - **一条 milestone = 一个版本下的一个能力块**：`v0.9 · M1 AIPM 命令层`。

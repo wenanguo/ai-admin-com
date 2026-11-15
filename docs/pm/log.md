@@ -310,3 +310,23 @@
     （`expect(topBefore).toBeGreaterThan(0)`）必须同步改，否则必红。
 - **不做的**：不动最大化形态（#58 已做）、不动路由页 `/ai/workspace`、
   **不做「可拖动」**（后续单独的事，本条只把地基打好）。
+
+### 2026-11-15 · 立「开单纪律」三条件 + 巡检器；合并 PR #52（M1 搁置）
+
+- **人说的**：「可以，按你的来」⇒ 采纳我的建议：**同时只有一个 PM 会话开单**，
+  并补一条兜底规则（谁开单谁必须挂标签 + 挂 milestone + 记进 log）。
+- **为什么要有兜底**：#57（最大化工作台）**既没 `agent-task` 标签也没挂 milestone**
+  ⇒ 开发 agent 的领活脚本（只认 `ready`）**根本看不到它**；看板也对不上。
+  ⇒ 立**三条件**：① `agent-task` 标签 ② 挂 milestone ③ `docs/pm/log.md` 里有它的 #号。
+- **巡检器**（新增 `scripts/pm/check-queue.cjs`，**只读**）：
+  报告「不合规的 issue」与「空壳 milestone（从来没装过 issue ⇒ 假看板）」，
+  并提示「全部做完、该关掉的 milestone」。实测当前：2 条 open issue 全部合规 ✅。
+  ⚠️ 第一版把「已全部做完的 milestone」误报成空壳 ⇒ 已修（区分 `closed=0` 空壳 vs `closed>0` 已完成）。
+- **milestone 收尾规矩**：一条 issue 都没有 ⇒ 删；全关了 ⇒ **关掉它**（state=closed），归到「已完成」。
+  ⚠️ 当前 **milestone #6（M0 部署）已 5/5 完成但还开着** ⇒ 待人点头后关掉。
+- **顺带合并 PR #52**（人上个会话定的「M1 搁置」）：过程曲折 ——
+  ① `body-check` 缺「关联 issue：无」那行 ⇒ 补了；
+  ② **PR 与 main 冲突**（两边都改了 `docs/pm/{roadmap,log}.md`）⇒ 冲突都是「往末尾追加」型 ⇒ **两边都保留**；
+  ③ `pull_request` 事件没被触发（只跑了 `push`）⇒ 用「关闭再重开」强制触发；
+  ④ 远端还留着一次误提交 ⇒ `reset --soft origin/main` 重整历史 + `--force-with-lease` 推送。
+  ⚠️ **教训**：Windows 检出是 CRLF ⇒ 冲突标记后面跟的是 `\r\n` ⇒ 按 `\n` 匹配的脚本会「一个都没匹配到」。
