@@ -38,6 +38,18 @@ argument-hint: "[今天想聊的方向]"
 3. **等用户拍板**。
 4. 拍板后才 `gh issue create` / `gh api .../milestones`，正文用草稿原文。
 5. 发布后回写 `docs/pm/roadmap.md`（issue 编号）与 `docs/pm/log.md`。
+6. **跑巡检**：`node scripts/pm/check-queue.cjs` ⇒ 确认新 issue 满足「已开单」三条件。
+
+## ⛔ 一条 issue 算「已开单」必须同时满足三条件
+
+1. 有 **`agent-task`** 标签（否则开发 agent 的队列看不见它）
+2. **挂了 milestone**（否则看板对不上）
+3. **`docs/pm/log.md` 里有它的 #号**（否则下个 PM 不知道怎么定的）
+
+⇒ 开完单跑 `node scripts/pm/check-queue.cjs` 自查。
+
+**同时只有一个 PM 会话在开单**：接班前先读 `docs/pm/log.md` 最后 40 行 + 查 GitHub 现状；
+万一出现第二个 PM 会话，**以 log.md 为准**，它没记的就不算数。
 
 **撤销已建的东西**（万一又越权了）：立刻给相关 issue 撤掉 `ready`（冻结领活）→ 关闭 issue 并
 评论说明「未确认已撤回」→ 删掉 milestone → 正文搬进 `docs/pm/drafts/` → 记进 `docs/pm/log.md`。
