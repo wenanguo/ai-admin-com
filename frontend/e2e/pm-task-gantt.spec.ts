@@ -394,8 +394,8 @@ test.describe('任务甘特页', () => {
     });
 
     const alerts = mainContent(page).locator('.ant-alert-info');
-    // 两条提示各自独立
-    await expect(alerts).toHaveCount(2);
+    // ⚠️ **只剩一条 Alert**（分页截断那条）—— 未排期那条已降级成一行灰字（issue #66）
+    await expect(alerts).toHaveCount(1);
 
     // 截断提示:M = 真正画出来的条数(3),**不是**取回的条数(4)
     const truncated = alerts.filter({ hasText: '共 5 条' });
@@ -403,10 +403,10 @@ test.describe('任务甘特页', () => {
     await expect(truncated).toContainText('已显示前 3 条');
     await expect(truncated).not.toContainText('已显示前 4 条');
 
-    // 排除提示:N = 取到了但没显示的条数
-    const excluded = alerts.filter({ hasText: '没有计划起止日期' });
-    await expect(excluded).toHaveCount(1);
-    await expect(excluded).toContainText('1 个任务没有计划起止日期');
+    // 未排期那条：**一行灰字**（不再是 Alert），数字仍然是取到了但没显示的条数
+    const hint = mainContent(page).locator('[data-role="gantt-unscheduled-hint"]');
+    await expect(hint).toHaveCount(1);
+    await expect(hint).toContainText('1 个任务未排期');
 
     // 真的只画了 3 条任务条(3 任务 + 2 分组 = 5 行)
     await expect(page.locator('.gantt_row')).toHaveCount(5);
@@ -426,11 +426,19 @@ test.describe('任务甘特页', () => {
       taskList: listEnvelope([...datedTasks, noDate], 4),
     });
 
-    const alert = mainContent(page).locator('.ant-alert-info');
-    await expect(alert).toHaveCount(1);
-    await expect(alert).toContainText('1 个任务没有计划起止日期');
-    // 举例列出被排除的标题
-    await expect(alert).toContainText('还没排期的任务');
+    // ⚠️ **不再是占一整行的 Alert**（issue #66）⇒ 主内容区里没有 info 级 Alert
+    await expect(mainContent(page).locator('.ant-alert-info')).toHaveCount(0);
+
+    // 而是一行灰字（在工具栏行里）
+    const hint = mainContent(page).locator('[data-role="gantt-unscheduled-hint"]');
+    await expect(hint).toHaveCount(1);
+    await expect(hint).toContainText('1 个任务未排期');
+
+    // 点开 ⇒ 能看到**是哪些任务**
+    await hint.click();
+    const list = page.locator('[data-role="gantt-unscheduled-list"]');
+    await expect(list).toBeVisible();
+    await expect(list).toContainText('还没排期的任务');
 
     // 它确实没进甘特(行数还是 5)
     await expect(page.locator('.gantt_row')).toHaveCount(5);

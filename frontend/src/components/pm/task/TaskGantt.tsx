@@ -1,6 +1,6 @@
 import { PlusOutlined } from '@ant-design/icons';
 import { useAccess, useModel } from '@umijs/max';
-import { Alert, App, Button, Empty, Segmented, Select, Spin } from 'antd';
+import { Alert, App, Button, Empty, Popover, Segmented, Select, Spin, Typography } from 'antd';
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCrudTable } from '@/components/CrudTable';
@@ -335,18 +335,6 @@ export function TaskGantt({ projectId }: TaskGanttProps): React.ReactElement {
           description={`甘特一次只拉一页(后端 page_size 上限 100),本次取回 ${fetched} 条、其中 ${mapping.taskCount} 条画进了甘特;其余任务请到「任务管理」页查看。`}
         />
       ) : null}
-      {mapping.excludedCount > 0 ? (
-        <Alert
-          type="info"
-          showIcon
-          title={`${mapping.excludedCount} 个任务没有计划起止日期,未显示`}
-          description={
-            mapping.excludedTitles.length > 0
-              ? `例如:${mapping.excludedTitles.join('、')}。给任务补上计划开始与截止日期后就会出现在甘特上。`
-              : '给任务补上计划开始与截止日期后就会出现在甘特上。'
-          }
-        />
-      ) : null}
       {narrow ? (
         <Alert
           type="warning"
@@ -392,6 +380,43 @@ export function TaskGantt({ projectId }: TaskGanttProps): React.ReactElement {
         >
           适应
         </Button>
+        {/*
+          ⚠️ **「未排期」的提示降级成一行灰字**（issue #66）：
+          「任务没排计划日期」是**常态**（大多数任务本来就没排期）⇒
+          以前那条占一整行的 `Alert` 会长期挂着、把甘特图往下挤，
+          而且「未显示」这个措辞像在报故障。
+          ⇒ 改成工具栏行里的一行小字，**点开**能看到**全部**是哪些任务。
+        */}
+        {mapping.excludedCount > 0 ? (
+          <Popover
+            trigger="click"
+            title={`${mapping.excludedCount} 个任务没有计划起止日期，未在甘特中显示`}
+            content={
+              <div
+                data-role="gantt-unscheduled-list"
+                style={{ maxHeight: 240, overflowY: 'auto' }}
+              >
+                {mapping.excludedTitles.length > 0 ? (
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    {mapping.excludedTitles.map((title) => (
+                      <li key={title}>{title}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <span>给任务补上计划开始与截止日期后就会出现在甘特上。</span>
+                )}
+              </div>
+            }
+          >
+            <Typography.Text
+              type="secondary"
+              style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
+              data-role="gantt-unscheduled-hint"
+            >
+              {mapping.excludedCount} 个任务未排期，未在甘特中显示 ▸
+            </Typography.Text>
+          </Popover>
+        ) : null}
         {/* 新增任务:与列表页的工具栏同一个位置(操作在最后) */}
         <Button
           type="primary"
