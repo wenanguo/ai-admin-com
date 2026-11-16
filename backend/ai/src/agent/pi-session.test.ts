@@ -156,11 +156,13 @@ describe("pi 会话构造", () => {
 		const loaderOptions = loader.options as Record<string, unknown>;
 		expect(loaderOptions["noExtensions"]).toBe(true);
 		expect(loaderOptions["noContextFiles"]).toBe(true);
-		// ⚠️ **技能要开着**（noSkills: false）—— 让 pi 自己去发现 `.pi/skills/`，
-		//    我们只读它发现的结果（不自己再扫一遍目录）。
-		//    注意：这**不等于**放开 pi 的 read/bash 工具（那仍然关着），
-		//    读技能文件靠我们自己的 `load_skill`（只读技能目录）。
-		expect(loaderOptions["noSkills"]).toBe(false);
+		// ⚠️ **只加载配置里列的技能目录**（`noSkills: true` ⇒ pi 默认的项目目录
+		//    与用户家目录**一律不加载** ⇒ 不跨智能体串味、也不会被同名抢走）。
+		//    智能体配置里的目录走 `additionalSkillPaths`。
+		expect(loaderOptions["noSkills"]).toBe(true);
+		expect(loaderOptions["additionalSkillPaths"]).toEqual([
+			join(process.cwd(), ".pi", "skills"),
+		]);
 	});
 
 	it("把技能段拼进系统提示词", async () => {
