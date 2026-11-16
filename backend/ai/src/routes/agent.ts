@@ -16,10 +16,8 @@
  * ⚠️ **注册顺序敏感**：具体的路径必须先于 `/:conversationId/*`。
  */
 
-import { join } from "node:path";
 import { Router } from "express";
 import { agentRuntime } from "../agent/runtime.ts";
-import { listSkillSummaries } from "../agent/skill-catalog.ts";
 import { pendingWaiters } from "../agent/pending-waiters.ts";
 import { readJsonBody } from "../http/body.ts";
 import { errorBody, okBody } from "../http/respond.ts";
@@ -32,9 +30,17 @@ const SUPPORTED_COMMAND_TYPES = ["prompt", "prompt-followup", "prompt-steer"] as
 /** 命令类型。 */
 type CommandType = (typeof SUPPORTED_COMMAND_TYPES)[number];
 
-/** 技能目录（**cwd 相对** —— 与 pi-session.ts 的发现逻辑一致）。 */
-function skillsDir(): string {
-	return join(process.cwd(), ".pi", "skills");
+/**
+ * 从 query 里取 `agentId`（**没有或不是字符串 ⇒ undefined** ⇒ 用默认智能体）。
+ *
+ * @param req 请求。
+ */
+function agentIdOfQuery(req: { query: Record<string, unknown> }): string | undefined {
+	const raw = req.query["agentId"];
+	if (typeof raw !== "string" || raw.trim().length === 0) {
+		return undefined;
+	}
+	return raw.trim();
 }
 
 /** 会话与命令的路由。 */
@@ -43,10 +49,12 @@ export const agentRouter = Router();
 /* ------------------------------------------------------------ 技能 */
 
 /**
- * 可用技能清单。
+ * 可用技能清单（**按智能体**）。
  *
  * ⚠️ **要 token**：这是 AI 能力的一部分 ⇒ 只给登录用户看。
  * ⚠️ **读真文件**（不缓存）⇒ 改完 SKILL.md 重启就能看到新说明。
+ * ⚠️ **按智能体返回**：`?agentId=xxx` ⇒ 那个智能体的技能；不给 ⇒ 默认智能体。
+ *    ⇒ 智能体 A 看不到智能体 B 的技能。
  */
 agentRouter.get("/skills", async (req, res) => {
 	const token = requireToken(req, res);
@@ -57,7 +65,7 @@ agentRouter.get("/skills", async (req, res) => {
 		// ⚠️ **身份要验**（与 /conversations 等端点一致）：token 认不出用户 ⇒ 401。
 		//    技能清单本身不敏感，但口径要统一（别开一个「随便传个 token 就能用」的口子）。
 		await agentRuntime.resolveCurrentUser(token);
-		res.json(okBody(listSkillSummaries(skillsDir())));
+		res.json(okBody(agentRuntime.listAgentSkills(agentIdOfQuery(req))));
 	} catch (error) {
 		sendError(res, error);
 	}

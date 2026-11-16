@@ -9,6 +9,9 @@
  * 4. 不认识的智能体 ⇒ **直接报错**（不建一个“不知道用什么提示词”的会话）。
  */
 
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "../db.ts";
 import type { AgentConfig } from "../core/config/types.ts";
@@ -249,6 +252,53 @@ describe("运行时 · 按智能体配置装配会话", () => {
 
 		const conversation = await runtime.createConversation("2", "会话");
 		expect(agentIdOfConversation(conversation.conversationId)).toBe("pm");
+	});
+});
+
+describe("运行时 · 技能按智能体", () => {
+	/** 造一个技能目录（放一个技能）。 */
+	function makeSkillsDir(name: string): string {
+		const dir = mkdtempSync(join(tmpdir(), "runtime-agent-skills-"));
+		mkdirSync(join(dir, name), { recursive: true });
+		writeFileSync(
+			join(dir, name, "SKILL.md"),
+			`---\nname: ${name}\ndescription: ${name} 的说明。\n---\n`,
+			"utf8",
+		);
+		return dir;
+	}
+
+	it("各智能体只看到**自己**的技能（没配就是没有）", () => {
+		const pmSkills = makeSkillsDir("create-task");
+		const providers: AgentProvider[] = [
+			{
+				defaultAgentId: "pm",
+				get: (agentId) =>
+					agentId === "pm"
+						? { ...pmConfig(), skills: [pmSkills] }
+						: agentId === "qa"
+							? qaConfig()
+							: undefined,
+				list: () => [pmConfig(), qaConfig()],
+			},
+		];
+		const { store } = fakeStore();
+		const runtime = new AgentRuntime({
+			store,
+			agents: providers[0]!,
+			audit: { write: async () => {} },
+		});
+
+		// ① PM 助手看得到自己的技能
+		expect(runtime.listAgentSkills("pm").map((s) => s.name)).toEqual([
+			"create-task",
+		]);
+		// ② 通用问答没配技能 ⇒ 空列表（**不是异常**）
+		expect(runtime.listAgentSkills("qa")).toEqual([]);
+		// ③ 不给智能体 ⇒ 默认智能体（PM 助手）
+		expect(runtime.listAgentSkills().map((s) => s.name)).toEqual(["create-task"]);
+		// ④ 不认识的智能体 ⇒ 报错
+		expect(() => runtime.listAgentSkills("nope")).toThrowError(/不存在/);
 	});
 });
 

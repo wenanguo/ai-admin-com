@@ -1,18 +1,27 @@
 /**
- * 技能清单 —— 「现在有哪些技能可用」。
+ * 技能清单 —— 「这个智能体现在有哪些技能可用」。
  *
  * ## 为什么要有它
  *
- * 技能（`backend/ai/.pi/skills` 下的 SKILL.md）是**业务同学自己写的**
- * ⇒ 写完要能看见「我写的技能生效了」⇒ 界面要能列出技能清单。
+ * 技能（`SKILL.md`）是**业务同学自己写的** ⇒ 写完要能看见「我写的技能生效了」
+ * ⇒ 界面要能列出技能清单。
+ *
+ * ## 技能是**按智能体**的
+ *
+ * 每个智能体在配置里列自己的技能目录 ⇒ 清单**按智能体**返回
+ * ⇒ 智能体 A 看不到智能体 B 的技能（列表里不出现、模型也拿不到）。
  *
  * ## 读的是真文件
  *
  * ⚠️ **不缓存**：每次请求都重新读 ⇒ 改完 `SKILL.md` 重启服务就能看到新说明
  * （验收标准就是这条）。
+ *
+ * ⚠️ **仍然走 pi 的 loader**（`loadSkills`）⇒ 不自己写技能扫描器
+ * ⇒ 多目录的合并、去重、诊断都跟 pi 的会话里一致。
  */
 
-import { loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
+import { join } from "node:path";
+import { loadSkills } from "@earendil-works/pi-coding-agent";
 
 /** 一个技能的摘要（给界面看的那两项）。 */
 export interface SkillSummary {
@@ -23,13 +32,23 @@ export interface SkillSummary {
 }
 
 /**
- * 列出技能目录下的技能。
+ * 列出若干技能目录里的技能。
  *
- * @param skillsDir 技能目录（通常是 `<cwd>/.pi/skills`）。
+ * @param skillDirs 技能目录（**绝对路径**；来自智能体配置的 `skills`）。
  * @returns 目录不存在或没有技能 ⇒ 空列表（**不许炸**：技能是可选的）。
  */
-export function listSkillSummaries(skillsDir: string): SkillSummary[] {
-	const result = loadSkillsFromDir({ dir: skillsDir, source: "project" });
+export function listSkillSummaries(skillDirs: readonly string[]): SkillSummary[] {
+	if (skillDirs.length === 0) {
+		return [];
+	}
+	// ⚠️ **includeDefaults: false** ⇒ 只认**配置里列的目录**
+	//    （不扫 `<cwd>/.pi/skills`、也不扫用户家目录 ⇒ 不跨智能体串味）。
+	const result = loadSkills({
+		cwd: process.cwd(),
+		agentDir: join(process.cwd(), ".ai", "agent"),
+		skillPaths: [...skillDirs],
+		includeDefaults: false,
+	});
 	return result.skills.map((skill) => ({
 		name: skill.name,
 		description: skill.description,

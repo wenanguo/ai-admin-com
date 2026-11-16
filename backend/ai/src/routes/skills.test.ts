@@ -1,26 +1,43 @@
 /**
- * `GET /api/agent/skills` —— 可用技能清单。
+ * `GET /api/agent/skills` —— **按智能体**返回的技能清单。
  *
- * ⚠️ 这个端点**读真目录**（不 mock 技能加载）⇒ 顺带证明「技能是文件、不是配置」。
+ * ⚠️ 这个端点**读真目录**（不 mock 装载器）⇒ 顺带证明「技能是文件、不是配置里的一个数组」。
  */
 
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-vi.mock("../agent/runtime", () => ({
-	AgentError: class AgentError extends Error {
+vi.mock("../agent/runtime.ts", async () => {
+	// ⚠️ **真装载器 + 真目录**（只有身份解析是假的）
+	const { loadAgentConfigs } = await import("../core/config/loader.ts");
+	const { listSkillSummaries } = await import("../agent/skill-catalog.ts");
+	class AgentError extends Error {
 		readonly kind: string;
 		constructor(kind: string, message: string) {
 			super(message);
 			this.name = "AgentError";
 			this.kind = kind;
 		}
-	},
-	agentRuntime: {
-		resolveCurrentUser: async () => ({ id: 2, name: "测试用户" }),
-	},
-}));
+	}
+	return {
+		AgentError,
+		agentRuntime: {
+			resolveCurrentUser: async () => ({ id: 2, name: "测试用户" }),
+			listAgentSkills: (agentId?: string): Array<{ name: string; description: string }> => {
+				const configs = loadAgentConfigs("agents");
+				const agent =
+					agentId === undefined
+						? configs.find((config) => config.id === "pm")
+						: configs.find((config) => config.id === agentId);
+				if (agent === undefined) {
+					throw new AgentError("NOT_FOUND", `智能体 ${agentId} 不存在`);
+				}
+				return listSkillSummaries(agent.skills);
+			},
+		},
+	};
+});
 
 import { createApp } from "../server.ts";
 
@@ -61,7 +78,7 @@ describe("GET /api/agent/skills", () => {
 		}
 	});
 
-	it("读的是**真目录** ⇒ 仓里的样板技能能被列出来", async () => {
+	it("读的是**真目录** ⇒ 默认智能体（PM 助手）的技能能被列出来", async () => {
 		const response = await fetch(`${base}/api/agent/skills`, {
 			headers: { authorization: "Bearer test-token" },
 		});
@@ -70,5 +87,21 @@ describe("GET /api/agent/skills", () => {
 		};
 		const names = (payload.data ?? []).map((skill) => skill.name);
 		expect(names).toContain("create-task");
+	});
+
+	it("**按智能体**：通用问答没配技能 ⇒ 空列表（不是异常）", async () => {
+		const response = await fetch(`${base}/api/agent/skills?agentId=qa`, {
+			headers: { authorization: "Bearer test-token" },
+		});
+		expect(response.status).toBe(200);
+		const payload = (await response.json()) as { data?: unknown[] };
+		expect(payload.data).toEqual([]);
+	});
+
+	it("智能体不存在 ⇒ 404", async () => {
+		const response = await fetch(`${base}/api/agent/skills?agentId=nope`, {
+			headers: { authorization: "Bearer test-token" },
+		});
+		expect(response.status).toBe(404);
 	});
 });

@@ -126,18 +126,19 @@ export async function createPiSession(
 		agentDir: join(AGENT_DIR, "agent"),
 		// 只用自己的提示词与工具：不要 pi 的扩展、提示词模板、上下文文件
 		noExtensions: true,
-		// ⚠️ **技能要开着**（默认 false）：让 pi 自己去发现 `.pi/skills/`，
-		//    我们只读它发现的结果（不自己再扫一遍目录 ⇒ 与 pi 的去重/诊断一致）。
-		//    这**不等于**放开 pi 的 read/bash 工具（那仍然关着）——
-		//    读技能文件靠我们自己的 `load_skill`（只读技能目录内的文件）。
-		noSkills: false,
+		// ⚠️ **只加载智能体配置里列的目录**（`additionalSkillPaths`）。
+		//    `noSkills: true` ⇒ pi **默认的项目目录（`<cwd>/.pi/skills`）与用户家目录
+		//    一律不加载** ⇒
+		//    ① 智能体之间不串味（不是靠事后过滤，而是**根本不加载**）；
+		//    ② 默认目录里的技能**不会抢同名**（pi 按名字去重，先到先得
+		//       ⇒ 若两边都加载，项目目录那份会赢 ⇒ 配置里的那份反而没了）。
+		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
 		// ⚠️ **额外的技能目录**（智能体配置里的那些）
 		additionalSkillPaths: skillsDirs,
-		// ⚠️ **只留配置里那些目录里的技能**（用户家目录的那一堆与本服务无关；
-		//    不在配置里的目录也不算数 ⇒ 不跨智能体串味）
+		// ⚠️ **兜底过滤**：只留配置里那些目录里的技能
 		skillsOverride: createSkillsOverride(skillsDirs),
 	};
 

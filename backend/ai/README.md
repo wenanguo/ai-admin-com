@@ -93,7 +93,7 @@ docker run -d --name ai-admin-ai -p 3100:3100 \
 
 | 约束 | 为什么 | 怎么满足 |
 | ---- | ------ | -------- |
-| **技能是 cwd 相对** | `load_skill` / `/api/agent/skills` 都按 `join(process.cwd(), ".pi", "skills")` 找 | `WORKDIR /app` ⇒ 技能必须在 `/app/.pi/skills`（镜像里已就位） |
+| **技能目录来自智能体配置** | 每个智能体在 `agents/<id>/agent.yaml` 的 `skills` 里列自己的技能目录（相对配置目录解析）⇒ 技能**按智能体**装配 | `WORKDIR /app` ⇒ 智能体配置必须在 `/app/agents`（镜像里已就位）；PM 助手那份指向 `/app/.pi/skills` |
 | **凭据不入镜像** | `.ai/auth.json` 是 pi 的凭据文件 | 镜像里**没有** `/app/.ai` ⇒ 运行时挂载（`-v ...:/app/.ai`） |
 | **启动命令不读 `.env`** | 容器里没有 `.env` ⇒ `node --env-file=.env` 会直接退出 | `CMD ["node", "dist/main.js"]`（`src/load-env.ts` 会「有就读、没有就用环境变量」） |
 | **ESM-only** | pi SDK 是 ESM-only | 基础镜像 node 22 + `dist/` 是 ESM |
@@ -480,9 +480,9 @@ description: 在 AiAdmin 的项目下新建一条任务。用户说「建个任�
 | 事项 | 现状 |
 | ---- | ---- |
 | 生效 | **重启服务**（pi 的 `/reload` 只在交互式会话里可用） |
-| 技能来源 | **只有 `.pi/skills/`**（用户家目录的 `~/.agents/skills` 会被过滤掉） |
+| 技能来源 | **只有该智能体配置里列的目录**（`agents/<id>/agent.yaml` 的 `skills`）—— 用户家目录的 `~/.agents/skills`、项目默认的 `.pi/skills` **一律不加载**（除非配置里列了它）⇒ 智能体之间不串味 |
 | 模型能读什么 | **只有技能目录内的文件**（pi 的 `read`/`bash` 工具是关着的） |
-| 三个样板 | `create-task` / `list-tasks` / `update-task`（**都已按真实 MCP 工具写准**，2026-11-07 真实后端跑通） |
+| 三个样板 | `create-task` / `list-tasks` / `update-task`（**都已按真实 MCP 工具写准**，2026-11-07 真实后端跑通）—— 放在 `.pi/skills/`，**由 PM 助手那份配置领用**（别的智能体看不到） |
 
 ### 验收记录（2026-11-07，真实后端）
 

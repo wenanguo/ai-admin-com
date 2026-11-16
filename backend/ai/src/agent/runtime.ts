@@ -35,6 +35,7 @@ import { parseAiTaskContext, renderAiTaskContext, writeTargetId, WRITABLE_FIELDS
 import { CurrentUserResolver, type CurrentUser } from "./identity.ts";
 import { createGateExtension } from "./gate.ts";
 import { mcpToolPrefix, stripMcpToolPrefix, type McpServerSpec } from "./mcp.ts";
+import { listSkillSummaries, type SkillSummary } from "./skill-catalog.ts";
 import { pendingWaiters } from "./pending-waiters.ts";
 import { createPiSession, type PiSessionOptions } from "./pi-session.ts";
 import { agentsRoot } from "../core/config/loader.ts";
@@ -290,6 +291,19 @@ export class AgentRuntime {
 	/** 列某个用户的会话。 */
 	async listConversations(userId: string): Promise<ConversationRecord[]> {
 		return this.#store.list(userId);
+	}
+
+	/**
+	 * 列某个智能体的技能（**按它的配置目录**）。
+	 *
+	 * ⚠️ 智能体 A 看不到智能体 B 的技能 ⇒ 清单按智能体返回。
+	 * ⚠️ 没配置技能 ⇒ 空列表（**不是异常**：技能是可选的）。
+	 *
+	 * @param agentId 智能体 id（可省 ⇒ 默认智能体）。
+	 */
+	listAgentSkills(agentId?: string): SkillSummary[] {
+		const agent = this.#requireAgent(agentId ?? this.#agents.defaultAgentId);
+		return listSkillSummaries(agent.skills);
 	}
 
 	/**
