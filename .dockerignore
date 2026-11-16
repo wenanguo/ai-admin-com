@@ -55,9 +55,9 @@ node_modules
 # ──────────── 本条镜像用不到的目录（减小上下文）────────────
 #
 # ⚠️ **docs/ 不能排掉**：`frontend/src/pages/Welcome.tsx` 直接 import 了
-#    `docs/cheatsheet.en-US.md` / `docs/cheatsheet.zh-CN.md`
+#    `docs/legacy/ant-design-pro/cheatsheet.en-US.md` / `...zh-CN.md`
 #    （utoopack 的 `*.md` loader）⇒ 排掉它 ⇒ 镜像里构建直接报
-#    "Module not found: Can't resolve '../../../docs/cheatsheet.en-US.md'"。
+#    "Module not found: Can't resolve '../../../docs/legacy/ant-design-pro/cheatsheet.en-US.md'"。
 # ⚠️ **backend/ 不能整目录排掉**：AI 服务的镜像（`backend/ai/Dockerfile`）要从
 #    这里取 `package.json` / `src` / `prisma` / `.pi`（技能）⇒ 整目录排掉 ⇒
 #    镜像构建直接失败（找不到 package.json）。

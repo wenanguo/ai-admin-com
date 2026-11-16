@@ -164,10 +164,13 @@ node scripts/pm/check-queue.cjs --json   # 机器可读
 
 不等你逐条点：每次对话我扫一遍
 
-- `docs/roadmap/v6.1.0-release-plan.md`
-- `docs/aipm/docs/04-command-catalog.md`（命令目录 ⇒ 下一个该补哪个命令）
-- `docs/aipm/docs/00~07`（架构/领域模型/API 契约）
 - `docs/notes/` 里未完成的交接
+- `docs/pm/roadmap.md` 里各能力块的候选与已开单
+- 本仓 GitHub 上**未关闭的 issue**（`gh issue list --state open`）
+
+⚠️ **已归档的两份，只能当背景、不能当依据**（2026-11-16 起）：
+- `docs/legacy/ant-design-pro/v6.1.0-release-plan.md`（**上游 Pro 的拷贝**，issue 号是上游的）
+- `docs/archive/aipm/docs/04-command-catalog.md`（M1 已搁置，见 [`roadmap.md`](roadmap.md)）
 
 产出**候选清单 3~5 条**，每条一句话 + **为什么是现在**，给你挑。
 

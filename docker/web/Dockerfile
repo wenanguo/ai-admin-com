@@ -57,9 +57,9 @@ COPY frontend/ ./frontend/
 
 # ②b 仓库根的 docs/ 里有两个文件是**构建输入**：
 #     frontend/src/pages/Welcome.tsx 直接 import 了它们
-#     （import enUS from '../../../docs/cheatsheet.en-US.md'）
-#     ⇒ 不拷进来，构建会报 "Module not found: Can't resolve '../../../docs/cheatsheet.en-US.md'"。
-COPY docs/cheatsheet.en-US.md docs/cheatsheet.zh-CN.md ./docs/
+#     （import enUS from '../../../docs/legacy/ant-design-pro/cheatsheet.en-US.md'）
+#     ⇒ 不拷进来，构建会报 "Module not found: Can't resolve '../../../docs/legacy/ant-design-pro/cheatsheet.en-US.md'"。
+COPY docs/legacy/ant-design-pro/cheatsheet.en-US.md docs/legacy/ant-design-pro/cheatsheet.zh-CN.md ./docs/legacy/ant-design-pro/
 
 # ②c **仓根的 package.json + package-lock.json 也要拷进来**（与本地构建同构）：
 #     utoopack 找「项目根」的规则（@utoo/pack 的 findRootDir）：
@@ -67,10 +67,10 @@ COPY docs/cheatsheet.en-US.md docs/cheatsheet.zh-CN.md ./docs/
 #       最顶层那个 lock 所在目录 = 项目根。
 #     本地：frontend/package-lock.json → 仓根还有 package-lock.json ⇒ 根 = **仓根**
 #           ⇒ `frontend/src/pages/Welcome.tsx` 里
-#             `import '../../../docs/cheatsheet.en-US.md'` 在根**之内** ⇒ 能解析。
+#             `import '../../../docs/legacy/ant-design-pro/cheatsheet.en-US.md'` 在根**之内** ⇒ 能解析。
 #     镜像（若不拷根 lock）：只找到 frontend/package-lock.json ⇒ 根 = frontend/
 #           ⇒ 那个 import 变成「跳出根目录」⇒
-#             utoopack 报 "Module not found: Can't resolve '../../../docs/cheatsheet.en-US.md'"。
+#             utoopack 报 "Module not found: Can't resolve '../../../docs/legacy/ant-design-pro/cheatsheet.en-US.md'"。
 #     ⇒ 把根的 lock 也拷进来 ⇒ 根 = /app ⇒ 与本地一致。
 COPY package.json package-lock.json ./
 

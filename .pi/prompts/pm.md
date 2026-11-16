@@ -72,8 +72,9 @@ gh pr list --state open
 ## 输出格式（先报状态，再给候选，最后等拍板）
 
 1. **当前状态**：每个能力块的目标 / 完成度 / 在途的 issue 与 PR / 卡住的地方。
-2. **今日候选 3~5 条**：每条一句话 + **为什么是现在**（依据来自 `docs/aipm/docs/04-command-catalog.md`、
-   `docs/roadmap/v6.1.0-release-plan.md`、`docs/notes/` 里未完成的交接）。
+2. **今日候选 3~5 条**：每条一句话 + **为什么是现在**（依据来自 `docs/pm/roadmap.md` 里各能力块的候选、
+   本仓 GitHub 上未关闭的 issue、`docs/notes/` 里未完成的交接）。
+   ⚠️ `docs/legacy/` 与 `docs/archive/` 下的内容**已归档**，只能当背景、不能当依据。
 3. **拟建清单**（如果今天要开单）：milestone 名字 / due / 装哪几条；每条 issue 的标题 / 依赖 / 规模 / 验收要点。
 4. **等用户拍板** —— 拿到明确回复前，**不动 GitHub**。
 
