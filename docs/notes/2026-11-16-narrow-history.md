@@ -4,13 +4,13 @@
 
 ## 目标
 
-- **关联**：issue #72 · PR（待填）
+- **关联**：issue #72 · PR #75（已合并，CI 全绿）
 - **一句话**：把宽版已有的「历史对话」抽成**共用组件**，窄版（400px 小浮层）也接上
   ⇒ 换话题后能回看，AI 不再显得「失忆」。
 
 ## 状态
 
-进行中（代码已写完，等 CI 与合并）
+**已完成**（PR #75 已合并 · issue #72 已自动关闭 · CI 全绿）
 
 ## 短设计（规模：中 —— 要动宽版文件，做共用化）
 
@@ -38,20 +38,14 @@
 
 | 提交 | 做了什么 |
 | ---- | -------- |
-| （待填） | `ConversationHistory.tsx` 新组件（hook + 列表 + 按钮） |
-| （待填） | 宽版改成用共用组件（删掉自己那段实现） |
-| （待填） | 窄版头部接入共用组件 |
-| （待填） | 单测：`ConversationHistory.test.tsx`（6 条）+ `index.test.tsx` 加 1 条（窄版入口 + 切会话） |
-| （待填） | e2e：`frontend/e2e/ai-workspace.spec.ts` 加「历史对话（窄版也有）」一组 |
+| `edfb8f8`（squash 后是 `0bc290a`） | `ConversationHistory.tsx` 新组件（hook + 列表 + 按钮） |
+| `edfb8f8` | 宽版改成用共用组件（删掉自己那段实现） |
+| `edfb8f8` | 窄版头部接入共用组件 |
+| `edfb8f8` | 单测：`ConversationHistory.test.tsx`（6 条）+ `index.test.tsx` 加 1 条（窄版入口 + 切会话） |
+| `edfb8f8` | e2e：`frontend/e2e/ai-workspace.spec.ts` 加「历史对话（窄版也有）」一组 |
 
-**下一步（具体到文件与命令）**：
-
-```
-# 单测
-cd frontend && npx vitest run src/components/ai-workspace
-# e2e（需要先构建产物）
-cd frontend && npm run build && npx playwright test e2e/ai-workspace.spec.ts -g 历史对话
-```
+**下一步**：无（#72 已完成）。**下一条**：#73（窄版可拖动）—— 但它**不在 `ready` 队列**里
+（只有 `agent-task`）⇒ 等 PM 放行（打 `ready`）再领。
 
 ## 决策记录（★ 最值钱的部分）
 
