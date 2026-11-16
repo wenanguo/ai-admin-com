@@ -13,7 +13,9 @@
 ## 怎么读这份文档
 
 - **版本（version）** = 一条产品线的一次交付。
-- **能力块（block）** = 一个可独立交付的能力集合，划分对齐代码模块与 `docs/aipm/docs/04-command-catalog.md` 的能力域。
+- **能力块（block）** = 一个可独立交付的能力集合，划分对齐代码模块与**能力域**（原先对齐
+  `docs/aipm/docs/04-command-catalog.md` 的能力域；⚠️ 该规格**已归档**到
+  `docs/archive/aipm/docs/04-command-catalog.md` ⇒ 只当背景，不作依据）。
 - **候选需求** = 还没开单的活。**编号（C1、C2…）只是本文件内的序号**，不是 GitHub issue 号。
 - **状态**：`候选` / `已开单` / `进行中` / `已完成` / `搁置`。
 
@@ -35,7 +37,8 @@
 ## v0.9 · AIPM 产品线
 
 > AIPM = 对话驱动的项目管理平台（AI 是主操作入口，结构化视图是辅助）。
-> 规格见 `docs/aipm/docs/00-master-spec.md`，原型见 `docs/aipm/prototype/`。
+> ⚠️ M1 的规格与原型**已归档**（M1 搁置，2026-11-16）⇒ 见
+> [`docs/archive/aipm/`](../archive/aipm/)（**只当背景，不作现行依据**）。
 
 ### M0 · 部署（前端 + AI 服务）　`v0.9 · M0 部署（前端 + AI 服务）`（milestone #6）　**状态：已开单**
 

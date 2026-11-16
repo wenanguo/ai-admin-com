@@ -6,7 +6,7 @@
  *
  * ⚠️ 阈值必须与 AI 服务侧的规则引擎(src/rule-engine/risk-matrix.ts,
  * 另一个仓库)**保持一致**:两边数字不一样,同一个风险就会在两个页面
- * 显示不同等级,是产品 bug。阈值的权威来源:docs/aipm/docs/02-domain-model.md §5.3。
+ * 显示不同等级,是产品 bug。阈值的权威来源:docs/archive/aipm/docs/02-domain-model.md §5.3(已归档)。
  *
  * | score | 等级 |
  * |---|---|

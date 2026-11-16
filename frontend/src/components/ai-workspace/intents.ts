@@ -1,5 +1,5 @@
 /**
- * 10 类意图卡片（原型 `docs/aipm/prototype/ai-assistant.html`）。
+ * 10 类意图卡片（原型 `docs/archive/aipm/prototype/ai-assistant.html`，已归档）。
  *
  * ## 每张卡片都标着「暂未开放」—— 为什么
  *

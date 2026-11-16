@@ -1,7 +1,9 @@
 # AI 部分架构
 
-> 覆盖三个仓：`ai-admin-com`（本仓库，前端）、`ai-admin-ai`（智能体服务）、`AiAdmin`（FastAPI 后端）。
-> 相关设计文档：`docs/aipm/docs/01-architecture.md`、`03-api-contract.md`、`05-agent-runtime.md`。
+> 覆盖三个仓：`ai-admin-com`（本仓库，前端）、`backend/ai`（本仓库内的 AI 服务，Express）、
+> `AiAdmin`（FastAPI 后端，**不在本仓**）。
+> 相关设计文档：`docs/archive/aipm/docs/01-architecture.md`、`03-api-contract.md`、`05-agent-runtime.md`
+> —— ⚠️ **已归档**（M1 搁置，2026-11-16）⇒ 只当背景，不作现行依据。
 >
 > ⚠️ 本文件描述的是**当前实现**，不是规划。
 
