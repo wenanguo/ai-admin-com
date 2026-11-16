@@ -93,6 +93,11 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 #    ⇒ WORKDIR=/app ⇒ 技能必须在 /app/.pi/skills ✔
 COPY backend/ai/.pi ./.pi
 
+# ⑤ 智能体配置（**cwd 相对** ⇒ 必须和 WORKDIR 保持同一个相对位置）
+#    ⚠️ `agents/<agentId>/agent.yaml` 是「智能体配置」⇒ 镜像里必须带着
+#    （否则容器里一个智能体都没有 ⇒ `/api/agents` 永远空）。
+COPY backend/ai/agents ./agents
+
 EXPOSE 3100
 
 # 健康检查：打 /health（**恒 200** ⇒ 依赖挂了不会把容器判死，只体现在 status 字段里）

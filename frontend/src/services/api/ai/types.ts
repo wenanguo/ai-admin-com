@@ -164,6 +164,32 @@ export interface AiSkillSummary {
   description: string;
 }
 
+/**
+ * 一个智能体的摘要（服务端 `GET /api/agents`）。
+ *
+ * ⚠️ 智能体是**配置**（`backend/ai/agents/<agentId>/agent.yaml`）⇒
+ *    清单读的是真文件 ⇒ 改完配置重启 AI 服务就能看到。
+ */
+export interface AiAgentSummary {
+  /** 智能体 id（= 配置目录名）。 */
+  id: string;
+  /** 显示名。 */
+  name: string;
+  /** 一句话说明。 */
+  description: string;
+  /** 能力摘要：模型 + 技能数 + MCP 服务器数 + 工具数。 */
+  capabilities: {
+    /** 实际用的模型（配置里写的，或全局默认）。 */
+    model: string;
+    /** 技能目录数。 */
+    skillCount: number;
+    /** MCP 服务器数。 */
+    mcpServerCount: number;
+    /** 工具白名单长度。 */
+    toolCount: number;
+  };
+}
+
 /** 一条审计（服务端 `src/audit-query.ts` 的 `AuditItem`）。 */
 export interface AiAuditRow {
   id: string;

@@ -15,7 +15,11 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import { buildCorsHeaders, isPreflightRequest, originOf } from "./http/cors.ts";
 import { toErrorEnvelope } from "./http/errors.ts";
 import { MISSING_TOKEN_MESSAGE, allowedOrigins, errorBody } from "./http/respond.ts";
+import { agentRuntime } from "./agent/runtime.ts";
+import { listAgentSummaries } from "./core/config/catalog.ts";
+import { agentsRoot, loadAgentConfigs } from "./core/config/loader.ts";
 import { agentRouter } from "./routes/agent.ts";
+import { createAgentsRouter } from "./routes/agents.ts";
 import { auditRouter } from "./routes/audit.ts";
 import { eventsRouter } from "./routes/events.ts";
 import { HEALTH_CACHE_TTL_MS, createHealthRouter } from "./routes/health.ts";
@@ -98,6 +102,14 @@ export function createApp(): Express {
 	// 路由挂载（顺序：具体的先于带参数的，router 内部已经排好）
 	app.use("/api/agent", agentRouter);
 	app.use("/api/agent", eventsRouter);
+	// ⚠️ **智能体清单**（`/api/agents`）是「配置」那条线 ⇒ 独立前缀
+	app.use(
+		"/api/agents",
+		createAgentsRouter({
+			listAgents: () => listAgentSummaries(agentsRoot()),
+			resolveUser: (token) => agentRuntime.resolveCurrentUser(token),
+		}),
+	);
 	app.use("/api/pending", pendingRouter);
 	app.use("/api/audit", auditRouter);
 	app.use(notFoundHandler);
@@ -107,6 +119,17 @@ export function createApp(): Express {
 
 /** 启动服务（监听 `PORT`，缺省 3100）。 */
 export function start(): void {
+	// ⚠️ **启动即校验智能体配置**：配置坏了就别跑起来（否则用户看到的是「少了个智能体」，
+	//    却查不到原因）⇒ 这里直接退出，让人看到是哪个字段坏了。
+	try {
+		loadAgentConfigs(agentsRoot());
+	} catch (error) {
+		console.error(
+			`[ai-service] 智能体配置不合法，已退出：${error instanceof Error ? error.message : String(error)}`,
+		);
+		process.exit(1);
+	}
+
 	const port = Number(process.env.PORT ?? 3100);
 	const app = createApp();
 	const server = app.listen(port, () => {
