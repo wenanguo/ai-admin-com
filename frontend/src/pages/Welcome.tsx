@@ -5,8 +5,8 @@ import { getLocale, useIntl, useModel } from '@umijs/max';
 import { Card } from 'antd';
 import hljs from 'highlight.js';
 import React from 'react';
-import enUS from '../../../docs/cheatsheet.en-US.md';
-import zhCN from '../../../docs/cheatsheet.zh-CN.md';
+import enUS from '../../../docs/legacy/ant-design-pro/cheatsheet.en-US.md';
+import zhCN from '../../../docs/legacy/ant-design-pro/cheatsheet.zh-CN.md';
 
 import 'highlight.js/styles/github.css';
 import './Welcome.css';

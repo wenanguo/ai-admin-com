@@ -13,7 +13,9 @@
 ## 怎么读这份文档
 
 - **版本（version）** = 一条产品线的一次交付。
-- **能力块（block）** = 一个可独立交付的能力集合，划分对齐代码模块与 `docs/aipm/docs/04-command-catalog.md` 的能力域。
+- **能力块（block）** = 一个可独立交付的能力集合，划分对齐代码模块与**能力域**（原先对齐
+  `docs/aipm/docs/04-command-catalog.md` 的能力域；⚠️ 该规格**已归档**到
+  `docs/archive/aipm/docs/04-command-catalog.md` ⇒ 只当背景，不作依据）。
 - **候选需求** = 还没开单的活。**编号（C1、C2…）只是本文件内的序号**，不是 GitHub issue 号。
 - **状态**：`候选` / `已开单` / `进行中` / `已完成` / `搁置`。
 
@@ -35,7 +37,8 @@
 ## v0.9 · AIPM 产品线
 
 > AIPM = 对话驱动的项目管理平台（AI 是主操作入口，结构化视图是辅助）。
-> 规格见 `docs/aipm/docs/00-master-spec.md`，原型见 `docs/aipm/prototype/`。
+> ⚠️ M1 的规格与原型**已归档**（M1 搁置，2026-11-16）⇒ 见
+> [`docs/archive/aipm/`](../archive/aipm/)（**只当背景，不作现行依据**）。
 
 ### M0 · 部署（前端 + AI 服务）　`v0.9 · M0 部署（前端 + AI 服务）`（milestone #6）　**状态：已开单**
 
@@ -145,7 +148,8 @@
 - **due**：2026-12-10
 - **范围**：本仓相对上游 Ant Design Pro 的**技术债清理** + 本仓自己的工具链补漏。
 - **完成判据**：给出按本仓实际核对的待修清单并逐条修完。
-- ⚠️ **不要照抄 `docs/roadmap/v6.1.0-release-plan.md`**（**上游 Pro 的拷贝，2026-11-14 起归档**）：
+- ⚠️ **`docs/legacy/ant-design-pro/v6.1.0-release-plan.md` 已归档，勿再引用**（**上游 Pro 的拷贝**，2026-11-16 起移到
+  [`docs/legacy/ant-design-pro/`](../legacy/ant-design-pro/)）：
   - 其中的 `ant-legacy-form-item` 清理与 `typings.d.ts`（`slash2` / `omit.js`）清理**在本仓已完成**（`grep` 无命中）
   - 它引用的 issue 号（#11772 等）属**上游 Ant Design Pro**，不是本仓的
 - **已完成的（不再需要开单）**：PR 模板补「高风险」栏（`pr-body-check` 盯着，已合）。
@@ -154,7 +158,7 @@
 
   | issue | 需求 | 规模 | 依赖 | 状态 |
   | ----- | ---- | ---- | ---- | ---- |
-  | #55 | **项目目录结构清理**（指引去重 + 上游遗留归档 + 现状文档对齐） | 中 | 无 | 🟢 **ready** |
+  | #55 | **项目目录结构清理**（指引去重 + 上游遗留归档 + 现状文档对齐） | 中 | 无 | 🔨 **in-progress**（开发 agent 已认领） |
 
   - **草稿**：`docs/pm/drafts/2026-11-14-目录结构清理.md`
   - **人已定**：上游遗留与 `docs/aipm/` **都归档**（不是删除、不是「标暂停」）。

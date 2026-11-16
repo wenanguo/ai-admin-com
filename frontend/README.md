@@ -278,7 +278,7 @@ AI 是**独立服务**（`D:/project/ai-admin-ai`，Next.js，端口 3100），�
 
 ## 项目目录结构（总览）
 
-> 完整版（含每个目录的职责说明）：[`docs/directory-structure.md`](docs/directory-structure.md)
+> 完整版（含每个目录的职责说明）：[`docs/directory-structure.md`](../docs/directory-structure.md)
 
 ```
 ai-admin-com/
@@ -400,6 +400,6 @@ ai-admin-com/
 - PM 页面的实现计划:`docs/superpowers/plans/2026-11-03-aipm-frontend-pm-pages.md`
 - 修复记录:`docs/superpowers/plans/2026-10-31-ai-admin-frontend-template-fix-wave.md`、
   `docs/superpowers/plans/2026-10-31-ai-admin-frontend-template-review-round.md`
-- **目录结构总览**:`docs/directory-structure.md`
-- **AI 部分架构**:`docs/ai-architecture.md`
-- 上游说明:`README.ant-design-pro.md`
+- **目录结构总览**:`../docs/directory-structure.md`
+- **AI 部分架构**:`../docs/ai-architecture.md`
+- 上游说明（已归档）:`../docs/legacy/ant-design-pro/README.ant-design-pro.md`

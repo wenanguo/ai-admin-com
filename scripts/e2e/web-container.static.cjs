@@ -67,12 +67,16 @@ const wronglyExcluded = mustKeep.filter((p) => {
   return Boolean(line);
 });
 check('没有排除构建必需的 frontend 文件', wronglyExcluded.length === 0, wronglyExcluded.join(' / '));
-// ⚠️ docs/ 不能排掉：frontend/src/pages/Welcome.tsx import 了 docs/cheatsheet.*.md
+// ⚠️ docs/ 不能排掉：frontend/src/pages/Welcome.tsx import 了
+//    docs/legacy/ant-design-pro/cheatsheet.*.md
 const docsExcluded = dockerignore
   .split(/\r?\n/)
   .map((l) => l.trim())
   .some((l) => l && !l.startsWith('#') && (l === 'docs' || l === 'docs/' || l === '/docs'));
-check('没有排除 docs/（Welcome.tsx 会 import docs/cheatsheet.*.md）', !docsExcluded);
+check(
+  '没有排除 docs/（Welcome.tsx 会 import docs/legacy/ant-design-pro/cheatsheet.*.md）',
+  !docsExcluded,
+);
 
 // ───────────────────────────── frontend/.npmrc ─────────────────────────────
 // ⚠️ 本仓的 lock 是按 legacy-peer-deps 生成的 ⇒ 镜像里必须带上这个 .npmrc
@@ -93,7 +97,7 @@ containsAll(
     'FROM nginx:${NGINX_VERSION}-alpine',
     'COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./frontend/',
     'COPY frontend/ ./frontend/',
-    'COPY docs/cheatsheet.en-US.md docs/cheatsheet.zh-CN.md ./docs/',
+    'COPY docs/legacy/ant-design-pro/cheatsheet.en-US.md docs/legacy/ant-design-pro/cheatsheet.zh-CN.md ./docs/legacy/ant-design-pro/',
     'COPY package.json package-lock.json ./',
     'npm ci --ignore-scripts',
     'npm rebuild esbuild',

@@ -1,4 +1,7 @@
-# CLAUDE.md
+# AGENTS.md
+
+> ⚠️ **本文件是本仓唯一的一份 agent 指引**（`CLAUDE.md` 只留一行指路，**不含任何正文**）
+> ⇒ 改指引**只改这里**，别再维护第二份。
 
 ## Project
 
@@ -126,27 +129,31 @@ husky / lint-staged / commitlint 都用 `frontend/node_modules/.bin/` 里的二�
 
 **一个 agent 一个工作区**，别共用同一个 checkout（实测：共用会互相切分支、互相带文件进提交）。
 
-\工作区已存在：D:projectai-admin-com-worktreesdev
-补做：
-  · frontend/node_modules 已是链接/目录 ⇒ 跳过
-  · backend/ai/node_modules 已是链接/目录 ⇒ 跳过
-  · 生成前端类型（max setup）…
-  · max setup 退出码非 0，但类型已生成 ⇒ 视为成功
-工作区：
-  · D:/project/ai-admin-com  [main] （主 checkout）
-  · D:/project/ai-admin-com-worktrees/dev  [agent/dev] 
-
-规矩：一个 agent 一个工作区（别共用主 checkout）
-  · 已摘掉 junction：frontend/node_modules
-  · 已摘掉 junction：backend/ai/node_modules
 - 目录在**仓库外**（仓库内的 .worktrees/ 被另一个 agent 删过）
 - **名字带角色前缀**（开发 agent ⇒ agent-dev；PM 调度 agent ⇒ agent-pm）⇒ 不会撞车
 - 脚本会接好 node_modules（junction）并生成前端类型（max setup）⇒ 新工作区立刻能跑测试
 - 合并在**主 checkout** 里跑（merge-pr.cjs 常驻 main）
+- 管理脚本：`node scripts/agent/worktree.cjs list|add|remove`
+
+工作区当前位置（示例，**别照抄**，用 `git worktree list` 自己查）：
+
+| 目录 | 分支 | 用途 |
+| ---- | ---- | ---- |
+| `D:/project/ai-admin-com` | `main` | 主 checkout（**合并脚本常驻这里**） |
+| `D:/project/ai-admin-com-worktrees/<角色>-<名字>` | `agent/<角色>-<名字>` | 每个 agent 自己的工作区 |
 
 ## AI Skills
 
-This project ships with two built-in Claude Code Skills (`.claude/skills/`). If you already have these skills in your project, no installation is needed — just run them directly. To update to the latest skill definitions, run `npx skills add ant-design/ant-design-pro`.
+本仓带两个项目级技能（`antd`、`pro-upgrade`）⇒ **正文只有一份**，在 [`.agents/skills/`](.agents/skills/)
+（Agent Skills 标准位置 ⇒ pi / Claude Code / Codex 等宿主都能发现）：
+
+| 技能 | 正文 |
+| ---- | ---- |
+| `antd` | [`.agents/skills/antd/SKILL.md`](.agents/skills/antd/SKILL.md) |
+| `pro-upgrade` | [`.agents/skills/pro-upgrade/SKILL.md`](.agents/skills/pro-upgrade/SKILL.md) |
+
+⚠️ `.claude/skills/<name>/SKILL.md` 是**指路存根**（给只认 `.claude/` 的宿主用）⇒ **不要在那里改正文**。
+升级技能定义：`npx skills add ant-design/ant-design-pro`（装到 `.claude/` 的那份是工具产物，别手改）。
 
 ---
 
