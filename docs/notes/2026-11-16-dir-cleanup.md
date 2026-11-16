@@ -9,7 +9,7 @@
 
 ## 状态
 
-进行中
+进行中（实现已完成，待 PR / 合并）
 
 ## 短设计（规模：中 ⇒ 按 `docs/process.md` §3 写短设计，不写 spec/plan）
 
@@ -42,7 +42,49 @@
 
 ## 已完成
 
-（见下方「提交」表）
+| 提交 | 做了什么 |
+| ---- | -------- |
+| `2c23375` | 指引去重：`CLAUDE.md` 收敛为纯指路（零章节）；`AGENTS.md` 标题订正 + 清掉被运行日志污染的「工作区隔离」一节 + 补工作区位置表；AI Skills 一节改指 `.agents/skills/` |
+| `d8f3a9c` | 归档上游 Pro 遗留 → `docs/legacy/ant-design-pro/`（7 个文件，`git mv`）+ `docs/legacy/README.md` 索引；cheatsheet 是构建输入 ⇒ 同步改 4 处纯路径；`docs/pm/roadmap.md` 补丁改「已归档，勿再引用」 |
+| `ab4ef38` | 归档 `docs/aipm/` → `docs/archive/aipm/`（29 个文件）+ `docs/archive/README.md`（为什么归档 + 怎么捡回来）；失效引用改指归档路径 |
+| `0128645` | 技能收敛为一份：`.claude/skills/<name>/SKILL.md` 改成指路存根 + `.claude/skills/README.md` |
+| `d0449de` | 重写 `docs/directory-structure.md`（原文是 monorepo 之前的单仓树）+ §7 核对命令 |
+| `2ad7294` | 根 `README.md` 加目录索引 + 归档区指路 + 两条部署路径定位 |
+| `507f704` | `docs/ai-architecture.md` 定点对齐（服务位置 / 框架 / 文件索引） |
+| `（本次）` | `docker/web/Dockerfile` 注释里的 cheatsheet 路径同步 |
+
+**验证结果（2026-11-16，本工作区实跑）**：
+
+| 命令 | 结果 |
+| ---- | ---- |
+| `npm run lint`（frontend：biome + tsc） | ✅ exit 0 |
+| `npm run test`（frontend） | ✅ 68 文件 / 584 用例 |
+| `npm run test`（backend/ai） | ✅ 37 文件 / 347 用例 |
+| `npm run test:agent` | ✅ 10 用例 |
+| `cd frontend && npm run build` | ✅ 成功（cheatsheet 移动后仍能解析） |
+| `node scripts/e2e/web-container.static.cjs` | ✅ 14 条 |
+| `node scripts/e2e/compose.static.cjs` | ✅ 17 条 |
+| `node scripts/e2e/ai-container.static.cjs` | ✅ 15 条 |
+
+⚠️ **环境坑（下次别踩）**：工作区里的 `node_modules` 若是 **MSYS 软链**（`/d/project/...`），
+原生 node / utoopack 解析不了 ⇒ 报 `Symlink frontend/node_modules could not be resolved`。
+⇒ 用 **Windows junction**（`New-Item -ItemType Junction`）或直接 `npm ci` 装一份真的。
+
+**下一步（具体到文件与命令）**：
+
+```bash
+# ① 全绿（前端 lint + 两个仓的测试）
+npm run lint && npm run test
+
+# ② 静态验收脚本（不用 docker）
+node scripts/e2e/web-container.static.cjs
+node scripts/e2e/compose.static.cjs
+
+# ③ 前端构建必须过（cheatsheet 的 import 路径改过 ⇒ 这条最关键）
+cd frontend && npm run build
+
+# ④ 更新本 note（补 PR 号）→ 提 PR
+```
 
 ## 决策记录
 
@@ -66,8 +108,11 @@ grep -c '^## ' AGENTS.md            # 期望 ≥ 8
 ls docs/legacy/ant-design-pro/ docs/archive/aipm/
 grep -n "legacy/ant-design-pro\|archive/aipm" README.md docs/legacy/README.md docs/archive/README.md
 
-# ③ 目录结构文档与实际一致（文档里给的核对命令）
-bash docs/directory-structure.md 里的核对命令
+# ③ 目录结构文档与实际一致（文档 §7 里的核对命令）
+for p in frontend backend/ai docker .pi/prompts docs/pm docs/notes docs/legacy docs/archive \
+         scripts/agent scripts/e2e frontend/cloudflare-worker backend/ai/.pi/skills; do
+  [ -e "$p" ] && echo "✓ $p" || echo "✗ 缺失 $p"
+done
 
 # ④ 构建没被打断（cheatsheet 移动后仍可解析）
 cd frontend && npm run build
