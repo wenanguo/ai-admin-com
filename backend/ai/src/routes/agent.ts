@@ -88,6 +88,10 @@ agentRouter.get("/conversations", async (req, res) => {
 				conversations.map((conversation) => ({
 					conversationId: conversation.conversationId,
 					title: conversation.title,
+					// ⚠️ **智能体维度**（`ai_conversation.agent_id`）
+					//    ⇒ 列表里能看出「这条会话是哪个智能体的」
+					//    （**可空** ⇒ 迁移前的旧会话没有这个值）。
+					agentId: conversation.agentId,
 					updatedAt: conversation.updatedAt.toISOString(),
 				})),
 			),
