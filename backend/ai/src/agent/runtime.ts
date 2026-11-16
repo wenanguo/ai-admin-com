@@ -34,7 +34,7 @@ import type { AiTaskContext } from "./context.ts";
 import { parseAiTaskContext, renderAiTaskContext, writeTargetId, WRITABLE_FIELDS } from "./context.ts";
 import { CurrentUserResolver, type CurrentUser } from "./identity.ts";
 import { createGateExtension } from "./gate.ts";
-import { createAiadminMcpExtension } from "./mcp.ts";
+import { mcpToolPrefix, stripMcpToolPrefix, type McpServerSpec } from "./mcp.ts";
 import { pendingWaiters } from "./pending-waiters.ts";
 import { createPiSession, type PiSessionOptions } from "./pi-session.ts";
 import { agentsRoot } from "../core/config/loader.ts";
@@ -240,18 +240,40 @@ export class AgentRuntime {
 	}
 
 	/**
-	 * 这个智能体用哪个 MCP 地址。
+	 * 这个智能体要挂哪些 MCP 服务器（**0 / 1 / N 个**）。
 	 *
-	 * ⚠️ **本条只支持第一个 MCP 服务器**（多服务器是下一条）。
 	 * ⚠️ 配置里没写 `url` ⇒ 用全局默认（`env.AIADMIN_MCP_URL`）；
-	 *    全局也没配 ⇒ **不接 MCP**（保持老行为：后端没上线时不连）。
+	 *    全局也没配 ⇒ **这台不挂**（保持老行为：后端没上线时不连）。
+	 * ⚠️ 名字来自配置 ⇒ 工具名前缀按服务器名生成 ⇒ 多服务器的工具不互相盖名。
+	 *
+	 * @param agent 智能体配置。
+	 * @param token 调用方的 token（每个会话一份 ⇒ MCP 靠它做权限校验）。
 	 */
-	#mcpUrlOf(agent: AgentConfig): string | undefined {
-		const server = agent.mcpServers[0];
-		if (server === undefined) {
-			return undefined;
+	#mcpServersOf(agent: AgentConfig, token: string): McpServerSpec[] {
+		const servers: McpServerSpec[] = [];
+		for (const server of agent.mcpServers) {
+			const url = server.url ?? this.#mcpUrl;
+			if (url === undefined) {
+				continue;
+			}
+			servers.push({
+				name: server.name,
+				url,
+				type: server.type,
+				exposure: server.exposure,
+				token,
+			});
 		}
-		return server.url ?? this.#mcpUrl;
+		return servers;
+	}
+
+	/**
+	 * 这个智能体的 MCP 工具名前缀（用来认工具、剥前缀）。
+	 *
+	 * ⚠️ **按已知的服务器名算**（不是正则猜）⇒ 多服务器 / 名字带连字符都不会认错。
+	 */
+	#mcpPrefixesOf(agent: AgentConfig): string[] {
+		return agent.mcpServers.map((server) => mcpToolPrefix(server.name));
 	}
 
 	/**
@@ -465,7 +487,7 @@ ${message}`;
 		void this.#audit
 			.write({
 				actorType: "AI",
-				command: write.toolName.replace(/^mcp__[^_]+__/, ""),
+				command: stripMcpToolPrefix(write.toolName, channel.mcpPrefixes),
 				args: redactAuditArgs(write.args),
 				// 写前快照：讨论上下文里的基线（没有上下文就没有写前）
 				before: channel.taskContext?.task ?? null,
@@ -625,10 +647,10 @@ ${message}`;
 			currentMessageId === undefined
 				? messages
 				: messages.filter((row) => row.id !== currentMessageId);
-		// ⚠️ **MCP 的地址来自配置的 mcpServers**（本条只支持第一个；多服务器是下一条）；
-		//    配置里没写 url ⇒ 用全局默认；两者都没有 ⇒ **不接 MCP**
-		//    （模型看不到那些工具）。
-		const mcpUrl = this.#mcpUrlOf(agent);
+		// ⚠️ **MCP 服务器来自配置**（可以 0 / 1 / N 个；名字决定工具名前缀）。
+		const mcpServers = this.#mcpServersOf(agent, channel.token ?? "");
+		// ⚠️ **记住这些前缀**（事件里要靠它认出「这是哪台服务器的 MCP 工具」）
+		channel.mcpPrefixes = this.#mcpPrefixesOf(agent);
 		const session = await this.#createSession({
 			tools,
 			// ⚠️ **提示词来自配置**（不再是写死的 `PM_AGENT_PROMPT`）
@@ -640,10 +662,7 @@ ${message}`;
 			// ⚠️ **技能目录来自配置**（给 pi 当额外技能目录）
 			skillsDirs: agent.skills,
 			// ⚠️ MCP 的身份 = **当次调用方的 token**（每个会话一份）
-			mcp:
-				mcpUrl === undefined
-					? undefined
-					: { url: mcpUrl, token: channel.token ?? "" },
+			mcpServers,
 			// ⚠️ **闸门**：修改已有数据要等人点头（用户 2026-11-06 定的口径）。
 			//    挂起时推一个 `pending` 事件 ⇒ 前端「待确认」页签能看到。
 			gate:
@@ -684,7 +703,7 @@ ${message}`;
 			const args = (event.args ?? {}) as Record<string, unknown>;
 			// ⚠️ **MCP 的写也要留审计**（我们自己的工具自己写审计）
 			//    ⇒ 这里记一份参数，等执行成功后再落 `ai_audit_log`。
-			if (isMcpWriteTool(event.toolName)) {
+			if (isMcpWriteTool(event.toolName, channel.mcpPrefixes)) {
 				channel.lastMcpWrite = { toolName: event.toolName, args };
 			}
 			const entityId = writeTargetId(event.toolName, args, channel.taskContext ?? null);
@@ -782,11 +801,11 @@ ${message}`;
  * ⚠️ 只管 **MCP** 的工具（带 `mcp__<server>__` 前缀）：
  *    我们自己的工具（create_task 等）**自己写审计** ⇒ 别写两遍。
  */
-function isMcpWriteTool(toolName: string): boolean {
+function isMcpWriteTool(toolName: string, prefixes: readonly string[]): boolean {
 	if (!toolName.startsWith("mcp__")) {
 		return false;
 	}
-	const bare = toolName.replace(/^mcp__[^_]+__/, "");
+	const bare = stripMcpToolPrefix(toolName, prefixes);
 	return bare.startsWith("create_") || bare.startsWith("update_") || bare.startsWith("patch_");
 }
 

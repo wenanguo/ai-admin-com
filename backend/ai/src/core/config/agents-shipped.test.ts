@@ -24,7 +24,9 @@ describe("仓里的智能体配置", () => {
 		expect(pm?.tools).toEqual(["create_task"]);
 
 		// ② MCP：一台 `aiadmin`（地址不写 ⇒ 用全局默认，与原来一样）
-		expect(pm?.mcpServers).toEqual([{ name: "aiadmin" }]);
+		expect(pm?.mcpServers).toEqual([
+			{ name: "aiadmin", url: undefined, type: "http", exposure: "direct" },
+		]);
 
 		// ③ 技能：还是本服务自己的 `.pi/skills`（相对配置目录解析）
 		expect(pm?.skills).toEqual([join(process.cwd(), ".pi", "skills")]);

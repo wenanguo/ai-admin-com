@@ -29,7 +29,7 @@ function pmConfig(): AgentConfig {
 		model: "minimax-cn/MiniMax-M3.1-Flash",
 		systemPrompt: "你是 PM 助手",
 		skills: ["/srv/ai/.pi/skills"],
-		mcpServers: [{ name: "aiadmin" }],
+		mcpServers: [{ name: "aiadmin", type: "http", exposure: "direct" }],
 		tools: ["create_task"],
 		dir: "/srv/ai/agents/pm",
 		configPath: "/srv/ai/agents/pm/agent.yaml",
@@ -198,8 +198,8 @@ describe("运行时 · 按智能体配置装配会话", () => {
 		expect(qaOptions?.tools).toEqual([]);
 
 		// ③ MCP：PM 接（地址取全局默认），问答不接
-		expect(pmOptions?.mcp?.url).toBe("http://aiadmin.test/mcp");
-		expect(qaOptions?.mcp).toBeUndefined();
+		expect(pmOptions?.mcpServers?.[0]?.url).toBe("http://aiadmin.test/mcp");
+		expect(qaOptions?.mcpServers).toEqual([]);
 
 		// ④ 技能目录：PM 有，问答没有
 		expect(pmOptions?.skillsDirs).toEqual(["/srv/ai/.pi/skills"]);
@@ -249,5 +249,122 @@ describe("运行时 · 按智能体配置装配会话", () => {
 
 		const conversation = await runtime.createConversation("2", "会话");
 		expect(agentIdOfConversation(conversation.conversationId)).toBe("pm");
+	});
+});
+
+describe("运行时 · MCP 服务器（0 / 1 / N 个）", () => {
+	/** 造一个带 N 台服务器的智能体来源。 */
+	function agentsWith(count: number): AgentProvider {
+		const servers = Array.from({ length: count }, (_, index) => ({
+			name: `srv${index + 1}`,
+			url: `http://srv${index + 1}.test/mcp`,
+			type: "http" as const,
+			exposure: "direct" as const,
+		}));
+		const config: AgentConfig = {
+			id: "multi",
+			name: "多服务器",
+			description: "说明",
+			systemPrompt: "你是多服务器助手",
+			skills: [],
+			mcpServers: servers,
+			tools: [],
+			dir: "/srv/ai/agents/multi",
+			configPath: "/srv/ai/agents/multi/agent.yaml",
+		};
+		return {
+			defaultAgentId: "multi",
+			get: (agentId) => (agentId === "multi" ? config : undefined),
+			list: () => [config],
+		};
+	}
+
+	/** 造一个运行时（用指定的智能体来源）。 */
+	function makeRuntime(agents: AgentProvider): {
+		runtime: AgentRuntime;
+		sessionOptions: PiSessionOptions[];
+	} {
+		const { store } = fakeStore();
+		const sessionOptions: PiSessionOptions[] = [];
+		const runtime = new AgentRuntime({
+			store,
+			agents,
+			mcpUrl: null,
+			audit: { write: async () => {} },
+			createSession: async (options: PiSessionOptions) => {
+				sessionOptions.push(options);
+				return {
+					prompt: async (): Promise<void> => {},
+					subscribe: () => () => {},
+					dispose: () => {},
+					isStreaming: false,
+				};
+			},
+			createDataSource: () => ({
+				createTask: async () => {
+					throw new Error("本用例不该真的建任务");
+				},
+			}),
+			resolveUser: async () => ({ id: 2, name: "测试用户" }),
+		});
+		return { runtime, sessionOptions };
+	}
+
+	it("0 个 ⇒ 不挂任何 MCP", async () => {
+		const { runtime, sessionOptions } = makeRuntime(agentsWith(0));
+		const conversation = await runtime.createConversation("2", "会话");
+		await talk(runtime, conversation.conversationId, "cmd-1");
+		await waitFor(() => sessionOptions.length >= 1);
+
+		expect(sessionOptions[0]?.mcpServers).toEqual([]);
+	});
+
+	it("1 个 ⇒ 挂一台（名字与地址都来自配置）", async () => {
+		const { runtime, sessionOptions } = makeRuntime(agentsWith(1));
+		const conversation = await runtime.createConversation("2", "会话");
+		await talk(runtime, conversation.conversationId, "cmd-1");
+		await waitFor(() => sessionOptions.length >= 1);
+
+		expect(sessionOptions[0]?.mcpServers?.map((server) => server.name)).toEqual([
+			"srv1",
+		]);
+		expect(sessionOptions[0]?.mcpServers?.[0]?.url).toBe("http://srv1.test/mcp");
+	});
+
+	it("N 个 ⇒ 全都挂上（名字决定工具名前缀）", async () => {
+		const { runtime, sessionOptions } = makeRuntime(agentsWith(3));
+		const conversation = await runtime.createConversation("2", "会话");
+		await talk(runtime, conversation.conversationId, "cmd-1");
+		await waitFor(() => sessionOptions.length >= 1);
+
+		expect(sessionOptions[0]?.mcpServers?.map((server) => server.name)).toEqual([
+			"srv1",
+			"srv2",
+			"srv3",
+		]);
+	});
+
+	it("配置里没写地址、也没全局默认 ⇒ 那台不挂", async () => {
+		const { runtime, sessionOptions } = makeRuntime({
+			...agentsWith(1),
+			get: () => ({
+				id: "multi",
+				name: "多服务器",
+				description: "说明",
+				systemPrompt: "你是助手",
+				skills: [],
+				mcpServers: [
+					{ name: "srv1", type: "http", exposure: "direct" },
+				],
+				tools: [],
+				dir: "/srv/ai/agents/multi",
+				configPath: "/srv/ai/agents/multi/agent.yaml",
+			}),
+		});
+		const conversation = await runtime.createConversation("2", "会话");
+		await talk(runtime, conversation.conversationId, "cmd-1");
+		await waitFor(() => sessionOptions.length >= 1);
+
+		expect(sessionOptions[0]?.mcpServers).toEqual([]);
 	});
 });

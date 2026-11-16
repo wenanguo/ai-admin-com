@@ -23,7 +23,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { env } from "../env.ts";
 import type { CommandTool } from "../tools/types.ts";
-import { createAiadminMcpExtension } from "./mcp.ts";
+import { createMcpServersExtension, type McpServerSpec } from "./mcp.ts";
 import { buildSystemPrompt, createSkillsOverride } from "./skills.ts";
 import { createLoadSkillTool } from "./skill-tools.ts";
 import { buildSessionEntries } from "./session-entries.ts";
@@ -76,22 +76,12 @@ export interface PiSessionOptions {
 	 */
 	thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 	/**
-	 * AiAdmin 的 MCP 服务器（**不给就不接 MCP**）。
+	 * 要挂的 MCP 服务器（**可以 0 / 1 / N 个**；不给 ⇒ 不挂 MCP）。
 	 *
 	 * ⚠️ token 是**这次调用方**的 ⇒ 每个会话一份（后端靠它做权限码校验）。
-	 * ⚠️ 后端还没部署 MCP 时**不给这一项**即可 ⇒ 会话照常能用（只是没有那些工具）。
+	 * ⚠️ 名字决定**工具名前缀**（`mcp__<name>__<tool>`）⇒ 多服务器的工具不会盖名。
 	 */
-	mcp?: {
-		url: string;
-		token: string;
-		/**
-		 * 传输层工厂（**测试用**）。
-		 *
-		 * ⚠️ 生产不传 ⇒ 用 pi 的默认传输层（真的 HTTP 连 MCP 服务器）。
-		 *    测试传假传输层 ⇒ 不依赖后端也能验证整条链路。
-		 */
-		createTransport?: (entry: unknown, cwd: string, authProvider: unknown) => unknown;
-	};
+	mcpServers?: McpServerSpec[];
 	/**
 	 * 闸门扩展（**修改已有数据要人点头**；不给就不拦）。
 	 *
@@ -163,13 +153,31 @@ export async function createPiSession(
 	//    扩展工厂在 reload 时会跑 ⇒ 挂两个就会注册两次（多跑一遍）。
 	// ⚠️ `extensionFactories` 是 **loader** 的选项（不是 `createAgentSession` 的）
 	//    —— 给错了会被静默忽略 ⇒ 扩展根本没加载 ⇒ 一个 MCP 工具都不出现。
+	const mcpServers = options.mcpServers ?? [];
+	// ⚠️ **测试用**：某台服务器注入了假传输层 ⇒ 给 pi 一个**按服务器名分发**的工厂。
+	//    一台都没注入 ⇒ 不给（pi 用自己的真 HTTP 传输层）。
+	const createTransport = mcpServers.some(
+		(server) => server.createTransport !== undefined,
+	)
+		? (entry: unknown, cwd: string, authProvider: unknown): unknown => {
+				const name = (entry as { name?: string }).name;
+				const spec = mcpServers.find((server) => server.name === name);
+				if (spec?.createTransport === undefined) {
+					throw new Error(
+						`MCP 服务器 ${name ?? "?"} 没有注入传输层（测试用）`,
+					);
+				}
+				return spec.createTransport(entry, cwd, authProvider);
+			}
+		: undefined;
+
 	const extensionFactories = [
-		...(options.mcp
+		...(mcpServers.length > 0
 			? [
 					createMcpExtension({
-						createTransport: options.mcp.createTransport as never,
+						createTransport: createTransport as never,
 					}),
-					createAiadminMcpExtension(options.mcp),
+					createMcpServersExtension(mcpServers),
 				]
 			: []),
 		// 闸门（修改类工具要人点头）

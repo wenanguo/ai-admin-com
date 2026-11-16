@@ -288,7 +288,9 @@ describe("pi 会话 · MCP", () => {
 			conversationId: "conv-1",
 			history: [],
 			model: "minimax-cn/MiniMax-M3.1-Flash",
-			mcp: { url: "https://example.test/api/v1/mcp", token: "user-jwt" },
+			mcpServers: [
+				{ name: "aiadmin", url: "https://example.test/api/v1/mcp", token: "user-jwt" },
+			],
 		});
 
 		const loader = vi.mocked(createAgentSession).mock.calls[0]?.[0]?.resourceLoader as {

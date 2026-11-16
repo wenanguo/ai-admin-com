@@ -26,7 +26,7 @@ import {
 	type AgentSession,
 } from "@earendil-works/pi-coding-agent";
 import { createFakeMcpServer, type FakeMcpServer } from "./mcp.fake.ts";
-import { createAiadminMcpExtension } from "./mcp.ts";
+import { createMcpServersExtension } from "./mcp.ts";
 import { createPiSession } from "./pi-session.ts";
 
 /** 造一个带假 MCP 服务器的会话（与生产同构：扩展工厂挂在 loader 上）。 */
@@ -41,7 +41,9 @@ async function sessionWithFakeMcp(fake: FakeMcpServer): Promise<{
 		noSkills: false,
 		extensionFactories: [
 			createMcpExtension({ createTransport: fake.createTransport as never }),
-			createAiadminMcpExtension({ url: "http://fake.local/mcp", token: "user-jwt" }),
+			createMcpServersExtension([
+				{ name: "aiadmin", url: "http://fake.local/mcp", token: "user-jwt" },
+			]),
 		],
 	});
 	await loader.reload();
@@ -148,7 +150,9 @@ describe("MCP 链路（假服务器）", () => {
 						throw new Error("连不上");
 					},
 				}),
-				createAiadminMcpExtension({ url: "http://fake.local/mcp", token: "user-jwt" }),
+				createMcpServersExtension([
+					{ name: "aiadmin", url: "http://fake.local/mcp", token: "user-jwt" },
+				]),
 			],
 		});
 		await loader.reload();
@@ -181,17 +185,108 @@ describe("MCP 链路（走真实的 createPiSession）", () => {
 			conversationId: "conv-1",
 			history: [],
 			model: "minimax-cn/MiniMax-M3.1-Flash",
-			mcp: {
-				url: "http://fake.local/mcp",
-				token: "user-jwt",
-				createTransport: fake.createTransport as never,
-			},
+			mcpServers: [
+				{
+					name: "aiadmin",
+					url: "http://fake.local/mcp",
+					token: "user-jwt",
+					createTransport: fake.createTransport as never,
+				},
+			],
 		})) as unknown as AgentSession;
 
 		try {
 			await vi.waitFor(() => {
 				expect(session.getActiveToolNames()).toContain("mcp__aiadmin__list_tasks");
 			});
+		} finally {
+			session.dispose();
+		}
+	});
+
+	it("⭐ 多台服务器：工具前缀按**服务器名**生成（不互相盖名）", async () => {
+		const alpha = createFakeMcpServer({
+			tools: [
+				{ name: "list_tasks", description: "列任务", inputSchema: { type: "object" } },
+			],
+		});
+		const beta = createFakeMcpServer({
+			tools: [
+				{ name: "list_tasks", description: "列任务", inputSchema: { type: "object" } },
+				{ name: "search_docs", description: "搜文档", inputSchema: { type: "object" } },
+			],
+		});
+
+		const session = (await createPiSession({
+			tools: [],
+			systemPrompt: "你是助手。",
+			conversationId: "conv-1",
+			history: [],
+			model: "minimax-cn/MiniMax-M3.1-Flash",
+			mcpServers: [
+				{
+					name: "alpha",
+					url: "http://alpha.local/mcp",
+					token: "user-jwt",
+					createTransport: alpha.createTransport as never,
+				},
+				{
+					name: "beta",
+					url: "http://beta.local/mcp",
+					createTransport: beta.createTransport as never,
+				},
+			],
+		})) as unknown as AgentSession;
+
+		try {
+			await vi.waitFor(() => {
+				const names = session.getActiveToolNames();
+				expect(names).toContain("mcp__alpha__list_tasks");
+				expect(names).toContain("mcp__beta__list_tasks");
+				expect(names).toContain("mcp__beta__search_docs");
+			});
+		} finally {
+			session.dispose();
+		}
+	});
+
+	it("⭐ 一台连不上 ⇒ 另一台照常能用（不拖垮整个智能体）", async () => {
+		const good = createFakeMcpServer({
+			tools: [
+				{ name: "list_tasks", description: "列任务", inputSchema: { type: "object" } },
+			],
+		});
+
+		const session = (await createPiSession({
+			tools: [],
+			systemPrompt: "你是助手。",
+			conversationId: "conv-1",
+			history: [],
+			model: "minimax-cn/MiniMax-M3.1-Flash",
+			mcpServers: [
+				{
+					name: "broken",
+					url: "http://broken.local/mcp",
+					createTransport: () => {
+						throw new Error("连不上");
+					},
+				},
+				{
+					name: "good",
+					url: "http://good.local/mcp",
+					createTransport: good.createTransport as never,
+				},
+			],
+		})) as unknown as AgentSession;
+
+		try {
+			// ⚠️ **会话照样建得起来**（后端没部署时不能 500）
+			await session.bindExtensions({ mode: "print" });
+			await vi.waitFor(() => {
+				expect(session.getActiveToolNames()).toContain("mcp__good__list_tasks");
+			});
+			// 连不上的那台只是**没有工具**
+			expect(session.getActiveToolNames()).not.toContain("mcp__broken__list_tasks");
 		} finally {
 			session.dispose();
 		}

@@ -20,6 +20,32 @@ agents/
 
 ⚠️ **默认智能体**由环境变量 `AI_DEFAULT_AGENT` 决定（缺省 `pm`）。
 
+## MCP 服务器（`mcpServers`）
+
+```yaml
+mcpServers:
+  # ① AiAdmin 自己的 MCP（地址不写 ⇒ 用全局默认 `AIADMIN_MCP_URL`）
+  - name: aiadmin
+  # ② 另一台服务器（地址写全；token 由本服务按调用方 JWT 自动带上）
+  - name: docs
+    url: ${DOCS_MCP_URL}
+    type: http          # http（缺省）/ sse（也走 HTTP 传输）
+    exposure: direct    # direct（缺省）/ deferred / codemode / hidden
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `name` | ✅ | 服务器名 —— **工具名的前缀**（`mcp__<name>__<tool>`）⇒ 多服务器的工具不互相盖名。只能小写字母 / 数字 / 连字符 |
+| `url` | ❌ | 地址（省略 ⇒ 用全局默认 `AIADMIN_MCP_URL`；两者都没有 ⇒ **这台不挂**）。可写 `${ENV_VAR}`（**启动时展开**） |
+| `type` | ❌ | 传输类型：`http`（缺省）/ `sse`（也走 HTTP 传输）。**不支持 stdio**（本服务是 HTTP 服务） |
+| `exposure` | ❌ | 暴露方式：`direct`（缺省，工具直接给模型）/ `deferred` / `codemode` / `hidden` |
+
+⚠️ **一台连不上 ⇒ 不拖垮整个智能体**：其余服务器与对话照常（错误由 pi 报告一次）。
+
+⚠️ **MCP 的 Prompts 暂不支持**：pi SDK 的 MCP 扩展**只处理 tools 与 resources**
+⇒ 「MCP 的 prompt 自动变成 `/<服务器名>:<prompt名>` 斜杠命令」这条**做不了**
+（等 SDK 支持了再做）。
+
 ## 会话 ↔ 智能体的绑定
 
 `POST /api/agent/conversations` 可以带 `agentId`（不带给默认智能体）。
@@ -43,7 +69,7 @@ POST /api/agent/conversations
 | `systemPrompt` | 二选一 | 系统提示词（直接写） |
 | `systemPromptFile` | 二选一 | 系统提示词文件（相对本配置目录） |
 | `skills` | ❌ | 技能目录列表（相对本配置目录；省略 ⇒ 空） |
-| `mcpServers` | ❌ | MCP 服务器列表（`{ name, url? }`；省略 ⇒ 空） |
+| `mcpServers` | ❌ | MCP 服务器列表（**可以 0 / 1 / N 个**；省略 ⇒ 空） |
 | `tools` | ❌ | 工具白名单（工具名；省略 ⇒ 空） |
 
 ⚠️ **未知字段会报错**（拼错字段名不会被悄悄丢掉）。

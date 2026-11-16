@@ -16,10 +16,30 @@
 import { z } from "zod";
 import { AgentConfigError, formatFieldPath } from "./errors.ts";
 
-/** 一个 MCP 服务器条目。 */
+/** 一台 MCP 服务器（配置）。 */
 const mcpServerSchema = z.strictObject({
-	name: z.string({ error: "必填且是非空字符串" }).min(1, { error: "必填且是非空字符串" }),
+	/**
+	 * 服务器名（**工具名的前缀**：`mcp__<name>__`）。
+	 *
+	 * ⚠️ 只能是小写字母 / 数字 / 连字符：pi 会把名字里的非法字符换成 `_`
+	 *    ⇒ 名字里有下划线会让前缀认不准（认不出自己的工具 ⇒ 写操作判不出来）。
+	 */
+	name: z
+		.string({ error: "必填且是非空字符串" })
+		.min(1, { error: "必填且是非空字符串" })
+		.regex(/^[a-z0-9][a-z0-9-]*$/, {
+			error: "只能是小写字母、数字与连字符（不许有下划线）",
+		}),
+	/** 地址（可省 ⇒ 用全局默认；可写 `${ENV_VAR}` ⇒ 启动时展开）。 */
 	url: z.string({ error: "必须是非空字符串" }).min(1, { error: "必须是非空字符串" }).optional(),
+	/** 传输类型（本服务是 HTTP 服务 ⇒ 只做 http；sse 走同一个 HTTP 传输）。 */
+	type: z.enum(["http", "sse"], { error: "只能是 http 或 sse" }).default("http"),
+	/** 暴露方式（缺省 direct ⇒ 工具直接给模型看）。 */
+	exposure: z
+		.enum(["direct", "deferred", "codemode", "hidden"], {
+			error: "只能是 direct / deferred / codemode / hidden",
+		})
+		.default("direct"),
 });
 
 /** 智能体配置的形状。 */

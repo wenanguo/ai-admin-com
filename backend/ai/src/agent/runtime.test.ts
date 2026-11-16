@@ -563,14 +563,14 @@ describe("运行时 · token 轮换（P4）", () => {
 
 		await runtime.submitCommand({ ...command("cmd-1"), token: "token-a" });
 		await waitFor(() => created.length >= 1);
-		expect(created[0]?.mcp?.token).toBe("token-a");
+		expect(created[0]?.mcpServers?.[0]?.token).toBe("token-a");
 
 		// ⚠️ 同一个会话，但 token 换了
 		await runtime.submitCommand({ ...command("cmd-2"), token: "token-b" });
 		await waitFor(() => created.length >= 2);
 
 		// ⇒ 重建了一个会话，带的是**新** token
-		expect(created[1]?.mcp?.token).toBe("token-b");
+		expect(created[1]?.mcpServers?.[0]?.token).toBe("token-b");
 	});
 
 	it("token 没变 ⇒ 不重建会话（别每次都重连 MCP）", async () => {
@@ -591,7 +591,7 @@ describe("运行时 · token 轮换（P4）", () => {
 		await runtime.submitCommand({ ...command("cmd-1"), token: "token-a" });
 		await waitFor(() => created.length >= 1);
 
-		expect(created[0]?.mcp).toBeUndefined();
+		expect(created[0]?.mcpServers).toEqual([]);
 	});
 });
 

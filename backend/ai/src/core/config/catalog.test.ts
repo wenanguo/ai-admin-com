@@ -28,7 +28,7 @@ describe("toAgentSummary", () => {
 			config({
 				model: "minimax-cn/MiniMax-M3.1-Flash",
 				skills: ["/tmp/pm/skills"],
-				mcpServers: [{ name: "aiadmin" }],
+				mcpServers: [{ name: "aiadmin", type: "http", exposure: "direct" }],
 				tools: ["create_task", "update_task"],
 			}),
 		);
