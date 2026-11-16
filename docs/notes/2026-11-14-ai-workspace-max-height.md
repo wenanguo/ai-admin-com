@@ -71,12 +71,12 @@ cd frontend && npx playwright test e2e/ai-workspace.spec.ts
 
 ## 目标
 
-- **关联**：issue #59 · PR _（待填）_
+- **关联**：issue #59 · PR #64
 - **一句话**：窄版浮层也改成 `top: 0` + `z-index: 101` ⇒ **两种形态顶边一致**（都与最大化对齐）。
 
 ## 状态
 
-进行中（代码 + 单测 + e2e 已改完，待 PR / 合并）
+**已完成**（PR #64 已合并，CI 全绿；issue #59 已关闭）
 
 ## 已完成
 

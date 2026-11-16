@@ -9,7 +9,7 @@
 
 ## 状态
 
-实现已完成，PR #62 已提（待 CI 绿 → 合并）
+**已完成**（PR #62 已合并，CI 全绿；issue #55 已关闭）
 
 ## 短设计（规模：中 ⇒ 按 `docs/process.md` §3 写短设计，不写 spec/plan）
 
@@ -70,7 +70,7 @@
 原生 node / utoopack 解析不了 ⇒ 报 `Symlink frontend/node_modules could not be resolved`。
 ⇒ 用 **Windows junction**（`New-Item -ItemType Junction`）或直接 `npm ci` 装一份真的。
 
-**下一步（具体到文件与命令）**：
+**下一步（具体到文件与命令）**：**无** —— 已完成并合并。
 
 ```bash
 # ① 全绿（前端 lint + 两个仓的测试）
@@ -82,8 +82,6 @@ node scripts/e2e/compose.static.cjs
 
 # ③ 前端构建必须过（cheatsheet 的 import 路径改过 ⇒ 这条最关键）
 cd frontend && npm run build
-
-# ④ 更新本 note（补 PR 号）→ 提 PR
 ```
 
 ## 决策记录
