@@ -28,7 +28,7 @@ import {
 	type AgentSession,
 } from "@earendil-works/pi-coding-agent";
 import { createFakeMcpServer, type FakeMcpServer } from "./mcp.fake.ts";
-import { createAiadminMcpExtension } from "./mcp.ts";
+import { createMcpServersExtension } from "./mcp.ts";
 import { createGateExtension } from "./gate.ts";
 import { PendingWaiterRegistry } from "./pending-waiters.ts";
 
@@ -45,7 +45,9 @@ async function sessionWithGate(fake: FakeMcpServer, waiters: PendingWaiterRegist
 		noSkills: false,
 		extensionFactories: [
 			createMcpExtension({ createTransport: fake.createTransport as never }),
-			createAiadminMcpExtension({ url: "http://fake.local/mcp", token: "user-jwt" }),
+			createMcpServersExtension([
+				{ name: "aiadmin", url: "http://fake.local/mcp", token: "user-jwt" },
+			]),
 			createGateExtension({
 				waiters,
 				context: () => ({

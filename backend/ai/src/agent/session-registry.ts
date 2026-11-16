@@ -91,6 +91,13 @@ export interface ConversationChannel {
 		| undefined;
 	/** pi 会话（懒创建）。 */
 	session: AgentSessionLike | undefined;
+	/**
+	 * 这个会话用到的 **MCP 工具名前缀**（`mcp__<server>__`）。
+	 *
+	 * ⚠️ **按已知的服务器名算**（不是正则猜）⇒ 多服务器 / 名字带连字符都不会认错。
+	 * ⚠️ 会话建起来时才知道（那时才知道挂了哪些服务器）⇒ 之前是空的。
+	 */
+	mcpPrefixes: string[];
 	/** 退订函数（关会话时调用）。 */
 	unsubscribe: (() => void) | undefined;
 	/** 正在流式输出？ */
@@ -159,6 +166,7 @@ export class SessionRegistry {
 			lastWrite: undefined,
 			lastMcpWrite: undefined,
 			session: undefined,
+			mcpPrefixes: [],
 			unsubscribe: undefined,
 			isStreaming: false,
 			ended: false,
