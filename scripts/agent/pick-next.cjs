@@ -75,27 +75,9 @@ if (ready.length === 0) {
 }
 
 // ── ② 读 issue 正文里的「依赖」段 ────────────────────────────
-/**
- * 从正文里抽出依赖的 issue 号。
- *
- * 只看「## 依赖」那一节（到下一个 `##` 为止）—— 正文别处出现的 `#号`
- * 可能是上游仓库的 issue 号（例：#11772 属上游 Ant Design Pro），不能当依赖。
- */
-function parseDependencies(body) {
-  const section = body.match(/^##\s*依赖\s*$([\s\S]*?)(?=^##\s|\Z)/m);
-  if (!section) return [];
-  const text = section[1];
-  if (/无/.test(text)) return [];
-  const ids = [...text.matchAll(/#(\d+)/g)].map((m) => Number(m[1]));
-  return [...new Set(ids)];
-}
-
-/** 查一个 issue 是否已关闭。 */
-function isClosed(number) {
-  const json = tryRun('gh', ['issue', 'view', String(number), '--json', 'state,stateReason']);
-  const info = JSON.parse(json);
-  return info.state === 'CLOSED';
-}
+// ⚠️ 依赖判断的纯逻辑在 `lib/deps.cjs`（可单测）：那里认得「PR 也是 issue」这件事
+//    ⇒ 已合并的 PR（state = MERGED）也算「依赖已落地」。
+const { parseDependencies, isSettled } = require('./lib/deps.cjs');
 
 // ── ③ 挑一条：依赖全满足 + 里程碑最早到期 + 编号最小 ─────────
 const milestones = JSON.parse(
@@ -106,7 +88,7 @@ const dueByMs = new Map(milestones.map((m) => [m.title, m.due_on ?? '9999-12-31'
 /** 候选评估结果。 */
 const evaluated = ready.map((issue) => {
   const deps = parseDependencies(issue.body ?? '');
-  const unmet = deps.filter((d) => !isClosed(d));
+  const unmet = deps.filter((d) => !isSettled(d, tryRun));
   return {
     issue,
     deps,
