@@ -68,6 +68,6 @@ test.describe('Login Page', () => {
       timeout: 30_000,
     });
     // ⚠️ antd 会在两个汉字之间插空格 ⇒ 「重 试」
-    await expect(page.getByRole('button', { name: /重s*试/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /重\s*试/ })).toBeVisible();
   });
 });
