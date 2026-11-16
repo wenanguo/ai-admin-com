@@ -396,11 +396,26 @@ export function AiWorkspaceShell({
                       }
                     : {
                         position: 'fixed',
-                        top: headerHeight,
+                        /*
+                        ⚠️ **顶到视口最上沿**（y = 0），与**最大化形态对齐**（issue #59）。
+                        以前是 `top: headerHeight`（≈56）⇒ 窄版比宽版低一截 ⇒
+                        「两种形态」看起来不是一回事。
+
+                        ⚠️ **顶栏右上角会被盖住**（头像 / 账号菜单点不到）——
+                        **这是有意的**（人 2026-11-14 定）：先把面板做成能占满上沿，
+                        将来「界面可拖动」才有地基（能拖到视口任意位置）。
+                        别当成 bug 改回去。
+                        */
+                        top: 0,
                         right: 0,
                         bottom: 0,
                         width: narrow ? '100vw' : AI_WORKSPACE_WIDTH,
-                        zIndex: 100,
+                        /*
+                        ⚠️ **z-index 与宽版对齐（101）**：ProLayout 顶栏自己也是 100
+                        （`position: fixed`）⇒ 同层时谁在上面取决于 DOM 顺序，不可靠。
+                        ⇒ 两种形态都抬到 101，把顶栏压在下面。
+                        */
+                        zIndex: 101,
                         display: 'flex',
                         flexDirection: 'column',
                         background: token.colorBgContainer,

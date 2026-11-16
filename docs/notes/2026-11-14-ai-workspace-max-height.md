@@ -62,3 +62,56 @@ cd frontend && npx playwright test e2e/ai-workspace.spec.ts
   **没装进 PATH、也没动 brew** ⇒ 下次要记得把它加进 PATH，或正式 `brew install gh`。
 - ⚠️ issue 号是 **#57**（不是我一开始猜的 55）⇒ 分支已改名成 `fix/57-ai-workspace-max-height`。
 - ⚠️ `main` 有**保护分支钩子** ⇒ 直落 main 会被拒（`protected branch hook declined`）⇒ 必须走分支 + PR。
+
+---
+
+# 追加：窄版也顶到视口最上沿（2026-11-16）
+
+> 接上一节 —— 同一个诉求的**另一半**：宽版（最大化）顶到 y=0 了，**窄版（右侧 400px）还压在顶栏下面**（y=56）。
+
+## 目标
+
+- **关联**：issue #59 · PR _（待填）_
+- **一句话**：窄版浮层也改成 `top: 0` + `z-index: 101` ⇒ **两种形态顶边一致**（都与最大化对齐）。
+
+## 状态
+
+进行中（代码 + 单测 + e2e 已改完，待 PR / 合并）
+
+## 已完成
+
+| 提交 | 做了什么 |
+| ---- | -------- |
+| `（本次）` | `AiWorkspaceShell.tsx`：窄版 `top: 0` + `zIndex: 101`（原来 `top: headerHeight` / `zIndex: 100`） |
+| `（本次）` | `AiWorkspaceShell.test.tsx`：新增单测（窄版 `style.top === '0px'`、`style.zIndex === '101'`） |
+| `（本次）` | `e2e/ai-workspace.spec.ts`：改两条与新需求冲突的断言（`toBeGreaterThan(0)` ⇒ `toBeCloseTo(0, 0)`）+ 新增 2 条用例（窄版 y=0 + 顶栏右上角被盖住 + logo 不露半截；窄屏全宽 100vw 时同样 y=0） |
+
+## 决策记录
+
+| 决定 | 为什么 | 错了的代价 |
+| ---- | ------ | ---------- |
+| 窄版 `top: 0`（不是 `top: headerHeight`） | 人要的是「两种形态顶边一致」；而且**将来这个面板要能拖动** ⇒ 先让它能占满上沿 | 保持 y=56 ⇒ 宽窄两种形态看起来不是一回事 |
+| 窄版 `z-index` 也抬到 **101** | ProLayout 顶栏自己是 `position: fixed; z-index: 100` ⇒ 同层时谁在上面取决于 DOM 顺序，不可靠 | 不抬 ⇒ 顶栏时隐时现（看构建顺序） |
+| ⚠️ **顶栏右上角（头像 / 账号菜单）被盖住、点不到 —— 有意为之** | 人 2026-11-14 定的：先把面板做成能占满上沿，将来「界面可拖动」才有地基 | 有人当成 bug 报回来 ⇒ 又要在代码里写注释解释「这是有意的」 |
+| 窄屏全宽（`width: 100vw`）**不用**再补 header patch | 全宽时面板左边缘 ≤ 0 ⇒ logo **整块**被面板盖住（不是半截）⇒ 不存在「半截 logo」 | 宽版那条 patch 只对「面板从 contentBox.left 起」的情况有意义 |
+| 路由页 `/ai/workspace` **不动** | 沿用上一节的决策（它是独立页面） | —— |
+
+## 怎么验
+
+```bash
+cd frontend && npm run build          # ⚠️ e2e 跑的是 dist/（生产构建）⇒ 改完源码必须先 build
+cd frontend && npx vitest run src/components/ai-workspace/AiWorkspaceShell.test.tsx
+cd frontend && npx playwright test e2e/ai-workspace.spec.ts
+```
+
+人眼要看的：
+
+1. 任意页面点右下角机器人 ⇒ **小浮层顶到屏幕最上面**（顶栏右上角被盖住 —— 有意为之）
+2. 点「最大化」⇒ 仍是满屏（PR #58 的效果没被破坏），左侧菜单还在
+3. 左上角**没有半截 logo**
+4. 点「返回」⇒ 收回窄版，仍贴着视口上沿
+
+## 坑与提醒
+
+- ⚠️ **e2e 跑的是 `frontend/dist/`** ⇒ 改完源码不 `npm run build` ⇒ 测的是旧代码（这次踩了一次：断言 `Received: 56`）。
+- ⚠️ 窄版那条 `top: headerHeight` 一改，`headerHeight` 这个 state 只剩**宽版的 header patch** 在用 ⇒ 别顺手把它删了。
