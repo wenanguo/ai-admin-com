@@ -95,6 +95,7 @@ const mustKeep = [
   'backend/ai/src',
   'backend/ai/prisma',
   'backend/ai/.pi',
+  'backend/ai/agents',
 ];
 const wronglyExcluded = mustKeep.filter((target) =>
   ignoreRules.some((rule) => ruleExcludes(rule, target)),
@@ -118,6 +119,7 @@ containsAll(
     'COPY --from=builder /app/dist ./dist',
     'COPY --from=builder /app/node_modules/.prisma',
     'COPY backend/ai/.pi ./.pi',
+    'COPY backend/ai/agents ./agents',
     'EXPOSE 3100',
     'HEALTHCHECK',
     '/health',
@@ -160,6 +162,13 @@ check('拷贝指令里没有凭据文件', credentialCopy.length === 0, credenti
 check(
   '技能在 /app/.pi（与 WORKDIR /app 的相对关系一致）',
   /WORKDIR \/app/.test(dockerfile) && /COPY backend\/ai\/\.pi \.\/\.pi/.test(dockerfile),
+);
+
+// 智能体配置也是 cwd 相对（`agents/<agentId>/agent.yaml`）⇒ 必须带进镜像
+check(
+  '智能体配置在 /app/agents（与 WORKDIR /app 的相对关系一致）',
+  /WORKDIR \/app/.test(dockerfile) &&
+    /COPY backend\/ai\/agents \.\/agents/.test(dockerfile),
 );
 
 // 容器里没有 .env ⇒ 启动命令不能用 --env-file（缺文件会直接退出）

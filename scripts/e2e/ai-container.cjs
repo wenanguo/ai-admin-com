@@ -137,6 +137,13 @@ async function main() {
   const skillFiles = inContainer('ls /app/.pi/skills/create-task/SKILL.md');
   check('技能文件在位（SKILL.md）', skillFiles.status === 0, skillFiles.stderr);
 
+  const agentConfigs = inContainer('ls /app/agents');
+  check(
+    '智能体配置在 /app/agents（cwd 相对 ⇒ /api/agents 读得到）',
+    agentConfigs.status === 0 && agentConfigs.stdout.includes('sample'),
+    agentConfigs.stdout || agentConfigs.stderr,
+  );
+
   const typescript = inContainer('ls -d /app/node_modules/typescript 2>/dev/null');
   check('镜像里没有 devDependencies（typescript 不在）', typescript.status !== 0, typescript.stdout);
 

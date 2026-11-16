@@ -21,6 +21,7 @@ import { request } from '@umijs/max';
 import { getAccessToken } from '@/auth/token';
 import { AI_API_BASE_URL, aiUrl } from './base';
 import type {
+  AiAgentSummary,
   AiAuditRow,
   AiConversation,
   AiEnvelope,
@@ -278,6 +279,16 @@ export async function listAiAudit(params?: AiAuditQuery): Promise<AiAuditPage> {
  */
 export async function listAiSkills(): Promise<AiSkillSummary[]> {
   return aiRequest<AiSkillSummary[]>('/api/agent/skills', { method: 'GET' });
+}
+
+/**
+ * 列出当前可用的智能体（服务端 `GET /api/agents`）。
+ *
+ * ⚠️ 智能体是**配置**（`backend/ai/agents/<agentId>/agent.yaml`）⇒
+ *    清单读的是真文件 ⇒ 改完配置重启 AI 服务就能看到。
+ */
+export async function listAiAgents(): Promise<AiAgentSummary[]> {
+  return aiRequest<AiAgentSummary[]>('/api/agents', { method: 'GET' });
 }
 
 export async function listAiPending(status?: string): Promise<AiPendingRow[]> {
