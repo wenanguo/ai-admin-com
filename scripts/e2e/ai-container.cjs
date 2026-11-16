@@ -144,6 +144,17 @@ async function main() {
     agentConfigs.stdout || agentConfigs.stderr,
   );
 
+  // ⚠️ **PM 助手的配置与提示词要在镜像里**：缺了 ⇒ 容器里的 AI 没有提示词
+  const pmConfig = inContainer('ls /app/agents/pm');
+  check(
+    'PM 助手的配置在 /app/agents/pm（默认智能体 ⇒ 行为不变）',
+    pmConfig.status === 0 && pmConfig.stdout.includes('agent.yaml'),
+    pmConfig.stdout || pmConfig.stderr,
+  );
+
+  const pmPrompt = inContainer('ls /app/agents/pm/prompt.md');
+  check('PM 助手的提示词文件在位（prompt.md）', pmPrompt.status === 0, pmPrompt.stderr);
+
   const typescript = inContainer('ls -d /app/node_modules/typescript 2>/dev/null');
   check('镜像里没有 devDependencies（typescript 不在）', typescript.status !== 0, typescript.stdout);
 
