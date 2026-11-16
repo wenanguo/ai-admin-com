@@ -48,7 +48,11 @@ function parseDependencies(body) {
 
   if (!found) return [];
   const sectionText = sectionLines.join('\n');
-  if (/无/.test(sectionText)) return [];
+  // ⚠️ **只要段里有 `#号` 就以它为准**。
+  // 旧实现是 `if (/无/.test(sectionText)) return []` ⇒ 只要依赖段里出现「无」字样
+  // （例：写「无依赖」三个字、或「无特殊依赖」），**已解析出的依赖会被全部丢掉**
+  // ⇒ 依赖没合的 issue 被误判成可领 ⇒ 抢跑、撞车（实测：#82 依赖 #77–#81，
+  // 段里带一句「会误判成『无依赖』」⇒ 依赖被清空 ⇒ 被当成无依赖）。
   const ids = [...sectionText.matchAll(/#(\d+)/g)].map((m) => Number(m[1]));
   return [...new Set(ids)];
 }
