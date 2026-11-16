@@ -28,9 +28,10 @@ const DEFAULT_MYSQL_PORT = 3306;
 
 /** 数据库探针：TCP 连通性。 */
 export async function probeDatabase(): Promise<DependencyCheck> {
-	const target = parseMysqlTarget(env.DATABASE_URL);
+	// ⚠️ **用实际用的那个连接串**（本服务自己的库优先）
+	const target = parseMysqlTarget(env.databaseUrl);
 	if (target === undefined) {
-		return { status: "skipped", detail: "DATABASE_URL 解析不出主机名" };
+		return { status: "skipped", detail: "数据库连接串解析不出主机名" };
 	}
 	const reachable = await tcpReachable(target.host, target.port, PROBE_TIMEOUT_MS);
 	return reachable

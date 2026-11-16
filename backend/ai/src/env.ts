@@ -43,8 +43,26 @@ export interface Env {
 	 *    本地后端端口与线上不同时才需要显式写。
 	 */
 	AIADMIN_MCP_URL?: string;
-	/** AiAdmin 的 MySQL 连接串（`ai_*` 元数据表与业务表同库）。 */
-	DATABASE_URL: string;
+	/**
+	 * AiAdmin 的 MySQL 连接串（`ai_*` 元数据表与业务表同库）。
+	 *
+	 * ⚠️ **可省**：若配了 `AI_DATABASE_URL` ⇒ 本服务的表在自己的库里
+	 *    ⇒ 复用到别的系统时**不需要** AiAdmin 的库。
+	 */
+	DATABASE_URL?: string;
+	/**
+	 * 本服务**自己**的库（`ai_*` 那 5 张表住这儿）。
+	 *
+	 * ⚠️ **缺省** ⇒ 用共享库的 `DATABASE_URL`（今天的行为，一个字不变）。
+	 * ⚠️ 配了 ⇒ `ai_*` 表在**自己的库**里 ⇒ 换系统只改这一条配置。
+	 */
+	AI_DATABASE_URL?: string;
+	/**
+	 * **实际用的**连接串（`AI_DATABASE_URL` 优先，否则 `DATABASE_URL`）。
+	 *
+	 * ⚠️ 两个都没配 ⇒ 启动即失败（见 `parseEnv`）。
+	 */
+	databaseUrl: string;
 	/** 允许跨域的前端源（至少一个），回具体的源，不用 `*`。 */
 	ALLOWED_ORIGINS: string[];
 }
@@ -78,7 +96,16 @@ const envSchema = z.object({
 		.refine((value) => /^https?:\/\/\S+$/.test(value), "必须是 http(s) 开头的 URL"),
 	// ⚠️ 缺省不配 ⇒ 运行时用 `${AIADMIN_BASE_URL}/mcp`
 	AIADMIN_MCP_URL: z.string().optional(),
-	DATABASE_URL: z.string().min(1, "不能为空"),
+	// ⚠️ **两个库连接串至少要有一个**（见 parseEnv 的检查）
+	//    空串（compose 里未设置时就是这个）⇒ 当没配
+	DATABASE_URL: z
+		.string()
+		.optional()
+		.transform((value) => (value === undefined || value.trim() === "" ? undefined : value)),
+	AI_DATABASE_URL: z
+		.string()
+		.optional()
+		.transform((value) => (value === undefined || value.trim() === "" ? undefined : value)),
 	// 校验放在「切完之后」：空串、纯空白、只有空段，切完都是 [] —— 全算没配，启动即失败，
 	// 不能只挡空串（一个空格能过 min(1)，却会静默变成空的白名单）
 	ALLOWED_ORIGINS: z
@@ -98,7 +125,14 @@ export type EnvSource = Record<string, string | undefined>;
 export function parseEnv(source: EnvSource): Env {
 	const parsed = envSchema.safeParse(source);
 	if (parsed.success) {
-		return parsed.data;
+		// ⚠️ **两个库连接串至少要有一个**（本服务自己的库优先）
+		const databaseUrl = parsed.data.AI_DATABASE_URL ?? parsed.data.DATABASE_URL;
+		if (databaseUrl === undefined) {
+			throw new Error(
+				"环境变量校验失败 —— 缺少必填环境变量：DATABASE_URL（或 AI_DATABASE_URL）",
+			);
+		}
+		return { ...parsed.data, databaseUrl };
 	}
 
 	const missing: string[] = [];

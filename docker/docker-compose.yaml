@@ -70,6 +70,8 @@ services:
       AIADMIN_MCP_URL: "${AIADMIN_MCP_URL:-}"
       # AiAdmin 的 MySQL（ai_* 元数据表与业务表同库）
       DATABASE_URL: "${DATABASE_URL:-}"
+      # 本服务**自己**的库（可省 ⇒ 空 ⇒ 仍用上面的共享库）
+      AI_DATABASE_URL: "${AI_DATABASE_URL:-}"
       # 模型 key（真值只放 docker/.env）
       MINIMAX_CN_API_KEY: "${MINIMAX_CN_API_KEY:-}"
       AI_MODEL: "${AI_MODEL:-minimax-cn/MiniMax-M3.1-Flash}"

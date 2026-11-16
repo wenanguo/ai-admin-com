@@ -219,6 +219,9 @@ export class AgentRuntime {
 			userId,
 			title ?? null,
 			conversationIdFor(agent.id),
+			// ⚠️ **智能体维度入库**（`ai_conversation.agent_id`）
+			//    ⇒ 「这个会话是哪个智能体的」有地方可查（不靠猜会话 id）。
+			agent.id,
 		);
 		this.#registry.ensure(conversation.conversationId);
 		return conversation;
@@ -283,8 +286,14 @@ export class AgentRuntime {
 	 * ⚠️ **从会话 id 里读**（不是从内存映射里读）⇒ 进程重启后重建会话仍是同一个。
 	 * ⚠️ **老会话**（id 里没有智能体）⇒ 用默认智能体（行为不变）。
 	 */
-	#agentOf(conversationId: string): AgentConfig {
-		const agentId = agentIdOfConversation(conversationId) ?? this.#agents.defaultAgentId;
+	async #agentOf(conversationId: string): Promise<AgentConfig> {
+		// ⚠️ **事实源 = 库里的 `agent_id` 列**（会话 id 里那个前缀只是同义反复）
+		const record = await this.#store.get(conversationId);
+		const stored = record?.agentId;
+		// ⚠️ **老会话**（迁移前建的 ⇒ `agent_id` 是空的）⇒ 看会话 id 的前缀
+		//    ⇒ 再没有就回落**默认智能体**（行为不变）。
+		const agentId =
+			stored ?? agentIdOfConversation(conversationId) ?? this.#agents.defaultAgentId;
 		return this.#requireAgent(agentId);
 	}
 
@@ -638,7 +647,7 @@ ${message}`;
 		}
 		// ⚠️ **这个会话的智能体**（提示词 / 模型 / 技能 / MCP / 工具全按它来）
 		//    ⇒ 换智能体只改配置文件，不改代码。
-		const agent = this.#agentOf(channel.conversationId);
+		const agent = await this.#agentOf(channel.conversationId);
 		const tools = buildCommandTools(
 			{
 				currentToken: () => channel.token,

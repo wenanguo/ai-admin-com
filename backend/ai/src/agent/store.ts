@@ -19,6 +19,12 @@ export interface ConversationRecord {
 	conversationId: string;
 	userId: string;
 	title: string | null;
+	/**
+	 * 这个会话是哪个智能体的（**可空** ⇒ 迁移前的旧会话没有这个值）。
+	 *
+	 * ⚠️ **事实源是这一列**（会话 id 里那个前缀只是「同义反复」⇒ 见 runtime 的 `#agentOf`）。
+	 */
+	agentId: string | null;
 	createdAt: Date;
 	updatedAt: Date;
 }
@@ -47,9 +53,13 @@ export class ConversationStore {
 		userId: string,
 		title: string | null,
 		id?: string,
+		agentId?: string,
 	): Promise<ConversationRecord> {
 		const row = await prisma.aiConversation.create({
-			data: id === undefined ? { userId, title, channel: "WEB" } : { id, userId, title, channel: "WEB" },
+			data:
+				id === undefined
+					? { userId, title, channel: "WEB", agentId: agentId ?? null }
+					: { id, userId, title, channel: "WEB", agentId: agentId ?? null },
 		});
 		return toConversation(row);
 	}
@@ -115,6 +125,7 @@ function toConversation(row: {
 	id: string;
 	userId: string;
 	title: string | null;
+	agentId: string | null;
 	createdAt: Date;
 	updatedAt: Date;
 }): ConversationRecord {
@@ -122,6 +133,7 @@ function toConversation(row: {
 		conversationId: row.id,
 		userId: row.userId,
 		title: row.title,
+		agentId: row.agentId,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
 	};

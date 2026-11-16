@@ -72,11 +72,17 @@ function fakeStore(): {
 	const created: ConversationRecord[] = [];
 	const messages: MessageRecord[] = [];
 	const store: ConversationStore = {
-		create: async (userId: string, title: string | null, id?: string) => {
+		create: async (
+			userId: string,
+			title: string | null,
+			id?: string,
+			agentId?: string,
+		) => {
 			const record: ConversationRecord = {
 				conversationId: id ?? `conv-${created.length + 1}`,
 				userId,
 				title,
+				agentId: agentId ?? null,
 				createdAt: new Date(),
 				updatedAt: new Date(),
 			};
@@ -252,6 +258,35 @@ describe("运行时 · 按智能体配置装配会话", () => {
 
 		const conversation = await runtime.createConversation("2", "会话");
 		expect(agentIdOfConversation(conversation.conversationId)).toBe("pm");
+	});
+
+	it("⚠️ **智能体维度入库**（`ai_conversation.agent_id`）", async () => {
+		const { store, created } = fakeStore();
+		const { runtime } = makeRuntime(store);
+
+		const conversation = await runtime.createConversation("2", "会话", "qa");
+
+		// ⚠️ **库里有这一列**（不靠会话 id 猜）
+		expect(created[0]?.agentId).toBe("qa");
+		expect(conversation.agentId).toBe("qa");
+	});
+
+	it("⚠️ 库里记的智能体**优先于**会话 id 的前缀", async () => {
+		const { store, created } = fakeStore();
+		const { runtime, sessionOptions } = makeRuntime(store);
+
+		// 建一个会话：id 前缀是 `qa_`，库里记的也是 qa
+		const conversation = await runtime.createConversation("2", "会话", "qa");
+		// ⚠️ 事后把**库里的**改成 pm（模拟“改了配置/迁了数据”）
+		//    ⇒ 重建会话时**听库的**（不是听 id 前缀）
+		const record = created[0];
+		if (record) {
+			record.agentId = "pm";
+		}
+		await talk(runtime, conversation.conversationId, "cmd-1");
+		await waitFor(() => sessionOptions.length >= 1);
+
+		expect(sessionOptions[0]?.systemPrompt).toBe("你是 PM 助手");
 	});
 });
 

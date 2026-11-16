@@ -267,6 +267,21 @@ proxy: {
 > 也就是 `DROP DATABASE aipm`，连 AiAdmin 的业务表一起没。
 > 共享库上 `migrate deploy` 在没有迁移历史时也会报 P3005 拒绝动手。
 
+### 本服务自己的库（`AI_DATABASE_URL`）—— 「可复用到别的系统」的第一道门槛
+
+| 变量 | 含义 |
+| ---- | ---- |
+| `AI_DATABASE_URL` | **本服务自己的库**（`ai_*` 那 5 张表住这儿）。**不配** ⇒ 用共享库的 `DATABASE_URL`（今天的行为，一个字不变） |
+| `DATABASE_URL` | AiAdmin 的 MySQL（共享库）。配了 `AI_DATABASE_URL` 时**可以不配**（⇒ 复用别的系统时不用 AiAdmin 的库） |
+
+⚠️ **表名不变，只是「哪个库」可变** ⇒ 迁移脚本与表结构照旧。
+
+⚠️ Prisma 的 datasource 只能写死**一个**环境变量名（`env("DATABASE_URL")`）⇒
+「换库只改配置」这件事由 `src/db.ts` 在**建客户端之前**对齐
+（`AI_DATABASE_URL` 有值 ⇒ 把 `process.env.DATABASE_URL` 指向它）。
+
+⚠️ 部署时：把 `AI_DATABASE_URL` 传进容器（compose 已透传）⇒ **空值当没配**。
+
 ### 第一个迁移（已做完；这里是它是怎么做的）
 
 ```bash
@@ -288,6 +303,12 @@ npx prisma migrate resolve --applied 0_init_ai_tables
 第 4 步要求 `prisma/migrations/0_init_ai_tables/migration.sql` 存在（内容 = 第 1 步那份审过的 SQL）。
 
 ### 之后的迁移
+
+> ⚠️ **每份增量迁移都只许「加列/加表」** ⇒ 共享库上绝不 DROP/改列/删数据。
+> `scripts/e2e/ai-container.static.cjs` 里有静态断言盯着这件事
+> （迁移里出现 `DROP` / `TRUNCATE` / `DELETE` / `RENAME` / `MODIFY` ⇒ 断言失败）。
+>
+> 已有的增量迁移：`1_add_conversation_agent_id`（会话加 `agent_id` 一列，**可空** ⇒ 旧会话不丢）。
 
 **顺序铁律：先生成迁移、人工审、`deploy`，最后才提交 schema 改动。** 基线必须是
 「最后一次已应用迁移那会儿的 schema」，**不是工作树的 `HEAD`** —— 若先把 schema 改动

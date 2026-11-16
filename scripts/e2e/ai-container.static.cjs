@@ -185,6 +185,46 @@ check(
 );
 check('启动命令是 node dist/main.js', /CMD \["node", "dist\/main\.js"\]/.test(dockerfile));
 
+console.log('\nbackend/ai/prisma/migrations（迁移的安全阀）');
+const migrationsDir = path.join(ROOT, 'backend/ai/prisma/migrations');
+const migrationDirs = fs
+  .readdirSync(migrationsDir, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort();
+check(
+  '有基线迁移（0_init_ai_tables）与增量迁移',
+  migrationDirs.includes('0_init_ai_tables') && migrationDirs.length >= 2,
+  migrationDirs.join(' / '),
+);
+// ⚠️ **增量迁移只许「加列」** —— 共享库上 DROP/CREATE TABLE 会毁掉别人的数据
+for (const name of migrationDirs.filter((dir) => dir !== '0_init_ai_tables')) {
+  const sql = fs.readFileSync(path.join(migrationsDir, name, 'migration.sql'), 'utf8');
+  const statements = sql
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith('--'));
+  const dangerous = statements.filter(
+    (line) =>
+      /DROP\s/i.test(line) ||
+      /TRUNCATE/i.test(line) ||
+      /DELETE\s+FROM/i.test(line) ||
+      /RENAME/i.test(line) ||
+      /MODIFY\s/i.test(line) ||
+      /CHANGE\s+COLUMN/i.test(line),
+  );
+  check(
+    `迁移 ${name} 没有删表/改列/删数据`,
+    dangerous.length === 0,
+    dangerous.join(' | '),
+  );
+  check(
+    `迁移 ${name} 只动 ai_conversation`,
+    statements.every((line) => /ai_conversation/.test(line)),
+    statements.join(' | '),
+  );
+}
+
 // ───────────────────────────── 健康检查路由 ─────────────────────────────
 console.log('\nbackend/ai/src/routes/health.ts（健康检查）');
 const health = read('backend/ai/src/routes/health.ts');
