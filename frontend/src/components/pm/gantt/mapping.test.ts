@@ -126,7 +126,7 @@ describe('mapTasksToGantt 排除口径', () => {
     expect(mapping.excludedTitles).toContain('没截止日');
   });
 
-  it('被排除的标题最多列 5 条,超出的只计数', () => {
+  it('被排除的标题**全部**列出(可点开的清单要能看全)', () => {
     const tasks = Array.from({ length: 7 }, (_, i) =>
       makeTask({
         id: 100 + i,
@@ -136,8 +136,10 @@ describe('mapTasksToGantt 排除口径', () => {
     );
     const mapping = mapTasksToGantt(tasks, names);
     expect(mapping.excludedCount).toBe(7);
-    expect(mapping.excludedTitles).toHaveLength(5);
+    // ⚠️ 以前只留 5 条（“举例”）⇒ 提示改成可点开的清单后必须能看全（issue #66）
+    expect(mapping.excludedTitles).toHaveLength(7);
     expect(mapping.excludedTitles[0]).toBe('无日期任务 0');
+    expect(mapping.excludedTitles[6]).toBe('无日期任务 6');
   });
 });
 

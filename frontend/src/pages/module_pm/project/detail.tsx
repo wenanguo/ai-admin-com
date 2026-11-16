@@ -8,8 +8,6 @@ import {
   Empty,
   Space,
   Spin,
-  Table,
-  type TableProps,
   Tabs,
 } from 'antd';
 import type React from 'react';
@@ -20,12 +18,8 @@ import { renderJsonTags } from '@/components/pm/JsonTags';
 import { MilestoneListView } from '@/components/pm/milestone/MilestoneListView';
 import { RiskListView } from '@/components/pm/risk/RiskListView';
 import { TaskWorkspace } from '@/components/pm/task/TaskWorkspace';
-import {
-  getProjectDetail,
-  getProjectMembers,
-  type ProjectMemberOut,
-  type ProjectOut,
-} from '@/services/api/pm/project';
+import { getProjectDetail, type ProjectOut } from '@/services/api/pm/project';
+import { MembersTab } from './MembersTab';
 
 /** 概览 tab:详情接口的字段原样呈现(字典字段用 DictTag 转成中文标签) */
 function OverviewTab({ project }: { project: ProjectOut }) {
@@ -99,58 +93,6 @@ function OverviewTab({ project }: { project: ProjectOut }) {
 /** 日期区间的展示:两个日期中缀一个 ~,空值用占位符 */
 function dateRange(start?: string | null, end?: string | null): string {
   return `${start ?? '-'} ~ ${end ?? '-'}`;
-} /**
- * 成员 tab:members 是路径参数接口(/pm_project/pm_project/members/{id}),返回的
- * 是数组(带 user_info 冗余)不是分页信封;姓名直接读 user_info
- */
-function MembersTab({ projectId }: { projectId: number }) {
-  const [members, setMembers] = useState<ProjectMemberOut[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    getProjectMembers(projectId)
-      .then((res) => {
-        if (!cancelled) setMembers(res?.data ?? []);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]);
-
-  const columns: TableProps<ProjectMemberOut>['columns'] = [
-    {
-      title: '成员',
-      dataIndex: 'user_id',
-      render: (_, record) =>
-        record.user_info?.name ?? record.user_info?.username ?? '-',
-    },
-    {
-      title: '角色',
-      dataIndex: 'role_code',
-      render: (_, record) =>
-        record.role_code ? (
-          <DictTag dictType="module_pm_project_role" value={record.role_code} />
-        ) : (
-          '-'
-        ),
-    },
-    {
-      title: '加入时间',
-      dataIndex: 'joined_at',
-      // 后端 datetime 序列化成 ISO(带 T),展示时换成空格
-      render: (_, record) =>
-        record.joined_at ? record.joined_at.replace('T', ' ') : '-',
-    },
-  ];
-
-  return (
-    <Table<ProjectMemberOut>
-      rowKey="id"
-      columns={columns}
-      dataSource={members}
-    />
-  );
 }
 
 /**

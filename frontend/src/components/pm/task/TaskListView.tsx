@@ -25,7 +25,7 @@
 import { PlusOutlined } from '@ant-design/icons';
 import { type ProColumns, ProTable } from '@ant-design/pro-components';
 import { useAccess, useModel } from '@umijs/max';
-import { Alert, Button, Spin } from 'antd';
+import { Alert, Button } from 'antd';
 import type React from 'react';
 import { useCallback, useMemo, useRef } from 'react';
 import {
@@ -88,6 +88,18 @@ export function TaskListView({
   const dataset = useTaskDataset({ projectId });
 
   /**
+   * 数据集的**第一次取数结束了吗**（issue #66）。
+   *
+   * ⚠️ **不看 `dataset.loading`**：react-query 的 `isLoading` 在**首帧**还是 false
+   *    （查询要等 effect 才真的发起）⇒ 用它判断会漏掉首帧。
+   *    ⇒ 用「数据到了（`dataUpdatedAt > 0`）或出错了（`error`）」判断。
+   *
+   * ⚠️ 它的用处：**第一次取数结束之前，表格不许显示「暂无数据」**
+   *    （否则用户看到的是「空列表」，而不是「正在加载」）。
+   */
+  const datasetSettled = dataset.dataUpdatedAt > 0 || dataset.error != null;
+
+  /**
    * 数据集的**最新快照**（给异步回调用）。
    *
    * ⚠️ `requestLocal` 是个 async 回调 ⇒ 它拿到的必须是**调用那一刻**的
@@ -103,17 +115,26 @@ export function TaskListView({
    *    它立即 resolve 空数组 ⇒ ProTable 以为「加载完了」⇒ 不显示 loading
    *    ⇒ 用户看到「空列表 → 数据突然冒出来」。
    *
+   * ⚠️ **等的是「第一次取数结束」，不是「现在不在 loading」**（issue #66）：
+   *    react-query 的 `isLoading` 在**首帧**还是 false（查询要等 effect 才真的发起）
+   *    ⇒ 老写法（轮询 `!loading`）会在**首帧**就误判「取完了」
+   *    ⇒ ProTable 立刻 resolve 空数组 ⇒ **它自己的 loading 遮罩根本没机会出现**
+   *    ⇒ 载入期间既没有圈、又露出「暂无数据」（issue #9 的老症状）。
+   *    ⇒ 改成等「数据到了（`dataUpdatedAt > 0`）或出错了（`error`）」。
+   *
    * ⚠️ **为什么不能靠 ProTable 的 `loading` prop**：它会被 ProTable 的
    *    **内部请求状态覆盖**（外部 loading 只在 useFetchData 里当初值用）。
    *
    * ⚠️ **为什么不用 `ensureQueryData` 的 promise**：那个 promise 会被 memo 复用
    *    ⇒ 可能早就 resolved ⇒ `await` 它等于没等。
    *
-   * ⇒ 轮询 `loading`（最多 10 秒）⇒ 表格不会被永远卡住。
+   * ⇒ 轮询（最多 10 秒）⇒ 表格不会被永远卡住。
    */
   const waitForDataset = useCallback(async () => {
     for (let attempt = 0; attempt < 200; attempt += 1) {
-      if (!datasetRef.current.loading) {
+      const current = datasetRef.current;
+      // 数据到了（dataUpdatedAt > 0）或取数失败了 ⇒ 这次等到了
+      if (current.dataUpdatedAt > 0 || current.error) {
         return;
       }
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -321,6 +342,15 @@ export function TaskListView({
         search={{ labelWidth: 80 }}
         pagination={CRUD_PAGINATION}
         /*
+          ⚠️ **载入期间不显示「暂无数据」**（issue #66）：
+          自绘覆盖层删掉以后，antd 的空状态文字会露在载入遮罩下面
+          ⇒ 用户又看到「空列表」（issue #9 的老症状）。
+          ⇒ 数据集**第一次取数结束之前**把 `emptyText` 置空（`null` ⇒ 不渲染空状态）。
+          ⚠️ antd 的合并顺序是 `{...ConfigProvider 的 locale, ...props.locale}`
+          ⇒ 这里传的 `emptyText` 能盖掉默认的「暂无数据」。
+        */
+        locale={{ emptyText: datasetSettled ? undefined : null }}
+        /*
           ⚠️ **载入中要有提示**（issue #9）：
           `request` 是**同步的本地切片**（数据来自 `useTaskDataset`）⇒ 数据集没回来时
           它立即 resolve 一个空数组 ⇒ ProTable 认为「加载完成」⇒ 显示「暂无数据」
@@ -367,41 +397,20 @@ export function TaskListView({
         optionsLoading={optionsLoading}
       />
       {/*
-        ⚠️ **载入指示自己做**（issue #9）：
-        ProTable 自带的 loading 遮罩挂在**表格体**上 ⇒ 表格体还没数据时高度为 0
-        ⇒ 遮罩看不见 ⇒ 用户只看到「空列表」。
+        ⚠️ **载入指示只留 ProTable 自带的那一个**（issue #66）。
 
-        ⇒ 这里在视图层画一个覆盖层（居中 Spin + 半透明底）⇒ 跟其它页面的
-           载入表现一致，用户不会以为「这就是全部数据」。
+        以前这里**自己**又画了一个覆盖层（居中 Spin + 「载入中…」）
+        ⇒ 与 ProTable 自带的遮罩**两个一起转**。
+
+        ⚠️ **为什么以前要自己画**（issue #9）：
+        ProTable 自带的遮罩挂在**表格体**上 ⇒ 表格体还没数据时高度为 0 ⇒ 遮罩看不见
+        ⇒ 用户只看到「空列表」。
+
+        ⚠️ **现在为什么不需要了**：
+        - 自带的那个**看得见**：antd 在「空表 + loading」时会在空区渲染 `Spin`；
+        - 表格体**不会是 0**：`scroll.y` 有下限 200（见 `useTableBodyHeight`）
+          ⇒ 空区有高度 ⇒ 圈有地方待着。
       */}
-      {dataset.loading ? (
-        <div
-          data-role="task-list-loading"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(255, 255, 255, 0.55)',
-            zIndex: 10,
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <Spin />
-            <span style={{ fontSize: 12, color: 'rgba(0, 0, 0, 0.45)' }}>
-              载入中…
-            </span>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

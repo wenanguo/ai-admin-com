@@ -53,7 +53,7 @@ export interface GanttMapping {
   data: GanttRow[];
   /** 缺计划起止日期而没进甘特的任务数 —— 页头提示「N 个任务未显示」用 */
   excludedCount: number;
-  /** 被排除的任务标题(最多 5 条,给提示列举用;更多的只计数) */
+  /** 被排除的任务标题（**全部**，给提示里那个可点开的清单用） */
   excludedTitles: string[];
   /**
    * 实际进了甘特的**任务行数**(不含项目/里程碑分组行)。
@@ -68,8 +68,15 @@ export interface GanttMapping {
   taskCount: number;
 }
 
-/** 被排除标题的列举上限:提示是「举例」不是「清单」,5 条足够说明问题 */
-const EXCLUDED_TITLES_LIMIT = 5;
+/**
+ * ⚠️ **不再限制列举条数**（issue #66）。
+ *
+ * 以前只留 5 条（“提示是举例不是清单”）⇒ 后来提示改成**可点开的清单**，
+ * 而验收要求「能看全」⇒ 只留 5 条就做不到。
+ *
+ * ⚠️ 这**只影响“列举哪些标题”**，不影响“哪些任务算未排期”的判定
+ *    （`excludedCount` 与进不进甘特的逻辑一个字没动）。
+ */
 
 /**
  * 任务行 → dhtmlx 行。
@@ -112,7 +119,7 @@ export function mapTasksToGantt(
     // 否则全是被排除任务的项目会留下空分组行)
     if (!task.start_date || !task.due_date) {
       excludedCount += 1;
-      if (excludedTitles.length < EXCLUDED_TITLES_LIMIT && task.title) {
+      if (task.title) {
         excludedTitles.push(task.title);
       }
       continue;
