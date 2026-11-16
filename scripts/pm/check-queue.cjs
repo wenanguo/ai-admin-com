@@ -52,13 +52,29 @@ const milestones = JSON.parse(
 
 const milestoneTitles = new Set(milestones.map((m) => m.title));
 
-/** `docs/pm/log.md` 里出现过的 issue 号（用来判断「有没有记一笔」）。 */
-let logText = '';
-try {
-  logText = require('node:fs').readFileSync('docs/pm/log.md', 'utf8');
-} catch {
-  logText = '';
+/**
+ * `docs/pm/log.md` 里出现过的 issue 号（用来判断「有没有记一笔」）。
+ *
+ * ⚠️ **读远端，不读本地**：本地工作区可能还没 pull（刚开单时正是如此）
+ * ⇒ 读本地会把「刚写进 log.md 的那条」误报成「没记录」。
+ * 远端拿不到时回退到本地文件。
+ */
+function readLogText() {
+  try {
+    const remote = run('gh', [
+      'api', 'repos/wenanguo/ai-admin-com/contents/docs/pm/log.md?ref=main',
+      '--jq', '.content',
+    ]);
+    return Buffer.from(remote.replace(/\s/g, ''), 'base64').toString('utf8');
+  } catch {
+    try {
+      return require('node:fs').readFileSync('docs/pm/log.md', 'utf8');
+    } catch {
+      return '';
+    }
+  }
 }
+const logText = readLogText();
 const logMentions = (n) => logText.includes(`#${n}`);
 
 /** 在途的 issue（有 `in-progress`）—— 它们可以没有 `ready`，但其它条件必须满足。 */
