@@ -28,6 +28,12 @@ export interface Env {
 	AI_MODEL: string;
 	/** 思考级别（缺省 `off`）。 */
 	AI_THINKING_LEVEL: ThinkingLevelSetting;
+	/**
+	 * 默认智能体 id（**配置文件**里的那个，缺省 `pm`）。
+	 *
+	 * ⚠️ 调用方没指定智能体时用它 ⇒ 「现有 PM 助手的行为不变」靠这条。
+	 */
+	AI_DEFAULT_AGENT: string;
 	/** AiAdmin 后端地址（base 里已含 `/api/v1`）。 */
 	AIADMIN_BASE_URL: string;
 	/**
@@ -60,6 +66,12 @@ const envSchema = z.object({
 		.optional()
 		.transform((value) => value ?? "off")
 		.pipe(z.enum(THINKING_LEVELS)),
+	// ⚠️ **缺省 `pm`**：PM 助手是这个服务的老身份 ⇒ 不配也得能用。
+	AI_DEFAULT_AGENT: z
+		.string()
+		.optional()
+		.transform((value) => value ?? "pm")
+		.pipe(z.string().min(1, "不能为空")),
 	AIADMIN_BASE_URL: z
 		.string()
 		.min(1, "不能为空")
