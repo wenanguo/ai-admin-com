@@ -26,7 +26,16 @@ const mcpServerSchema = z.strictObject({
 export const agentConfigSchema = z
 	.strictObject({
 		/** 智能体 id（= 目录名）。 */
-		id: z.string({ error: "必填且是非空字符串" }).min(1, { error: "必填且是非空字符串" }),
+		id: z
+			.string({ error: "必填且是非空字符串" })
+			.min(1, { error: "必填且是非空字符串" })
+			// ⚠️ **只能小写字母/数字/连字符**：会话 id 靠它反查智能体
+			//    （`<agentId>_<uid>`）⇒ 不许有分隔符（下划线）否则解析会歧义。
+			.regex(/^[a-z0-9-]+$/, {
+				error: "只能是小写字母、数字与连字符（不许有下划线）",
+			})
+			// ⚠️ 会话 id 列是 64 位 ⇒ 智能体 id 不能太长（后面还要放 uid）
+			.max(30, { error: "最多 30 个字符" }),
 		/** 显示名。 */
 		name: z.string({ error: "必填且是非空字符串" }).min(1, { error: "必填且是非空字符串" }),
 		/** 一句话说明。 */
