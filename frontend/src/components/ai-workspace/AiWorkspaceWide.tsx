@@ -35,7 +35,6 @@ import {
   Alert,
   Button,
   Drawer,
-  Dropdown,
   Space,
   Tabs,
   Tooltip,
@@ -50,9 +49,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import { listAiConversations } from '@/services/api/ai/client';
-import type { AiConversation } from '@/services/api/ai/types';
 import { AuditPanel } from './AuditPanel';
+import { ConversationHistory } from './ConversationHistory';
 import { DiscussionBar } from './DiscussionBar';
 import { IntentGallery } from './IntentGallery';
 import { AI_INTENTS } from './intents';
@@ -88,14 +86,6 @@ const NARROW_CONTENT_WIDTH = 900;
  * ⇒ 宽度算出来是 0（内容区还没布局好就被量到）时，至少给这么多。
  */
 const MIN_DRAWER_WIDTH = 240;
-
-/** 未知错误转成一句话。 */
-function toMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  return '读取失败';
-}
 
 /** 宽版内容的 props。 */
 export interface AiWorkspaceWideProps {
@@ -137,12 +127,6 @@ export function AiWorkspaceWide({
   });
   /** 输入框里的内容（**外部受控** —— 意图卡片要能往里填）。 */
   const [draft, setDraft] = useState('');
-  /** 历史对话（下拉里的那一列）。 */
-  const [conversations, setConversations] = useState<AiConversation[]>([]);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyError, setHistoryError] = useState<string | undefined>(
-    undefined,
-  );
   const [creating, setCreating] = useState(false);
 
   /**
@@ -257,22 +241,6 @@ export function AiWorkspaceWide({
       setCreating(false);
     });
   }, [workspace]);
-
-  /** 打开「历史对话」时才去读会话列表。 */
-  const handleHistoryOpen = useCallback((open: boolean): void => {
-    setHistoryOpen(open);
-    if (!open) {
-      return;
-    }
-    setHistoryError(undefined);
-    void listAiConversations()
-      .then((rows) => {
-        setConversations(Array.isArray(rows) ? rows : []);
-      })
-      .catch((error: unknown) => {
-        setHistoryError(toMessage(error));
-      });
-  }, []);
 
   /**
    * 右侧栏（待确认 / 审计 / 规则与 AI 的分工）。
@@ -479,42 +447,11 @@ export function AiWorkspaceWide({
               侧栏
             </Button>
           ) : null}
-          <Dropdown
-            open={historyOpen}
-            onOpenChange={handleHistoryOpen}
-            // ⚠️ 默认是 hover ⇒ 触屏上点不开；这是个**按钮**，就该用 click。
-            trigger={['click']}
-            menu={{
-              items:
-                historyError !== undefined
-                  ? [
-                      {
-                        key: 'history-error',
-                        label: `历史对话读不到：${historyError}`,
-                        disabled: true,
-                      },
-                    ]
-                  : conversations.length === 0
-                    ? [
-                        {
-                          key: 'history-empty',
-                          label: '还没有历史对话',
-                          disabled: true,
-                        },
-                      ]
-                    : conversations.map((conversation) => ({
-                        key: conversation.conversationId,
-                        label:
-                          conversation.title || conversation.conversationId,
-                      })),
-              onClick: ({ key }) => {
-                setHistoryOpen(false);
-                void workspace.switchConversation(key);
-              },
-            }}
-          >
-            <Button data-role="ai-history-button">历史对话</Button>
-          </Dropdown>
+          {/*
+            「历史对话」：**与窄版共用同一个组件**（见 `ConversationHistory.tsx`）
+            ⇒ 两种形态的入口、交互、三态完全一致。
+          */}
+          <ConversationHistory workspace={workspace} />
           <Button
             type="primary"
             data-role="ai-new-conversation-button"

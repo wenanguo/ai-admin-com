@@ -52,6 +52,9 @@ const LIST_BODY = {
 /** AI 服务的会话 id（假的）。 */
 const CONVERSATION_ID = 'e2e-conversation';
 
+/** 「历史对话」里那个**别的**会话（用来验“点一条能切过去”）。 */
+const OLD_CONVERSATION_ID = 'e2e-old-conversation';
+
 /** e2e 里用户说的那句话。 */
 const USER_TEXT =
   '在项目 PRJ-2026-Q3-001 下建一个任务，标题叫「侧栏冒烟」，优先级 P1';
@@ -120,12 +123,19 @@ function connectedFrame(): string {
  * 装上 AI 服务的假实现。
  *
  * @param page 页面。
- * @param options 假实现的时序开关。
+ * @param options 假实现的时序开关与「历史对话」列表。
  * @returns 收到的请求 URL（按顺序）。
  */
 async function setupAiService(
   page: Page,
-  options: { sse?: 'two-rounds' | 'replay' } = {},
+  options: {
+    sse?: 'two-rounds' | 'replay';
+    conversations?: {
+      conversationId: string;
+      title?: string;
+      updatedAt?: string;
+    }[];
+  } = {},
 ): Promise<string[]> {
   const requests: string[] = [];
   /** 命令真的发出去了（放行 SSE 的第二轮）。 */
@@ -138,6 +148,8 @@ async function setupAiService(
   let sseRound = 0;
   /** 事件流的时序（缺省：分两轮；`replay` = 真实服务端的时序）。 */
   const sseMode = options.sse ?? 'two-rounds';
+  /** 「历史对话」列表（`GET /api/agent/conversations`）。 */
+  const conversations = options.conversations ?? [];
 
   const handler = async (route: Route): Promise<void> => {
     const url = route.request().url();
@@ -152,8 +164,15 @@ async function setupAiService(
       });
     };
 
-    // 新建会话
+    // 会话列表 / 新建会话
+    //
+    // ⚠️ **同一个路径、两种方法**：`GET` 是**列表**（「历史对话」），
+    //    `POST` 是**新建**（面板刚打开时建的那一个）。
     if (path.endsWith('/api/agent/conversations')) {
+      if (route.request().method() === 'GET') {
+        json(conversations);
+        return;
+      }
       json({ conversationId: CONVERSATION_ID, title: '新对话' });
       return;
     }
@@ -221,6 +240,22 @@ async function setupAiService(
 
     // 会话快照
     if (path.endsWith('/state')) {
+      // ⚠️ **按会话 id 分别给**：切到「历史对话」里的那个会话时，
+      //    它的快照要**带着它自己的历史消息**（否则验不了“接着聊”）。
+      const matched = path.match(/\/api\/agent\/([^/]+)\/state$/);
+      const conversationId = matched?.[1] ?? CONVERSATION_ID;
+      if (conversationId === OLD_CONVERSATION_ID) {
+        json({
+          conversationId,
+          messages: [
+            { id: 'old-1', role: 'USER', content: '上次问的那句' },
+            { id: 'old-2', role: 'ASSISTANT', content: '上次的回答' },
+          ],
+          isStreaming: false,
+          model: 'e2e-model',
+        });
+        return;
+      }
       json({
         conversationId: CONVERSATION_ID,
         messages:
@@ -1797,5 +1832,76 @@ test.describe('窄版也顶到视口最上沿（与最大化对齐）', () => {
     if (state!.covered) {
       expect(state!.panelLeft).toBeLessThanOrEqual(0);
     }
+  });
+});
+
+/**
+ * 「历史对话」—— **窄版也有**（以前只有宽版有 ⇒ 窄版换话题后没法回看）。
+ *
+ * ## 这条用例钉的是什么
+ *
+ * 1. 窄版面板的头部**有**「历史对话」入口；
+ * 2. 列表来自 `GET /api/agent/conversations`；
+ * 3. 点一条 ⇒ 读那个会话的快照（`GET /api/agent/:cid/state`）
+ *    ⇒ **它的历史消息上屏**（不是只显示一个标题列表）⇒ 接着聊。
+ */
+test.describe('历史对话（窄版也有）', () => {
+  test('窄版能打开历史对话,点一条把那个会话的历史带回来', async ({ page }) => {
+    const requests = await setupAiService(page, {
+      conversations: [
+        {
+          conversationId: OLD_CONVERSATION_ID,
+          title: '上次的会话',
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+    });
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+
+    await openPanel(page);
+
+    // ① 窄版头部**有**「历史对话」入口
+    const historyButton = panel(page).locator(
+      '[data-role="ai-history-button"]',
+    );
+    await expect(historyButton).toBeVisible();
+
+    // ② 点开 ⇒ 列表读的是 `GET /api/agent/conversations`
+    await historyButton.click();
+    const item = page.locator('[data-role="ai-history-item-title"]', {
+      hasText: '上次的会话',
+    });
+    await expect(item).toBeVisible();
+    expect(
+      requests.some((url) =>
+        url.endsWith('/api/agent/conversations') &&
+        // ⚠️ `requests` 只记 URL ⇒ 用「这条 URL 出现过两次」来区分 GET / POST
+        //    （新建会话也走同一个路径）。
+        requests.filter((other) => other === url).length >= 2,
+      ),
+    ).toBe(true);
+
+    // ③ 点一条 ⇒ 读那个会话的快照 ⇒ **它的历史消息上屏**
+    await item.click();
+    await expect(page.locator('[data-role="user"]')).toContainText(
+      '上次问的那句',
+    );
+    await expect(page.locator('[data-role="assistant"]')).toContainText(
+      '上次的回答',
+    );
+    expect(
+      requests.some((url) =>
+        url.endsWith(`/api/agent/${OLD_CONVERSATION_ID}/state`),
+      ),
+    ).toBe(true);
   });
 });

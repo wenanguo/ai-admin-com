@@ -4,6 +4,7 @@
  */
 import type React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-react';
 import { AiWorkspace } from './index';
 
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   subscribeAiEvents: vi.fn(() => () => undefined),
   listAiAudit: vi.fn(async () => ({ total: 0, items: [] })),
   listAiPending: vi.fn(async (): Promise<unknown[]> => []),
+  listAiConversations: vi.fn(async (): Promise<unknown[]> => []),
   approveAiPending: vi.fn(async () => undefined),
   /** 全局 model 的「写回广播」—— 批准后它应该被叫到。 */
   notifyUpdate: vi.fn(),
@@ -50,7 +52,7 @@ vi.mock('@/services/api/ai/client', () => ({
   abortAiConversation: vi.fn(),
   listAiAudit: mocks.listAiAudit,
   listAiPending: mocks.listAiPending,
-  listAiConversations: vi.fn(),
+  listAiConversations: mocks.listAiConversations,
   listAiSkills: vi.fn(),
   approveAiPending: mocks.approveAiPending,
   rejectAiPending: vi.fn(),
@@ -178,6 +180,57 @@ describe('AI 工作台侧栏', () => {
       },
       { timeout: 3000 },
     );
+  });
+
+  it('窄版也能打开「历史对话」，点一条把那个会话的历史带回来', async () => {
+    mocks.createAiConversation.mockResolvedValue({
+      conversationId: 'c1',
+      title: '新对话',
+    });
+    mocks.getAiState.mockResolvedValue({
+      conversationId: 'c1',
+      messages: [],
+      isStreaming: false,
+    });
+    mocks.listAiConversations.mockResolvedValue([
+      {
+        conversationId: 'c-old',
+        title: '上次的会话',
+        updatedAt: new Date().toISOString(),
+      },
+    ]);
+
+    const { getByRole, getByText } = await render(<AiWorkspace />);
+
+    // ① 窄版头部**有**「历史对话」入口（以前只有宽版有）
+    await userEvent.click(getByRole('button', { name: '历史对话' }));
+
+    // ② 列表读的是 `listAiConversations()`
+    await vi.waitFor(() => {
+      expect(mocks.listAiConversations).toHaveBeenCalledTimes(1);
+    });
+    await expect.element(getByText('上次的会话')).toBeVisible();
+
+    // ③ 点一条 ⇒ 读那个会话的快照（`getAiState`）⇒ 历史消息上屏
+    mocks.getAiState.mockResolvedValue({
+      conversationId: 'c-old',
+      messages: [
+        { id: 'm1', role: 'USER', content: '上次问的那句' },
+        { id: 'm2', role: 'ASSISTANT', content: '上次的回答' },
+      ],
+      isStreaming: false,
+    });
+    await userEvent.click(getByText('上次的会话'));
+
+    await vi.waitFor(() => {
+      expect(mocks.getAiState).toHaveBeenCalledWith('c-old');
+    });
+    await expect
+      .element(
+        document.querySelector<HTMLElement>('[data-role="user"]') ?? null,
+      )
+      .toBeVisible();
+    expect(document.body.textContent).toContain('上次问的那句');
   });
 
   it('AI 服务连不上时在面板里说一声（不靠全局提示）', async () => {

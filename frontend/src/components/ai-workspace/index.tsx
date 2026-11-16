@@ -21,6 +21,7 @@ import {
 import { AiWorkspaceWide } from './AiWorkspaceWide';
 import { AuditPanel } from './AuditPanel';
 import { ChatPanel } from './ChatPanel';
+import { ConversationHistory } from './ConversationHistory';
 import { DiscussionBar } from './DiscussionBar';
 import { PendingPanel } from './PendingPanel';
 import { readWorkspaceStorage, writeWorkspaceStorage } from './storage';
@@ -285,17 +286,32 @@ export function AiWorkspace({
                   </Tag>
                 ) : null}
               </span>
-              {onCollapse ? (
-                <Button
-                  type="text"
-                  size="small"
-                  aria-label="关闭 AI 工作台"
-                  title="关闭 AI 工作台（⌘B）"
-                  icon={<CloseOutlined />}
-                  onClick={onCollapse}
-                  style={{ color: token.colorText }}
-                />
-              ) : null}
+              {/*
+            头部右侧：**「历史对话」+「关闭」**。
+
+            ⚠️ 「历史对话」是**与宽版共用同一个组件**的（见 `ConversationHistory.tsx`）
+            ⇒ 窄版也有回看别的会话的能力（以前只有宽版有 ⇒ 窄版像「失忆」）。
+          */}
+              <span
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: token.sizeXS,
+                }}
+              >
+                <ConversationHistory workspace={workspace} size="small" />
+                {onCollapse ? (
+                  <Button
+                    type="text"
+                    size="small"
+                    aria-label="关闭 AI 工作台"
+                    title="关闭 AI 工作台（⌘B）"
+                    icon={<CloseOutlined />}
+                    onClick={onCollapse}
+                    style={{ color: token.colorText }}
+                  />
+                ) : null}
+              </span>
             </div>
           </div>
           {/*
