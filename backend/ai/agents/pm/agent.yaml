@@ -22,7 +22,9 @@ description: 项目管理助手：把需求拆成任务、管里程碑、写回�
 systemPromptFile: prompt.md
 
 # 技能目录（相对**本配置目录**；目录不存在 ⇒ 启动即报错）
-# ⚠️ `../../.pi/skills` = `backend/ai/.pi/skills`（本服务自己的技能目录）
+# ⚠️ `../../.pi/skills` = `backend/ai/.pi/skills`（本服务的项目技能目录）
+#    ⇒ **只有这份配置领用它们**（别的智能体没列 ⇒ 看不到）
+#    ⚠️ pi 默认会扫 `.pi/skills` 与用户家目录 ⇒ 我们**一律不加载**（只加载这里列的目录）
 skills:
   - ../../.pi/skills
 

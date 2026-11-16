@@ -46,6 +46,26 @@ mcpServers:
 ⇒ 「MCP 的 prompt 自动变成 `/<服务器名>:<prompt名>` 斜杠命令」这条**做不了**
 （等 SDK 支持了再做）。
 
+## 技能（`skills`）
+
+```yaml
+skills:
+  - ./skills            # 本智能体自己的技能目录（相对本配置目录）
+  - ../../.pi/skills    # 也可以领用项目的技能目录
+```
+
+⚠️ **技能是按智能体的**：只有**配置里列的目录**里的技能算数
+⇒ 智能体 A 看不到智能体 B 的技能（模型也拿不到）。
+
+⚠️ pi 默认还会扫 `<cwd>/.pi/skills` 与用户家目录 `~/.agents/skills/`
+⇒ 本服务**一律不加载**它们（除非你在这里列出来）⇒ 既不串味，
+也不会出现「项目目录那份抢了同名、配置里那份反而没了」。
+
+⚠️ **技能发现仍然走 pi 的 loader**（`loadSkills`）⇒ 不自己造技能扫描器。
+
+⚠️ 技能清单接口 `GET /api/agent/skills` **按智能体**返回：
+`?agentId=xxx` ⇒ 那个智能体的技能；不给 ⇒ 默认智能体。
+
 ## 会话 ↔ 智能体的绑定
 
 `POST /api/agent/conversations` 可以带 `agentId`（不带给默认智能体）。
@@ -68,7 +88,7 @@ POST /api/agent/conversations
 | `model` | ❌ | 模型标识（`provider/model`）；省略 ⇒ 用全局默认 `AI_MODEL` |
 | `systemPrompt` | 二选一 | 系统提示词（直接写） |
 | `systemPromptFile` | 二选一 | 系统提示词文件（相对本配置目录） |
-| `skills` | ❌ | 技能目录列表（相对本配置目录；省略 ⇒ 空） |
+| `skills` | ❌ | 技能目录列表（相对**本配置目录**；省略 ⇒ 空 ⇒ 这个智能体**一个技能都没有**） |
 | `mcpServers` | ❌ | MCP 服务器列表（**可以 0 / 1 / N 个**；省略 ⇒ 空） |
 | `tools` | ❌ | 工具白名单（工具名；省略 ⇒ 空） |
 
