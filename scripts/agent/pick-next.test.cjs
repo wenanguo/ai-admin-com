@@ -31,6 +31,21 @@ test('parseDependencies：写「无」⇒ 没有依赖', () => {
   assert.deepStrictEqual(parseDependencies('## 依赖\n\n无（现在 ready 队列是空的）\n'), []);
 });
 
+test('parseDependencies：段里出现「无」但有 #号 ⇒ **号照旧**（不能被「无」否掉）', () => {
+  // ⚠️ 回归用例：旧实现是 `if (/无/.test(text)) return []`
+  // ⇒ 「无依赖」「无特殊依赖」这类**说明文字**会把已解析出的依赖全部清空
+  // ⇒ 依赖没合的 issue 被误判成可领 ⇒ 抢跑、撞车（实测 #82 踩到）。
+  const body = [
+    '## 依赖',
+    '',
+    '依赖 #77、#78、#79、#80、#81 先合并。',
+    '',
+    '> 写成散文时它会被误判成「无依赖」⇒ 抢跑。',
+    '',
+  ].join('\n');
+  assert.deepStrictEqual(parseDependencies(body).sort((a, b) => a - b), [77, 78, 79, 80, 81]);
+});
+
 test('parseDependencies：没有「## 依赖」一节 ⇒ 空', () => {
   assert.deepStrictEqual(parseDependencies('## 目标\n\n随便写点 #12\n'), []);
 });
