@@ -87,6 +87,13 @@ const printsValues = [
 ].filter((re) => re.test(scriptCode));
 check('不打印凭据（不 cat .env / 不 echo 值 / 不跑 compose config）', printsValues.length === 0, printsValues.map(String).join(' | '));
 check('没有 set -x（会把环境变量打进日志）', !/set -x/.test(script));
+// ⚠️ **库连接串不强制某一个**：`DATABASE_URL`（共享库）与 `AI_DATABASE_URL`（自己的库）
+//    **至少要有一个** ⇒ 换库只改配置（部署脚本不该把其中一个写死成必填）。
+check(
+	'库连接串两个至少要有一个（不把 DATABASE_URL 写成必填）',
+	/DB_URL_VARS=\(DATABASE_URL AI_DATABASE_URL\)/.test(script) &&
+		!/REQUIRED_ENV_VARS=\(DATABASE_URL/.test(script),
+);
 
 console.log('\ndocker/.last-deploy（状态文件）');
 const ignored = tryRun('git', ['check-ignore', '-q', 'docker/.last-deploy']);
