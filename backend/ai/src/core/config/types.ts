@@ -15,12 +15,21 @@
  * AI 服务必须在 `backend/ai/` 下启动）。
  */
 
-/** 一个 MCP 服务器条目（配置里写什么就存什么 ⇒ 装配会话那一步再用）。 */
+/**
+ * 一台 MCP 服务器的配置。
+ *
+ * ⚠️ **名字是工具名的前缀**（`mcp__<name>__<tool>`）⇒ 名字只能是小写字母 / 数字 /
+ *    连字符（pi 会把非法字符换成 `_` ⇒ 名字里有 `_` 会让前缀认不准）。
+ */
 export interface AgentMcpServer {
-	/** 服务器名（清单里用它区分是哪台）。 */
+	/** 服务器名（工具名前缀：`mcp__<name>__`）。 */
 	name: string;
-	/** 地址（可省 ⇒ 装配时用全局默认）。 */
+	/** 地址（可省 ⇒ 用全局默认 `env.AIADMIN_MCP_URL`；可写 `${ENV_VAR}`）。 */
 	url?: string;
+	/** 传输类型（缺省 `http`；`sse` 也走 HTTP 传输）。 */
+	type: "http" | "sse";
+	/** 暴露方式（缺省 `direct`）。 */
+	exposure: "direct" | "deferred" | "codemode" | "hidden";
 }
 
 /**

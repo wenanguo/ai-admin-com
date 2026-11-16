@@ -79,7 +79,12 @@ describe("loadAgentConfigs", () => {
 		expect(config?.systemPrompt).toBe("你是 PM 助手");
 		expect(config?.skills).toEqual([join(dir, "skills")]);
 		expect(config?.mcpServers).toEqual([
-			{ name: "aiadmin", url: "http://aiadmin.test/mcp" },
+			{
+				name: "aiadmin",
+				url: "http://aiadmin.test/mcp",
+				type: "http",
+				exposure: "direct",
+			},
 		]);
 		expect(config?.tools).toEqual(["create_task"]);
 	});
@@ -207,5 +212,90 @@ describe("非法配置 ⇒ 报错并点名字段", () => {
 		makeConfig("good", ["id: good", "name: G", "description: 说明", "systemPrompt: x"].join("\n"));
 		makeConfig("bad", ["name: B", "description: 说明", "systemPrompt: x"].join("\n"));
 		expect(() => loadAgentConfigs(root)).toThrowError(/字段 id/);
+	});
+});
+
+describe("MCP 服务器配置", () => {
+	/** 造一份只含 mcpServers 的配置。 */
+	function mcpConfig(servers: string): string {
+		return [
+			"id: pm",
+			"name: PM",
+			"description: 说明",
+			"systemPrompt: x",
+			"mcpServers:",
+			...servers.split("\n"),
+		].join("\n");
+	}
+
+	it("传输类型与暴露方式有缺省值（http / direct）", () => {
+		const configPath = makeConfig(
+			"pm",
+			mcpConfig("  - name: aiadmin\n    url: http://x.test/mcp"),
+		);
+		const config = loadAgentConfig(configPath, join(root, "pm"));
+		expect(config.mcpServers).toEqual([
+			{
+				name: "aiadmin",
+				url: "http://x.test/mcp",
+				type: "http",
+				exposure: "direct",
+			},
+		]);
+	});
+
+	it("可以写 sse（走同一个 HTTP 传输）", () => {
+		const configPath = makeConfig(
+			"pm",
+			mcpConfig("  - name: docs\n    type: sse\n    url: http://x.test/mcp"),
+		);
+		const config = loadAgentConfig(configPath, join(root, "pm"));
+		expect(config.mcpServers[0]?.type).toBe("sse");
+	});
+
+	it("url 里的 `${ENV_VAR}` 在装载时展开", () => {
+		process.env["TEST_MCP_URL"] = "http://from-env.test/mcp";
+		try {
+			const configPath = makeConfig(
+				"pm",
+				mcpConfig("  - name: aiadmin\n    url: ${TEST_MCP_URL}"),
+			);
+			const config = loadAgentConfig(configPath, join(root, "pm"));
+			expect(config.mcpServers[0]?.url).toBe("http://from-env.test/mcp");
+		} finally {
+			delete process.env["TEST_MCP_URL"];
+		}
+	});
+
+	it("url 里的环境变量没值 ⇒ 报错并点名是哪个字段", () => {
+		const configPath = makeConfig(
+			"pm",
+			mcpConfig("  - name: aiadmin\n    url: ${TEST_MCP_URL_NOT_SET}"),
+		);
+		expect(() => loadAgentConfig(configPath, join(root, "pm"))).toThrowError(
+			/字段 mcpServers\[0\]\.url/,
+		);
+	});
+
+	it("服务器名里有下划线 ⇒ 报错（工具前缀会认不准）", () => {
+		const configPath = makeConfig(
+			"pm",
+			mcpConfig("  - name: my_server\n    url: http://x.test/mcp"),
+		);
+		expect(() => loadAgentConfig(configPath, join(root, "pm"))).toThrowError(
+			/字段 mcpServers\[0\]\.name/,
+		);
+	});
+
+	it("服务器名重复 ⇒ 报错", () => {
+		const configPath = makeConfig(
+			"pm",
+			mcpConfig(
+				"  - name: aiadmin\n    url: http://a.test/mcp\n  - name: aiadmin\n    url: http://b.test/mcp",
+			),
+		);
+		expect(() => loadAgentConfig(configPath, join(root, "pm"))).toThrowError(
+			/重复的服务器名/,
+		);
 	});
 });

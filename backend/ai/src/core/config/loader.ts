@@ -106,6 +106,17 @@ export function loadAgentConfig(configPath: string, dir: string): AgentConfig {
 		seen.add(server.name);
 	}
 
+	const mcpServers = parsed.mcpServers.map((server, index) => ({
+		name: server.name,
+		// ⚠️ **url 里的 `${ENV_VAR}` 在装载时展开**（启动即失败 ⇒ 不静默忽略）
+		url:
+			server.url === undefined
+				? undefined
+				: expandEnvVars(server.url, `mcpServers[${index}].url`, configPath),
+		type: server.type,
+		exposure: server.exposure,
+	}));
+
 	return {
 		id: parsed.id,
 		name: parsed.name,
@@ -113,7 +124,7 @@ export function loadAgentConfig(configPath: string, dir: string): AgentConfig {
 		model: parsed.model,
 		systemPrompt,
 		skills,
-		mcpServers: parsed.mcpServers.map((server) => ({ ...server })),
+		mcpServers,
 		tools: [...parsed.tools],
 		dir,
 		configPath,
@@ -144,6 +155,33 @@ function readYaml(configPath: string): unknown {
 /** 相对路径按配置目录解析（绝对路径原样用）。 */
 function resolveInDir(relative: string, dir: string): string {
 	return isAbsolute(relative) ? resolve(relative) : resolve(dir, relative);
+}
+
+/**
+ * 把字符串里的 `${ENV_VAR}` 换成环境变量的值。
+ *
+ * ⚠️ **变量没值 ⇒ 报错**（不静默留着 `${...}` 去连 ⇒ 连不上还看不出原因）。
+ * ⚠️ **在装载时展开**（启动即失败）⇒ 变量后来变了要重启才生效。
+ *
+ * @param value 原始值。
+ * @param field 字段路径（报错时点名）。
+ * @param configPath 配置文件路径（报错时指给用户看）。
+ */
+function expandEnvVars(
+	value: string,
+	field: string,
+	configPath: string,
+): string {
+	return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name: string) => {
+		const found = process.env[name];
+		if (found === undefined || found === "") {
+			throw new AgentConfigError(
+				`智能体配置不合法 —— 字段 ${field}：环境变量 ${name} 没有值（${match}）`,
+				configPath,
+			);
+		}
+		return found;
+	});
 }
 
 /** 系统提示词：要么直接给，要么从文件读。 */
