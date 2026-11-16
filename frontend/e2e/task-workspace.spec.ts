@@ -5,7 +5,7 @@ import {
   PM_PROJECT_PREFIX,
   PM_TASK_PREFIX,
 } from '../src/services/api/pm/paths';
-import { gotoModulePage, setupModulePage } from './helpers';
+import { gotoModulePage, mainContent, setupModulePage } from './helpers';
 
 /**
  * **任务工作台**（列表 / 看板 / 甘特三合一）的前端闭环,接口全部拦截。
@@ -366,14 +366,17 @@ test.describe('任务工作台(列表/看板/甘特)', () => {
   });
 
   /**
-   * **载入中要有提示**（issue #9）。
+   * **载入中要有提示**（issue #9），且**只能有一个**（issue #66）。
    *
    * ⚠️ 列表视图的 `request` 是**同步的本地切片** ⇒ 数据集没回来时
-   *    它立刻 resolve 空数组 ⇒ ProTable 以为「加载完了」⇒ 显示「暂无数据」
+   *    它立即 resolve 空数组 ⇒ ProTable 以为「加载完了」⇒ 显示「暂无数据」
    *    ⇒ 用户看到「空列表 → 数据突然冒出来」。
    *
+   * ⚠️ **以前是两个圈一起转**：自绘覆盖层（issue #9 的产物）+ ProTable 自带的遮罩
+   *    ⇒ 现在只留 ProTable 自带的那一个（自绘覆盖层已删）。
+   *
    * ⚠️ **断言放在接口拦截处**：那时页面已挂载、数据还没到 ⇒ 正是「载入中」的时刻。
-   *    （在页面侧断言会抢时间：数据一回来，覆盖层就没了。）
+   *    （在页面侧断言会抢时间：数据一回来，圈就没了。）
    */
   test('列表视图载入时显示 loading，不是空列表', async ({ page }) => {
     await setupWorkspace(page);
@@ -381,22 +384,39 @@ test.describe('任务工作台(列表/看板/甘特)', () => {
     let gateSeen = false;
     await page.route(TASK_LIST_URL, async (route) => {
       gateSeen = true;
-      const overlay = page.locator('[data-role="task-list-loading"]');
-      // ⚠️ **直接量 box**，不用 toBeVisible：
-      //    Playwright 的可见性判定在这里会误报（元素确实在、也有尺寸）。
-      //    量 box 更直白：载入指示得真的占着地方，不是 0×0 的摆设。
-      await expect(overlay).toBeAttached({ timeout: 5000 });
-      const box = await overlay.evaluate((el) => {
-        const rect = el.getBoundingClientRect();
-        return { width: rect.width, height: rect.height };
-      });
-      expect(box.width, '载入指示要有宽度').toBeGreaterThan(0);
-      expect(box.height, '载入指示要有高度').toBeGreaterThan(0);
+      // ⚠️ **任何时刻最多一个载入指示**（issue #66）
+      //    ⚠️ 用**尺寸**判定「看得见」（0×0 的节点不算）
+      // ⚠️ **要等它出现**：拦截器触发的那一刻，ProTable 的请求可能还没开始
+      //    ⇒ 立刻数会数到 0（假失败）。
+      //    ⇒ 轮询等它出现；一旦出现，个数必须**正好是 1**（最多一个）。
+      await expect
+        .poll(
+          async () =>
+            page.evaluate(
+              () =>
+                Array.from(document.querySelectorAll('.ant-spin-spinning')).filter(
+                  (el) => {
+                    const rect = el.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0;
+                  },
+                ).length,
+            ),
+          { timeout: 5000, intervals: [100, 100, 100, 100, 100] },
+        )
+        .toBe(1);
       // 旋转的圈圈也得在（antd Spin）
       await expect(
-        overlay.locator('.ant-spin-dot').first(),
+        page.locator('.ant-spin-dot').first(),
         '载入指示里要有转圈',
       ).toBeAttached({ timeout: 5000 });
+
+      // ⚠️ **载入中不许露出「暂无数据」**（issue #9 的老症状）
+      //    自绘覆盖层删掉以后，靠 `locale.emptyText` 置空来挡
+      await expect(
+        mainContent(page).getByText('暂无数据'),
+        '载入中不该出现「暂无数据」',
+      ).toHaveCount(0);
+
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -418,6 +438,19 @@ test.describe('任务工作台(列表/看板/甘特)', () => {
     ).toBeVisible({
       timeout: 10_000,
     });
+
+    // 数据到位后 ⇒ 圈没了（别一直转）
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () =>
+            Array.from(document.querySelectorAll('.ant-spin-spinning')).filter((el) => {
+              const rect = el.getBoundingClientRect();
+              return rect.width > 0 && rect.height > 0;
+            }).length,
+        ),
+      )
+      .toBe(0);
   });
 
   test('旧地址重定向到新界面', async ({ page }) => {
