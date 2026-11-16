@@ -201,6 +201,27 @@ describe('AI 工作台布局外壳', () => {
     });
   });
 
+  it('窄版面板也顶到视口最上沿（top = 0，z-index = 101，与最大化对齐）', async () => {
+    const { container } = await render(
+      <AiWorkspaceShell>
+        <div>主内容</div>
+      </AiWorkspaceShell>,
+    );
+
+    launcher(container)?.click();
+    await vi.waitFor(() => {
+      expect(panel(container)).not.toBeNull();
+    });
+
+    const element = panel(container)!;
+    // ⚠️ **窄版不再从顶栏下面开始**（以前是 `top: headerHeight` ≈ 56）
+    //    ⇒ 现在与**最大化形态**一样顶到视口最上沿（issue #59）。
+    expect(element.style.top).toBe('0px');
+    // ⚠️ **z-index 与宽版对齐（101）**：ProLayout 顶栏自己也是 100
+    //    ⇒ 两种形态都抬到 101，把顶栏压在下面（否则同层靠 DOM 顺序，不可靠）。
+    expect(element.style.zIndex).toBe('101');
+  });
+
   it('面板开关写进 localStorage，刷新后还在', async () => {
     await render(
       <AiWorkspaceShell>

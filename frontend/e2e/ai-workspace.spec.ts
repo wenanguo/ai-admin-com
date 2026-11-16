@@ -1640,8 +1640,8 @@ test.describe('浮层的留白与固定', () => {
     // ⚠️ **贴死右边缘**。
     expect(box!.x + box!.width).toBeCloseTo(viewport!.width, 0);
 
-    // 竖向：从固定头部下面一直到视口底部
-    expect(box!.y).toBeGreaterThan(0);
+    // 竖向：**顶到视口最上沿**（与最大化形态对齐，issue #59）一直到视口底部
+    expect(box!.y).toBeCloseTo(0, 0);
     expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height + 1);
   });
 
@@ -1668,9 +1668,9 @@ test.describe('浮层的留白与固定', () => {
 
     const viewportHeight = page.viewportSize()?.height ?? 0;
 
-    // 初始：浮层的顶边在固定头部下面
+    // 初始：浮层的顶边**贴着视口最上沿**（y = 0，与最大化形态对齐，issue #59）
     const topBefore = (await panel(page).boundingBox())?.y ?? -1;
-    expect(topBefore).toBeGreaterThan(0);
+    expect(topBefore).toBeCloseTo(0, 0);
 
     // 滚到底 ⇒ **浮层不动**（它是 `position: fixed` 的）
     await page.evaluate(() => {
@@ -1686,5 +1686,116 @@ test.describe('浮层的留白与固定', () => {
       .boundingBox();
     expect(sendBox).not.toBeNull();
     expect(sendBox!.y + sendBox!.height).toBeLessThanOrEqual(viewportHeight);
+  });
+});
+
+/**
+ * **窄版（右侧 400px 小窗口）也顶到视口最上沿**（issue #59）。
+ *
+ * ⚠️ **顶栏右上角被盖住、头像 / 账号菜单点不到 —— 这是有意的**（人 2026-11-14 定）：
+ *    先把面板做成能占满上沿，将来「界面可拖动」才有地基（能拖到视口任意位置）。
+ *    ⇒ **别把它当 bug 改回去**。
+ *
+ * ⚠️ **logo 不能露半截**（半截 logo 看着像渲染坏了）⇒ 要么整块被盖，要么整块可见。
+ */
+test.describe('窄版也顶到视口最上沿（与最大化对齐）', () => {
+  /**
+   * 量一下 logo 那个点（顶栏左侧 x=30）到底被谁盖着。
+   *
+   * - `covered`：被面板盖住了
+   * - `panelLeft`：面板的左边缘（若盖住了 logo ⇒ 必须 ≤ 0，否则就是「露半截」）
+   */
+  async function logoState(page: Page): Promise<{
+    covered: boolean;
+    panelLeft: number;
+  } | null> {
+    return page.evaluate(() => {
+      const panelEl = document.querySelector('[data-testid="ai-workspace-panel"]');
+      if (!panelEl) {
+        return null;
+      }
+      const hit = document.elementFromPoint(30, 20);
+      return {
+        covered: hit ? panelEl.contains(hit) : false,
+        panelLeft: panelEl.getBoundingClientRect().x,
+      };
+    });
+  }
+
+  test('窄版浮层顶边 y=0;顶栏右上角被盖住(有意为之);logo 不露半截', async ({
+    page,
+  }) => {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+    await waitForStableLayout(page);
+
+    await openPanel(page);
+
+    // ① **顶到视口最上沿**（与最大化形态一致）
+    const box = await panel(page).boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y).toBeCloseTo(0, 0);
+
+    // ② 顶栏**右上角被盖住**（头像 / 账号菜单点不到）—— **有意的**
+    const rightCovered = await page.evaluate(() => {
+      const el = document.elementFromPoint(
+        Math.round(window.innerWidth - 20),
+        20,
+      );
+      return el?.closest('[data-testid="ai-workspace-panel"]') !== null;
+    });
+    expect(rightCovered).toBe(true);
+
+    // ③ logo（顶栏左侧）**没被面板盖住** ⇒ 400px 面板在右边，logo 整块可见
+    const state = await logoState(page);
+    expect(state).not.toBeNull();
+    expect(state!.covered).toBe(false);
+  });
+
+  test('窄屏全宽(100vw)时也 y=0,且 logo 不露半截', async ({ page }) => {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+
+    // ⚠️ **先在宽视口下进页面**（菜单可见），再把视口调窄 ——
+    //    反过来的话 ProLayout 会把菜单收进抽屉 ⇒ 等不到那个菜单项。
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+    await waitForStableLayout(page);
+
+    await page.setViewportSize({ width: 500, height: 900 });
+    await waitForStableLayout(page);
+
+    await openPanel(page);
+
+    // ① 全宽 + 顶到最上沿
+    const box = await panel(page).boundingBox();
+    const viewport = page.viewportSize();
+    expect(box).not.toBeNull();
+    expect(viewport).not.toBeNull();
+    expect(box!.y).toBeCloseTo(0, 0);
+    expect(box!.width).toBeCloseTo(viewport!.width, 0);
+
+    // ② logo **不能露半截**：面板盖到它 ⇒ 面板左边缘必须 ≤ 0（整块盖住）
+    const state = await logoState(page);
+    expect(state).not.toBeNull();
+    if (state!.covered) {
+      expect(state!.panelLeft).toBeLessThanOrEqual(0);
+    }
   });
 });
