@@ -1745,7 +1745,9 @@ test.describe('窄版也顶到视口最上沿（与最大化对齐）', () => {
     panelLeft: number;
   } | null> {
     return page.evaluate(() => {
-      const panelEl = document.querySelector('[data-testid="ai-workspace-panel"]');
+      const panelEl = document.querySelector(
+        '[data-testid="ai-workspace-panel"]',
+      );
       if (!panelEl) {
         return null;
       }
@@ -1882,11 +1884,12 @@ test.describe('历史对话（窄版也有）', () => {
     });
     await expect(item).toBeVisible();
     expect(
-      requests.some((url) =>
-        url.endsWith('/api/agent/conversations') &&
-        // ⚠️ `requests` 只记 URL ⇒ 用「这条 URL 出现过两次」来区分 GET / POST
-        //    （新建会话也走同一个路径）。
-        requests.filter((other) => other === url).length >= 2,
+      requests.some(
+        (url) =>
+          url.endsWith('/api/agent/conversations') &&
+          // ⚠️ `requests` 只记 URL ⇒ 用「这条 URL 出现过两次」来区分 GET / POST
+          //    （新建会话也走同一个路径）。
+          requests.filter((other) => other === url).length >= 2,
       ),
     ).toBe(true);
 
@@ -1903,5 +1906,89 @@ test.describe('历史对话（窄版也有）', () => {
         url.endsWith(`/api/agent/${OLD_CONVERSATION_ID}/state`),
       ),
     ).toBe(true);
+  });
+});
+
+test.describe('窄版可拖动（调宽 + 移动）', () => {
+  /** 装好页面并打开面板（返回页面上的浮层）。 */
+  async function prepare(page: Page): Promise<void> {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+    await waitForStableLayout(page);
+    await openPanel(page);
+  }
+
+  test('拖左边缘调宽度,刷新后仍然是这样', async ({ page }) => {
+    await prepare(page);
+
+    const before = await panel(page).boundingBox();
+    expect(before).not.toBeNull();
+
+    // ⚠️ 拖的是**左边缘那个把手**（面板右边不动 ⇒ 宽度变大）
+    const handle = page.getByTestId('ai-workspace-resize-handle');
+    await expect(handle).toBeVisible();
+    const handleBox = await handle.boundingBox();
+    const x = handleBox!.x + handleBox!.width / 2;
+    const y = handleBox!.y + 200;
+
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - 120, y, { steps: 10 });
+    await page.mouse.up();
+
+    const after = await panel(page).boundingBox();
+    // ⚠️ **宽度按拖动的距离变大**（拖的是左边缘 ⇒ 右边不动）
+    //    （差个几像素是因为把手有 6px 宽，起点在把手中间而不是面板边上）
+    expect(after!.width).toBeGreaterThan(before!.width + 100);
+    expect(after!.width).toBeLessThan(before!.width + 130);
+    // ⚠️ **右边缘不动**（还钉在视口右边）
+    expect(after!.x + after!.width).toBeCloseTo(before!.x + before!.width, 0);
+
+    // 刷新 ⇒ 宽度还在（存 localStorage）
+    await page.reload();
+    await expect(panel(page)).toBeVisible();
+    const reloaded = await panel(page).boundingBox();
+    expect(reloaded!.width).toBeCloseTo(after!.width, 0);
+  });
+
+  test('拖标题移动面板,位置变了(且宽窄切换不丢)', async ({ page }) => {
+    await prepare(page);
+
+    const before = await panel(page).boundingBox();
+    expect(before).not.toBeNull();
+
+    // ⚠️ 拖的是**标题**（「AI 工作台」那几个字）
+    const handle = page.getByTestId('ai-workspace-drag-handle');
+    await expect(handle).toBeVisible();
+    const handleBox = await handle.boundingBox();
+    const x = handleBox!.x + 10;
+    const y = handleBox!.y + 5;
+
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - 200, y + 120, { steps: 10 });
+    await page.mouse.up();
+
+    const after = await panel(page).boundingBox();
+    expect(after!.x).toBeLessThan(before!.x - 100);
+    expect(after!.y).toBeGreaterThan(before!.y + 50);
+
+    // 最大化 ⇒ 再返回 ⇒ 位置不丢
+    await expandButton(page).click();
+    await expect(wideOverlay(page)).toBeVisible();
+    await backButton(page).click();
+    await expect(panel(page)).toBeVisible();
+    const back = await panel(page).boundingBox();
+    expect(back!.x).toBeCloseTo(after!.x, 0);
+    expect(back!.y).toBeCloseTo(after!.y, 0);
   });
 });
