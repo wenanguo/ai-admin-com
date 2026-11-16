@@ -496,3 +496,31 @@
   `src/agent/prompt.ts` **已删除**（#78 起提示词由配置提供）· `src/core/config/` 已在 ·
   `runtime.ts` 869 行 / 12 处业务词 · `context.ts` 437 行 / **45 处** · `create-task.ts` 279 行 / 33 处。
 - **顺带**：**#80 已完成**（PR #92「技能按智能体装配（不跨智能体串味）」）⇒ 现在只剩 **#81** 挡着 #82。
+
+### 2026-11-16 · #82 的八个设计问题**当场定案**（人答 + PM 补充）
+
+- **人把 ①～⑧ 逐条答了**（不再等开发 agent 写 spec 时才讨论）：
+  ① 「什么算内核」= **通用智能体** ② 我定 ③ 可以 ④ 可以 ⑤ 我定 ⑥ 我定 ⑦ 我定
+  ⑧ **未来按「可发布」来设计**。
+- **PM 定的四条（含理由）**：
+  - **② `core/` 按能力组织**（不按层）—— 接入方关心「哪些能力可用」而不是「在哪一层」；
+    加一个能力 = 加一个目录；`core/config/` 本来就是按能力的 ⇒ 顺着走。
+    目录：`config/ session/ skills/ mcp/ tools/ gate/ audit/ store/ http/ routes/`（共享类型放 `core/types/`）。
+  - **⑤ 靠三层保证「core 不 import plugins」**：① 结构上 `plugins/` 与 `core/` 同级
+    ② **可执行的单测**（扫 core 的 import，断言不指向 plugins）⇒ 进 CI，这是主力
+    ③ 补充「core 无业务词」的 grep（按 ① 的标准，做成允许清单式）。
+  - **⑥ 迁移分 5 阶段**（每个一个 PR、独立可 revert）：
+    0 写 spec+plan（纯文档，等 review）→ 1 **纯搬家**（adapter/aadmin/create-task → plugins/pm，只改 import）
+    → 2 **唯一有逻辑改动的一步**（拆 `context.ts`：core 出「上下文锚点 + 可写字段白名单机制」，
+    plugin 出 PM 语义：task/project 形状、status_code/actual_hours/description 三个可写字段）
+    → 3 **纯搬家**（agent/ 按能力重组）→ 4 **接线**（插件注册表 + 配置 `tools:` 指向插件 + `/api/agents` 报能力）
+    → 5 **按「可发布」收口**（公开入口 · 依赖不外泄 · exports）。
+  - **⑦ 路径变化波及清单**（spec 必须逐项核对）：src 内相对 import · main/server 入口 · package.json 与 tsconfig ·
+    **Dockerfile 的 COPY/WORKDIR** · prisma 生成客户端与迁移命令 · **core/config/loader.ts 的技能目录相对解析**
+    · `scripts/e2e/ai-*.cjs` 与 `docker*.cjs` · `.github/workflows/*.yml` 的路径 · docs 三处 · 前端（只确认 API 地址不变）。
+- **③ ④ 的方向（人认可）**：
+  - **③** core 只保留「**上下文锚点**」的通用机制（通用 scope 形状 + 键值映射 + **可写字段白名单机制**），
+    「可写字段」**由插件注入**，core 不写死任何字段名；
+  - **④** 插件 = 注册单元，提供 `commands` / `context` / `skills`(可选) / `data`(可选)；
+    **内核靠注册表 + 依赖注入发现插件**（不是直接 import）。
+- **落地**：以上八条已作为「✅ 已定的前置决策」写进 **#82 正文**（6074 字符）⇒ 开发 agent 写 spec 时照着答，不必重新讨论。
