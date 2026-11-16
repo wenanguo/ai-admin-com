@@ -10,6 +10,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { join } from "node:path";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { createPiSession } from "./pi-session.ts";
 import type { MessageRecord } from "./store.ts";
@@ -191,6 +192,59 @@ describe("pi 会话构造", () => {
 		expect(names).toContain("load_skill");
 		// 业务命令也要还在
 		expect(names).toContain("create_task");
+	});
+
+	it("技能目录来自配置（只留配置里那些目录里的技能）", async () => {
+		await createPiSession({
+			tools: [fakeTool],
+			systemPrompt: "你是助手。",
+			conversationId: "conv-1",
+			history: [],
+			model: "minimax-cn/MiniMax-M3.1-Flash",
+			skillsDirs: ["/srv/ai/.pi/skills"],
+		});
+
+		const options = vi.mocked(createAgentSession).mock.calls[0]?.[0];
+		const loader = options?.resourceLoader as {
+			options?: Record<string, unknown>;
+		};
+		// ⚠️ **额外的技能目录** = 配置里写的那些
+		expect(loader.options?.["additionalSkillPaths"]).toEqual([
+			"/srv/ai/.pi/skills",
+		]);
+		// ⚠️ **只留这些目录里的技能**（不在配置里的目录 ⇒ 不算数）
+		const override = loader.options?.["skillsOverride"] as (
+			base: {
+				skills: { name: string; filePath: string }[];
+				diagnostics: never[];
+			},
+		) => { skills: { name: string }[]; diagnostics: never[] };
+		const filtered = override({
+			skills: [
+				{ name: "在配置里", filePath: "/srv/ai/.pi/skills/a/SKILL.md" },
+				{ name: "不在配置里", filePath: "/elsewhere/.pi/skills/b/SKILL.md" },
+			],
+			diagnostics: [],
+		});
+		expect(filtered.skills.map((skill) => skill.name)).toEqual(["在配置里"]);
+	});
+
+	it("不给技能目录 ⇒ 用 `<cwd>/.pi/skills`（老行为）", async () => {
+		await createPiSession({
+			tools: [fakeTool],
+			systemPrompt: "你是助手。",
+			conversationId: "conv-1",
+			history: [],
+			model: "minimax-cn/MiniMax-M3.1-Flash",
+		});
+
+		const options = vi.mocked(createAgentSession).mock.calls[0]?.[0];
+		const loader = options?.resourceLoader as {
+			options?: Record<string, unknown>;
+		};
+		expect(loader.options?.["additionalSkillPaths"]).toEqual([
+			join(process.cwd(), ".pi", "skills"),
+		]);
 	});
 
 	it("模型标识不是 provider/model 形式 ⇒ 直接报错（别猜）", async () => {

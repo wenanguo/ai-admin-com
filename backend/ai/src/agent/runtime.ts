@@ -37,7 +37,14 @@ import { createGateExtension } from "./gate.ts";
 import { createAiadminMcpExtension } from "./mcp.ts";
 import { pendingWaiters } from "./pending-waiters.ts";
 import { createPiSession, type PiSessionOptions } from "./pi-session.ts";
-import { PM_AGENT_PROMPT } from "./prompt.ts";
+import { agentsRoot } from "../core/config/loader.ts";
+import {
+	agentIdOfConversation,
+	conversationIdFor,
+	createFileAgentProvider,
+	type AgentProvider,
+} from "../core/config/registry.ts";
+import type { AgentConfig } from "../core/config/types.ts";
 import {
 	SessionRegistry,
 	type AgentSessionLike,
@@ -129,6 +136,12 @@ export interface AgentRuntimeOptions {
 	mcpUrl?: string | null;
 	/** 每个会话最多记多少个命令 id（测试用；生产用默认上限）。 */
 	maxTrackedCommands?: number;
+	/**
+	 * 智能体来源（**默认读 `agents/` 目录**）。
+	 *
+	 * ⚠️ 测试可以注入假的 ⇒ 单测不必依赖仓里的真配置。
+	 */
+	agents?: AgentProvider;
 }
 
 export class AgentRuntime {
@@ -150,6 +163,8 @@ export class AgentRuntime {
 	readonly #acks = new Map<string, Map<string, CommandAck>>();
 	/** 每个会话最多记多少个命令 id。 */
 	readonly #maxTrackedCommands: number;
+	/** 智能体来源（提示词 / 模型 / 技能 / MCP / 工具都从这里来）。 */
+	readonly #agents: AgentProvider;
 
 	constructor(options: AgentRuntimeOptions = {}) {
 		this.#store = options.store ?? new ConversationStore();
@@ -159,6 +174,10 @@ export class AgentRuntime {
 		this.#mcpUrl =
 			options.mcpUrl === null ? undefined : (options.mcpUrl ?? env.AIADMIN_MCP_URL);
 		this.#maxTrackedCommands = options.maxTrackedCommands ?? MAX_TRACKED_COMMANDS_PER_CONVERSATION;
+		// ⚠️ **默认的智能体来源读真文件**（`agents/<id>/agent.yaml`）
+		//    ⇒ 非法配置在**构造时**就报错（启动即失败）。
+		this.#agents =
+			options.agents ?? createFileAgentProvider(agentsRoot(), env.AI_DEFAULT_AGENT);
 
 		const client = new AadminClient({ baseUrl: env.AIADMIN_BASE_URL });
 		this.#userResolver = new CurrentUserResolver(client);
@@ -178,11 +197,72 @@ export class AgentRuntime {
 		setEnumWarningSink(standardEnumWarningSink);
 	}
 
-	/** 建一个会话。 */
-	async createConversation(userId: string, title?: string): Promise<ConversationRecord> {
-		const conversation = await this.#store.create(userId, title ?? null);
+	/**
+	 * 建一个会话（**绑定一个智能体**）。
+	 *
+	 * @param userId 会话主人。
+	 * @param title 标题（可省）。
+	 * @param agentId 智能体 id（可省 ⇒ 默认智能体）。
+	 */
+	async createConversation(
+		userId: string,
+		title?: string,
+		agentId?: string,
+	): Promise<ConversationRecord> {
+		// ⚠️ **先把智能体定下来**（认不出来的智能体 ⇒ 直接报错，
+		//    别建一个“不知道该用什么提示词”的会话）。
+		const agent = this.#requireAgent(agentId ?? this.#agents.defaultAgentId);
+		// ⚠️ **会话 id 里带着智能体 id** ⇒ 绑定跟着会话走（进程重启也还在）
+		//    ⇒ 同一会话重建后仍是同一个智能体（不会串味）。
+		const conversation = await this.#store.create(
+			userId,
+			title ?? null,
+			conversationIdFor(agent.id),
+		);
 		this.#registry.ensure(conversation.conversationId);
 		return conversation;
+	}
+
+	/** 取智能体配置；认不出来 ⇒ 报错（说清有哪些可用）。 */
+	#requireAgent(agentId: string): AgentConfig {
+		const agent = this.#agents.get(agentId);
+		if (agent === undefined) {
+			const available = this.#agents
+				.list()
+				.map((item) => item.id)
+				.join("、");
+			throw new AgentError(
+				"NOT_FOUND",
+				`智能体 ${agentId} 不存在${available === "" ? "" : `（可用：${available}）`}`,
+			);
+		}
+		return agent;
+	}
+
+	/**
+	 * 这个智能体用哪个 MCP 地址。
+	 *
+	 * ⚠️ **本条只支持第一个 MCP 服务器**（多服务器是下一条）。
+	 * ⚠️ 配置里没写 `url` ⇒ 用全局默认（`env.AIADMIN_MCP_URL`）；
+	 *    全局也没配 ⇒ **不接 MCP**（保持老行为：后端没上线时不连）。
+	 */
+	#mcpUrlOf(agent: AgentConfig): string | undefined {
+		const server = agent.mcpServers[0];
+		if (server === undefined) {
+			return undefined;
+		}
+		return server.url ?? this.#mcpUrl;
+	}
+
+	/**
+	 * 这个会话用的是哪个智能体。
+	 *
+	 * ⚠️ **从会话 id 里读**（不是从内存映射里读）⇒ 进程重启后重建会话仍是同一个。
+	 * ⚠️ **老会话**（id 里没有智能体）⇒ 用默认智能体（行为不变）。
+	 */
+	#agentOf(conversationId: string): AgentConfig {
+		const agentId = agentIdOfConversation(conversationId) ?? this.#agents.defaultAgentId;
+		return this.#requireAgent(agentId);
 	}
 
 	/** 列某个用户的会话。 */
@@ -520,13 +600,20 @@ ${message}`;
 		if (channel.session !== undefined) {
 			return channel.session;
 		}
-		const tools = buildCommandTools({
-			currentToken: () => channel.token,
-			createDataSource: this.#createDataSource,
-			resolveReporterId: async (token: string) => (await this.#resolveUser(token)).id,
-			audit: this.#audit,
-			model: this.#model,
-		});
+		// ⚠️ **这个会话的智能体**（提示词 / 模型 / 技能 / MCP / 工具全按它来）
+		//    ⇒ 换智能体只改配置文件，不改代码。
+		const agent = this.#agentOf(channel.conversationId);
+		const tools = buildCommandTools(
+			{
+				currentToken: () => channel.token,
+				createDataSource: this.#createDataSource,
+				resolveReporterId: async (token: string) => (await this.#resolveUser(token)).id,
+				audit: this.#audit,
+				model: this.#model,
+			},
+			// ⚠️ **工具白名单**：配置里没列的工具**不注册**（模型看不到）
+			{ only: agent.tools },
+		);
 		// ★ 把这个会话的历史交给 pi ⇒ **模型记得之前聊过什么**。
 		//    pi 会话是内存态、懒创建的 ⇒ 不还原历史的话，进程重启或通道被回收后
 		//    新建的会话是空白的（前端看得见历史，模型看不见）。
@@ -538,17 +625,25 @@ ${message}`;
 			currentMessageId === undefined
 				? messages
 				: messages.filter((row) => row.id !== currentMessageId);
+		// ⚠️ **MCP 的地址来自配置的 mcpServers**（本条只支持第一个；多服务器是下一条）；
+		//    配置里没写 url ⇒ 用全局默认；两者都没有 ⇒ **不接 MCP**
+		//    （模型看不到那些工具）。
+		const mcpUrl = this.#mcpUrlOf(agent);
 		const session = await this.#createSession({
 			tools,
-			systemPrompt: PM_AGENT_PROMPT,
+			// ⚠️ **提示词来自配置**（不再是写死的 `PM_AGENT_PROMPT`）
+			systemPrompt: agent.systemPrompt,
 			conversationId: channel.conversationId,
 			history,
-			model: this.#model,
+			// ⚠️ **模型来自配置**（没写 ⇒ 用全局默认）
+			model: agent.model ?? this.#model,
+			// ⚠️ **技能目录来自配置**（给 pi 当额外技能目录）
+			skillsDirs: agent.skills,
 			// ⚠️ MCP 的身份 = **当次调用方的 token**（每个会话一份）
 			mcp:
-				this.#mcpUrl === undefined
+				mcpUrl === undefined
 					? undefined
-					: { url: this.#mcpUrl, token: channel.token ?? "" },
+					: { url: mcpUrl, token: channel.token ?? "" },
 			// ⚠️ **闸门**：修改已有数据要等人点头（用户 2026-11-06 定的口径）。
 			//    挂起时推一个 `pending` 事件 ⇒ 前端「待确认」页签能看到。
 			gate:

@@ -78,7 +78,20 @@ export const COMMAND_CATALOG: readonly CommandDefinition[] = [
 	},
 ];
 
-/** 按目录造出全部工具。 */
-export function buildCommandTools(context: CommandContext): CommandTool[] {
-	return COMMAND_CATALOG.map((command) => command.build(context));
+/**
+ * 按目录造出全部工具。
+ *
+ * @param context 工具要用的上下文。
+ * @param options `only` = **工具白名单**（智能体配置里的 `tools`）
+ *   ⇒ 不在名单里的工具**不注册**（模型看不到它）。
+ *   不给 `only` ⇒ 全部注册（老行为）。
+ */
+export function buildCommandTools(
+	context: CommandContext,
+	options?: { only?: readonly string[] },
+): CommandTool[] {
+	const only = options?.only;
+	return COMMAND_CATALOG.filter(
+		(command) => only === undefined || only.includes(command.name),
+	).map((command) => command.build(context));
 }

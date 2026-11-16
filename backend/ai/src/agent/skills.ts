@@ -67,7 +67,7 @@ export function renderSkillsSection(skills: readonly Skill[]): string {
 }
 
 /**
- * 把技能表**限定在项目的技能目录内**。
+ * 把技能表**限定在指定的技能目录内**。
  *
  * ## 为什么需要它
  *
@@ -79,13 +79,19 @@ export function renderSkillsSection(skills: readonly Skill[]): string {
  * ⇒ 用 pi 的官方钩子 `skillsOverride` 把技能**过滤到我们自己的目录**。
  * （钩子在 loader 内部生效 ⇒ 去重与诊断仍然是 pi 做的，我们只做最后一道过滤。）
  *
- * @param rootDir 项目技能目录（通常是 `<cwd>/.pi/skills`）。
+ * ⚠️ **本条（智能体配置）起**：过滤的目标是**智能体配置里写的技能目录**
+ *    （可以有好几个，也可以是空 ⇒ 一个技能都没有）⇒ 不跨智能体串味。
+ *
+ * @param dirs 技能目录（绝对路径）。
  */
-export function createProjectSkillsOverride(
-	rootDir: string,
+export function createSkillsOverride(
+	dirs: readonly string[],
 ): (base: SkillsResult) => SkillsResult {
-	const root = resolve(rootDir) + sep;
-	const inside = (path: string): boolean => resolve(path).startsWith(root);
+	const roots = dirs.map((dir) => resolve(dir) + sep);
+	const inside = (path: string): boolean => {
+		const resolved = resolve(path);
+		return roots.some((root) => resolved.startsWith(root));
+	};
 	return (base) => ({
 		skills: base.skills.filter((skill) => inside(skill.filePath)),
 		// 诊断也只留我们目录里的（别人的技能撞名与本服务无关）
@@ -93,6 +99,17 @@ export function createProjectSkillsOverride(
 			diagnostic.path === undefined ? false : inside(diagnostic.path),
 		),
 	});
+}
+
+/**
+ * 把技能表限定在**项目技能目录**内（老口径：只有 `<cwd>/.pi/skills` 算数）。
+ *
+ * @param rootDir 项目技能目录（通常是 `<cwd>/.pi/skills`）。
+ */
+export function createProjectSkillsOverride(
+	rootDir: string,
+): (base: SkillsResult) => SkillsResult {
+	return createSkillsOverride([rootDir]);
 }
 
 /**

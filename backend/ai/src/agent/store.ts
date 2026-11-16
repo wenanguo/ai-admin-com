@@ -35,10 +35,21 @@ export interface MessageRecord {
 
 /** 会话的存取。 */
 export class ConversationStore {
-	/** 建一个会话。 */
-	async create(userId: string, title: string | null): Promise<ConversationRecord> {
+	/**
+	 * 建一个会话。
+	 *
+	 * @param userId 会话主人。
+	 * @param title 标题。
+	 * @param id 会话 id（**可省** ⇒ 让数据库生成；给了就用给的
+	 *     —— 智能体 id 编在里面 ⇒ 会话↔智能体的绑定跟着会话走）。
+	 */
+	async create(
+		userId: string,
+		title: string | null,
+		id?: string,
+	): Promise<ConversationRecord> {
 		const row = await prisma.aiConversation.create({
-			data: { userId, title, channel: "WEB" },
+			data: id === undefined ? { userId, title, channel: "WEB" } : { id, userId, title, channel: "WEB" },
 		});
 		return toConversation(row);
 	}

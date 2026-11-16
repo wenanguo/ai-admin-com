@@ -1,0 +1,35 @@
+# 智能体配置（一个智能体一个目录）
+#
+# ⚠️ 这个文件**由人编辑**（本服务没有创建/修改配置的接口）。
+#    改完**重启 AI 服务**生效。
+#
+# ⚠️ **非法配置 ⇒ 启动即报错**（不会静默忽略）：缺字段、类型错、
+#    引用的目录/文件不存在 ⇒ 服务起不来，报错里点名是哪个字段。
+#
+# 字段说明见 `backend/ai/src/core/config/schema.ts`，
+# 格式说明见 `backend/ai/agents/README.md`。
+
+id: pm
+name: PM 助手
+description: 项目管理助手：把需求拆成任务、管里程碑、写回任务状态。
+
+# 模型（可省 ⇒ 用全局默认 `env.AI_MODEL`）
+# model: minimax-cn/MiniMax-M3.1-Flash
+
+# 系统提示词：**二选一**（systemPrompt 直接写 / systemPromptFile 指向文件）
+# ⚠️ 这份提示词**原来写在代码里**（`src/agent/prompt.ts`）⇒ 现在搬到这里，
+#    内容**一字未改** ⇒ 行为不变（issue #78 的验收标准）。
+systemPromptFile: prompt.md
+
+# 技能目录（相对**本配置目录**；目录不存在 ⇒ 启动即报错）
+# ⚠️ `../../.pi/skills` = `backend/ai/.pi/skills`（本服务自己的技能目录）
+skills:
+  - ../../.pi/skills
+
+# MCP 服务器（工具的来源；`url` 可省 ⇒ 用全局默认 `env.AIADMIN_MCP_URL`）
+mcpServers:
+  - name: aiadmin
+
+# 工具白名单（只放行这些命令工具）
+tools:
+  - create_task

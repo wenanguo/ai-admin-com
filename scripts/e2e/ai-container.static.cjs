@@ -171,6 +171,13 @@ check(
     /COPY backend\/ai\/agents \.\/agents/.test(dockerfile),
 );
 
+// ⚠️ **默认智能体（PM 助手）的配置与提示词必须在镜像里** ⇒ 缺了容器里的 AI 就没有提示词
+check(
+  '默认智能体的配置与提示词都入库（agents/pm/agent.yaml + agents/pm/prompt.md）',
+  fs.existsSync(path.join(ROOT, 'backend/ai/agents/pm/agent.yaml')) &&
+    fs.existsSync(path.join(ROOT, 'backend/ai/agents/pm/prompt.md')),
+);
+
 // 容器里没有 .env ⇒ 启动命令不能用 --env-file（缺文件会直接退出）
 check(
   '启动命令不依赖 .env 文件',

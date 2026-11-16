@@ -24,7 +24,7 @@ import {
 import { env } from "../env.ts";
 import type { CommandTool } from "../tools/types.ts";
 import { createAiadminMcpExtension } from "./mcp.ts";
-import { buildSystemPrompt, createProjectSkillsOverride } from "./skills.ts";
+import { buildSystemPrompt, createSkillsOverride } from "./skills.ts";
 import { createLoadSkillTool } from "./skill-tools.ts";
 import { buildSessionEntries } from "./session-entries.ts";
 import type { AgentSessionLike } from "./session-registry.ts";
@@ -57,6 +57,14 @@ export interface PiSessionOptions {
 	history: MessageRecord[];
 	/** 工作目录（默认当前目录）。 */
 	cwd?: string;
+	/**
+	 * 技能目录（**绝对路径**；智能体配置里的 `skills`）。
+	 *
+	 * ⚠️ **不给 ⇒ 用 `<cwd>/.pi/skills`**（老行为）。
+	 * ⚠️ 给了 ⇒ **只有这些目录里的技能算数**（空数组 ⇒ 一个技能都没有）
+	 *    ⇒ 不跨智能体串味。
+	 */
+	skillsDirs?: string[];
 	/** 模型标识（默认取环境变量里的）。 */
 	model?: string;
 	/**
@@ -120,9 +128,8 @@ export async function createPiSession(
 	//    「先发现技能，再定提示词」。而 loader 的 systemPrompt 是**构造时**定的
 	//    ⇒ 先用一个 loader 把技能发现出来，再用带技能段的提示词建**最终**那个。
 	//    （建会话是懒的、每会话一次 ⇒ 多发现一次的开销可以忽略。）
-	// ⚠️ **项目技能目录**：只有这里的技能算数。
-	//    pi 还会扫用户家目录的 `~/.agents/skills/` ⇒ 会被过滤掉（见 skills.ts）。
-	const projectSkillsDir = join(cwd, ".pi", "skills");
+	// ⚠️ **技能目录**：来自智能体配置（不给 ⇒ 老口径 `<cwd>/.pi/skills`）。
+	const skillsDirs = options.skillsDirs ?? [join(cwd, ".pi", "skills")];
 
 	const loaderOptions = {
 		cwd,
@@ -137,8 +144,11 @@ export async function createPiSession(
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
-		// ⚠️ 只留项目技能目录里的（用户家目录的那一堆与本服务无关）
-		skillsOverride: createProjectSkillsOverride(projectSkillsDir),
+		// ⚠️ **额外的技能目录**（智能体配置里的那些）
+		additionalSkillPaths: skillsDirs,
+		// ⚠️ **只留配置里那些目录里的技能**（用户家目录的那一堆与本服务无关；
+		//    不在配置里的目录也不算数 ⇒ 不跨智能体串味）
+		skillsOverride: createSkillsOverride(skillsDirs),
 	};
 
 	const discoveryLoader = new DefaultResourceLoader({

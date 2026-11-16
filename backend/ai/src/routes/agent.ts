@@ -99,14 +99,20 @@ agentRouter.post("/conversations", async (req, res) => {
 		const user = await agentRuntime.resolveCurrentUser(token);
 		// 没有请求体也行（标题后面再补）⇒ 解析失败**不报错**
 		let title: string | undefined;
+		// ⚠️ **智能体 id**（可省 ⇒ 默认智能体）：会话与它绑定（改配置即可换定位）
+		let agentId: string | undefined;
 		const parsed = await readJsonBody(req);
 		if (parsed.ok && typeof parsed.value === "object" && parsed.value !== null) {
 			const raw = (parsed.value as Record<string, unknown>)["title"];
 			if (typeof raw === "string" && raw.trim().length > 0) {
 				title = raw.trim();
 			}
+			const rawAgent = (parsed.value as Record<string, unknown>)["agentId"];
+			if (typeof rawAgent === "string" && rawAgent.trim().length > 0) {
+				agentId = rawAgent.trim();
+			}
 		}
-		const conversation = await agentRuntime.createConversation(String(user.id), title);
+		const conversation = await agentRuntime.createConversation(String(user.id), title, agentId);
 		res.json(
 			okBody({
 				conversationId: conversation.conversationId,
