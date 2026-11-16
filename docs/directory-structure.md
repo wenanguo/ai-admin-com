@@ -1,192 +1,152 @@
 # 项目目录结构总览
 
-> 面向新加入的同学与 AI 协作工具。约定类细节见仓库根目录 `README.md` 的「目录约定」、
-> 「菜单约定」、「接口约定」三节，这里只回答**「东西放在哪」**。
+> **面向新加入的同学与 AI 协作工具** —— 只回答**「东西放在哪」**。
+> 怎么干活见 [`../AGENTS.md`](../AGENTS.md)；流程见 [`process.md`](process.md)。
+>
+> ⚠️ **2026-11-16 重写**：monorepo 化之后，本文件原来那份「前端单仓目录树」整体过期
+> （issue #55）⇒ 现按**当前实际目录**重写，并给出**核对命令**（见 §7）。
 
 ## 技术栈速览
 
 | 层次 | 选型 |
 | ---- | ---- |
-| 框架 | UmiJS Max 4（utoopack / Turbopack 构建） |
-| UI | React 19 + antd 6 + ProComponents 3 + @ant-design/x |
+| 前端框架 | UmiJS Max 4（utoopack / Turbopack 构建）· React 19 · antd 6 · ProComponents 3 |
 | 样式 | Tailwind CSS v4 + antd-style + CSS Modules |
 | 数据 | @tanstack/react-query + 自建 axios 服务层 |
-| 规范 | TypeScript 7 + Biome（替代 ESLint/Prettier） |
-| 测试 | Vitest（browser mode）+ Playwright |
-| 后端 | 对接 AiAdmin FastAPI；`cloudflare-worker/` 是独立部署的演示 Mock API |
+| 规范 | TypeScript strict + Biome（替代 ESLint/Prettier） |
+| 测试 | Vitest（前端）· node:test（agent 脚本）· Playwright / 静态断言脚本 |
+| AI 服务 | Express 5 + `@earendil-works/pi-coding-agent`（pi SDK）· Prisma |
+| 后端 | 对接 **AiAdmin（FastAPI，独立项目，不在本仓）** |
 
 ---
 
-## 一、仓库根目录
+## 1. 仓库根目录
 
 ```
 ai-admin-com/
-├── src/                  # ★ 业务源码，唯一需要日常改的地方
-├── config/               # Umi 构建 / 路由 / 代理配置
-├── mock/                 # 本地 Mock 数据（仅 antd-pro 演示页用）
-├── cloudflare-worker/    # 独立的 Cloudflare Worker Mock API 服务
-├── e2e/                  # Playwright 端到端测试用例
-├── tests/                # Vitest 全局 setup 与通用 mock
-├── types/                # 全局 TS 类型声明
-├── scripts/              # 辅助脚本（i18n 清理 / 模板裁剪）
-├── docs/                 # 文档（本文件、cheatsheet、roadmap、设计规格）
-├── public/               # 静态资源（logo / icons / loading.js）
-├── dist/ dist-dev/       # 构建产物（勿手动修改）
-├── .agents/ .claude/     # 项目级 Skills（antd、pro-upgrade），两份副本需同步
-├── .superpowers/sdd/     # Superpowers SDD 任务与评审记录
-├── .husky/ .github/      # Git hooks 与 CI
-└── biome.json / tailwind.config.js / tsconfig.json
-    / vitest.config.ts / playwright.config.ts / package.json
+├── frontend/                # ★ 前端（Umi Max 4 + React 19 + antd 6）
+├── backend/ai/              # ★ AI 服务（Express + pi SDK）—— 技能与智能体在这
+├── docker/                  # 部署（本仓主线：前端静态 + AI 服务两个容器）
+├── docs/                    # 文档（现状 / 流程 / 排期 / 交接 / 归档）
+├── scripts/                 # 辅助脚本（agent 工作流 · e2e 验收 · PM 巡检）
+├── .pi/                     # pi 宿主配置：prompts/（/pm、/dev 两个角色提示词）
+├── .agents/                 # ★ 项目级技能正文（antd、pro-upgrade）—— 只有这一份
+├── .claude/                 # 项目级技能的**指路存根**（给只扫 .claude/ 的宿主）
+├── .github/                 # Issue/PR 模板 + CI workflows
+├── .husky/                  # Git hooks（lint-staged / commitlint）
+├── AGENTS.md                # ★ 唯一一份 agent 指引（CLAUDE.md 只留指路）
+├── README.md                # 人看的门面：快速开始 + 目录索引
+├── package.json             # 根聚合脚本（dev/test/lint/e2e 都从这儿进）
+├── biome.json               # 唯一的 lint/格式化配置（无 ESLint、无 Prettier）
+└── LICENSE / CODE_OF_CONDUCT.md / skills-lock.json / .gitignore / .dockerignore
 ```
 
----
-
-## 二、`config/` — 配置
-
-| 文件 | 作用 |
-| ---- | ---- |
-| `config/config.ts` | 主配置：插件、`outputPath`（按环境分 `dist` / `dist-dev`）、`proxy` 按 `UMI_ENV` 切换 |
-| `config/routes.ts` | **路由表**（503 行）。前端「能点开什么」的唯一来源 |
-| `config/routes.simple.ts` | `npm run simple` 精简模式用的路由表 |
-| `config/proxy.ts` | 开发代理：`/api/` → 后端；含 `PROXY_INSECURE_TLS` 临时开关 |
-| `config/defaultSettings.ts` | ProLayout 主题与布局设置 |
-| `config/md-raw-loader.cjs` | Markdown raw 导入 loader |
+> ⚠️ **依赖各装各的**：`frontend/` 与 `backend/ai/` 各有一套 `node_modules` ⇒
+> **仓根没有 `node_modules`** ⇒ husky / lint-staged / commitlint 的二进制在
+> `frontend/node_modules/.bin/` 里。
 
 ---
 
-## 三、`src/` — 源码
-
-### 3.1 应用骨架（`src/` 根级）
-
-| 文件 | 作用 |
-| ---- | ---- |
-| `app.tsx` | 应用入口、运行时配置、全局布局 |
-| `access.ts` | 权限（access）定义，按后端权限码判定 |
-| `requestErrorConfig.ts` | 全局请求 / 错误处理（业务错误 → `BizError`） |
-| `global.tsx` `global.less` `global.style.ts` | 全局样式与运行时 |
-| `loading.tsx` | 首屏加载态 |
-| `service-worker.js` `manifest.json` | PWA 相关 |
-| `typings.d.ts` | 全局类型补充 |
-| `*.test.ts(x)` | 根级单测（`access` / `app` / `routes` / `requestErrorConfig`） |
-
-### 3.2 `src/auth/` — 认证会话
-
-| 文件 | 作用 |
-| ---- | ---- |
-| `token.ts` | token 存取、刷新、失效清理 |
-| `session.ts` | 会话状态读写 |
-
-> 登录态链路：401 → 静默刷新 token → 重放原请求；刷新自身失败才登出。
-
-### 3.3 `src/services/` — 服务层（**唯一**访问真实后端的地方）
-
-```
-services/
-├── http.ts            # axios 实例封装（token 注入、错误归一化）
-├── response.ts        # 后端信封 {code,msg,data,...} → BizError
-├── paginate.ts        # page_no / page_size（后端上限 100）
-├── types.ts           # 公共类型
-├── api/
-│   ├── ai/            # base.ts / client.ts / sse.ts（流式）/ types.ts
-│   ├── pm/            # project / task / risk / milestone + paths.ts
-│   └── system/        # auth user role dept dict log notice param position ticket + types.ts
-└── demo/              # antd-pro 演示页专用（api.ts / login.ts / typings.d.ts）
-```
-
-> 约定：**每个 `X.ts` 基本都配一个同名 `X.test.ts`**，单测就近维护。
-
-### 3.4 `src/pages/` — 页面
-
-| 目录 | 内容 |
-| ---- | ---- |
-| `module_system/` | **系统管理 9 页**：user / role / dept / position / dict / params / log / notice / ticket |
-| `module_pm/` | **项目管理 6 路由**：project（含 `detail.tsx`）/ task（含 `board.tsx`）/ risk（含 `Heatmap.tsx`）/ milestone |
-| `ai/workspace/` | AI 工作台：`index` / `WideChat` / `IntentGallery` / `RuleSplit` |
-| `chatbot/` | 聊天机器人页（Ant Design X） |
-| `dashboard/` | `analysis`（图表）/ `monitor`（监控+地图）/ `workplace`（工作台） |
-| `account/` | `center`（个人中心）/ `settings`（base / binding / notification / security） |
-| `form/` | `basic-form` / `advanced-form` / `step-form`（模板示例） |
-| `list/` | `basic-list` / `card-list` / `search/*`（模板示例） |
-| `profile/` `result/` `exception/` `table-list/` | 模板示例页 |
-| `user/` | `login` / `register` / `register-result` |
-| `Admin.tsx` `Welcome.tsx` | 管理页 / 首页 |
-
-> 业务页目录名与后端菜单 `component_path` 对齐（如 `module_system/params`）；
-> 路由 `path` 与后端 `route_path` 对齐（单数 `/system/param`）。
-> 详情页与看板**只在路由里注册**，菜单中不出现。
-
-### 3.5 `src/components/` — 通用组件
-
-```
-components/
-├── CrudTable/            # ★ 共享 CRUD 脚手架：useCrudTable / useCrudColumns / useDeleteHandler / CRUD_PAGINATION
-├── AntdOperationColumn/  # 表格操作列
-├── DeptTreeSelect/       # 部门树选择器（用户/角色/部门页共用）
-├── MenuPermissionTree/   # 菜单+按钮权限树（角色授权）
-├── TagSelect/ StandardFormRow/ AvatarList/ ArticleListContent/
-├── ErrorBoundary/ OfflineBanner/ Footer/ HeaderDropdown/
-├── RightContent/         # 顶栏：AvatarDropdown / LangDropdown / VersionDropdown
-├── AppMessageBridge.tsx  # 全局 message 桥接
-├── pm/                   # PM 专用：DictSelect / DictTag / JsonTags / riskLevel / toValueEnum / useDictOptions
-├── ai-workspace/         # AI 工作台组件族：ChatPanel / Composer / MessageBubble /
-│                         #   PendingPanel / PendingCard / AuditPanel / CommandCard /
-│                         #   useAgentStream / useWorkspace / useAiLists / storage / palette / paths
-└── index.ts              # 统一出口（新增组件从这里导出）
-```
-
-### 3.6 `src/menu/` `src/locales/` `src/utils/`
-
-| 目录 | 说明 |
-| ---- | ---- |
-| `src/menu/adapter.ts` | 后端菜单树 → ProLayout 菜单的**唯一**转换处；未注册路由的菜单会被跳过并打印 `[menu] 前端缺少路由: <path>` |
-| `src/locales/zh-CN/` `en-US/` | 国际化：`component` / `menu` / `pages` / `globalHeader` / `network` / `settings` / `settingDrawer` |
-| `src/utils/` | `appMessage.ts` / `format.ts` / `chinaDivision.ts` |
-
----
-
-## 四、路由与菜单对照（`config/routes.ts`）
-
-| 路径 | 页面目录 |
-| ---- | -------- |
-| `/user/login` `/user/register` | `src/pages/user/*`（`layout: false`） |
-| `/welcome` | `src/pages/Welcome.tsx` |
-| `/system/*` | `src/pages/module_system/*` |
-| `/pm/*` | `src/pages/module_pm/*` |
-| `/ai/workspace` | `src/pages/ai/workspace` |
-| `/admin` | `src/pages/Admin.tsx` |
-| `/dashboard/*` `/form/*` `/list/*` `/profile/*` `/result/*` `/exception/*` `/account/*` `/chatbot` | 模板示例页 |
-
-另有四条**重定向路由**（`/module_pm_project/*`、`/module_pm_risk/*`）用于接住后端
-按插件源码路径自动生成的菜单，详见 README「PM 菜单」一节。
-
----
-
-## 五、测试体系
-
-| 层级 | 工具 | 位置 |
-| ---- | ---- | ---- |
-| 单元 / 组件 | Vitest（browser mode） | 源码同目录 `*.test.ts(x)`；全局 setup 在 `tests/setupTests.ts`，通用 mock 在 `tests/__mocks__/` |
-| E2E | Playwright | `e2e/*.spec.ts` + `e2e/helpers.ts`（覆盖 auth / system / pm / ai-workspace） |
-| 规范 | Biome lint + `tsc --noEmit` + react-doctor | `npm run lint` / `npm run doctor` |
-
----
-
-## 六、给新同学的三条实践要点
-
-1. **加页面的顺序**：建 `src/pages/<component_path>/index.tsx` → `config/routes.ts` 注册路由
-   → `src/services/api/<模块>/` 加 service → 后端菜单表补 `route_path` / `component_path`。
-2. **不要动** `dist/`、`dist-dev/`、`src/.umi*`（Umi 自动生成）。
-3. **`.claude/skills/**` 与 `.agents/skills/**` 是两份副本**，不是符号链接，改一处要同步另一处。
-
----
-
-## 七、AI 部分另有一份文档
-
-AI 是**独立服务**（`ai-admin-ai` 仓，pi agent + MiniMax），架构与事件映射见
-[`docs/ai-architecture.md`](ai-architecture.md)。前端相关的位置：
+## 2. `frontend/` —— 前端
 
 | 位置 | 内容 |
 | ---- | ---- |
-| `src/services/api/ai/` | REST 客户端 / SSE 客户端 / 数据形状 / 前缀常量 |
-| `src/components/ai-workspace/` | 流式状态机、会话管理、侧栏与面板 |
-| `src/pages/ai/workspace/` | AI 工作台全宽页 |
+| `frontend/src/pages/` | 页面：`module_system/`（系统管理）· `module_pm/`（项目管理）· `ai/workspace/`（AI 工作台）· `dashboard/` · `account/` · 以及 Pro 模板示例页 |
+| `frontend/src/components/` | 通用组件：`CrudTable/`（共享 CRUD 脚手架）· `ai-workspace/`（工作台组件族）· `pm/` · `RightContent/` 等 |
+| `frontend/src/services/api/` | 服务层：`system/` · `pm/` · `ai/`（REST + SSE） |
+| `frontend/src/locales/` | 8 种语言 |
+| `frontend/config/` | `routes.ts`（路由表）· `config.ts` · `proxy.ts` · `defaultSettings.ts` |
+| `frontend/mock/` | 本地 Mock（Express 风格） |
+| `frontend/e2e/` | Playwright 端到端 |
+| `frontend/tests/` | Vitest 全局 setup 与通用 mock |
+| `frontend/cloudflare-worker/` | **独立的 Hono 应用**（演示用 Mock API，`wrangler.toml`）⇒ **不是**本仓主线部署路径，见 §6 |
+| `frontend/public/` | 静态资源 |
+| `frontend/scripts/` | 前端自己的辅助脚本（i18n 清理 / 模板裁剪） |
+
+👉 细节看 [`../frontend/README.md`](../frontend/README.md)。
+
+---
+
+## 3. `backend/ai/` —— AI 服务（智能体）
+
+| 位置 | 内容 |
+| ---- | ---- |
+| `backend/ai/src/agent/` | ★ 智能体内核：`pi-session.ts` · `runtime.ts` · `gate.ts`（改数据要人点头）· `mcp.ts` · `skills.ts` · `event-mapper.ts` · `frame-buffer.ts` |
+| `backend/ai/src/routes/` | HTTP 层（`agent.ts` / `events.ts` SSE / `pending.ts` / `audit.ts` / `contract.ts`） |
+| `backend/ai/src/adapter/` | 调 AiAdmin 的适配层（鉴权透传 / 字段映射 / 错误归一） |
+| `backend/ai/.pi/skills/` | ★ **技能**（`create-task` / `list-tasks` / `update-task`）—— 业务能力 = 加一个 markdown |
+| `backend/ai/.pi/prompts/` | AI 服务自己的 pi 提示词 |
+| `backend/ai/prisma/` | `ai_*` 元数据表与迁移（⚠️ 与 AiAdmin 业务表**同库**） |
+| `backend/ai/docs/` | AI 服务自己的设计文档与 spike 记录 |
+| `backend/ai/Dockerfile` | AI 服务镜像 |
+
+👉 细节看 [`../backend/ai/README.md`](../backend/ai/README.md) 与 [`ai-architecture.md`](ai-architecture.md)。
+
+---
+
+## 4. `docs/` —— 文档
+
+| 位置 | 内容 | 性质 |
+| ---- | ---- | ---- |
+| `docs/ai-architecture.md` | AI 架构（事件流 / 闸门 / 回放） | **现状** |
+| `docs/directory-structure.md` | 本文件 | **现状** |
+| `docs/process.md` | 开发流程（人提 issue → agent 开发 → 提 PR） | **事实源** |
+| `docs/notes/` | 交接文档（上一棒做到哪、为什么这么定） | 交接 |
+| `docs/pm/` | PM 调度层：`roadmap.md`（规划事实源）· `log.md`（决定与理由）· `drafts/`（开单草稿）· `README.md` | 排期 |
+| `docs/superpowers/{specs,plans}/` | 设计与实现计划（大规模改造用） | 历史记录 |
+| `docs/legacy/` | **上游 Ant Design Pro 的遗留**（已归档，不是本仓事实源） | 归档 |
+| `docs/archive/` | **本仓写过但因决策搁置的**（如 M1 AIPM 规格与原型） | 归档 |
+
+> ⚠️ **`legacy/` 与 `archive/` 别混**：
+> `legacy/` = 上游带来的；`archive/` = 本仓自己的搁置物。两类都**只当背景，不作现行依据**。
+
+---
+
+## 5. `scripts/` —— 辅助脚本
+
+| 位置 | 内容 |
+| ---- | ---- |
+| `scripts/agent/` | agent 工作流：`pick-next.cjs`（领活）· `merge-pr.cjs`（合并 + 删分支）· `worktree.cjs`（工作区管理）· `lib/exec.cjs` |
+| `scripts/e2e/` | 端到端验收脚本（**入库**，`*.static.cjs` 只读文件断言 ⇒ 没 docker 也能跑） |
+| `scripts/pm/` | PM 巡检（`check-queue.cjs`） |
+
+---
+
+## 6. 两条部署路径（**只定位，不合并**）
+
+| 路径 | 定位 | 用法 |
+| ---- | ---- | ---- |
+| `docker/` | ★ **本仓主线**：前端静态（nginx）+ AI 服务两个容器 | `docker/deploy.sh`（默认只检查，`--yes` 才动手）· 手册见 [`../docker/README.md`](../docker/README.md) |
+| `frontend/cloudflare-worker/` | 独立的 Hono 应用（演示用 Mock API），**有自己 `package.json`，不是 npm workspace** | `wrangler` 单独部署 |
+
+⚠️ 两者**互不替代**，也不在本仓内合并。
+
+---
+
+## 7. 怎么核对「本文档与实际一致」
+
+```bash
+# ① 顶层清单（对照本文档 §1）
+git ls-files | awk -F/ 'NF==1' | sort   # 顶层**文件**
+ls -A | grep -v '^\.git$'               # 顶层**目录**（含未跟踪的本地目录）
+
+# ② 关键目录的内容（对照 §2~§6）
+ls docker .pi/prompts docs/pm scripts/agent scripts/e2e frontend/cloudflare-worker
+
+# ③ 本文档点名的路径是否都还在（逐个验，缺一个就说明文档过期了）
+for p in frontend backend/ai docker .pi/prompts docs/pm docs/notes docs/legacy docs/archive \
+         scripts/agent scripts/e2e frontend/cloudflare-worker backend/ai/.pi/skills; do
+  [ -e "$p" ] && echo "✓ $p" || echo "✗ 缺失 $p"
+done
+```
+
+⇒ 改了目录结构 ⇒ **改完顺手跑一遍 ③**，不一致就更新本文件（别让文档漂移）。
+
+---
+
+## 8. 给新同学的三条实践要点
+
+1. **加页面的顺序**：建 `frontend/src/pages/<component_path>/index.tsx` → `frontend/config/routes.ts` 注册路由
+   → `frontend/src/services/api/<模块>/` 加 service → AiAdmin 后端菜单表补 `route_path` / `component_path`。
+2. **不要动** `dist/`、`dist-dev/`、`frontend/src/.umi*`（Umi 自动生成）；**不要手改** `frontend/src/services/ant-design-pro/`（自动生成，`npx max openapi`）。
+3. **技能正文只有一份**（`.agents/skills/`）⇒ 别在 `.claude/skills/` 里改正文（那是指路存根）。
