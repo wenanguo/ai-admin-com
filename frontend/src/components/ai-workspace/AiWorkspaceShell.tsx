@@ -35,7 +35,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AiWorkspace } from './index';
 import {
   AI_WORKSPACE_FLOAT_HEIGHT,
-  AI_WORKSPACE_MIN_WIDTH,
   clampGeometry,
   clampWidth,
   type PanelGeometry,
