@@ -193,13 +193,19 @@ const RolePermissionForm: React.FC<RolePermissionFormProps> = ({
         if (!permission) return false;
         // 表单与角色对不上 ⇒ 宁可拒掉(拿一个角色的菜单覆盖另一个角色)
         if (boundRoleIdRef.current !== roleId) return false;
+        // ⚠️ **表单刚重建时，值可能还没灌进表单**（antd 的表单实例是新的）
+        //    ⇒ **undefined 才回落**到记录里的值（记录才是事实源）；
+        //    **空数组是用户的选择**（把菜单清空）⇒ 不回落。
+        const dataScope = values.data_scope ?? permission.dataScope;
+        const menuIds = values.menu_ids ?? permission.menuIds;
+        const deptIds = values.dept_ids ?? permission.deptIds;
         try {
           await setRolePermission({
-            data_scope: values.data_scope,
+            data_scope: dataScope,
             role_ids: roleId != null ? [roleId] : [],
-            menu_ids: values.menu_ids ?? [],
+            menu_ids: menuIds,
             // 只有「自定义」才用部门范围,其它档位提交空数组
-            dept_ids: values.data_scope === 5 ? (values.dept_ids ?? []) : [],
+            dept_ids: dataScope === 5 ? deptIds : [],
           });
           return true;
         } catch {
@@ -213,7 +219,10 @@ const RolePermissionForm: React.FC<RolePermissionFormProps> = ({
         label="数据权限"
         options={DATA_SCOPE_OPTIONS}
         disabled={!ready}
-        rules={[{ required: true }]}
+        // ⚠️ **故意不加 required 规则**：
+        //    值**总是**来自记录（见 onFinish 的兜底）⇒ 这条规则只会造成
+        //    「表单刚重建、值还没灌进来时，校验失败 ⇒ 点确定**静默没反应**」。
+        //    ⇒ 宁可让 onFinish 兜底，也不要一个点不动的按钮。
       />
       <ProFormDependency name={['data_scope']}>
         {({ data_scope }) =>
