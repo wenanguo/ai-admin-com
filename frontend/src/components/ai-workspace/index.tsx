@@ -262,11 +262,18 @@ export function AiWorkspace({
                 />
               ) : null}
               <span
+                data-testid="ai-workspace-drag-handle"
+                title="拖动可移动面板"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: token.sizeXS,
                   fontWeight: 600,
+                  // ⚠️ **拖动区**：鼠标停在这儿是「移动」的光标，
+                  //    而且**不许选中文本**（拖一下选中一片字）。
+                  cursor: 'move',
+                  userSelect: 'none',
+                  touchAction: 'none',
                 }}
               >
                 AI 工作台

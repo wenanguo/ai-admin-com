@@ -33,6 +33,13 @@ import { Button, theme } from 'antd';
 import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AiWorkspace } from './index';
+import {
+  AI_WORKSPACE_FLOAT_HEIGHT,
+  clampGeometry,
+  clampWidth,
+  type PanelGeometry,
+  parsePanelGeometry,
+} from './panel-geometry';
 import { AI_WORKSPACE_PAGE_PATH } from './paths';
 import { readWorkspaceStorage, writeWorkspaceStorage } from './storage';
 
@@ -280,10 +287,29 @@ export function AiWorkspaceShell({
       window.removeEventListener('resize', measure);
     };
   }, []);
+  /**
+   * 窄版面板的**几何**（用户拖出来的位置与宽度）。
+   *
+   * ⚠️ `undefined` ⇒ **还没拖过** ⇒ 面板用默认位置（右边 400px、顶到上下沿）
+   *    （默认行为一个字不改）。
+   */
+  const [geometry, setGeometry] = useState<PanelGeometry | undefined>(() =>
+    parsePanelGeometry(readWorkspaceStorage().panel),
+  );
+  /** 几何的同步副本（拖动过程中要立刻拿最新值去写存储）。 */
+  const geometryRef = useRef<PanelGeometry | undefined>(geometry);
+
   useEffect(() => {
     const onResize = (): void => {
       setNarrow(window.innerWidth < AI_WORKSPACE_NARROW_WIDTH);
       setHeaderHeight(measureHeaderHeight());
+      // ⚠️ **视口变了 ⇒ 面板要重新夹回视口里**（不然换个小的屏幕，
+      //    面板就有一半在屏幕外 ⇒ 找不着、也拖不回来）。
+      setGeometry((previous) =>
+        previous
+          ? clampGeometry(previous, window.innerWidth, window.innerHeight)
+          : previous,
+      );
     };
     onResize();
     window.addEventListener('resize', onResize);
@@ -291,6 +317,208 @@ export function AiWorkspaceShell({
       window.removeEventListener('resize', onResize);
     };
   }, []);
+
+  /* ------------------------------------------------------------ 拖动与调宽 */
+
+  /** 正在拖吗（`move` = 拖标题；`resize` = 拖左边缘）。 */
+  const [dragging, setDragging] = useState<'move' | 'resize' | null>(null);
+  /** 拖动时的起点（算增量用）。 */
+  const dragRef = useRef<{
+    mode: 'move' | 'resize';
+    startX: number;
+    startY: number;
+    start: PanelGeometry;
+  } | null>(null);
+  /** 停掉拖动的函数（组件卸载时也要调 ⇒ 不留悬空的监听器）。 */
+  const cleanupDragRef = useRef<(() => void) | null>(null);
+  /** 浮层面板本身（量它的真实盒子用）。 */
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    return () => {
+      cleanupDragRef.current?.();
+    };
+  }, []);
+
+  /** 面板当前的几何（**从真实盒子量** ⇒ 滚动条/缩放造成的偏差不会累积）。 */
+  const currentGeometry = useCallback((): PanelGeometry => {
+    const element = panelRef.current;
+    if (element) {
+      const box = element.getBoundingClientRect();
+      return {
+        left: box.left,
+        top: box.top,
+        width: box.width,
+        height: box.height,
+      };
+    }
+    return {
+      left: window.innerWidth - AI_WORKSPACE_WIDTH,
+      top: 0,
+      width: AI_WORKSPACE_WIDTH,
+      height: window.innerHeight,
+    };
+  }, []);
+
+  /**
+   * 开始拖动。
+   *
+   * ⚠️ **监听器当场挂上**（不等 React 的 effect）⇒ 拖动的第一帧就不会丢。
+   *
+   * @param mode `move`（拖标题）/ `resize`（拖左边缘）。
+   * @param event 指针事件。
+   */
+  const startDrag = useCallback(
+    (mode: 'move' | 'resize', event: React.PointerEvent<HTMLElement>): void => {
+      // ⚠️ **窄屏全宽形态不允许拖**（那块是「占满整屏」的手机形态）；
+      //    宽版（最大化）也不在本条范围内 ⇒ 两种都不拖。
+      if (narrow || wide) {
+        return;
+      }
+      // ⚠️ **别让浏览器开始选文本**（拖一下选中一片字）。
+      event.preventDefault();
+      const current = currentGeometry();
+      // ⚠️ **拖标题 ⇒ 面板变成「浮动窗口」**：占满整屏高的面板上下拖不动
+      //    （top 只能是 0）⇒ 「可拖到视口内任意位置」就不成立。
+      const height =
+        mode === 'move' && current.height >= window.innerHeight - 2
+          ? Math.min(AI_WORKSPACE_FLOAT_HEIGHT, window.innerHeight - 8)
+          : current.height;
+      dragRef.current = {
+        mode,
+        startX: event.clientX,
+        startY: event.clientY,
+        start: { ...current, height },
+      };
+
+      // ⚠️ **最大宽度 = 内容区宽**（面板不许比内容区还宽 ⇒ 不挡到菜单那一列）。
+      const maxWidth = contentBox?.width ?? window.innerWidth;
+
+      const onMove = (moveEvent: PointerEvent): void => {
+        const drag = dragRef.current;
+        if (!drag) {
+          return;
+        }
+        let next: PanelGeometry;
+        if (drag.mode === 'move') {
+          next = {
+            ...drag.start,
+            left: drag.start.left + (moveEvent.clientX - drag.startX),
+            top: drag.start.top + (moveEvent.clientY - drag.startY),
+          };
+        } else {
+          // ⚠️ **拖左边缘 ⇒ 右边不动**（面板的右边缘钉住，只改宽度）。
+          const right = drag.start.left + drag.start.width;
+          const width = clampWidth(right - moveEvent.clientX, maxWidth);
+          next = { ...drag.start, width, left: right - width };
+        }
+        const clamped = clampGeometry(
+          next,
+          window.innerWidth,
+          window.innerHeight,
+        );
+        geometryRef.current = clamped;
+        setGeometry(clamped);
+      };
+
+      const stop = (): void => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', stop);
+        window.removeEventListener('pointercancel', stop);
+        dragRef.current = null;
+        cleanupDragRef.current = null;
+        setDragging(null);
+        // ⚠️ **松手才写存储**（拖动过程写 localStorage 太频繁 ⇒ 卡）。
+        const current2 = geometryRef.current;
+        if (current2) {
+          writeWorkspaceStorage({ panel: current2 });
+        }
+      };
+
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', stop);
+      window.addEventListener('pointercancel', stop);
+      cleanupDragRef.current = stop;
+      setDragging(mode);
+    },
+    [contentBox, currentGeometry, narrow, wide],
+  );
+
+  /**
+   * 拖动中**禁用文本选择**（松手后恢复）。
+   *
+   * ⚠️ 不这么做 ⇒ 拖一下面板，页面上选中一片字（用户还得手动去点掉）。
+   */
+  useEffect(() => {
+    if (dragging === null) {
+      return;
+    }
+    const previous = document.body.style.userSelect;
+    document.body.style.userSelect = 'none';
+    return () => {
+      document.body.style.userSelect = previous;
+    };
+  }, [dragging]);
+
+  /** 窄版面板上的按下（**事件委托**：只有标题那个把手能拖）。 */
+  const onPanelPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>): void => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      if (!target.closest('[data-testid="ai-workspace-drag-handle"]')) {
+        return;
+      }
+      startDrag('move', event);
+    },
+    [startDrag],
+  );
+
+  /**
+   * 窄版面板的样式。
+   *
+   * ## 三种形态
+   *
+   * 1. **窄屏（手机）**：`100vw` 占满整宽 ⇒ **不允许拖动**（那块是「全屏」形态）；
+   * 2. **拖过**：用用户摆出来的位置与宽度（`geometry`）；
+   * 3. **默认**：右边 400px、顶到视口上下沿（**一个字不改**）。
+   *
+   * ⚠️ `z-index` 两种形态都是 101（ProLayout 顶栏自己是 100 ⇒ 同层靠 DOM 顺序不可靠）。
+   */
+  const narrowPanelStyle: React.CSSProperties = (() => {
+    const base = {
+      position: 'fixed' as const,
+      /*
+      ⚠️ **border-box**：边框（左边那条 1px）**算在宽度里**
+      ⇒ 存下来的宽度 = 渲染出来的宽度（不然每次拖动都会差 1px）。
+      */
+      boxSizing: 'border-box' as const,
+      /*
+      ⚠️ **z-index 与宽版对齐（101）**：ProLayout 顶栏自己也是 100
+      （`position: fixed`）⇒ 同层时谁在上面取决于 DOM 顺序，不可靠。
+      ⇒ 两种形态都抬到 101，把顶栏压在下面。
+      */
+      zIndex: 101,
+      display: 'flex' as const,
+      flexDirection: 'column' as const,
+      background: token.colorBgContainer,
+      boxShadow: '-4px 0 16px rgba(0, 0, 0, 0.12)',
+      borderLeft: `1px solid ${token.colorBorder}`,
+    };
+    if (narrow) {
+      return { ...base, top: 0, right: 0, bottom: 0, width: '100vw' };
+    }
+    if (geometry) {
+      return {
+        ...base,
+        left: geometry.left,
+        top: geometry.top,
+        width: geometry.width,
+        height: geometry.height,
+      };
+    }
+    return { ...base, top: 0, right: 0, bottom: 0, width: AI_WORKSPACE_WIDTH };
+  })();
 
   return (
     <>
@@ -364,15 +592,18 @@ export function AiWorkspaceShell({
                 />
               ) : null}
               <div
+                ref={panelRef}
                 data-testid={
                   wide ? 'ai-workspace-wide-overlay' : 'ai-workspace-panel'
                 }
                 role="dialog"
                 aria-label="AI 工作台"
+                onPointerDown={onPanelPointerDown}
                 style={
                   wide && contentBox
                     ? {
                         position: 'fixed',
+                        boxSizing: 'border-box',
                         /*
                         ⚠️ **顶到视口最上面**（盖住 ProLayout 的顶栏）。
                         以前是 `top: contentBox.top` ⇒ 浮层被工作区的高度「压」着，
@@ -394,36 +625,41 @@ export function AiWorkspaceShell({
                         background: token.colorBgContainer,
                         boxShadow: '0 8px 32px rgba(0, 0, 0, 0.18)',
                       }
-                    : {
-                        position: 'fixed',
-                        /*
-                        ⚠️ **顶到视口最上沿**（y = 0），与**最大化形态对齐**（issue #59）。
-                        以前是 `top: headerHeight`（≈56）⇒ 窄版比宽版低一截 ⇒
-                        「两种形态」看起来不是一回事。
-
-                        ⚠️ **顶栏右上角会被盖住**（头像 / 账号菜单点不到）——
-                        **这是有意的**（人 2026-11-14 定）：先把面板做成能占满上沿，
-                        将来「界面可拖动」才有地基（能拖到视口任意位置）。
-                        别当成 bug 改回去。
-                        */
-                        top: 0,
-                        right: 0,
-                        bottom: 0,
-                        width: narrow ? '100vw' : AI_WORKSPACE_WIDTH,
-                        /*
-                        ⚠️ **z-index 与宽版对齐（101）**：ProLayout 顶栏自己也是 100
-                        （`position: fixed`）⇒ 同层时谁在上面取决于 DOM 顺序，不可靠。
-                        ⇒ 两种形态都抬到 101，把顶栏压在下面。
-                        */
-                        zIndex: 101,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        background: token.colorBgContainer,
-                        boxShadow: '-4px 0 16px rgba(0, 0, 0, 0.12)',
-                        borderLeft: `1px solid ${token.colorBorder}`,
-                      }
+                    : narrowPanelStyle
                 }
               >
+                {/*
+                ⚠️ **拖左边缘调宽度**的把手（只给窄版；窄屏全宽形态不给）。
+
+                ⚠️ 为什么不用 `resize: both`（CSS 原生）：原生那个会**同时**给
+                上下两个方向开把手、还会跟着内容改高度 ⇒ 与「只调宽度」的口径不合，
+                而且它没法持久化。
+              */}
+                {wide || narrow ? null : (
+                  <div
+                    data-testid="ai-workspace-resize-handle"
+                    title="拖动调整面板宽度"
+                    onPointerDown={(event) => {
+                      // ⚠️ 别让面板的「拖标题」逻辑接手（事件会冒泡到面板上）。
+                      event.stopPropagation();
+                      startDrag('resize', event);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: 6,
+                      cursor: 'col-resize',
+                      touchAction: 'none',
+                      zIndex: 2,
+                      background:
+                        dragging === 'resize'
+                          ? token.colorPrimaryBorder
+                          : 'transparent',
+                    }}
+                  />
+                )}
                 <AiWorkspace
                   variant={wide ? 'wide' : 'narrow'}
                   onCollapse={toggle}

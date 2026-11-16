@@ -5,6 +5,8 @@
  * AI 服务（`D:/project/ai-admin-ai`）不用浏览器存储 ⇒ 两边不会撞。
  */
 
+import type { PanelGeometry } from './panel-geometry';
+
 /** 工作台状态在 localStorage 里的键。 */
 export const WORKSPACE_STORAGE_KEY = 'aipm.workspace';
 
@@ -30,6 +32,14 @@ export interface WorkspaceStorage {
   tab?: string;
   /** 会话 id。 */
   conversationId?: string;
+  /**
+   * 窄版面板的**几何**（用户拖出来的位置与宽度）。
+   *
+   * ⚠️ **可选**：没有这个字段 ⇒ 面板用默认位置（右边 400px、顶到上下沿）。
+   *    字段坏了（不是对象 / 数字不对）⇒ 当没有（见 `parsePanelGeometry`），
+   *    不能让一个坏值把界面搞崩。
+   */
+  panel?: PanelGeometry;
 }
 
 /**
