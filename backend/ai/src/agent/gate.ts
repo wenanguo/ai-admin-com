@@ -18,31 +18,28 @@
  * ⇒ 判定：工具名里的 `update_` / `patch_` ⇒ 要点头；其余（`create_` / `list_` / `get_`）放行。
  *
  * ⚠️ **没有上下文就放行**：拿不到会话/用户 ⇒ 没法挂起 ⇒ 不能把 AI 卡死。
+ *
+ * ## 闸门**不写死**业务知识
+ *
+ * - 「这次写操作能不能改哪些字段」⇒ **插件的写规则**（`WriteToolRule`）；
+ * - 「这个工具在这个 scope 里不许用」（如 PM 的 `patch_task_status`）⇒ **插件的规则**。
+ *
+ * ⇒ 闸门只做三件事：① 判断要不要问人 ② 按规则**收窄**参数 ③ 挂起等人点头。
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createPendingAction } from "../pending-write.ts";
-import type { AiTaskContext } from "./context.ts";
-import { sanitizeWriteArgs, type SanitizedWrite } from "./context.ts";
+import {
+	blockedWriteReason,
+	narrowWriteArgs,
+	type ContextAnchor,
+	type NarrowedWrite,
+	type WriteToolRule,
+} from "../core/context/anchor.ts";
 import type { PendingWaiterRegistry } from "./pending-waiters.ts";
 
 /** 默认等多久（毫秒）。 */
 export const DEFAULT_GATE_TIMEOUT_MS = 5 * 60 * 1000;
-
-/**
- * 这个工具是「批量改**可用状态**」的，不是「批量改**任务状态**」。
- *
- * ⚠️ **线上事实**（后端 `pm_task/controller.py` + `BatchSetAvailable`）：
- *    `PATCH /pm_task/status/batch` 的入参是 `{ids, status:int(0/1)}`
- *    ⇒ 它改的是「是否可用」，**改不了 `status_code`**。
- *    但 MCP 把它叫 `patch_task_status`、描述也写着「批量修改任务状态」⇒
- *    模型会以为它能改任务状态 ⇒ 用了就**状态没改，还顺手动了可用状态**。
- *
- * ⇒ 讨论某条任务时，**不许用**它改状态 ⇒ 拦住它并告诉模型改用 `update_task`。
- */
-export function isAvailabilityTool(toolName: string): boolean {
-	return toolName.replace(/^mcp__[^_]+__/, "") === "patch_task_status";
-}
 
 /**
  * 这个工具要不要人点头？
@@ -63,12 +60,18 @@ export interface GateContext {
 	/** 挂起后通知外界（推 SSE pending 事件）。 */
 	onPending: (row: { id: string; command: string; args: Record<string, unknown> }) => void;
 	/**
-	 * 当前讨论的上下文（**没有就是 undefined**）。
+	 * 当前讨论的**锚点**（**没有就是 undefined**）。
 	 *
 	 * ⚠️ 有它 ⇒ 写操作的参数会被**收窄**到允许回填的字段
-	 *    （见 `sanitizeWriteArgs`）⇒ 「限定回填字段」是代码保证的。
+	 *    （见 `narrowWriteArgs`）⇒ 「限定回填字段」是代码保证的。
 	 */
-	taskContext?: AiTaskContext | undefined;
+	anchor?: ContextAnchor | undefined;
+	/**
+	 * 写操作的规则（**插件给的** ⇒ 闸门不写死工具名/字段名）。
+	 *
+	 * ⚠️ 没有规则 ⇒ 不收窄（等价于「没有讨论上下文」）。
+	 */
+	writeRules?: readonly WriteToolRule[] | undefined;
 }
 
 /**
@@ -128,30 +131,22 @@ export function createGateExtension(options: {
 				// 没有上下文 ⇒ 没法挂起 ⇒ **放行**（别把 AI 卡死）
 				return undefined;
 			}
-			// ⚠️ **讨论某条任务时，不许用 patch_task_status 改状态**：
-			//    它改的是「是否可用」(0/1)，**改不了 status_code**
-			//    （见 `isAvailabilityTool`）⇒ 拦住并让模型改用 update_task。
-			//    ⚠️ 拦在**建待确认之前** ⇒ 不会留下孤儿待确认记录。
-			if (context.taskContext !== undefined && isAvailabilityTool(event.toolName)) {
-				return {
-					block: true,
-					reason:
-						"patch_task_status 改的是「是否可用」(0/1)，**不是任务状态**。" +
-						"要改任务状态请用 update_task（带上完整的任务对象当基线）。",
-				};
+			const anchor = context.anchor ?? null;
+			const rules = context.writeRules ?? [];
+			// ⚠️ **插件说这个工具在这个 scope 里不许用** ⇒ 拦住并说明
+			//    （拦在**建待确认之前** ⇒ 不会留下孤儿待确认记录）。
+			const blocked = blockedWriteReason(event.toolName, anchor, rules);
+			if (blocked !== undefined) {
+				return { block: true, reason: blocked };
 			}
 			// ⚠️ **先把参数收窄**（有讨论上下文时）:
-			//    只留允许回填的字段，其余按上下文里的原值回填
+			//    只留允许回填的字段，其余按锚点里的原值回填
 			//    ⇒ 模型就算想顺手改负责人/截止日，也在这一层被丢掉。
 			//    ⇒ 而且待确认卡片里显示的就是**真正要写的那份**。
 			const input = event.input as Record<string, unknown>;
-			let sanitized: SanitizedWrite;
+			let sanitized: NarrowedWrite;
 			try {
-				sanitized = sanitizeWriteArgs(
-					event.toolName,
-					input,
-					context.taskContext ?? null,
-				);
+				sanitized = narrowWriteArgs(event.toolName, input, anchor, rules);
 			} catch (error) {
 				// 收窄失败（基线缺必填字段）⇒ 别把一个会 422 的 PUT 放出去
 				return {

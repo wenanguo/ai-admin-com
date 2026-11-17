@@ -15,7 +15,7 @@
  */
 
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import type { AiTaskContext } from "./context.ts";
+import type { ContextAnchor } from "../core/context/anchor.ts";
 import { FrameBuffer, type StreamFrame } from "./frame-buffer.ts";
 
 /** SSE 订阅者：收到一帧就被叫一次。 */
@@ -70,12 +70,12 @@ export interface ConversationChannel {
 	 */
 	userId: string | undefined;
 	/**
-	 * 当前讨论的上下文（**只在内存**）。
+	 * 当前讨论的**锚点**（**只在内存**）。
 	 *
-	 * ⚠️ 每次带上下文的消息都会覆盖它 ⇒ 它表示「**此刻**在聊哪条任务」。
+	 * ⚠️ 每次带上下文的消息都会覆盖它 ⇒ 它表示「**此刻**在聊哪条东西」。
 	 *    没有上下文的对话（用户没点「与 AI 讨论」）⇒ 它是 undefined。
 	 */
-	taskContext: AiTaskContext | undefined;
+	anchor: ContextAnchor | undefined;
 	/**
 	 * 最近一次**写操作**（工具开始执行时记下，成功后用来发 entity_updated）。
 	 */
@@ -162,7 +162,7 @@ export class SessionRegistry {
 			backlog: new FrameBuffer(),
 			token: undefined,
 			userId: undefined,
-			taskContext: undefined,
+			anchor: undefined,
 			lastWrite: undefined,
 			lastMcpWrite: undefined,
 			session: undefined,

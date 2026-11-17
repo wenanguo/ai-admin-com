@@ -22,6 +22,7 @@
  * 现在的口径：**注册表里所有插件的命令合起来**就是可用的命令目录。
  */
 
+import type { ContextProvider } from "./context/anchor.ts";
 import type { CurrentUserResolver } from "./session/identity.ts";
 import type { CommandDefinition } from "./tools/types.ts";
 
@@ -39,6 +40,13 @@ export interface AiPlugin {
 	commands?: readonly CommandDefinition[];
 	/** 这个插件怎么回答「当前用户是谁」（没有 ⇒ 内核不提供身份查询）。 */
 	currentUser?: CurrentUserResolver;
+	/**
+	 * 这个插件的**讨论上下文**（解析 / 渲染 / 写规则）。
+	 *
+	 * ⚠️ 「用户正在跟 AI 讨论哪条东西」是**业务**概念 ⇒ 归插件；
+	 *    内核只认**锚点**（作用域 + 键值 + 可写字段白名单）。
+	 */
+	context?: ContextProvider;
 }
 
 /** 插件注册表 —— **内核与插件之间唯一的接头**。 */
@@ -68,6 +76,11 @@ export class PluginRegistry {
 	/** 第一个能回答「当前用户是谁」的插件的解析器（没有 ⇒ undefined）。 */
 	currentUserResolver(): CurrentUserResolver | undefined {
 		return this.list().find((plugin) => plugin.currentUser !== undefined)?.currentUser;
+	}
+
+	/** 第一个能提供「讨论上下文」的插件的提供器（没有 ⇒ undefined）。 */
+	contextProvider(): ContextProvider | undefined {
+		return this.list().find((plugin) => plugin.context !== undefined)?.context;
 	}
 }
 

@@ -1,6 +1,13 @@
+/**
+ * 闸门 —— **等人点头** + **按规则收窄参数**。
+ *
+ * ⚠️ 闸门**不写死业务知识**：哪些字段能改、哪个工具不许用 ⇒ 都是**插件的写规则**
+ *    （`WriteToolRule`）。这里用的是**假规则** ⇒ 单测不依赖任何业务插件。
+ */
+
 import { describe, expect, it, vi } from "vitest";
-import type { AiTaskContext } from "./context.ts";
-import { createGateExtension, isAvailabilityTool, requiresConfirmation } from "./gate.ts";
+import type { ContextAnchor, WriteToolRule } from "../core/context/anchor.ts";
+import { createGateExtension, requiresConfirmation } from "./gate.ts";
 import { PendingWaiterRegistry } from "./pending-waiters.ts";
 
 /** 假的 pi 扩展 API（只实现我们用到的两个方法）。 */
@@ -22,6 +29,42 @@ function fakePi(): {
 function fakeCreatePending(id = "p-fake"): (input: unknown) => Promise<{ id: string }> {
 	return async () => ({ id });
 }
+
+/** 假的锚点（一条「被讨论的东西」：基线 + 可写字段白名单）。 */
+function fakeAnchor(): ContextAnchor {
+	return {
+		scope: { type: "thing", id: "123" },
+		baseline: {
+			id: 123,
+			project_id: 6,
+			title: "支付回调联调",
+			type_code: "feature",
+			status_code: "in_progress",
+			priority_code: "P0",
+			assignee_id: 1,
+			due_date: "2026-11-10",
+			actual_hours: "3",
+			description: "原来的描述",
+		},
+		values: {},
+		writableFields: ["status_code", "actual_hours", "description"],
+	};
+}
+
+/** 假的写规则（整对象 PUT + 白名单 + 一个「不许用」的工具）。 */
+const fakeRules: readonly WriteToolRule[] = [
+	{
+		tool: "update_thing",
+		wholeObject: true,
+		baseline: (anchor) => anchor.baseline,
+		requiredFields: ["id", "project_id", "title", "type_code", "status_code", "priority_code"],
+		anchorFields: ["id"],
+	},
+	{
+		tool: "patch_thing_status",
+		blocked: { reason: "这个工具改的是「是否可用」，不是状态。请用 update_thing。" },
+	},
+];
 
 describe("闸门", () => {
 	it("只有「修改已有数据」的工具要人点头", () => {
@@ -73,21 +116,6 @@ describe("闸门", () => {
 		const waiters = new PendingWaiterRegistry();
 		const onPending = vi.fn();
 		const { pi, handlers } = fakePi();
-		const taskContext: AiTaskContext = {
-			kind: "task",
-			task: {
-				id: 123,
-				project_id: 6,
-				title: "支付回调联调",
-				type_code: "feature",
-				status_code: "in_progress",
-				priority_code: "P0",
-				assignee_id: 1,
-				due_date: "2026-11-10",
-				actual_hours: "3",
-				description: "原来的描述",
-			},
-		};
 		await createGateExtension({
 			waiters,
 			createPending: fakeCreatePending(),
@@ -95,7 +123,8 @@ describe("闸门", () => {
 				conversationId: "c1",
 				userId: "2",
 				onPending,
-				taskContext,
+				anchor: fakeAnchor(),
+				writeRules: fakeRules,
 			}),
 		})(pi as never);
 		const hook = handlers.get("tool_call");
@@ -109,7 +138,7 @@ describe("闸门", () => {
 		};
 		const pending = hook?.({
 			type: "tool_call",
-			toolName: "mcp__aiadmin__update_task",
+			toolName: "mcp__aiadmin__update_thing",
 			toolCallId: "call-9",
 			input,
 		});
@@ -119,7 +148,7 @@ describe("闸门", () => {
 		// 模型给的参数已经被就地改写 ⇒ pi 之后执行的就是这份
 		expect(input["status_code"]).toBe("done");
 		expect(input["actual_hours"]).toBe("8");
-		// 白名单外的字段被丢掉（回到上下文里的原值）
+		// 白名单外的字段被丢掉（回到锚点里的原值）
 		expect(input["title"]).toBe("支付回调联调");
 		expect(input["assignee_id"]).toBe(1);
 		// 必填字段一个都不能少（整对象 PUT）
@@ -134,12 +163,7 @@ describe("闸门", () => {
 		expect(await pending).toBeUndefined();
 	});
 
-	it("patch_task_status 其实是「改可用状态」的工具", () => {
-		expect(isAvailabilityTool("mcp__aiadmin__patch_task_status")).toBe(true);
-		expect(isAvailabilityTool("mcp__aiadmin__update_task")).toBe(false);
-	});
-
-	it("讨论某条任务时用 patch_task_status 改状态 ⇒ 拦住（它改不了 status_code）", async () => {
+	it("插件说这个工具不许用 ⇒ 拦住（并说明为什么）", async () => {
 		const waiters = new PendingWaiterRegistry();
 		const onPending = vi.fn();
 		const { pi, handlers } = fakePi();
@@ -151,35 +175,26 @@ describe("闸门", () => {
 				conversationId: "c1",
 				userId: "2",
 				onPending,
-				taskContext: {
-					kind: "task",
-					task: {
-						id: 123,
-						project_id: 6,
-						title: "支付回调联调",
-						type_code: "feature",
-						status_code: "in_progress",
-						priority_code: "P0",
-					},
-				},
+				anchor: fakeAnchor(),
+				writeRules: fakeRules,
 			}),
 		})(pi as never);
 
 		const result = (await handlers.get("tool_call")?.({
 			type: "tool_call",
-			toolName: "mcp__aiadmin__patch_task_status",
+			toolName: "mcp__aiadmin__patch_thing_status",
 			toolCallId: "call-1",
 			input: { ids: [123], status: "done" },
 		})) as { block?: boolean; reason?: string } | undefined;
 
 		expect(result?.block).toBe(true);
-		expect(result?.reason).toContain("update_task");
+		expect(result?.reason).toContain("update_thing");
 		// ⚠️ 拦在**建待确认之前** ⇒ 不留孤儿待确认记录
 		expect(onPending).not.toHaveBeenCalled();
 		expect(waiters.size()).toBe(0);
 	});
 
-	it("没有讨论上下文时 patch_task_status 照旧挂起（那是别的场景）", async () => {
+	it("没有讨论上下文时那个工具照旧挂起（那是别的场景）", async () => {
 		const waiters = new PendingWaiterRegistry();
 		const onPending = vi.fn();
 		const { pi, handlers } = fakePi();
@@ -192,7 +207,7 @@ describe("闸门", () => {
 
 		const pending = handlers.get("tool_call")?.({
 			type: "tool_call",
-			toolName: "mcp__aiadmin__patch_task_status",
+			toolName: "mcp__aiadmin__patch_thing_status",
 			toolCallId: "call-1",
 			input: { ids: [123], status: 1 },
 		});
@@ -239,8 +254,8 @@ describe("闸门", () => {
 
 		await createGateExtension({
 			waiters,
-			timeoutMs: 10,
 			createPending: fakeCreatePending(),
+			timeoutMs: 10,
 			context: () => ({ conversationId: "c1", userId: "2", onPending }),
 		})(pi as never);
 
@@ -258,6 +273,7 @@ describe("闸门", () => {
 
 	it("不在修改类工具上 ⇒ 直接放行（不等批准）", async () => {
 		const waiters = new PendingWaiterRegistry();
+		const onPending = vi.fn();
 		const { pi, handlers } = fakePi();
 
 		await createGateExtension({

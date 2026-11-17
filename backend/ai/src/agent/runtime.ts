@@ -28,8 +28,8 @@ import { pluginRegistry, type PluginRegistry } from "../core/plugins.ts";
 import type { CurrentUser } from "../core/session/identity.ts";
 import { SSE_EVENTS, type SseEventName, type SsePayload } from "./events.ts";
 import { AgentEventMapper, extractAssistantText, isAssistantMessage } from "./event-mapper.ts";
-import type { AiTaskContext } from "./context.ts";
-import { parseAiTaskContext, renderAiTaskContext, writeTargetId, WRITABLE_FIELDS } from "./context.ts";
+import type { ContextAnchor, ContextProvider } from "../core/context/anchor.ts";
+import { changedFields, writeTargetId } from "../core/context/anchor.ts";
 import { createGateExtension } from "./gate.ts";
 import { mcpToolPrefix, stripMcpToolPrefix, type McpServerSpec } from "./mcp.ts";
 import { listSkillSummaries, type SkillSummary } from "./skill-catalog.ts";
@@ -362,8 +362,9 @@ export class AgentRuntime {
 		// ⚠️ **上下文是「此刻」的**：每条带上下文的消息都会覆盖它 ⇒
 		//    用户换一条任务继续聊 ⇒ 上下文跟着换。
 		//    没有上下文（普通聊天）⇒ 清掉 ⇒ 闸门不再收窄字段。
-		const taskContext = parseAiTaskContext(request.context);
-		channel.taskContext = taskContext ?? undefined;
+		const provider = this.#contextProvider();
+		const anchor = provider?.parse(request.context) ?? null;
+		channel.anchor = anchor ?? undefined;
 		// token 只在内存里；每次命令都刷新（token 轮换后能用新的那个）
 		channel.token = request.token;
 
@@ -380,9 +381,9 @@ export class AgentRuntime {
 		// ⚠️ **给模型的话** = 上下文块 + 用户的话；**库里存的是用户原话**
 		//    （界面里显示的必须是用户自己打的那句，不能混进系统生成的上下文）。
 		const modelMessage =
-			taskContext == null
+			anchor == null || provider === undefined
 				? message
-				: `${renderAiTaskContext(taskContext)}
+				: `${provider.render(anchor)}
 
 ${message}`;
 		void this.#dispatchTurn(
@@ -431,6 +432,16 @@ ${message}`;
 			throw new AgentError("UPSTREAM", "没有插件能解析当前用户（插件没注册？）");
 		}
 		return resolver.resolve(token);
+	}
+
+	/**
+	 * 「讨论上下文」的提供器（**插件给**）。
+	 *
+	 * ⚠️ 内核不认识「任务 / 项目」⇒ 解析、渲染、可写字段白名单**全在插件里**。
+	 *    没有插件 ⇒ 没有讨论上下文（普通聊天照旧）。
+	 */
+	#contextProvider(): ContextProvider | undefined {
+		return this.#plugins.contextProvider();
 	}
 
 	/**
@@ -515,7 +526,7 @@ ${message}`;
 				command: stripMcpToolPrefix(write.toolName, channel.mcpPrefixes),
 				args: redactAuditArgs(write.args),
 				// 写前快照：讨论上下文里的基线（没有上下文就没有写前）
-				before: channel.taskContext?.task ?? null,
+				before: channel.anchor?.baseline ?? null,
 				// 写后快照：工具回执（截断，别把整份响应塞进审计表）
 				after: summarizeResult(event.result),
 				userId,
@@ -700,7 +711,9 @@ ${message}`;
 								conversationId: channel.conversationId,
 								userId: userId as string,
 								// ⚠️ 有上下文 ⇒ 闸门把写操作**收窄**到允许回填的字段
-								taskContext: channel.taskContext,
+								anchor: channel.anchor,
+								// ⚠️ 写规则由**插件**给（闸门不写死工具名/字段名）
+								writeRules: this.#contextProvider()?.writeRules ?? [],
 								onPending: (row) => {
 									this.#publish(channel, SSE_EVENTS.PENDING, {
 										conversationId: channel.conversationId,
@@ -732,12 +745,20 @@ ${message}`;
 			if (isMcpWriteTool(event.toolName, channel.mcpPrefixes)) {
 				channel.lastMcpWrite = { toolName: event.toolName, args };
 			}
-			const entityId = writeTargetId(event.toolName, args, channel.taskContext ?? null);
+			const entityId = writeTargetId(
+				event.toolName,
+				channel.anchor ?? null,
+				this.#contextProvider()?.writeRules ?? [],
+			);
 			if (entityId !== undefined) {
 				channel.lastWrite = {
 					toolName: event.toolName,
 					entityId,
-					fields: changedFields(args, channel.taskContext?.task ?? {}),
+					fields: changedFields(
+						args,
+						channel.anchor?.baseline ?? {},
+						channel.anchor?.writableFields ?? [],
+					),
 				};
 			}
 		}
@@ -870,26 +891,4 @@ export const agentRuntime: AgentRuntime = globalForAgent.agentRuntime ?? new Age
 
 if (process.env.NODE_ENV !== "production") {
 	globalForAgent.agentRuntime = agentRuntime;
-}
-
-/**
- * 这一轮**实际改了哪几个字段**（与基线比出来的）。
- *
- * ⚠️ 不能直接看「参数里有哪些可写字段」—— 整对象 PUT 的参数里**每个**可写字段都在
- *    （基线带的）⇒ 那样报出来会显得「全都改了」。
- * ⇒ 与基线逐个比：**值不同**才算改了。
- */
-function changedFields(args: Record<string, unknown>, baseline: Record<string, unknown>): string[] {
-	const fields: string[] = [];
-	for (const key of WRITABLE_FIELDS) {
-		if (!(key in args)) {
-			continue;
-		}
-		const before = baseline[key];
-		const after = args[key];
-		if (JSON.stringify(before ?? null) !== JSON.stringify(after ?? null)) {
-			fields.push(key);
-		}
-	}
-	return fields;
 }
