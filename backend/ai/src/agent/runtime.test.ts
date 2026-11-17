@@ -18,6 +18,7 @@ import type { PiSessionOptions } from "./pi-session.ts";
 import { AgentRuntime } from "./runtime.ts";
 import type { ConversationRecord, ConversationStore, MessageRecord } from "./store.ts";
 import { PluginRegistry } from "../core/plugins.ts";
+import type { ContextProvider } from "../core/context/anchor.ts";
 import type { CommandTool } from "../core/tools/types.ts";
 
 /* ------------------------------------------------------------------ 假实现 */
@@ -96,6 +97,51 @@ function fakeStore(conversation: ConversationRecord): {
 }
 
 /**
+ * 假的上下文提供器（**内核不认识业务** ⇒ 这里自己拼一段文字）。
+ *
+ * ⚠️ 「与 AI 讨论」的上下文由**插件**解析与渲染 ⇒ 单测塞一个假插件即可。
+ */
+function fakeContextProvider(): ContextProvider {
+	return {
+		parse: (input: unknown) => {
+			const record = input as
+				| {
+						task?: { id?: number; title?: string };
+						project?: { name?: string };
+						milestone?: { name?: string };
+				  }
+				| undefined;
+			const task = record?.task;
+			if (task === undefined || typeof task.id !== "number") {
+				return null;
+			}
+			return {
+				scope: { type: "thing", id: String(task.id) },
+				values: {
+					title: task.title,
+					projectName: record?.project?.name,
+					milestoneName: record?.milestone?.name,
+				},
+				writableFields: [],
+			};
+		},
+		render: (anchor) => {
+			const values = anchor.values as {
+				title?: string;
+				projectName?: string;
+				milestoneName?: string;
+			};
+			return [
+				`【当前讨论的任务】#${anchor.scope.id} ${values.title ?? ""}`,
+				`- 所属项目：${values.projectName ?? ""}`,
+				`- 所属里程碑：${values.milestoneName ?? ""}`,
+			].join("\n");
+		},
+		writeRules: [],
+	};
+}
+
+/**
  * 假插件 —— 提供一个会记下调用的 `create_task` 命令。
  *
  * ⚠️ **命令目录来自插件**（内核不认业务）⇒ 单测塞一个只装假插件的注册表，
@@ -127,6 +173,7 @@ function fakePlugins(calls: unknown[] = []): PluginRegistry {
 					}) as unknown as CommandTool,
 			},
 		],
+		context: fakeContextProvider(),
 	});
 	return registry;
 }

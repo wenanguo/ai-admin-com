@@ -17,7 +17,7 @@
  * 基线 + 允许回填的三个字段 ⇒ 里面带着任务 id，也带着新值。
  */
 
-/** 讨论回填允许改的字段（**与 AI 服务端的白名单一致**，见 `agent/context.ts`）。 */
+/** 讨论回填允许改的字段（**与 AI 服务端的白名单一致**，见 `backend/ai/src/plugins/pm/context/pm-context.ts`）。 */
 export const AI_WRITABLE_FIELDS = [
   'status_code',
   'actual_hours',

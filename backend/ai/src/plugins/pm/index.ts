@@ -28,6 +28,7 @@ import { AadminClient } from "./adapter/aadmin/client.ts";
 import { AadminCurrentUserResolver } from "./adapter/aadmin/current-user.ts";
 import { AadminDataSource } from "./adapter/datasource.ts";
 import { setEnumWarningSink, standardEnumWarningSink } from "./adapter/enums.ts";
+import { pmContextProvider } from "./context/pm-context.ts";
 import {
 	createCreateTaskTool,
 	CREATE_TASK_TOOL_NAME,
@@ -83,6 +84,7 @@ export function createPmPlugin(options: PmPluginOptions = {}): AiPlugin {
 		label: "PM 业务插件",
 		commands: createPmCommands(options),
 		currentUser: options.currentUser ?? defaultCurrentUserResolver(),
+		context: pmContextProvider,
 	};
 }
 

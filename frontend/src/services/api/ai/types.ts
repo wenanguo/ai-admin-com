@@ -56,7 +56,7 @@ export interface AiState {
 /**
  * **讨论上下文**：当前正在跟 AI 聊的那条任务。
  *
- * ⚠️ **跨仓契约**（与服务端 `src/agent/context.ts` 一一对应）：
+ * ⚠️ **跨仓契约**（与服务端 `backend/ai/src/plugins/pm/context/pm-context.ts` 一一对应）：
  * 前端把「用户点的那一行」原样发过去 ⇒ 服务端不自己查库
  * （查详情要 `…:detail` 权限，只有列表权限的角色会 403）。
  *

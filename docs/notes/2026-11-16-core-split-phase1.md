@@ -4,7 +4,7 @@
 
 ## 目标
 
-- **关联**：issue #82 · PR #101（阶段一；**#82 还没完**，见下面「下一步」）
+- **关联**：issue #82 · PR #102（阶段 1；**#82 还没完**，见下面「下一步」）
 - **一句话**：把**业务**代码（适配层 / 调 AiAdmin / `create_task`）搬进 `src/plugins/pm/`，
   并立起**内核 ⇄ 插件的接缝**（插件契约 + 注册表 + 依赖注入）
   ⇒ `src/core/**` **不再 import 插件**。
@@ -94,7 +94,8 @@ curl -s localhost:3100/health
 
 ## 下一步（阶段二~五，具体到文件与命令）
 
-1. **阶段二**：拆 `src/agent/context.ts`（讨论上下文：解析 / 渲染 / 可写字段）。
+1. **阶段 2**：拆 `src/agent/context.ts`（讨论上下文：解析 / 渲染 / 可写字段）
+   ⇒ **已做**（PR 见 `2026-11-16-core-split-phase2.md`）。
 2. **阶段三**：`src/agent/*` ⇒ `src/core/session/*`（`runtime.ts` / `store.ts` / `gate.ts` / `mcp.ts` / `skills.ts` …），
    同时把 `src/http/*` ⇒ `src/core/http/*` —— ⚠️ **这一步要先把 `http/errors.ts` 对插件错误类的依赖解开**
    （见上面「决策记录」最后倒数第二条）。

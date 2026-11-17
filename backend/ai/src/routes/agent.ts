@@ -209,7 +209,8 @@ agentRouter.post("/:conversationId/command", async (req, res) => {
 	const type = typeof record["type"] === "string" ? record["type"] : "";
 	const message = typeof record["message"] === "string" ? record["message"] : "";
 	// ⚠️ **上下文**（当前讨论的是哪条任务）: 可选。
-	//    解析与校验在 `agent/context.ts` 里做 ⇒ 这里只负责**原样带过去**。
+	//    解析与校验在**插件**的上下文提供器里做（`core/context/anchor.ts` 是通用机制）
+	//    ⇒ 这里只负责**原样带过去**。
 	const context = record["context"];
 
 	if (id.length === 0) {
