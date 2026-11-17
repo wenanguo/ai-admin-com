@@ -171,6 +171,20 @@ function payloadOf(mock: { mock: { calls: unknown[][] } }) {
   };
 }
 
+/**
+ * 等「提交真的发生了」的**超时**（毫秒）。
+ *
+ * ⚠️ **为什么不用 vitest 的默认 1 秒**：
+ * 点「确定」到提交落地要走一整条异步链（React 事件 ⇒ ProForm 的 submitter ⇒
+ * `form.submit()` ⇒ antd 的 `validateFields()` ⇒ `onFinish` ⇒ 调接口）。
+ * CI 的机器比本地慢**约 8 倍**（同一个文件：本地 ~1s，CI ~7.6s）⇒ 1 秒**不够**
+ * ⇒ 偶发地「提交还没发生，等待就超时了」⇒ 用例随机翻车（2026-11-16 卡了 3 个 PR）。
+ *
+ * ⚠️ 这**不是 sleep**：断言本身没变（还是「提交必须发生」），只是给这条
+ * 异步链留够时间（CI 上实测这条链要 1s 以上）。
+ */
+const SUBMIT_TIMEOUT_MS = 10_000;
+
 describe('角色授权弹窗的预填', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -240,9 +254,12 @@ describe('角色授权弹窗的预填', () => {
     // 提交(antd 会在两个汉字之间插空格 ⇒ 「确 认」)
     await getByRole('button', { name: /确\s*认/ }).click();
 
-    await vi.waitFor(() => {
-      expect(mocks.setRolePermission).toHaveBeenCalled();
-    });
+    await vi.waitFor(
+      () => {
+        expect(mocks.setRolePermission).toHaveBeenCalled();
+      },
+      { timeout: SUBMIT_TIMEOUT_MS },
+    );
 
     const payload = mocks.setRolePermission.mock.calls[0][0] as {
       data_scope: number;
@@ -269,9 +286,12 @@ describe('角色授权弹窗的预填', () => {
     // (有异步预填的实现会在这里要么点不动、要么提交空菜单)
     await getByRole('button', { name: /确\s*认/ }).click();
 
-    await vi.waitFor(() => {
-      expect(mocks.setRolePermission).toHaveBeenCalled();
-    });
+    await vi.waitFor(
+      () => {
+        expect(mocks.setRolePermission).toHaveBeenCalled();
+      },
+      { timeout: SUBMIT_TIMEOUT_MS },
+    );
 
     const payload = payloadOf(mocks.setRolePermission);
     expect([...payload.menu_ids].sort((a, b) => a - b)).toEqual([2, 3]);
@@ -310,9 +330,12 @@ describe('角色授权弹窗的预填', () => {
 
     await getByRole('button', { name: /确\s*认/ }).click();
 
-    await vi.waitFor(() => {
-      expect(mocks.setRolePermission).toHaveBeenCalled();
-    });
+    await vi.waitFor(
+      () => {
+        expect(mocks.setRolePermission).toHaveBeenCalled();
+      },
+      { timeout: SUBMIT_TIMEOUT_MS },
+    );
 
     // 提交的是角色**现有**的菜单,不是空集
     const payload = payloadOf(mocks.setRolePermission);
@@ -351,9 +374,12 @@ describe('角色授权弹窗的预填', () => {
 
     await getByRole('button', { name: /确\s*认/ }).click();
 
-    await vi.waitFor(() => {
-      expect(mocks.setRolePermission).toHaveBeenCalled();
-    });
+    await vi.waitFor(
+      () => {
+        expect(mocks.setRolePermission).toHaveBeenCalled();
+      },
+      { timeout: SUBMIT_TIMEOUT_MS },
+    );
 
     const payload = payloadOf(mocks.setRolePermission);
     expect(payload.menu_ids).toEqual([40]);
@@ -407,9 +433,12 @@ describe('角色授权弹窗的预填', () => {
 
     await getByRole('button', { name: /确\s*认/ }).click();
 
-    await vi.waitFor(() => {
-      expect(mocks.setRolePermission).toHaveBeenCalled();
-    });
+    await vi.waitFor(
+      () => {
+        expect(mocks.setRolePermission).toHaveBeenCalled();
+      },
+      { timeout: SUBMIT_TIMEOUT_MS },
+    );
 
     const payload = mocks.setRolePermission.mock.calls[0][0] as {
       data_scope: number;
