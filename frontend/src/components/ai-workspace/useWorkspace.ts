@@ -104,6 +104,22 @@ export interface Workspace {
    */
   newConversation: () => Promise<void>;
   /**
+   * **挑一个智能体**（工作台上的下拉框）。
+   *
+   * ⚠️ **换智能体 = 另起一个会话**：会话的智能体是**建会话时**定的
+   *    （落库到 `ai_conversation.agent_id`）⇒ 已经建好的会话改不了
+   *    （要改 ⇒ 新建一个会话，那才是「用这个智能体重新开始」）。
+   *
+   * ⚠️ 这个选择会**记下来**（`localStorage`）⇒ 下次新建会话时还用它。
+   */
+  selectAgent: (agentId: string) => Promise<void>;
+  /**
+   * 当前挑中的智能体 id（**新会话**用它）。
+   *
+   * ⚠️ `undefined` = 没挑过 ⇒ 建会话时不传 `agentId` ⇒ 服务端用默认智能体。
+   */
+  agentId?: string;
+  /**
    * 切到另一个已有的会话（「历史对话」）。
    *
    * 先读一次快照 —— 服务端不认这个会话时（被清掉了）就别切，
@@ -181,6 +197,18 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
    *    重跑 effect 才是真正的「再来一次」。
    */
   const [attempt, setAttempt] = useState(0);
+  /**
+   * **新会话用哪个智能体**（工作台上的下拉框挑的）。
+   *
+   * ⚠️ 存在 `localStorage` 里 ⇒ 刷新页面后还记得上次挑的那个。
+   * ⚠️ `undefined` ⇒ **不传** `agentId` ⇒ 服务端用默认智能体
+   *    （前端不替服务端猜「哪个是默认」）。
+   */
+  const [agentId, setAgentId] = useState<string | undefined>(() =>
+    readWorkspaceStorage(storageKey).agentId,
+  );
+  /** 当前选中的智能体 id 的副本：建会话是异步的，要读**最新**的值。 */
+  const agentIdRef = useRef<string | undefined>(agentId);
   /** 当前会话 id 的副本：发送是异步的，要读**最新**的值。 */
   const conversationIdRef = useRef<string | undefined>(undefined);
   /** 会话就绪的信号：会话建好（或建不出来）之后 resolve。 */
@@ -245,7 +273,8 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
         }
       }
       try {
-        const created = await createAiConversation();
+        // ⚠️ **带上挑中的智能体**（没挑过就不传 ⇒ 服务端用默认智能体）
+        const created = await createAiConversation(undefined, agentIdRef.current);
         if (disposed) {
           return;
         }
@@ -341,23 +370,55 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     setAttempt((previous) => previous + 1);
   }, []);
 
+  /**
+   * 新建一个会话并切过去。
+   *
+   * @param targetAgentId 用哪个智能体建（不给 ⇒ 用当前挑中的那个）。
+   */
+  const startConversation = useCallback(
+    async (targetAgentId?: string): Promise<void> => {
+      setSendError(undefined);
+      try {
+        const created = await createAiConversation(
+          undefined,
+          targetAgentId ?? agentIdRef.current,
+        );
+        conversationIdRef.current = created.conversationId;
+        setConversationId(created.conversationId);
+        writeWorkspaceStorage(
+          { conversationId: created.conversationId },
+          storageKey,
+        );
+        // 上一条命令的重试 id 对新会话没有意义了
+        lastCommandRef.current = undefined;
+      } catch (error) {
+        setSendError(toMessage(error));
+      }
+    },
+    [storageKey],
+  );
+
   /** 新建一个会话并切过去。 */
   const newConversation = useCallback(async (): Promise<void> => {
-    setSendError(undefined);
-    try {
-      const created = await createAiConversation();
-      conversationIdRef.current = created.conversationId;
-      setConversationId(created.conversationId);
-      writeWorkspaceStorage(
-        { conversationId: created.conversationId },
-        storageKey,
-      );
-      // 上一条命令的重试 id 对新会话没有意义了
-      lastCommandRef.current = undefined;
-    } catch (error) {
-      setSendError(toMessage(error));
-    }
-  }, [storageKey]);
+    await startConversation();
+  }, [startConversation]);
+
+  /**
+   * 挑一个智能体 ⇒ **另起一个会话**用它。
+   *
+   * ⚠️ 为什么不是「改当前会话的智能体」：会话的智能体在**建会话时**就定了
+   *    （落库到 `ai_conversation.agent_id`）⇒ 改不了 ⇒ 换智能体就是重新开始。
+   */
+  const selectAgent = useCallback(
+    async (next: string): Promise<void> => {
+      agentIdRef.current = next;
+      setAgentId(next);
+      // ⚠️ 记下来 ⇒ 刷新页面后新建会话还用它
+      writeWorkspaceStorage({ agentId: next }, storageKey);
+      await startConversation(next);
+    },
+    [startConversation, storageKey],
+  );
 
   /** 切到另一个已有的会话。 */
   const switchConversation = useCallback(
@@ -432,6 +493,8 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     retry,
     reconnect,
     newConversation,
+    selectAgent,
+    agentId,
     switchConversation,
     abort,
     aborting,
