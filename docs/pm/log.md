@@ -546,3 +546,24 @@
   若真因是实现缺陷 ⇒ 修实现并补能稳定复现的用例，**不许删断言/跳过用例**。
 - **踩的坑（第三次了）**：草稿正文里**含 ```ts 代码块** ⇒ 我按「第一个 ``` 围栏」提取又被截断（只剩 1247 字符）
   ⇒ 改用「**最后一个** ``` 围栏」才拿到完整的 3,097 字符。**提取草稿正文一律用后者。**
+
+### 2026-11-17 · #96 / #81 收工；#82 阶段一设计文档 review 通过 ⇒ 进阶段二
+
+- **#96 完成**（PR #98「修两个 flaky 测试（权限弹窗提交时序 + 登录 e2e 依赖线上后端）」）
+  ⇒ **L1 收工** ⇒ 按收尾规矩**关闭 milestone #7（归档）**。
+- **#81 完成**（PR #94，**PM 抽查通过**：数据模型属高风险四类）
+  —— 抽查结论：迁移**只加一列**（`ALTER TABLE ai_conversation ADD COLUMN agent_id VARCHAR(64) NULL`）、
+  列**可空**（旧会话不丢）、**CI 里新增了「增量迁移只许加列」的可执行检查**（DROP/TRUNCATE/DELETE/RENAME/MODIFY/CHANGE COLUMN 判危险）、
+  连接解耦靠「建 Prisma 客户端前对齐 `DATABASE_URL`」且**只在两者不同时才写** ⇒ 今天的行为一字不变。
+  ⇒ #82 的依赖（#77–#81）**全部满足**。
+- **#82 阶段一（spec + plan）review 通过**（PR #99 已合，`docs/superpowers/specs/2026-11-16-backend-ai-拆分-design.md` 358 行
+  + `plans/2026-11-16-backend-ai-拆分.md` 179 行）：spec **逐条作答了 ①～⑧**，并给了 R1–R8 风险清单与回滚办法。
+  **spec §12 的四条未决问题已由人拍板（按 PM 推荐）**：
+  1. 锚点形状取「**可写字段是一等公民**」（白名单由插件注入，core 不写死字段名）；
+  2. \`identity.ts\` 放 \`core/session/\`，「**怎么问**」做成插件注入的接口 —— ⚠️ core 里要有**最小抽象**（如 \`CurrentUserResolver\`）；
+  3. \`AIADMIN_*\` 变量**由插件声明**，core 只解析插件声明的变量 —— ⚠️ **校验器也要插件化**（要有「插件声明变量」的契约）；
+  4. 阶段 1 同时把 \`COMMAND_CATALOG\` 改成「从插件注册表取」的占位 —— ⚠️ 这是阶段 1 里**唯一的接口形状改动**，PR 要标注、review 重点看。
+  ⇒ **批准进入阶段二（纯搬家）**。
+- **顺手清理**：删了未跟踪的本地残留 \`frontend/public/icons/logo.png\`（main 里只有 \`icon-*.png\`，无代码引用）。
+- **本地 git 的坑**：\`git pull --ff-only\` 报「Cannot fast-forward to multiple branches」⇒ 起因是 \`remote.origin.fetch\` 曾有多条 refspec
+  ⇒ 已归一为一条；本地 main 也因此落后过（那些「未提交改动」其实就是 main 的新内容）⇒ 已核对一致后丢弃并快进。
