@@ -52,6 +52,14 @@ const LIST_BODY = {
 /** AI 服务的会话 id（假的）。 */
 const CONVERSATION_ID = 'e2e-conversation';
 
+/**
+ * **新建会话**时前端发过来的请求体（一次一条）。
+ *
+ * ⚠️ 用来验「挑了智能体 ⇒ 建会话时真的带上了 `agentId`」（issue #101）。
+ * ⚠️ 每次 `setupAiService` 都会**清空**它（一个用例一套）。
+ */
+const createdConversations: { agentId?: string; title?: string }[] = [];
+
 /** 「历史对话」里那个**别的**会话（用来验“点一条能切过去”）。 */
 const OLD_CONVERSATION_ID = 'e2e-old-conversation';
 
@@ -138,6 +146,8 @@ async function setupAiService(
   } = {},
 ): Promise<string[]> {
   const requests: string[] = [];
+  // ⚠️ 每次装服务都清空（一个用例一套 ⇒ 不会互相污染）
+  createdConversations.length = 0;
   /** 命令真的发出去了（放行 SSE 的第二轮）。 */
   let commandSeen = false;
   let release: () => void = () => undefined;
@@ -173,7 +183,48 @@ async function setupAiService(
         json(conversations);
         return;
       }
+      // ⚠️ 记下**建会话时带的智能体**（issue #101：挑了智能体 ⇒ 带 agentId）
+      const body = route.request().postDataJSON() as {
+        agentId?: string;
+        title?: string;
+      };
+      createdConversations.push({
+        ...(body.agentId === undefined ? {} : { agentId: body.agentId }),
+        ...(body.title === undefined ? {} : { title: body.title }),
+      });
       json({ conversationId: CONVERSATION_ID, title: '新对话' });
+      return;
+    }
+
+    // 智能体清单（`GET /api/agents`）—— 工作台上的**智能体选择器**读它
+    //
+    // ⚠️ 这条**不是** `/api/agent/**` 那条线（会话那条线）⇒ 单独一个前缀。
+    // ⚠️ 不 mock 它 ⇒ 清单读不到 ⇒ 选择器降级成「读不到 + 重试」那一行。
+    if (path.endsWith('/api/agents')) {
+      json([
+        {
+          id: 'pm',
+          name: 'PM 助手',
+          description: '项目管理',
+          capabilities: {
+            model: 'e2e-model',
+            skillCount: 1,
+            mcpServerCount: 1,
+            toolCount: 1,
+          },
+        },
+        {
+          id: 'qa',
+          name: 'QA 助手',
+          description: '测试问答',
+          capabilities: {
+            model: 'e2e-model',
+            skillCount: 1,
+            mcpServerCount: 1,
+            toolCount: 1,
+          },
+        },
+      ]);
       return;
     }
 
@@ -431,7 +482,9 @@ test.describe('AI 工作台侧栏', () => {
     //    但**不能**是 AiAdmin 的 `/api/v1/...`。
     expect(requests.length).toBeGreaterThan(0);
     for (const url of requests) {
-      expect(url).toMatch(/(\/ai-api)?\/api\/agent\//);
+      // ⚠️ AI 服务有**两个**前缀：会话那条线 `/api/agent/**`
+      //    与智能体清单那条线 `/api/agents`（issue #101 加的）⇒ 两个都要放行。
+      expect(url).toMatch(/(\/ai-api)?\/api\/agents?(\/|$)/);
       expect(url).not.toContain('/api/v1/');
     }
   });
@@ -1906,6 +1959,41 @@ test.describe('历史对话（窄版也有）', () => {
         url.endsWith(`/api/agent/${OLD_CONVERSATION_ID}/state`),
       ),
     ).toBe(true);
+  });
+
+  test('窄版有智能体选择器:挑一个 ⇒ 另起一个会话并带上 agentId', async ({
+    page,
+  }) => {
+    await setupAiService(page);
+    await setupModulePage(page, {
+      menus: [{ title: '岗位管理', routePath: 'position' }],
+      listUrl: LIST_URL,
+      listBody: LIST_BODY,
+    });
+    await gotoModulePage(
+      page,
+      PAGE_PATH,
+      page.locator('.ant-menu').getByText('岗位管理'),
+    );
+
+    await openPanel(page);
+
+    // ① 选择器在（选项来自 `GET /api/agents`）
+    const select = panel(page).locator('[data-role="ai-agent-select"]');
+    await expect(select).toBeVisible();
+
+    // ② 挑一个智能体
+    await select.click();
+    await page.getByText('QA 助手', { exact: true }).click();
+
+    // ③ ⇒ **另起一个会话**，建会话时带上 agentId
+    //    （会话的智能体是建会话时定的 ⇒ 换了就是新会话）
+    await expect
+      .poll(
+        () =>
+          createdConversations.filter((row) => row.agentId === 'qa').length,
+      )
+      .toBeGreaterThan(0);
   });
 });
 

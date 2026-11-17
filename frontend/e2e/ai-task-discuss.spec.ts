@@ -334,6 +334,46 @@ async function setupAiService(page: Page): Promise<{ commands: unknown[] }> {
     }),
   );
 
+  // 智能体清单（`GET /api/agents`）—— 工作台上的**智能体选择器**读它
+  //
+  // ⚠️ 这条**不在**上面那条 `**/ai-api/api/agent/**` 的 pattern 里
+  //    ⇒ 不单独 mock 它的话，它会打到静态服务器（SPA fallback 返回 HTML）
+  //    ⇒ 清单读不到 ⇒ 选择器降级成「读不到 + 重试」那一行。
+  await page.route('**/ai-api/api/agents', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        msg: '成功',
+        data: [
+          {
+            id: 'pm',
+            name: 'PM 助手',
+            description: '项目管理',
+            capabilities: {
+              model: 'e2e-model',
+              skillCount: 1,
+              mcpServerCount: 1,
+              toolCount: 1,
+            },
+          },
+          {
+            id: 'qa',
+            name: 'QA 助手',
+            description: '测试问答',
+            capabilities: {
+              model: 'e2e-model',
+              skillCount: 1,
+              mcpServerCount: 1,
+              toolCount: 1,
+            },
+          },
+        ],
+      }),
+    }),
+  );
+
   return { commands };
 }
 

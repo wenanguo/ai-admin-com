@@ -14,6 +14,7 @@ import {
   createAiConversation,
   getAiState,
   listAiAudit,
+  listAiAgents,
   listAiConversations,
   listAiPending,
   sendAiCommand,
@@ -254,6 +255,44 @@ describe('AI 服务客户端', () => {
     expect(created.conversationId).toBe('c2');
     const [, options] = callOf(1);
     expect(options.data).toMatchObject({ title: '新对话' });
+  });
+
+  it('新建会话时可以带上智能体（issue #101）', async () => {
+    vi.mocked(request).mockResolvedValue(
+      envelope({ conversationId: 'qa_1', title: '新对话' }),
+    );
+
+    await createAiConversation(undefined, 'qa');
+
+    const [url, options] = callOf(0);
+    expect(url).toBe(`${AI_API_BASE_URL}/api/agent/conversations`);
+    // ⚠️ **带上 agentId**（服务端据此绑定智能体、落库到 ai_conversation.agent_id）
+    expect(options.data).toMatchObject({ agentId: 'qa' });
+  });
+
+  it('智能体清单（GET /api/agents）', async () => {
+    vi.mocked(request).mockResolvedValue(
+      envelope([
+        {
+          id: 'pm',
+          name: 'PM 助手',
+          description: '项目管理助手',
+          capabilities: {
+            model: 'm',
+            skillCount: 1,
+            mcpServerCount: 1,
+            toolCount: 1,
+          },
+        },
+      ]),
+    );
+
+    const agents = await listAiAgents();
+
+    expect(agents).toHaveLength(1);
+    expect(agents[0].id).toBe('pm');
+    const [url] = callOf(0);
+    expect(url).toBe(`${AI_API_BASE_URL}/api/agents`);
   });
 
   it('取会话快照', async () => {

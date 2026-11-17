@@ -25,6 +25,7 @@
     "e2e:deploy-script": "node scripts/e2e/deploy-script.cjs",
     "e2e:ai": "node scripts/e2e/ai-container.cjs",
     "e2e:ai:static": "node scripts/e2e/ai-container.static.cjs",
+    "e2e:ai-agent": "node scripts/e2e/ai-agent-picker.cjs",
     "biome": "npm --prefix frontend run biome",
     "tsc": "npm --prefix frontend run tsc && npm --prefix backend/ai run typecheck",
     "prepare": "npm --prefix frontend run prepare"

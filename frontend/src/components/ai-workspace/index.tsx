@@ -18,6 +18,7 @@ import {
   pendingChangedFields,
   pendingTaskId,
 } from '@/services/api/ai/pendingArgs';
+import { AgentSelector } from './AgentSelector';
 import { AiWorkspaceWide } from './AiWorkspaceWide';
 import { AuditPanel } from './AuditPanel';
 import { ChatPanel } from './ChatPanel';
@@ -25,6 +26,7 @@ import { ConversationHistory } from './ConversationHistory';
 import { DiscussionBar } from './DiscussionBar';
 import { PendingPanel } from './PendingPanel';
 import { readWorkspaceStorage, writeWorkspaceStorage } from './storage';
+import { useAgents } from './useAgents';
 import { useAiLists } from './useAiLists';
 import { useWorkspace } from './useWorkspace';
 
@@ -122,6 +124,29 @@ export function AiWorkspace({
     pending: activeTab === 'pending',
     audit: activeTab === 'audit',
   });
+  /**
+   * **智能体清单**（`GET /api/agents`）。
+   *
+   * ⚠️ 选择器一直摆在工作台上 ⇒ 挂载就读一次（不像待确认/审计那样按需读）。
+   */
+  const agentList = useAgents();
+  /**
+   * **智能体选择器**（窄版 + 宽版**共用这一个实例**）。
+   *
+   * ⚠️ 宽窄切换不卸载这个容器 ⇒ 清单不会重复读、选择也不会丢。
+   */
+  const agentSelector = (
+    <AgentSelector
+      agents={agentList.agents}
+      loading={agentList.loading}
+      error={agentList.error}
+      onReload={agentList.reload}
+      value={workspace.agentId}
+      onChange={(agentId) => {
+        void workspace.selectAgent(agentId);
+      }}
+    />
+  );
 
   /**
    * **新的待确认到达 ⇒ 列表要重读**。
@@ -208,6 +233,7 @@ export function AiWorkspace({
       {variant === 'wide' ? (
         <AiWorkspaceWide
           workspace={workspace}
+          agentSelector={agentSelector}
           onBack={() => {
             onBack?.();
           }}
@@ -319,6 +345,34 @@ export function AiWorkspace({
                   />
                 ) : null}
               </span>
+            </div>
+            {/*
+            **智能体选择器**（issue #101）：**新会话**用哪个智能体。
+
+            ⚠️ **单独一行**：窄版面板只有 400px ⇒ 头部那一行已经被
+               「最大化 / 标题 / 历史对话 / 关闭」占满了 ⇒ 挤在同一行
+               会把标题挤没（实测就是字被压扁）。
+            ⚠️ 它与宽版**共用同一个组件实例**（见 `agentSelector`）⇒ 行为一致。
+          */}
+            <div
+              data-role="ai-agent-slot"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: token.sizeXS,
+                marginTop: token.sizeXS,
+              }}
+            >
+              <span
+                style={{
+                  flexShrink: 0,
+                  fontSize: token.fontSizeSM,
+                  color: token.colorTextSecondary,
+                }}
+              >
+                智能体
+              </span>
+              {agentSelector}
             </div>
           </div>
           {/*

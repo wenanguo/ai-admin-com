@@ -96,6 +96,14 @@ export interface AiWorkspaceWideProps {
    */
   workspace: Workspace;
   /**
+   * **智能体选择器**（issue #101）。
+   *
+   * ⚠️ **由宿主给**（`AiWorkspace` 容器里造好）：
+   *    - 窄宽两版**共用同一个实例** ⇒ 切形态不丢选择、不重复读清单；
+   *    - 这里只负责**摆在哪**（宽版摆在头部那一排按钮里）。
+   */
+  agentSelector?: React.ReactNode;
+  /**
    * 「返回」的回调。
    *
    * - 浮层宿主 ⇒ 收回小浮层；
@@ -111,6 +119,7 @@ export interface AiWorkspaceWideProps {
  */
 export function AiWorkspaceWide({
   workspace,
+  agentSelector,
   onBack,
 }: AiWorkspaceWideProps): React.ReactElement {
   const { token } = theme.useToken();
@@ -430,6 +439,13 @@ export function AiWorkspaceWide({
           </Typography.Text>
         </div>
         <Space wrap>
+          {/*
+            **智能体选择器**（issue #101）：**新会话**用哪个智能体。
+
+            ⚠️ 与窄版**共用同一个组件实例**（宿主给的）⇒ 行为一致。
+            ⚠️ 它排在按钮**前面** ⇒ 「先选智能体，再开始」的动作顺序更顺。
+          */}
+          {agentSelector}
           {/*
             「侧栏」：**只在内容区窄的时候出现**。
             ⇒ 窄的时候侧栏在**抽屉**里（常驻的 360px 会把对话区挤没），

@@ -84,13 +84,26 @@ export async function listAiConversations(): Promise<AiConversation[]> {
   });
 }
 
-/** 新建会话（标题可以后面再补）。 */
+/**
+ * 新建会话（标题可以后面再补）。
+ *
+ * @param title 会话标题（可省 ⇒ 服务端后面再补）。
+ * @param agentId **智能体 id**（可省 ⇒ 服务端用默认智能体）。
+ *
+ * ⚠️ `agentId` 是**建会话时**定的：会话与它绑定、落库到
+ *    `ai_conversation.agent_id` ⇒ 之后再改这个会话的智能体是不行的
+ *    （要换 ⇒ 新建一个会话）。
+ */
 export async function createAiConversation(
   title?: string,
+  agentId?: string,
 ): Promise<AiConversation> {
   return aiRequest<AiConversation>('/api/agent/conversations', {
     method: 'POST',
-    data: title === undefined ? {} : { title },
+    data: {
+      ...(title === undefined ? {} : { title }),
+      ...(agentId === undefined ? {} : { agentId }),
+    },
   });
 }
 

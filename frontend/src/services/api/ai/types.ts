@@ -28,6 +28,12 @@ export interface AiConversation {
   title?: string;
   createdAt?: string;
   updatedAt?: string;
+  /**
+   * 这个会话用的**智能体 id**（= `ai_conversation.agent_id`）。
+   *
+   * ⚠️ **可空**：迁移前建的旧会话没有这个值 ⇒ 回落默认智能体。
+   */
+  agentId?: string | null;
 }
 
 /** 一条消息（角色与 `ai_message.role` 的枚举一致）。 */

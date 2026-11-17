@@ -6,6 +6,7 @@
 | ---- | ------ |
 | `login.cjs` | 登录取 access token（验证码答案从 Redis 读；本地开发环境才有）⇒ 写到 `.scratch/token.txt` |
 | `ai-gate.cjs` | 浏览器跑一遍「AI 改任务 → 挂起等人点头 → 同意 → 任务真被改」 |
+| `ai-agent-picker.cjs` | 浏览器跑一遍「工作台选智能体 → 另起一个会话 → 新会话真的用这个智能体（旧会话没被动）」 |
 | `web-container.static.cjs` | **静态断言**前端镜像的配置（Dockerfile / nginx.conf / 模板 / .dockerignore）⇒ **不需要 docker** |
 | `web-container.cjs` | **真起容器**验收前端镜像（构建 → `nginx -t` → 首页 → SPA fallback → 缓存头 → `/healthz`）⇒ 需要 docker |
 | `compose.static.cjs` | **静态断言** compose 编排（服务/端口/网络/限制/日志 + 三条路由口径 + `.env.example`）⇒ **不需要 docker** |
@@ -29,6 +30,16 @@ node scripts/e2e/login.cjs
 node scripts/e2e/ai-gate.cjs
 NEW_TITLE=随便一个新标题 node scripts/e2e/ai-gate.cjs   # 重复跑要换标题，否则模型说「已经是这个标题了」
 ```
+
+### 智能体选择器（issue #101）
+
+```bash
+node scripts/e2e/ai-agent-picker.cjs        # 或：npm run e2e:ai-agent
+AGENT_ID=qa node scripts/e2e/ai-agent-picker.cjs   # 指定挑哪个智能体（默认挑一个不是 pm 的）
+```
+
+⚠️ 需要前端（8000）+ AI 服务（3100）都跑着 + 有 token（`.scratch/token.txt`）。
+它**不改任何业务数据**（只是建会话 ⇒ 会话列表里会多一条）。
 
 ## 前端镜像验收（issue #38）
 
