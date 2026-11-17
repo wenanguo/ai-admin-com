@@ -26,7 +26,7 @@
 | `backend/ai/.env.example` · `docker/.env.example` · `docker/docker-compose.yaml` | 新增 `AI_DATABASE_URL`（**空值当没配** ⇒ 现有部署一个字不改） |
 | `backend/ai/README.md` | 「本服务自己的库」一节 + 增量迁移只许加列的规矩 |
 | `scripts/e2e/ai-container.static.cjs` | **迁移安全阀**：增量迁移里出现 `DROP`/`TRUNCATE`/`DELETE`/`RENAME`/`MODIFY` ⇒ 断言失败；且只许动 `ai_conversation` |
-| 单测 | `env.test.ts`（+5 条：库的优先级/空串/两个都没配）· `runtime.agents.test.ts`（+2 条：入库 + 库里优先） |
+| 单测 | `env.test.ts`（+5 条：库的优先级/空串/两个都没配）· `runtime.agents.test.ts`（+2 条：入库 + 库里优先）· `db.test.ts`（3 条：**连接串真的被对齐到 Prisma 认的变量名**） |
 
 **下一步**：#82（目录拆分：`backend/ai` → `core/` + `plugins/pm/`）—— 大重构。
 
@@ -71,3 +71,6 @@ npx prisma migrate deploy --schema prisma/schema.prisma
   ⇒ 有几条测试因此需要「等会话建好」（`waitFor(() => sessionCount() >= 1)`）。
 - ⚠️ **本仓的 `main` 可能落后 origin**（PM 在同一个 checkout 里干活 ⇒ `git pull` 会被拒）
   ⇒ 开发 agent 应该在自己的 **worktree** 里干活（这次踩到了，已改用 worktree）。
+- ⚠️ **分支要记得同步 main**：#81 的分支是在 #96 合并**之前**开的 ⇒ 它的 diff 里会把 #96 的改动
+  显示成「回退」⇒ 合并前先 `git merge origin/main`（否则一合就把别人的 PR 冲掉了）。
+  ⇒ 本 PR 已在合并 main 之后重新推（diff 现在只有 #81 的内容）。
