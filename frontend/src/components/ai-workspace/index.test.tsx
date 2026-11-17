@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   listAiAudit: vi.fn(async () => ({ total: 0, items: [] })),
   listAiPending: vi.fn(async (): Promise<unknown[]> => []),
   listAiConversations: vi.fn(async (): Promise<unknown[]> => []),
+  listAiAgents: vi.fn(async (): Promise<unknown[]> => []),
   approveAiPending: vi.fn(async () => undefined),
   /** 全局 model 的「写回广播」—— 批准后它应该被叫到。 */
   notifyUpdate: vi.fn(),
@@ -53,7 +54,8 @@ vi.mock('@/services/api/ai/client', () => ({
   listAiAudit: mocks.listAiAudit,
   listAiPending: mocks.listAiPending,
   listAiConversations: mocks.listAiConversations,
-  listAiSkills: vi.fn(),
+  listAiSkills: vi.fn(async (): Promise<unknown[]> => []),
+  listAiAgents: mocks.listAiAgents,
   approveAiPending: mocks.approveAiPending,
   rejectAiPending: vi.fn(),
 }));
@@ -231,6 +233,202 @@ describe('AI 工作台侧栏', () => {
       )
       .toBeVisible();
     expect(document.body.textContent).toContain('上次问的那句');
+  });
+
+  it('窄版有智能体选择器 ⇒ 挑一个 ⇒ 另起一个会话并带上它（issue #101）', async () => {
+    mocks.listAiAgents.mockResolvedValue([
+      {
+        id: 'pm',
+        name: 'PM 助手',
+        description: '项目管理',
+        capabilities: {
+          model: 'm',
+          skillCount: 1,
+          mcpServerCount: 1,
+          toolCount: 1,
+        },
+      },
+      {
+        id: 'qa',
+        name: 'QA 助手',
+        description: '测试',
+        capabilities: {
+          model: 'm',
+          skillCount: 1,
+          mcpServerCount: 1,
+          toolCount: 1,
+        },
+      },
+    ]);
+    mocks.createAiConversation.mockResolvedValue({
+      conversationId: 'c1',
+      title: '新对话',
+    });
+    mocks.getAiState.mockResolvedValue({
+      conversationId: 'c1',
+      messages: [],
+      isStreaming: false,
+    });
+
+    const { getByRole, getByText } = await render(<AiWorkspace />);
+
+    // ① 清单读到了 ⇒ 窄版头部有选择器
+    await vi.waitFor(() => {
+      expect(mocks.listAiAgents).toHaveBeenCalledTimes(1);
+    });
+    await getByRole('combobox').click();
+    await userEvent.click(getByText('QA 助手'));
+
+    // ② 挑了 ⇒ **另起一个会话**，建会话时带上 agentId
+    await vi.waitFor(() => {
+      expect(mocks.createAiConversation).toHaveBeenLastCalledWith(
+        undefined,
+        'qa',
+      );
+    });
+  });
+
+  it('窄版也有智能体选择器（宽版是**同一个组件**，这里只验窄版）', async () => {
+    mocks.listAiAgents.mockResolvedValue([
+      {
+        id: 'pm',
+        name: 'PM 助手',
+        description: '项目管理',
+        capabilities: {
+          model: 'm',
+          skillCount: 1,
+          mcpServerCount: 1,
+          toolCount: 1,
+        },
+      },
+      {
+        id: 'qa',
+        name: 'QA 助手',
+        description: '测试',
+        capabilities: {
+          model: 'm',
+          skillCount: 1,
+          mcpServerCount: 1,
+          toolCount: 1,
+        },
+      },
+    ]);
+    mocks.createAiConversation.mockResolvedValue({
+      conversationId: 'c1',
+      title: '新对话',
+    });
+    mocks.getAiState.mockResolvedValue({
+      conversationId: 'c1',
+      messages: [],
+      isStreaming: false,
+    });
+
+    const { container } = await render(<AiWorkspace />);
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-role="ai-agent-select"]')).not.toBeNull();
+    });
+  });
+
+  it('智能体名很长时**不撑破**窄版（400px）的布局', async () => {
+    mocks.listAiAgents.mockResolvedValue([
+      {
+        id: 'pm',
+        name: 'PM 助手',
+        description: '项目管理',
+        capabilities: {
+          model: 'm',
+          skillCount: 1,
+          mcpServerCount: 1,
+          toolCount: 1,
+        },
+      },
+      {
+        id: 'long',
+        // ⚠️ **很长的名字**（配置里自己写的）⇒ 不能把窄版头部撑破
+        name: '这是一个特别特别长的智能体名字用来测试窄版布局会不会被撑破',
+        description: '测试',
+        capabilities: {
+          model: 'm',
+          skillCount: 1,
+          mcpServerCount: 1,
+          toolCount: 1,
+        },
+      },
+    ]);
+    mocks.createAiConversation.mockResolvedValue({
+      conversationId: 'c1',
+      title: '新对话',
+    });
+    mocks.getAiState.mockResolvedValue({
+      conversationId: 'c1',
+      messages: [],
+      isStreaming: false,
+    });
+
+    // ⚠️ 窄版面板**只有 400px** ⇒ 这里把容器限宽，模拟真实布局
+    const { container } = await render(
+      <div style={{ width: 400 }}>
+        <AiWorkspace />
+      </div>,
+    );
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-role="ai-agent-select"]')).not.toBeNull();
+    });
+
+    const slot = container.querySelector<HTMLElement>(
+      '[data-role="ai-agent-slot"]',
+    );
+    expect(slot).not.toBeNull();
+    // ⚠️ **不许横向溢出**（名字太长时 antd 自己截断加省略号）
+    expect(slot?.scrollWidth ?? 0).toBeLessThanOrEqual(
+      (slot?.clientWidth ?? 0) + 1,
+    );
+  });
+
+  it('宽版也有智能体选择器（与窄版**同一个组件**）', async () => {
+    mocks.listAiAgents.mockResolvedValue([
+      {
+        id: 'pm',
+        name: 'PM 助手',
+        description: '项目管理',
+        capabilities: {
+          model: 'm',
+          skillCount: 1,
+          mcpServerCount: 1,
+          toolCount: 1,
+        },
+      },
+      {
+        id: 'qa',
+        name: 'QA 助手',
+        description: '测试',
+        capabilities: {
+          model: 'm',
+          skillCount: 1,
+          mcpServerCount: 1,
+          toolCount: 1,
+        },
+      },
+    ]);
+    mocks.createAiConversation.mockResolvedValue({
+      conversationId: 'c1',
+      title: '新对话',
+    });
+    mocks.getAiState.mockResolvedValue({
+      conversationId: 'c1',
+      messages: [],
+      isStreaming: false,
+    });
+
+    const { container } = await render(<AiWorkspace variant="wide" />);
+
+    await vi.waitFor(() => {
+      expect(
+        container.querySelector('[data-role="ai-agent-select"]'),
+      ).not.toBeNull();
+    });
   });
 
   it('AI 服务连不上时在面板里说一声（不靠全局提示）', async () => {

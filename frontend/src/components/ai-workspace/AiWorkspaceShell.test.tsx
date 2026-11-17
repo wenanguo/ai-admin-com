@@ -58,6 +58,7 @@ vi.mock('@/services/api/ai/client', () => ({
   listAiPending: mocks.listAiPending,
   listAiConversations: vi.fn(),
   listAiSkills: vi.fn(),
+  listAiAgents: vi.fn(async () => []),
   approveAiPending: vi.fn(),
   rejectAiPending: vi.fn(),
 }));

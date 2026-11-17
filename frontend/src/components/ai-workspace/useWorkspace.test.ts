@@ -272,6 +272,57 @@ describe('AI 工作台的会话', () => {
     expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).toContain('c-second');
   });
 
+  it('没挑过智能体 ⇒ 建会话时**不传** agentId（服务端用默认智能体）', async () => {
+    const { result } = await renderHook(() => useWorkspace());
+
+    await vi.waitFor(() => {
+      expect(result.current.conversationId).toBe('c-new');
+    });
+    // ⚠️ 前端不替服务端猜「哪个是默认」⇒ 没挑过就不传。
+    expect(mocks.createAiConversation).toHaveBeenCalledWith(
+      undefined,
+      undefined,
+    );
+  });
+
+  it('挑一个智能体 ⇒ 另起一个会话并带上它（issue #101）', async () => {
+    mocks.createAiConversation
+      .mockResolvedValueOnce({ conversationId: 'c-new', title: '新对话' })
+      .mockResolvedValueOnce({ conversationId: 'qa_1', title: '新对话' });
+
+    const { result } = await renderHook(() => useWorkspace());
+    await vi.waitFor(() => {
+      expect(result.current.conversationId).toBe('c-new');
+    });
+
+    await result.current.selectAgent('qa');
+
+    await vi.waitFor(() => {
+      expect(result.current.conversationId).toBe('qa_1');
+    });
+    // ⚠️ **建会话时必须带上 agentId**（服务端据此绑定智能体、落库）
+    expect(mocks.createAiConversation).toHaveBeenLastCalledWith(undefined, 'qa');
+    // 挑的那个记下来了 ⇒ 刷新后新建会话还用它
+    expect(result.current.agentId).toBe('qa');
+    expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).toContain('"qa"');
+  });
+
+  it('打开一个旧会话 ⇒ 不新建会话（它仍用它自己的智能体）', async () => {
+    const { result } = await renderHook(() => useWorkspace());
+    await vi.waitFor(() => {
+      expect(result.current.conversationId).toBe('c-new');
+    });
+
+    await result.current.switchConversation('c-old');
+
+    await vi.waitFor(() => {
+      expect(result.current.conversationId).toBe('c-old');
+    });
+    // ⚠️ **只有最初那一次**建会话：切到旧会话不许偷偷重建
+    //    （重建 = 旧会话的内容就丢了）。
+    expect(mocks.createAiConversation).toHaveBeenCalledTimes(1);
+  });
+
   it('中止当前这一轮：叫服务端的 abort，并乐观地解禁输入', async () => {
     const { result } = await renderHook(() => useWorkspace());
 
