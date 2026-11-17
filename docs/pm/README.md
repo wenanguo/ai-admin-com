@@ -245,3 +245,53 @@ node scripts/pm/check-queue.cjs --json   # 机器可读
 **我怎么知道进度**：看 `in-progress` 标签（谁在做什么）、`ready` 标签（还有谁可领）、PR 的 CI 状态。
 **高风险四类**（AI 闸门 / 权限 / 数据模型 / 动 AiAdmin 那个仓）由开发 agent 在 PR 里**自行标注**，
 我只抽查被标注的 PR。
+
+---
+
+## 10. 派活：PM → 开发 agent（headless 子会话）
+
+> **2026-11-17 立**：人只跟 PM 对话 ⇒ **派活**由 PM 做，开发 agent 不再由人启动。
+
+### 用法
+
+```bash
+node scripts/agent/dispatch.cjs --issue 101 --no-merge   # 派一条（只开 PR，不合）
+node scripts/agent/dispatch.cjs --issue 55               # 派一条（CI 绿则合）
+node scripts/agent/dispatch.cjs --dry-run --issue 101     # 只看会做什么
+node scripts/agent/dispatch.cjs --status                 # 看所有派活的状态
+node scripts/agent/dispatch.cjs --status 101              # 看某一条（工作区改动 + PR + CI）
+node scripts/agent/dispatch.cjs --collect 101             # 收集结果（PM 汇总用）
+```
+
+### 它做什么
+
+1. **校验**：issue 必须带 `ready`（或上次派活中断留下的 `in-progress`），
+   且**依赖已全部落地**（与 `pick-next.cjs` 用同一套判断）
+2. **认领**：撤 `ready`、打 `in-progress`（**幂等** ⇒ 中断后可重派）
+3. **隔离**：用 `worktree.cjs add` 开**独立工作区**（一个 agent 一个工作区）
+4. **起子会话**：`node <pi-launcher.js> -p ... --append-system-prompt .pi/prompts/dev.md`（**后台**，日志落盘）
+5. **记状态**：`.scratch/dispatch/<号>.json`（pid / 日志 / 工作区 / 分支）
+
+### ⚠️ 三个实测坑（都已在脚本里处理）
+
+| 坑 | 现象 | 处理 |
+| -- | ---- | ---- |
+| `pi` 在 Windows 上是 **POSIX sh 脚本** | `spawn('pi', …)` 直接执行会 ENOENT | 改成 spawn **node + pi-launcher.js** |
+| `shell: true` 会让 cmd **重新解析参数** | 中文/括号/星号被拆坏 ⇒ **进程活着但日志空白** | **不用 shell** |
+| **pi 的 print 模式只在会话结束时输出** | 中途日志是空的 | **中途看进度靠 git**（`--status` 现在会显示工作区改动 + 最近提交） |
+
+### 授权边界（人 2026-11-17 确认）
+
+| 情形 | 谁拍板 |
+| ---- | ------ |
+| 小/中改动，CI 绿 | **子会话自动合并** |
+| **大改动**（如 `#82` 阶段二）与**高风险四类**（AI 闸门 / 权限 / 数据模型 / 动 AiAdmin 那个仓） | **子会话只开 PR、停下来 ⇒ PM 找人拍板** |
+| 子会话失败 | PM **自己重试一次** ⇒ 还不行才找人（附具体失败原因） |
+| 并行度 | **一次一条**（依赖检查已挡掉大部分冲突） |
+
+### 反馈落点（PM 汇总时读这两处）
+
+- **issue 上的一条 comment**：做了什么 · 怎么验 · PR 号
+- **`docs/notes/`** 的交接文档
+
+⇒ PM 汇总给人时给：做了什么 · PR 与 CI 状态 · **高风险项单独点名** · 需要拍板的点 · 下一条准备派什么。

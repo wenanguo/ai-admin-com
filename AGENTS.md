@@ -111,6 +111,13 @@ husky / lint-staged / commitlint 都用 `frontend/node_modules/.bin/` 里的二�
 
 **判定规则**：说「领 #12 去做」⇒ **开发模式**（角色不变）；说「今天排什么」⇒ **PM 模式**。
 
+**PM 是唯一对外接口（2026-11-17 起）**：
+
+- **人只跟 PM 说需求** ⇒ PM 建 issue、**派活**给开发 agent（headless 子会话）、收结果、汇总给��。
+- 开发 agent **不再由人直接启动** ⇒ 人不需要「领 #xx 去做」；需要人拍板的事（高风险 PR、设计 review、需求变更）
+  由 **PM 去找人**。
+- 派活脚本：`node scripts/agent/dispatch.cjs --issue <号> [--no-merge]`；看进度 `--status`；收结果 `--collect`。
+
 **两个角色的命令**：
 
 | 角色 | 命令 | 干什么 |

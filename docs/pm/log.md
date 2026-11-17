@@ -567,3 +567,31 @@
 - **顺手清理**：删了未跟踪的本地残留 \`frontend/public/icons/logo.png\`（main 里只有 \`icon-*.png\`，无代码引用）。
 - **本地 git 的坑**：\`git pull --ff-only\` 报「Cannot fast-forward to multiple branches」⇒ 起因是 \`remote.origin.fetch\` 曾有多条 refspec
   ⇒ 已归一为一条；本地 main 也因此落后过（那些「未提交改动」其实就是 main 的新内容）⇒ 已核对一致后丢弃并快进。
+
+### 2026-11-17 · **派活机制落地**：PM → headless 开发 agent 子会话
+
+- **人提的**：「我不想每次都手工去跟 dev 说继续…我只跟你 PM 对接，你建 issue、派活给 dev，
+  dev 完成后反馈给你，你统一汇总给我，有需要我确认的，你来找我确认。」（并问：agent team / sub agent 行不行）
+- **技术前提核实**：`pi --print`（headless 非交互）存在，可喂 prompt 模板、指定模型与工作目录
+  ⇒ **「派活」在技术上可行**；冒烟测试通过（`pi -p "只回答两个字：就绪"` ⇒ 退出码 0）。
+- **新增 `scripts/agent/dispatch.cjs`**（PM 侧的派活器）：
+  1. **校验**：issue 必须带 `ready`（或上次派活中断留下的 `in-progress`），且**依赖已落地**（复用 `lib/deps.cjs`）
+  2. **认领**：撤 `ready`、打 `in-progress`（**幂等** ⇒ 中断后可重派）
+  3. **隔离**：`worktree.cjs add` 开独立工作区
+  4. **起子会话**：`node <pi-launcher.js> -p … --append-system-prompt .pi/prompts/dev.md`（**后台**、日志落盘）
+  5. **记状态**：`.scratch/dispatch/<号>.json`（pid / 日志 / 工作区 / 分支）
+  - `--status` 看进度（工作区改动 + 最近提交 + PR + CI）· `--collect` 收结果（PM 汇总用）
+  - `--worktree/--branch` ⇒ **接着往已有分支派**（多轮迭代）· `--note` ⇒ 追加具体指令
+- **⚠️ 实测踩的四个坑**（都已处理）：
+  1. `pi` 在 Windows 上是 **POSIX sh 脚本** ⇒ `spawn('pi',…)` 直接执行会 ENOENT ⇒ 改成 spawn **node + pi-launcher.js**
+  2. `shell: true` 让 cmd **重新解析参数**（中文/括号/星号被拆坏）⇒ **进程活着但日志空白** ⇒ **不用 shell**
+  3. **pi 的 print 模式只在会话结束时输出** ⇒ 中途日志是空的 ⇒ **中途看进度只能看 git**
+  4. 子会话**自己起的分支名**（`feat/101-agent-picker`）≠ 我建的工作区分支 ⇒ 找 PR 要**按 issue 号**找，不能只按分支名
+  另：**子会话做完活可能挂住**（进程在、CPU 不动、日志空）⇒ 需要「停掉 + 重新派」的路径（`--worktree/--branch`）。
+- **端到端实测**（用新开的 #101「AI 工作台加智能体下拉」）：
+  - PM 建单 → 派活 → 子会话在独立工作区里**改代码 / 写单测 / 写 e2e / 提 PR（#103）/ 写交接文档** ⇒ 全自动完成
+  - PR #103 的 e2e 红了（`ai-workspace.spec.ts:434` 的断言太窄，匹配不到新端点 `/ai-api/api/agents`）
+    ⇒ **产品行为是对的，该改的是断言** ⇒ PM 停了挂住的子会话，**再派一个子会话到同一分支收尾**（机制的第二轮）
+- **授权边界（人确认）**：小/中改动 CI 绿则合；**大改动与高风险四类只开 PR、停下等人拍板**；
+  子会话失败 PM 自己重试一次；并行度一次一条。
+- **配套文档**：`AGENTS.md` 加「PM 是唯一对外接口」· `docs/pm/README.md` 加「## 10. 派活」。
