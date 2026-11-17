@@ -75,6 +75,38 @@ async function setupAiService(
       return;
     }
 
+    // 智能体清单（`GET /api/agents`）—— 工作台上的**智能体选择器**读它
+    //
+    // ⚠️ 不 mock 它 ⇒ 选择器降级成「读不到 + 重试」那一行
+    //    ⇒ 这一页的「整页不滚」断言会被那一行顶出滚动条。
+    if (path.endsWith('/api/agents')) {
+      json([
+        {
+          id: 'pm',
+          name: 'PM 助手',
+          description: '项目管理',
+          capabilities: {
+            model: MODEL,
+            skillCount: 1,
+            mcpServerCount: 1,
+            toolCount: 1,
+          },
+        },
+        {
+          id: 'qa',
+          name: 'QA 助手',
+          description: '测试问答',
+          capabilities: {
+            model: MODEL,
+            skillCount: 1,
+            mcpServerCount: 1,
+            toolCount: 1,
+          },
+        },
+      ]);
+      return;
+    }
+
     // 事件流（SSE）：只回一个 connected —— 这一页不需要真的对话
     if (path.endsWith('/events')) {
       const connected = `event: connected\ndata: ${JSON.stringify({
