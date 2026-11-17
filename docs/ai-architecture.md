@@ -33,9 +33,9 @@
 │  · AI 工作台全宽页 /ai/workspace      │◀────────────────│  /api/agent/*  REST + SSE     │
 │  · services/api/ai/*                  │   SSE 事件流     │                              │
 └───────────────────────────────────────┘                 │  src/agent/*   pi agent 运行时 │
-                                                          │  src/adapter/* 适配层          │
-                                                          │  src/tools/*   命令目录        │
-                                                          │  src/aadmin/*  调 AiAdmin     │
+                                                          │  src/core/*    内核（命令机制） │
+                                                          │  src/plugins/* 业务插件（PM）   │
+                                                          │  └─ adapter/* 适配层            │
                                                           └───────────┬──────────────────┘
                                                                       │ 透传 token
                                                                       ▼
@@ -188,9 +188,9 @@ pi 的 SDK 文档说：
 ```
 pi: tool_execution_start
    └─▶ SSE: tool_call {toolName, args}
-         └─▶ src/tools/create-task.ts     参数校验 / 拼装
-               └─▶ src/adapter/datasource.ts  鉴权透传 / 字段映射 / 错误归一 / 分页语义 / 幂等
-                     └─▶ src/aadmin/client.ts    POST 到 AiAdmin（事实源）
+         └─▶ src/plugins/pm/tools/create-task.ts  参数校验 / 拼装
+               └─▶ src/plugins/pm/adapter/datasource.ts  鉴权透传 / 字段映射 / 错误归一 / 分页语义 / 幂等
+                     └─▶ src/plugins/pm/adapter/aadmin/client.ts    POST 到 AiAdmin（事实源）
                      └─▶ src/audit.ts            写前快照 + 一条 ai_audit_log
                            └─▶ SSE: tool_result {status, summary, details}
                                  └─▶ 前端 CommandCard 由「执行中」变「已执行 / 失败」
@@ -496,7 +496,7 @@ src/pages/ai/workspace/    ← 全宽页
 | 事件流一直 401 | token 过期，没走静默刷新 | `sse.ts` 的 `refreshSession()` |
 | 命令卡片重建后消失 | 快照里没有工具调用历史 | `mergeCommandSources()` |
 | 请求打到 `/api/v1/ai-api/...` | `baseURL` 没置空 | `client.ts` 的 `aiRequest()` |
-| 待确认列表永远是空的 | 服务端当前无破坏性命令 ⇒ 无待确认项 | `src/tools/index.ts` 的 `destructive` |
+| 待确认列表永远是空的 | 服务端当前无破坏性命令 ⇒ 无待确认项 | `src/core/tools/index.ts` 的 `destructive` |
 | AI 服务返 500「服务内部错误：凭证已失效」 | 跨 chunk 的 `instanceof` 失效（应为 401） | 服务端 `src/http/errors.ts` 的结构化判定 |
 
 ---
@@ -515,11 +515,11 @@ src/pages/ai/workspace/    ← 全宽页
 | 消息落库 | `backend/ai/src/agent/store.ts` |
 | SSE 帧写出 / 心跳 | `backend/ai/src/http/sse.ts` |
 | 事件流端点（回放 + 增量 + 去重） | `backend/ai/src/routes/events.ts` |
-| 命令目录 | `backend/ai/src/tools/index.ts` |
+| 命令目录 | `backend/ai/src/plugins/pm/index.ts`（**业务命令归插件**；内核机制在 `src/core/tools/index.ts`） |
 | **MCP 服务器（工具来源）** | `backend/ai/src/agent/mcp.ts` |
 | **技能（提示词）** | `backend/ai/.pi/skills/` · `backend/ai/src/agent/skills.ts` |
 | **待确认闸门（改数据要人点头）** | `backend/ai/src/agent/gate.ts` · `backend/ai/src/routes/pending.ts` |
-| 适配层（鉴权 / 映射 / 错误归一 / 幂等） | `backend/ai/src/adapter/datasource.ts` |
+| 适配层（鉴权 / 映射 / 错误归一 / 幂等） | `backend/ai/src/plugins/pm/adapter/datasource.ts` |
 | 审计写入 | `backend/ai/src/audit.ts` |
 | 前端 REST 客户端 | `frontend/src/services/api/ai/client.ts` |
 | 前端 SSE 客户端 | `frontend/src/services/api/ai/sse.ts` |

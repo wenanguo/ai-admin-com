@@ -22,7 +22,7 @@ import {
 	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import { env } from "../env.ts";
-import type { CommandTool } from "../tools/types.ts";
+import type { CommandTool } from "../core/tools/types.ts";
 import { createMcpServersExtension, type McpServerSpec } from "./mcp.ts";
 import { buildSystemPrompt, createSkillsOverride } from "./skills.ts";
 import { createLoadSkillTool } from "./skill-tools.ts";
