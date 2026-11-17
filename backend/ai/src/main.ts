@@ -10,6 +10,11 @@
  */
 
 import "./load-env.ts";
+import { registerPlugins } from "./plugins.ts";
 import { start } from "./server.ts";
+
+// ⚠️ **插件先注册，再开服务** —— 命令目录、身份查询都来自插件
+//    ⇒ 没注册就没有命令（模型看不到任何业务工具）。
+registerPlugins();
 
 start();

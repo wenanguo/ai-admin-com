@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { createPiSession } from "./pi-session.ts";
 import type { MessageRecord } from "./store.ts";
-import type { CommandTool } from "../tools/types.ts";
+import type { CommandTool } from "../core/tools/types.ts";
 
 /** mock 的 loader 返回的技能（测试可改 ⇒ 验「没有技能」那条路）。 */
 const skillsMock = vi.hoisted(() => ({

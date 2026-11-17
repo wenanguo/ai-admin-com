@@ -18,21 +18,18 @@
  *   客户端随时可以用它重建界面。
  */
 
-import { AadminClient } from "../aadmin/client.ts";
-import { AadminDataSource } from "../adapter/datasource.ts";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { PrismaAuditWriter, type AuditWriter } from "../audit.ts";
 import { redactAuditArgs } from "../audit-redact.ts";
 import { env } from "../env.ts";
 import { buildFrame } from "../http/sse.ts";
-import type { TaskCreator } from "../tools/create-task.ts";
-import { buildCommandTools } from "../tools/index.ts";
-import { setEnumWarningSink, standardEnumWarningSink } from "../adapter/enums.ts";
+import { buildCommandTools } from "../core/tools/index.ts";
+import { pluginRegistry, type PluginRegistry } from "../core/plugins.ts";
+import type { CurrentUser } from "../core/session/identity.ts";
 import { SSE_EVENTS, type SseEventName, type SsePayload } from "./events.ts";
 import { AgentEventMapper, extractAssistantText, isAssistantMessage } from "./event-mapper.ts";
 import type { AiTaskContext } from "./context.ts";
 import { parseAiTaskContext, renderAiTaskContext, writeTargetId, WRITABLE_FIELDS } from "./context.ts";
-import { CurrentUserResolver, type CurrentUser } from "./identity.ts";
 import { createGateExtension } from "./gate.ts";
 import { mcpToolPrefix, stripMcpToolPrefix, type McpServerSpec } from "./mcp.ts";
 import { listSkillSummaries, type SkillSummary } from "./skill-catalog.ts";
@@ -115,9 +112,14 @@ export interface ConversationState {
 export interface AgentRuntimeOptions {
 	/** 造 pi 会话（带会话 id 与历史 —— 上下文就靠这个还原）。 */
 	createSession?: (options: PiSessionOptions) => Promise<AgentSessionLike>;
-	/** 数据源工厂。 */
-	createDataSource?: (token: string) => TaskCreator;
-	/** 解析当前用户。 */
+	/**
+	 * 插件注册表（**命令目录与身份查询都从这儿来**）。
+	 *
+	 * ⚠️ 缺省用**进程级**注册表 ⇒ 生产由入口（`src/plugins.ts`）注册插件；
+	 *    测试可以塞一个只装假插件的注册表 ⇒ 单测不打 AiAdmin。
+	 */
+	plugins?: PluginRegistry;
+	/** 解析当前用户（不给 ⇒ 问插件）。 */
 	resolveUser?: (token: string) => Promise<CurrentUser>;
 	/** 存取。 */
 	store?: ConversationStore;
@@ -150,10 +152,9 @@ export class AgentRuntime {
 	readonly #lock = new StartupLock();
 	readonly #store: ConversationStore;
 	readonly #createSession: NonNullable<AgentRuntimeOptions["createSession"]>;
-	readonly #createDataSource: (token: string) => TaskCreator;
+	readonly #plugins: PluginRegistry;
 	readonly #resolveUser: (token: string) => Promise<CurrentUser>;
 	readonly #model: string;
-	readonly #userResolver: CurrentUserResolver;
 	/** 每个会话的事件映射器。 */
 	readonly #mappers = new Map<string, AgentEventMapper>();
 	/** 审计去处（每次写操作都留一条 `ai_audit_log`）。 */
@@ -180,22 +181,10 @@ export class AgentRuntime {
 		this.#agents =
 			options.agents ?? createFileAgentProvider(agentsRoot(), env.AI_DEFAULT_AGENT);
 
-		const client = new AadminClient({ baseUrl: env.AIADMIN_BASE_URL });
-		this.#userResolver = new CurrentUserResolver(client);
+		// ⚠️ **命令与身份都来自插件**（内核不认识业务）⇒ 运行时只读注册表。
+		this.#plugins = options.plugins ?? pluginRegistry;
 		this.#resolveUser =
-			options.resolveUser ?? ((token: string) => this.#userResolver.resolve(token));
-		this.#createDataSource =
-			options.createDataSource ??
-			((token: string) =>
-				new AadminDataSource({
-					client: new AadminClient({ baseUrl: env.AIADMIN_BASE_URL }),
-					token,
-					// ⚠️ 告警不许被悄悄丢掉 ⇒ 注入一个会打日志的去处
-					onWarning: standardEnumWarningSink,
-				}));
-
-		// 进程级的告警去处也装上（不只数据源这一条路径）
-		setEnumWarningSink(standardEnumWarningSink);
+			options.resolveUser ?? ((token: string) => this.#resolveUserByPlugin(token));
 	}
 
 	/**
@@ -424,11 +413,24 @@ ${message}`;
 	/**
 	 * 解析 token 对应的当前用户。
 	 *
-	 * ⚠️ **本服务不自己校验 token** —— 问 AiAdmin（它是权威）。
+	 * ⚠️ **本服务不自己校验 token** —— 问权威系统（AiAdmin，它是权威）。
 	 * token 无效时抛 `AdapterErrorException("AUTH_EXPIRED")`，由路由转成 401 信封。
 	 */
 	async resolveCurrentUser(token: string): Promise<CurrentUser> {
 		return this.#resolveUser(token);
+	}
+
+	/**
+	 * 问**插件**要当前用户（没注入 `resolveUser` 时的默认路径）。
+	 *
+	 * ⚠️ 没有插件能回答 ⇒ 直接报错（**别静默返回假用户** —— 那会让人以为鉴权过了）。
+	 */
+	async #resolveUserByPlugin(token: string): Promise<CurrentUser> {
+		const resolver = this.#plugins.currentUserResolver();
+		if (resolver === undefined) {
+			throw new AgentError("UPSTREAM", "没有插件能解析当前用户（插件没注册？）");
+		}
+		return resolver.resolve(token);
 	}
 
 	/**
@@ -649,10 +651,11 @@ ${message}`;
 		//    ⇒ 换智能体只改配置文件，不改代码。
 		const agent = await this.#agentOf(channel.conversationId);
 		const tools = buildCommandTools(
+			// ⚠️ **命令目录来自插件**（内核不带业务命令）
+			this.#plugins.commands(),
 			{
 				currentToken: () => channel.token,
-				createDataSource: this.#createDataSource,
-				resolveReporterId: async (token: string) => (await this.#resolveUser(token)).id,
+				currentUserId: async (token: string) => (await this.#resolveUser(token)).id,
 				audit: this.#audit,
 				model: this.#model,
 			},

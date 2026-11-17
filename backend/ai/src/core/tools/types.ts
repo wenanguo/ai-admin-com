@@ -19,6 +19,7 @@ import type {
 	ToolAnnotations,
 } from "@earendil-works/pi-coding-agent";
 import type { Static, TSchema } from "typebox";
+import type { AuditWriter } from "../../audit.ts";
 
 /** 一个业务命令工具。 */
 export interface CommandTool<TParams extends TSchema = TSchema, TDetails = unknown> {
@@ -62,3 +63,40 @@ export const ALLOW_ALL_GATE: CommandGate = {
 	requiresConfirmation: () => false,
 	awaitConfirmation: async () => true,
 };
+
+/**
+ * 造工具时内核给命令的上下文 —— **只有通用能力**。
+ *
+ * ⚠️ **这里不许出现业务字段**（任务 / 项目 / 里程碑……）⇒
+ *    业务需要的依赖由**插件自己闭包持有**（插件造工具时把它传进去），
+ *    内核只负责「与身份 / 审计 / 闸门有关」的那几样。
+ */
+export interface CommandContext {
+	/** 取本次调用的调用方 token（只在内存）。 */
+	currentToken: () => string | undefined;
+	/** 取当前用户 id（会话主人；插件按业务语义解释它 —— 比如「报告人」）。 */
+	currentUserId: (token: string) => Promise<number>;
+	/** 审计去处（**每次写都要留一条 `ai_audit_log`**）。 */
+	audit: AuditWriter;
+	/** 模型标识（写进审计）。 */
+	model?: string;
+	/** 命令闸门（默认恒放行）。 */
+	gate?: CommandGate;
+}
+
+/**
+ * 一条命令的登记项 —— **由插件提供**（内核只认这个形状）。
+ *
+ * 加命令的步骤永远是这三步：
+ * 1. 在插件里写一个工具（描述写清「什么时候用 / 什么时候别用 / 参数格式」）；
+ * 2. 在插件里登记一条 `CommandDefinition`；
+ * 3. （如果命令是破坏性的）在闸门 `CommandGate` 里加上「要先问人」的判断。
+ */
+export interface CommandDefinition {
+	/** 命令名（= 工具名）。 */
+	name: string;
+	/** 人读的标签。 */
+	label: string;
+	/** 造出工具。 */
+	build(context: CommandContext): CommandTool;
+}

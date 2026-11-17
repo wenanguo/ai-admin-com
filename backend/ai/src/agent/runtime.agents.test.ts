@@ -20,6 +20,42 @@ import { agentIdOfConversation } from "../core/config/registry.ts";
 import type { PiSessionOptions } from "./pi-session.ts";
 import { AgentError, AgentRuntime } from "./runtime.ts";
 import type { ConversationRecord, ConversationStore, MessageRecord } from "./store.ts";
+import { PluginRegistry } from "../core/plugins.ts";
+import type { CommandTool } from "../core/tools/types.ts";
+
+/**
+ * 假插件 —— 提供一个 `create_task` 命令（**本用例不该真的建任务**）。
+ *
+ * ⚠️ **命令目录来自插件**（内核不认业务）⇒ 这里塞一个只装假插件的注册表。
+ */
+function fakePlugins(): PluginRegistry {
+	const registry = new PluginRegistry();
+	registry.register({
+		id: "fake",
+		commands: [
+			{
+				name: "create_task",
+				label: "创建任务",
+				build: () =>
+					({
+						name: "create_task",
+						label: "创建任务",
+						description: "假的建任务命令（测试用）",
+						parameters: {},
+						annotations: {
+							readOnlyHint: false,
+							destructiveHint: false,
+							idempotentHint: false,
+						},
+						execute: async () => {
+							throw new Error("本用例不该真的建任务");
+						},
+					}) as unknown as CommandTool,
+			},
+		],
+	});
+	return registry;
+}
 
 /* ------------------------------------------------------------------ 假实现 */
 
@@ -141,11 +177,7 @@ function makeRuntime(store: ConversationStore): {
 				isStreaming: false,
 			};
 		},
-		createDataSource: () => ({
-			createTask: async () => {
-				throw new Error("本用例不该真的建任务");
-			},
-		}),
+		plugins: fakePlugins(),
 		resolveUser: async () => ({ id: 2, name: "测试用户" }),
 	});
 	return { runtime, sessionOptions };
@@ -385,11 +417,7 @@ describe("运行时 · MCP 服务器（0 / 1 / N 个）", () => {
 					isStreaming: false,
 				};
 			},
-			createDataSource: () => ({
-				createTask: async () => {
-					throw new Error("本用例不该真的建任务");
-				},
-			}),
+			plugins: fakePlugins(),
 			resolveUser: async () => ({ id: 2, name: "测试用户" }),
 		});
 		return { runtime, sessionOptions };

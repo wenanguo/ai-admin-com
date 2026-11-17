@@ -1,27 +1,24 @@
 /**
- * 运行时 —— **命令去重**（Idempotency-Key）与**告警去处**。
+ * 运行时 —— **命令去重**（Idempotency-Key）。
  *
- * 这两条都是对外的契约：
+ * 这条是对外的契约：
  *
- * 1. **同一个 `commandId` 再来一次 ⇒ 回上次那个 ack，不再跑一遍。**
- *    本切片唯一的命令是**写**（建任务）⇒ 重跑一次就是多建一个任务，
- *    而且是**静默**的（前端只看到「成功」）。客户端重试、双击、代理重发
- *    都会撞上这个窗口 ⇒ 去重必须做在运行时这一层。
+ * **同一个 `commandId` 再来一次 ⇒ 回上次那个 ack，不再跑一遍。**
+ * 本切片唯一的命令是**写**（建任务）⇒ 重跑一次就是多建一个任务，
+ * 而且是**静默**的（前端只看到「成功」）。客户端重试、双击、代理重发
+ * 都会撞上这个窗口 ⇒ 去重必须做在运行时这一层。
  *
- * 2. **枚举归一遇到不认识的线上码 ⇒ 要看得见。**
- *    机制本来就有（`enums.ts` 的 sink），但没人注入 ⇒ 告警落进一个模块数组、
- *    然后被丢掉 ⇒ 「不猜语义」的承诺是**不可观测**的。
+ * ⚠️ 这里的命令来自**假插件**（`fakePlugins`）—— 内核不认业务，
+ *    单测也不该去打 AiAdmin。
  */
 
-import { afterAll, describe, expect, it, vi } from "vitest";
-import { taskStatusToUnified } from "../adapter/enums.ts";
-import type { CreateTaskInput } from "../adapter/datasource.ts";
-import type { UnifiedTask } from "../adapter/model.ts";
+import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "../db.ts";
 import type { PiSessionOptions } from "./pi-session.ts";
 import { AgentRuntime } from "./runtime.ts";
 import type { ConversationRecord, ConversationStore, MessageRecord } from "./store.ts";
-import type { CommandTool } from "../tools/types.ts";
+import { PluginRegistry } from "../core/plugins.ts";
+import type { CommandTool } from "../core/tools/types.ts";
 
 /* ------------------------------------------------------------------ 假实现 */
 
@@ -49,23 +46,6 @@ function fakeAudit(): {
 			},
 		},
 	};
-}
-
-/** 假的任务（带写快照 —— 真实数据源自带）。 */
-function fakeTask(): UnifiedTask {
-	const entity: UnifiedTask = {
-		key: "task:321",
-		project_key: "project:45",
-		title: "标题",
-		type: "FEATURE",
-		status: "BACKLOG",
-		priority: "P2",
-		reviewers: [],
-		labels: [],
-		sort_order: "0",
-		source: "NL_CHAT",
-	};
-	return { ...entity, snapshot: { op: "create", before: null, after: entity } };
 }
 
 /** 假的会话记录。 */
@@ -115,15 +95,51 @@ function fakeStore(conversation: ConversationRecord): {
 	return { store, appended };
 }
 
-/** 造一个运行时（工具一被调用就真的调数据源 ⇒ 能数出「跑了几遍」）。 */
+/**
+ * 假插件 —— 提供一个会记下调用的 `create_task` 命令。
+ *
+ * ⚠️ **命令目录来自插件**（内核不认业务）⇒ 单测塞一个只装假插件的注册表，
+ *    就不用打 AiAdmin 了。
+ */
+function fakePlugins(calls: unknown[] = []): PluginRegistry {
+	const registry = new PluginRegistry();
+	registry.register({
+		id: "fake",
+		commands: [
+			{
+				name: "create_task",
+				label: "创建任务",
+				build: () =>
+					({
+						name: "create_task",
+						label: "创建任务",
+						description: "假的建任务命令（测试用）",
+						parameters: {},
+						annotations: {
+							readOnlyHint: false,
+							destructiveHint: false,
+							idempotentHint: false,
+						},
+						execute: async (_toolCallId: string, params: unknown) => {
+							calls.push(params);
+							return { content: [{ type: "text", text: "建好了" }] };
+						},
+					}) as unknown as CommandTool,
+			},
+		],
+	});
+	return registry;
+}
+
+/** 造一个运行时（工具一被调用就真的记一笔 ⇒ 能数出「跑了几遍」）。 */
 function makeRuntime(options: { maxTrackedCommands?: number } = {}): {
 	runtime: AgentRuntime;
-	calls: CreateTaskInput[];
+	calls: unknown[];
 	appended: MessageRecord[];
 	/** 造 pi 会话时收到的参数（用来断言「历史有没有交给它」）。 */
 	sessionOptions: PiSessionOptions[];
 } {
-	const calls: CreateTaskInput[] = [];
+	const calls: unknown[] = [];
 	const { store, appended } = fakeStore(fakeConversation());
 	const audit = fakeAudit();
 	const sessionOptions: PiSessionOptions[] = [];
@@ -149,12 +165,7 @@ function makeRuntime(options: { maxTrackedCommands?: number } = {}): {
 				isStreaming: false,
 			};
 		},
-		createDataSource: () => ({
-			createTask: async (input: CreateTaskInput) => {
-				calls.push(input);
-				return fakeTask();
-			},
-		}),
+		plugins: fakePlugins(calls),
 		resolveUser: async () => ({ id: 2 }),
 	});
 	return { runtime, calls, appended, sessionOptions };
@@ -311,12 +322,7 @@ describe("运行时 · 会话上下文（P0）", () => {
 					isStreaming: false,
 				};
 			},
-			createDataSource: () => ({
-				createTask: async (input: CreateTaskInput) => {
-					void input;
-					return fakeTask();
-				},
-			}),
+			plugins: fakePlugins(),
 			resolveUser: async () => ({ id: 2 }),
 		});
 		await first.submitCommand(command("cmd-1"));
@@ -336,12 +342,7 @@ describe("运行时 · 会话上下文（P0）", () => {
 					isStreaming: false,
 				};
 			},
-			createDataSource: () => ({
-				createTask: async (input: CreateTaskInput) => {
-					void input;
-					return fakeTask();
-				},
-			}),
+			plugins: fakePlugins(),
 			resolveUser: async () => ({ id: 2 }),
 		});
 		await second.submitCommand(command("cmd-2"));
@@ -391,12 +392,7 @@ function makeStreamingRuntime(): {
 				return "queued" as const;
 			},
 		}),
-		createDataSource: () => ({
-			createTask: async (input: CreateTaskInput) => {
-				void input;
-				return fakeTask();
-			},
-		}),
+		plugins: fakePlugins(),
 		resolveUser: async () => ({ id: 2 }),
 	});
 
@@ -473,12 +469,7 @@ function makeAbortableRuntime(): {
 				},
 			};
 		},
-		createDataSource: () => ({
-			createTask: async (input: CreateTaskInput) => {
-				void input;
-				return fakeTask();
-			},
-		}),
+		plugins: fakePlugins(),
 		resolveUser: async () => ({ id: 2 }),
 	});
 
@@ -501,25 +492,6 @@ describe("运行时 · 中止（P2）", () => {
 		const { runtime } = makeAbortableRuntime();
 
 		await expect(runtime.abort("conv-1", "999")).rejects.toThrow(/不存在/);
-	});
-});
-
-describe("运行时 · 告警去处", () => {
-	it("未识别的枚举值会打日志（告警不再被悄悄丢掉）", () => {
-		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-		try {
-			// 构造运行时 = 装上告警去处
-			makeRuntime();
-			taskStatusToUnified("瞎写的状态");
-
-			expect(warn).toHaveBeenCalled();
-			const text = warn.mock.calls.map((call) => String(call[0])).join("\n");
-			expect(text).toContain("瞎写的状态");
-			// 日志里不许出现凭据
-			expect(text).not.toContain("caller-token-must-not-leak");
-		} finally {
-			warn.mockRestore();
-		}
 	});
 });
 
@@ -554,12 +526,7 @@ describe("运行时 · token 轮换（P4）", () => {
 					isStreaming: false,
 				};
 			},
-			createDataSource: () => ({
-				createTask: async (input: CreateTaskInput) => {
-					void input;
-					return fakeTask();
-				},
-			}),
+			plugins: fakePlugins(),
 			resolveUser: async () => ({ id: 2 }),
 		});
 
@@ -640,12 +607,7 @@ describe("运行时 · 讨论上下文（与 AI 讨论）", () => {
 				dispose: () => {},
 				isStreaming: false,
 			}),
-			createDataSource: () => ({
-				createTask: async (input: CreateTaskInput) => {
-					void input;
-					return fakeTask();
-				},
-			}),
+			plugins: fakePlugins(),
 			resolveUser: async () => ({ id: 2 }),
 		});
 		return { runtime, prompts, appended };

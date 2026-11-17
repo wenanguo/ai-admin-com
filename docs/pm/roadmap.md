@@ -79,8 +79,9 @@
 - **范围**：后端 AI 服务（`backend/ai/`）的**业务命令工具层**——让模型能真的操作项目/里程碑/任务/风险。
 - **完成判据**：模型能完成「查项目 → 建任务 → 改任务状态 → 登记风险」；
   写操作全部留审计、改动类操作全部先问人。
-- **现状**：`backend/ai/src/tools/` 目前**只有 `create_task` 一个命令**；
-  `backend/ai/src/tools/index.ts` 顶部写着「加命令的三步」（写工具 → 登记 `CommandDefinition` → 必要时进闸门）。
+- **现状**：命令目录归**业务插件**（`backend/ai/src/plugins/pm/tools/` 目前**只有 `create_task` 一个命令**）；
+  `backend/ai/src/plugins/pm/index.ts` 顶部写着「加命令的三步」（写工具 → 登记 `CommandDefinition` → 必要时进闸门）；
+  内核只留**机制**（`backend/ai/src/core/tools/index.ts`）。
 - **依赖**：无（但**依赖 M0**：命令层要能在容器里跑才算数）。
 - ⚠️ **掉掉的连带影响**（2026-11-14 核对）：
   - **M2** 原依赖 M1（C13「AI 命令 → 视图回填」的命令源没了）⇒ M2 只剩 **C14（页面接真实接口数据）** 可独立做；

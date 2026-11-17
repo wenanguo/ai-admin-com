@@ -12,15 +12,15 @@
  */
 
 import { createHash } from "node:crypto";
-import type { AadminClient } from "../aadmin/client.ts";
-import { AdapterErrorException, isAdapterErrorException } from "../aadmin/errors.ts";
+import type { AadminClient } from "./aadmin/client.ts";
+import { AdapterErrorException, isAdapterErrorException } from "./aadmin/errors.ts";
 import {
 	PM_PATHS,
 	type AadminPageResult,
 	type PmProjectOut,
 	type PmTaskCreate,
 	type PmTaskOut,
-} from "../aadmin/types.ts";
+} from "./aadmin/types.ts";
 import {
 	priorityFromUnified,
 	priorityToUnified,

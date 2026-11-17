@@ -1,4 +1,4 @@
-import { isSuccess } from "../types/api.ts";
+import { isSuccess } from "../../../../types/api.ts";
 import { AdapterErrorException, isAdapterErrorException, isRetryable } from "./errors.ts";
 
 /**

@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { AdapterErrorException } from "../aadmin/errors.ts";
+import { AdapterErrorException } from "../plugins/pm/adapter/aadmin/errors.ts";
 import { AgentError } from "../agent/runtime.ts";
 import { toErrorEnvelope } from "./errors.ts";
 
