@@ -8,7 +8,7 @@
 > ⚠️ 本文件描述的是**当前实现**，不是规划。
 >
 > ⚠️ **覆盖范围（2026-11-16 对齐）**：本文讲的是**会话 / 事件流 / 回放 / 闸门口径**这条主线。
-> **工具来源已经变了** —— 现在是**走 AiAdmin 的 MCP 服务器**（`backend/ai/src/agent/mcp.ts`）
+> **工具来源已经变了** —— 现在是**走 AiAdmin 的 MCP 服务器**（`backend/ai/src/core/mcp/mcp.ts`）
 > 加上**技能**（`backend/ai/.pi/skills/`），不再是「自己写命令目录」；
 > 这部分的当前口径以 [`../backend/ai/README.md`](../backend/ai/README.md) 为准。
 
@@ -32,7 +32,7 @@
 │  · AI 工作台侧栏（常驻右侧 Sider）      │                 │  backend/ai（Express 5）       │
 │  · AI 工作台全宽页 /ai/workspace      │◀────────────────│  /api/agent/*  REST + SSE     │
 │  · services/api/ai/*                  │   SSE 事件流     │                              │
-└───────────────────────────────────────┘                 │  src/agent/*   pi agent 运行时 │
+└───────────────────────────────────────┘                 │  src/core/*    内核（pi agent 运行时）│
                                                           │  src/core/*    内核（命令机制） │
                                                           │  src/plugins/* 业务插件（PM）   │
                                                           │  └─ adapter/* 适配层            │
@@ -70,7 +70,7 @@ pi 的 `ModelRuntime` 解析 `provider/model` 并鉴权，凭据放在仓库内 
 > **不是 Claude**：Claude 只是 pi 可选的模型供应商之一，本项目实际跑的是 MiniMax。
 > 框架是 pi，模型是 MiniMax，两者要分开说。
 
-### 2.2 会话构造（`src/agent/pi-session.ts`）
+### 2.2 会话构造（`src/core/session/pi-session.ts`）
 
 三个尖峰实测踩出来的坑：
 
@@ -101,7 +101,7 @@ const { session } = await createAgentSession({
 
 工具的 `execute` 是**五参**：`(toolCallId, params, signal, onUpdate, ctx)`。
 
-### 2.3 会话通道（`src/agent/session-registry.ts`）
+### 2.3 会话通道（`src/core/session/session-registry.ts`）
 
 一个 `conversationId` = 一个通道，挂着四样东西：
 
@@ -114,7 +114,7 @@ const { session } = await createAgentSession({
 
 通道数上限 64（超了关最久没用的），空闲 TTL 30 分钟。
 
-### 2.4 回放窗口（`src/agent/frame-buffer.ts`）
+### 2.4 回放窗口（`src/core/session/frame-buffer.ts`）
 
 - 字节上限默认 **16 MB**；超限时**优先丢「可重建」的帧**（`text_delta` —— 文本增量可以从快照重建），
   **保留结构帧**（`tool_call` / `tool_result` / `agent_settled` —— 这些是「发生了什么」的事实，丢了就真丢了）
@@ -191,7 +191,7 @@ pi: tool_execution_start
          └─▶ src/plugins/pm/tools/create-task.ts  参数校验 / 拼装
                └─▶ src/plugins/pm/adapter/datasource.ts  鉴权透传 / 字段映射 / 错误归一 / 分页语义 / 幂等
                      └─▶ src/plugins/pm/adapter/aadmin/client.ts    POST 到 AiAdmin（事实源）
-                     └─▶ src/audit.ts            写前快照 + 一条 ai_audit_log
+                     └─▶ src/core/audit/audit.ts 写前快照 + 一条 ai_audit_log
                            └─▶ SSE: tool_result {status, summary, details}
                                  └─▶ 前端 CommandCard 由「执行中」变「已执行 / 失败」
 ```
@@ -212,7 +212,7 @@ agent_start → turn_start → message_start → message_update* → message_end
             → turn_end → agent_end → agent_settled
 ```
 
-`src/agent/event-mapper.ts` 收敛成 7 种（`src/agent/events.ts`）：
+`src/core/session/event-mapper.ts` 收敛成 7 种（`src/core/session/events.ts`）：
 
 | pi 事件 | SSE 事件 | 载荷 | 说明 |
 | ------- | -------- | ---- | ---- |
@@ -497,7 +497,7 @@ src/pages/ai/workspace/    ← 全宽页
 | 命令卡片重建后消失 | 快照里没有工具调用历史 | `mergeCommandSources()` |
 | 请求打到 `/api/v1/ai-api/...` | `baseURL` 没置空 | `client.ts` 的 `aiRequest()` |
 | 待确认列表永远是空的 | 服务端当前无破坏性命令 ⇒ 无待确认项 | `src/core/tools/index.ts` 的 `destructive` |
-| AI 服务返 500「服务内部错误：凭证已失效」 | 跨 chunk 的 `instanceof` 失效（应为 401） | 服务端 `src/http/errors.ts` 的结构化判定 |
+| AI 服务返 500「服务内部错误：凭证已失效」 | 跨 chunk 的 `instanceof` 失效（应为 401） | 服务端 `src/core/http/errors.ts` 的结构化判定 |
 
 ---
 
@@ -505,22 +505,22 @@ src/pages/ai/workspace/    ← 全宽页
 
 | 关注点 | 文件 |
 | ------ | ---- |
-| pi 会话构造 | `backend/ai/src/agent/pi-session.ts` |
-| **历史 → pi entries（上下文还原）** | `backend/ai/src/agent/session-entries.ts` |
-| 命令执行 / 去重 / 状态读取 | `backend/ai/src/agent/runtime.ts` |
-| 事件收敛 | `backend/ai/src/agent/event-mapper.ts` |
-| 事件定义（7 种） | `backend/ai/src/agent/events.ts` |
-| 回放窗口（16 MB） | `backend/ai/src/agent/frame-buffer.ts` |
-| 会话通道 / token / pi 会话生命周期 | `backend/ai/src/agent/session-registry.ts` |
-| 消息落库 | `backend/ai/src/agent/store.ts` |
-| SSE 帧写出 / 心跳 | `backend/ai/src/http/sse.ts` |
-| 事件流端点（回放 + 增量 + 去重） | `backend/ai/src/routes/events.ts` |
+| pi 会话构造 | `backend/ai/src/core/session/pi-session.ts` |
+| **历史 → pi entries（上下文还原）** | `backend/ai/src/core/session/session-entries.ts` |
+| 命令执行 / 去重 / 状态读取 | `backend/ai/src/core/session/runtime.ts` |
+| 事件收敛 | `backend/ai/src/core/session/event-mapper.ts` |
+| 事件定义（7 种） | `backend/ai/src/core/session/events.ts` |
+| 回放窗口（16 MB） | `backend/ai/src/core/session/frame-buffer.ts` |
+| 会话通道 / token / pi 会话生命周期 | `backend/ai/src/core/session/session-registry.ts` |
+| 消息落库 | `backend/ai/src/core/store/store.ts` |
+| SSE 帧写出 / 心跳 | `backend/ai/src/core/http/sse.ts` |
+| 事件流端点（回放 + 增量 + 去重） | `backend/ai/src/core/routes/events.ts` |
 | 命令目录 | `backend/ai/src/plugins/pm/index.ts`（**业务命令归插件**；内核机制在 `src/core/tools/index.ts`） |
-| **MCP 服务器（工具来源）** | `backend/ai/src/agent/mcp.ts` |
-| **技能（提示词）** | `backend/ai/.pi/skills/` · `backend/ai/src/agent/skills.ts` |
-| **待确认闸门（改数据要人点头）** | `backend/ai/src/agent/gate.ts` · `backend/ai/src/routes/pending.ts` |
+| **MCP 服务器（工具来源）** | `backend/ai/src/core/mcp/mcp.ts` |
+| **技能（提示词）** | `backend/ai/.pi/skills/` · `backend/ai/src/core/skills/skills.ts` |
+| **待确认闸门（改数据要人点头）** | `backend/ai/src/core/gate/gate.ts` · `backend/ai/src/core/routes/pending.ts` |
 | 适配层（鉴权 / 映射 / 错误归一 / 幂等） | `backend/ai/src/plugins/pm/adapter/datasource.ts` |
-| 审计写入 | `backend/ai/src/audit.ts` |
+| 审计写入 | `backend/ai/src/core/audit/audit.ts` |
 | 前端 REST 客户端 | `frontend/src/services/api/ai/client.ts` |
 | 前端 SSE 客户端 | `frontend/src/services/api/ai/sse.ts` |
 | 前端流式状态机 | `frontend/src/components/ai-workspace/useAgentStream.ts` |

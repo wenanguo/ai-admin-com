@@ -17,7 +17,7 @@
 
 import type { CurrentUser, CurrentUserResolver } from "../../../../core/session/identity.ts";
 import type { AadminClient } from "./client.ts";
-import { AdapterErrorException } from "./errors.ts";
+import { AdapterErrorException } from "../../../../core/errors.ts";
 
 /** 当前用户信息的路径（AiAdmin 系统管理模块）。 */
 export const CURRENT_USER_PATH = "/system/user/current/info";

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AadminClient } from "./aadmin/client.ts";
-import { AdapterErrorException } from "./aadmin/errors.ts";
+import { AdapterErrorException } from "../../../core/errors.ts";
 import { AadminDataSource, clearProjectIdCache } from "./datasource.ts";
 import type { EnumWarning } from "./enums.ts";
 

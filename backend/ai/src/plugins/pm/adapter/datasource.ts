@@ -13,7 +13,7 @@
 
 import { createHash } from "node:crypto";
 import type { AadminClient } from "./aadmin/client.ts";
-import { AdapterErrorException, isAdapterErrorException } from "./aadmin/errors.ts";
+import { AdapterErrorException, isAdapterErrorException } from "../../../core/errors.ts";
 import {
 	PM_PATHS,
 	type AadminPageResult,

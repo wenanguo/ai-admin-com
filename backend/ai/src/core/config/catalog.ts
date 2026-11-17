@@ -7,7 +7,7 @@
  * ⚠️ 非法配置会在**启动时**就报错（见 `loader.ts`）⇒ 这里读到的都是合法的。
  */
 
-import { env } from "../../env.ts";
+import { env } from "../env/env.ts";
 import { loadAgentConfigs } from "./loader.ts";
 import type { AgentConfig, AgentSummary } from "./types.ts";
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { AadminClient } from "./client.ts";
-import { AdapterErrorException, isRetryable } from "./errors.ts";
+import { AdapterErrorException, isRetryable } from "../../../../core/errors.ts";
 import { PM_PATHS } from "./types.ts";
 
 /**

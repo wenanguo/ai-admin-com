@@ -71,10 +71,10 @@ ai-admin-com/
 
 | 位置 | 内容 |
 | ---- | ---- |
-| `backend/ai/src/agent/` | ★ 智能体内核：`pi-session.ts` · `runtime.ts` · `gate.ts`（改数据要人点头）· `mcp.ts` · `skills.ts` · `event-mapper.ts` · `frame-buffer.ts` |
+| `backend/ai/src/core/` | ★ **内核**（只懂通用概念；**不 import 插件** ⇒ `scripts/check-core-purity.cjs` 有检查）：`session/`（会话与命令）· `gate/`（改数据要人点头）· `mcp/` · `skills/` · `context/`（讨论上下文的通用机制）· `plugins.ts`（插件契约 + 注册表） |
 | `backend/ai/src/core/` | ★ **内核**（通用概念：命令机制 / 插件契约 / 智能体配置 / 身份契约）—— **不 import 插件** |
 | `backend/ai/src/plugins/pm/` | ★ **PM 业务插件**（`adapter/` 调 AiAdmin 的适配层：鉴权透传 / 字段映射 / 错误归一；`tools/` 命令目录） |
-| `backend/ai/src/routes/` | HTTP 层（`agent.ts` / `events.ts` SSE / `pending.ts` / `audit.ts` / `contract.ts`） |
+| `backend/ai/src/core/routes/` | HTTP 层（`agent.ts` / `events.ts` SSE / `pending.ts` / `audit.ts` / `contract.ts`） |
 | `backend/ai/.pi/skills/` | ★ **技能**（`create-task` / `list-tasks` / `update-task`）—— 业务能力 = 加一个 markdown |
 | `backend/ai/.pi/prompts/` | AI 服务自己的 pi 提示词 |
 | `backend/ai/prisma/` | `ai_*` 元数据表与迁移（⚠️ 与 AiAdmin 业务表**同库**） |

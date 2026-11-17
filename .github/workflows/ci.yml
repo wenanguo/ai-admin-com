@@ -28,6 +28,28 @@ jobs:
           node-version: 22
       - run: node --test "scripts/agent/*.test.cjs"
 
+  # AI 服务（backend/ai）—— 单测 + **内核纯净度**。
+  # ⚠️ 之前后端的 447 条单测**在 CI 里根本没跑**（只有容器验收）⇒ 这里补上。
+  # ⚠️ 内核纯净度 = `core/**` 不许 import `plugins/**`（依赖方向只能是 插件 → 内核）。
+  ai-service:
+    name: AI 服务（单测 + 内核纯净度）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend/ai
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/ai/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm test
+      - run: node ../../scripts/check-core-purity.cjs
+
   lint:
     runs-on: ubuntu-latest
     steps:

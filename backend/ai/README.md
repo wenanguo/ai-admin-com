@@ -25,11 +25,11 @@ npm start                 # node --env-file=.env dist/main.js
 ```
 
 > **为什么不用 Next.js**：本服务**不渲染任何页面**，只有 10 个 HTTP 端点。
-> agent 内核（`src/agent/**`）对框架零依赖 ⇒ Next 当年只是一层路由壳，
+> agent 内核（`src/core/**`）对框架零依赖 ⇒ Next 当年只是一层路由壳，
 > 却带来了打包器、`serverExternalPackages`、全局单例热重载一堆包袱。
 > 2026-11-11 起 HTTP 层换成 **Express 5**，产物是 `tsc` 编译的 **ESM**
 > （pi SDK 是 ESM-only，CommonJS 产物 `require` 不了它）。
-> 对外行为（路径、状态码、信封、CORS、SSE 帧）由 `src/routes/contract.ts`
+> 对外行为（路径、状态码、信封、CORS、SSE 帧）由 `src/core/routes/contract.ts`
 > 的**契约表**锁住，迁移前后跑的是同一张表。
 
 ## 环境变量
@@ -44,7 +44,7 @@ npm start                 # node --env-file=.env dist/main.js
 | `ALLOWED_ORIGINS` | 允许跨域的前端源，逗号分隔（回具体的源，不用 `*`） | 是 |
 
 - `.env` **不入库**（里面有模型 key 与数据库口令），仓库里只有 `.env.example`。
-- `src/env.ts` 用 zod 校验，**缺哪个变量就在启动时报哪个**（不等到第一个请求打进来才炸）。
+- `src/core/env/env.ts` 用 zod 校验，**缺哪个变量就在启动时报哪个**（不等到第一个请求打进来才炸）。
 - 校验发生在 **import 时**（`env.ts` 模块级就执行 `parseEnv`）⇒
   **启动服务必须有 `.env`**（`npm run dev` / `npm start`）。
   ℹ️ `npm run build` 只是 `tsc` 类型检查，**不执行代码** ⇒ 构建机上不需要 `.env`。
@@ -64,7 +64,7 @@ npm start                 # node --env-file=.env dist/main.js
 
 测试用的环境变量是**假值**，写在 `vitest.config.ts` 的 `test.env` 里；真值只在 `.env`。
 
-> ⚠️ **改了 `src/agent/` 下的代码要重启 dev 服务器**：`src/agent/runtime.ts` 把运行时挂在
+> ⚠️ **改了 `src/core/` 下的代码要重启 dev 服务器**：`src/core/session/runtime.ts` 把运行时挂在
 > `globalThis` 上（dev 热重载不重复建会话），热重载后进程里**还是旧的运行时实例**，
 > 新代码不生效。生产环境每次部署都是新进程，不受这条影响。
 
@@ -100,7 +100,7 @@ docker run -d --name ai-admin-ai -p 3100:3100 \
 
 ### 健康检查 `GET /health`
 
-- **不要 token**（编排系统没有用户 token）⇒ 不进 `src/routes/contract.ts`（那张表锁的是业务端点）。
+- **不要 token**（编排系统没有用户 token）⇒ 不进 `src/core/routes/contract.ts`（那张表锁的是业务端点）。
 - **恒回 200**：依赖（数据库 / AiAdmin / 模型）挂了也 200 ⇒ 编排系统不会把**还活着的容器**杀掉重启。
   依赖状态在 `checks` 里，`status` 汇总成 `ok` / `degraded`。
 
@@ -277,7 +277,7 @@ proxy: {
 ⚠️ **表名不变，只是「哪个库」可变** ⇒ 迁移脚本与表结构照旧。
 
 ⚠️ Prisma 的 datasource 只能写死**一个**环境变量名（`env("DATABASE_URL")`）⇒
-「换库只改配置」这件事由 `src/db.ts` 在**建客户端之前**对齐
+「换库只改配置」这件事由 `src/core/store/db.ts` 在**建客户端之前**对齐
 （`AI_DATABASE_URL` 有值 ⇒ 把 `process.env.DATABASE_URL` 指向它）。
 
 ⚠️ 部署时：把 `AI_DATABASE_URL` 传进容器（compose 已透传）⇒ **空值当没配**。
@@ -381,7 +381,7 @@ pi 的 SDK 文档说得很直白：
 （进程重启就没了；通道空闲 30 分钟也会被回收）⇒
 
 ⇒ 建 pi 会话时，**把 `ai_message` 里的历史还原成 pi 的 entries**，
-交给 `SessionManager.inMemory(cwd, { id }, entries)`（见 `src/agent/session-entries.ts`）。
+交给 `SessionManager.inMemory(cwd, { id }, entries)`（见 `src/core/session/session-entries.ts`）。
 
 - 不还原的话：**前端看得见历史，模型看不见**（用户会觉得「AI 明明看得到，却像第一次见我」）；
 - ⚠️ **当前这一句要排除在历史之外** —— 它随后会被 `session.prompt(message)` 加进
@@ -395,14 +395,21 @@ pi 的 SDK 文档说得很直白：
 ```
 prisma/schema.prisma              5 张 ai_* 元数据表（单租户，无 tenant_id）
 prisma/migrations/                迁移历史（0_init_ai_tables = 基线）
-src/env.ts                        环境变量校验（zod；缺变量启动即失败）
-src/db.ts                         PrismaClient 单例（globalThis 缓存，dev 热重载不漏连接）
-src/types/api.ts                  AiAdmin 响应信封（ApiResponse / SUCCESS_CODES / isSuccess）
-src/core/                         ★ **内核**（只懂通用概念；**不 import 插件**）
+src/core/                         ★ **内核**（只懂通用概念；**不 import 插件** ⇒ CI 有检查）
   ├─ config/                      智能体配置（装载 / 校验 / 注册表）
   ├─ plugins.ts                   ★ 插件契约与注册表（内核与插件之间唯一的接头）
   ├─ context/anchor.ts            讨论上下文的**通用机制**（锚点 + 按白名单收窄写操作）
-  ├─ session/identity.ts          当前用户（**形状 + 契约 + 缓存**；「怎么问」归插件）
+  ├─ session/                     会话（runtime 会话与命令 / session-registry 通道与订阅 / startup-lock 同会话串行 / event-mapper 事件映射 / frame-buffer 回放窗口 / pi-session SDK 接线 / **session-entries 历史→pi entries** / identity 当前用户）
+  ├─ skills/                      技能（skills 提示词段 / skill-tools 装载工具 / skill-catalog 清单）
+  ├─ mcp/                         MCP（mcp 服务器配置 / mcp.fake 假传输层）
+  ├─ gate/                        闸门（gate 改数据要人点头 / pending-waiters 等答复 / pending-query 读侧 / pending-write 写侧）
+  ├─ audit/                       审计（audit 写侧 / audit-redact 脱敏 / audit-query 读侧）
+  ├─ store/                       存取（store 落库 / db PrismaClient 单例）
+  ├─ http/                        HTTP 通用件（cors / respond 信封 / auth 取 token / sse 帧格式 / errors 错误映射 / body 读 JSON）
+  ├─ routes/                      ★ Express 路由（agent 会话与命令 / pending 待确认 / audit 审计 / events SSE / support 小工具 / contract **契约表** / **health 健康检查**）
+  ├─ env/                         环境变量（env 校验（zod；缺变量启动即失败）/ load-env 读 .env）
+  ├─ types/api.ts                 AiAdmin 响应信封（ApiResponse / SUCCESS_CODES / isSuccess）
+  ├─ errors.ts                    上游错误的**归一形状**（内核认它 ⇒ 插件抛它）
   └─ tools/                       命令工具的**机制**（目录从插件来 / 破坏性判定）
 src/plugins/pm/                   ★ **PM 业务插件**（任务 / 项目 / 里程碑 ⇒ 业务概念都归它）
   ├─ adapter/                     适配层（enums 枚举归一 / capabilities 能力位 / keys 统一 key / model 统一模型 / datasource 读写）
@@ -411,13 +418,6 @@ src/plugins/pm/                   ★ **PM 业务插件**（任务 / 项目 / �
   ├─ tools/                       命令目录（create_task 一个命令 + 闸门形状）
   └─ index.ts                     ★ 插件装配（命令目录 + 身份查询 + 讨论上下文 + 告警去处）
 src/plugins.ts                    ★ **入口侧唯一 import 插件的地方**（注册插件进进程级注册表）
-src/agent/                        agent 运行时（runtime 会话与命令 / session-registry 通道与订阅 / startup-lock 同会话串行 / event-mapper 事件映射 / frame-buffer 回放窗口 / pi-session SDK 接线 / **session-entries 历史→pi entries** / prompt 系统提示词 / store 落库）
-src/audit.ts                      审计的**写侧**（每次 AI 写入留一条 ai_audit_log）
-src/audit-redact.ts               审计参数脱敏（**写侧与读侧共用同一份**）
-src/audit-query.ts                审计的**读侧**（只看自己的行 + 筛选 + 脱敏 + 分页）
-src/pending-query.ts              待确认的**读侧**（只看自己的行 + status 缺省 PENDING + preview 原样透出）
-src/http/                         HTTP 通用件（cors / respond 信封 / auth 取 token / sse 帧格式 / errors 错误映射 / body 读 JSON）
-src/routes/                       ★ Express 路由（agent 会话与命令 / pending 待确认 / audit 审计 / events SSE / support 小工具 / contract **契约表** / **health 健康检查**）
 src/server.ts                     ★ Express app 装配（createApp / start / CORS 中间件 / JSON 404 / 错误中间件）
 src/main.ts                       ★ 进程入口（node dist/main.js 就是它）
 Dockerfile                        ★ 多阶段镜像（issue #39；构建上下文 = 仓根 ⇒ `docker build -f backend/ai/Dockerfile .`）
