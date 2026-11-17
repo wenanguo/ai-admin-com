@@ -31,6 +31,31 @@
   node scripts/e2e/ai-agent-picker.cjs            # 真跑一遍（要前端 + AI 服务 + token）
 ```
 
+## 第二棒的复核与修补（2026-11-17 晚）
+
+> 另一个会话（同一 worktree）接手复核 ⇒ 找到**两个真问题**并修掉。
+
+### ① e2e 红了：旧断言只认 `/api/agent/`
+
+- **现象**：CI 的 `e2e` job 挂 ⇒ `frontend/e2e/ai-workspace.spec.ts:434`
+  断言「AI 工作台的每个请求都走 `/api/agent/`」⇒ 新的**智能体清单**请求
+  `GET /api/agents`（**另一个前缀**）⇒ 断言不匹配。
+- **修**：断言放宽成 `/(\/ai-api)?\/api\/agents?(\/|$)/`（会话那条线 + 清单那条线都放行，
+  但**不是** AiAdmin 的 `/api/v1/`）；顺手把三个 AI 相关的 e2e **都 mock 了 `/api/agents`**
+  （不 mock ⇒ 清单读不到 ⇒ 选择器降级成「读不到 + 重试」那一行 ⇒ 宽版页会被顶出滚动条）。
+
+### ② 选择**不落盘**了（原来落 `localStorage`）
+
+- **问题**：原来把选中的智能体 id 存进 `localStorage` ⇒ 配置里把那个智能体**删掉**之后，
+  存储里留下一个**用不了**的 id ⇒ 之后每个新会话都被服务端拒（“智能体不存在”），
+  而界面上那个选择**已经不在清单里**了 ⇒ **用户没法自救**（选不回来）。
+- **修**：选择**只记在内存里**（刷新页面就忘）⇒ 不可能有“失效的选择”。
+- **代价**：刷新页面后新建会话用回**默认**智能体（当前会话仍用它自己的智能体 ⇒ 不受影响）。
+
+| 决定 | 为什么 | 错了的代价 |
+| ---- | ------ | ---------- |
+| **选择不落 `localStorage`** | 落盘 = 留一个可能已失效的选择 ⇒ 之后每个新会话都失败且用户没法自救 | 用户被卡死在一个自己解不开的错误里 |
+
 ## 决策记录（★ 最值钱的部分）
 
 | 决定 | 为什么 | 错了的代价 |
@@ -71,3 +96,8 @@ node scripts/e2e/ai-agent-picker.cjs
   「400px 容器 + 超长名字 ⇒ 不横向溢出」的断言。
 - ⚠️ 后端**一行没改**：`POST /api/agent/conversations` 本来就收 `agentId`，
   `GET /api/agents` 本来就有 ⇒ 本条只补界面那一层。
+- ⚠️ **worktree 里 `frontend/node_modules` 若是 MSYS 符号链接**
+  （`node_modules -> /d/project/...`）⇒ utoopack 构建会报
+  “Symlink frontend/node_modules could not be resolved: the symlink target leaves the filesystem root”
+  ⇒ **换成 junction**（`cmd /c mklink /J node_modules D:\project\ai-admin-com\frontend\node_modules`）就好了。
+  ⚠️ 换完**还是**报同样的错 ⇒ 那是 utoopack 对 junction 的解析问题 ⇒ 只能在主 checkout 里构建。
