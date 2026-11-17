@@ -302,9 +302,33 @@ describe('AI 工作台的会话', () => {
     });
     // ⚠️ **建会话时必须带上 agentId**（服务端据此绑定智能体、落库）
     expect(mocks.createAiConversation).toHaveBeenLastCalledWith(undefined, 'qa');
-    // 挑的那个记下来了 ⇒ 刷新后新建会话还用它
+    // 挑的那个**记在内存里**（下一次新建会话还用它）
     expect(result.current.agentId).toBe('qa');
-    expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).toContain('"qa"');
+    // ⚠️ **不落盘**：落盘的话，配置里删掉那个智能体后，
+    //    存储里就留下一个**用不了**的选择 ⇒ 之后每个新会话都失败且用户没法自救。
+    expect(
+      JSON.parse(localStorage.getItem(WORKSPACE_STORAGE_KEY) ?? '{}'),
+    ).not.toHaveProperty('agentId');
+  });
+
+  it('存储里留着一个**已经失效**的智能体 ⇒ 不用它建会话', async () => {
+    // ⚠️ **护甲**：老版本把选择存进了 localStorage ⇒ 那个智能体后来被删了
+    //    ⇒ 存储里留下一个**用不了**的 id。
+    //    若照抄它去建会话 ⇒ 服务端报「智能体不存在」⇒ 每个新会话都失败。
+    localStorage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({ agentId: 'gone' }),
+    );
+
+    const { result } = await renderHook(() => useWorkspace());
+
+    await vi.waitFor(() => {
+      expect(result.current.conversationId).toBe('c-new');
+    });
+    expect(mocks.createAiConversation).toHaveBeenCalledWith(
+      undefined,
+      undefined,
+    );
   });
 
   it('打开一个旧会话 ⇒ 不新建会话（它仍用它自己的智能体）', async () => {

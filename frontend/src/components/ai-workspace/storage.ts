@@ -33,14 +33,6 @@ export interface WorkspaceStorage {
   /** 会话 id。 */
   conversationId?: string;
   /**
-   * **新会话**用哪个智能体（`GET /api/agents` 里的 id）。
-   *
-   * ⚠️ 这只是**新建会话时的选择** ⇒ 已经建好的会话不受它影响
-   *    （会话自己的智能体在 `ai_conversation.agent_id` 里）。
-   * ⚠️ 没有这个值 ⇒ 建会话时**不传** `agentId` ⇒ 服务端用默认智能体。
-   */
-  agentId?: string;
-  /**
    * 窄版面板的**几何**（用户拖出来的位置与宽度）。
    *
    * ⚠️ **可选**：没有这个字段 ⇒ 面板用默认位置（右边 400px、顶到上下沿）。

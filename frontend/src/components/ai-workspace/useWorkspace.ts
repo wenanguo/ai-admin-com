@@ -110,7 +110,9 @@ export interface Workspace {
    *    （落库到 `ai_conversation.agent_id`）⇒ 已经建好的会话改不了
    *    （要改 ⇒ 新建一个会话，那才是「用这个智能体重新开始」）。
    *
-   * ⚠️ 这个选择会**记下来**（`localStorage`）⇒ 下次新建会话时还用它。
+   * ⚠️ 这个选择**只记在内存里**（**不落 `localStorage`**）⇒ 刷新后回到
+   *    「没挑过」⇒ 落盘的话，配置里把那个智能体删掉之后，存储里就留下一个
+   *    **用不了**的选择（界面又选不回来）⇒ 之后每个新会话都失败。
    */
   selectAgent: (agentId: string) => Promise<void>;
   /**
@@ -200,13 +202,14 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
   /**
    * **新会话用哪个智能体**（工作台上的下拉框挑的）。
    *
-   * ⚠️ 存在 `localStorage` 里 ⇒ 刷新页面后还记得上次挑的那个。
+   * ⚠️ **只记在内存里**（**不落 `localStorage`**）——
+   *    落盘的话，配置里把那个智能体删掉之后，存储里就留下一个
+   *    **用不了**的选择 ⇒ 之后每个新会话都会失败（服务端报「智能体不存在」），
+   *    而用户**没法自救**（界面上那个选择已经不在清单里了，选不回来）。
    * ⚠️ `undefined` ⇒ **不传** `agentId` ⇒ 服务端用默认智能体
    *    （前端不替服务端猜「哪个是默认」）。
    */
-  const [agentId, setAgentId] = useState<string | undefined>(() =>
-    readWorkspaceStorage(storageKey).agentId,
-  );
+  const [agentId, setAgentId] = useState<string | undefined>(undefined);
   /** 当前选中的智能体 id 的副本：建会话是异步的，要读**最新**的值。 */
   const agentIdRef = useRef<string | undefined>(agentId);
   /** 当前会话 id 的副本：发送是异步的，要读**最新**的值。 */
@@ -413,11 +416,11 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): Workspace {
     async (next: string): Promise<void> => {
       agentIdRef.current = next;
       setAgentId(next);
-      // ⚠️ 记下来 ⇒ 刷新页面后新建会话还用它
-      writeWorkspaceStorage({ agentId: next }, storageKey);
+      // ⚠️ **不落盘**（理由见 `agentId` 那段注释）：
+      //    落盘 = 留一个可能已经失效的选择 ⇒ 之后每个新会话都失败且没法自救。
       await startConversation(next);
     },
-    [startConversation, storageKey],
+    [startConversation],
   );
 
   /** 切到另一个已有的会话。 */
