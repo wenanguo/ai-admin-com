@@ -54,11 +54,17 @@ jobs:
           # ⚠️ **PM 的流程维护类 PR 没有对应的 issue**（它改的是流程本身，不是某个 issue 的功能）
           #    ⇒ 允许显式写一行「关联 issue：无」来通过检查。
           #    要求**行首独立成行**（与高风险那条一个道理 ⇒ 不许随便提一句就骗过检查）。
+          # ⚠️ **分阶段的大 issue**（如 #82 拆成「设计 → 搬代码 → 拆 context → 接线 → 发布」五个 PR）
+          #    ⇒ 前面的阶段**不能**关闭那个 issue（关早了 ⇒ 后面几阶段无家可归）
+          #    ⇒ 允许显式写一行「关联 issue：#82（阶段一，不关闭）」通过检查。
+          #    这条**比「关联 issue：无」更严**：必须写出**真的 issue 号** + 必须写明「不关闭」。
           if ! printf '%s' "$BODY" | grep -qiE "closes #[0-9]+|fixes #[0-9]+"; then
             if printf '%s' "$BODY" | grep -qE '^关联 issue：无'; then
               echo "::notice::本 PR 声明「关联 issue：无」（PM 流程维护类，豁免）"
+            elif printf '%s' "$BODY" | grep -qE '^关联 issue：#[0-9]+.*不关闭'; then
+              echo "::notice::本 PR 是**分阶段**的（写明了 issue，但本阶段不关闭它）"
             else
-              missing="${missing}关联 issue（正文里写 Closes #<issue 号>；若是 PM 流程维护类，显式写一行「关联 issue：无」）\n"
+              missing="${missing}关联 issue（正文里写 Closes #<issue 号>；若是 PM 流程维护类，显式写一行「关联 issue：无」；若是分阶段 PR，显式写一行「关联 issue：#<号>（阶段X，不关闭）」）\n"
             fi
           fi
 
