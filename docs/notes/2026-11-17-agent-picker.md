@@ -4,7 +4,7 @@
 
 ## 目标
 
-- **关联**：issue #101 · PR（待填）
+- **关联**：issue #101 · PR #103
 - **一句话**：AI 工作台（窄版 + 宽版）加一个**智能体下拉框**，选项来自
   `GET /api/agents`；**挑中 ⇒ 另起一个会话**并把 `agentId` 传给后端
   （落库到 `ai_conversation.agent_id`）。
@@ -17,11 +17,10 @@
 
 | 提交 | 做了什么 |
 | ---- | -------- |
-| `feat/frontend` | 新增 `AgentSelector.tsx`（选择器）+ `useAgents.ts`（清单三态）|
-| `feat/frontend` | `useWorkspace` 加 `agentId` / `selectAgent`（挑智能体 ⇒ 新建会话）|
-| `feat/frontend` | `client.ts` 的 `createAiConversation(title?, agentId?)` 会带上 `agentId` |
-| `feat/frontend` | 窄版头部加一行选择器；宽版头部按钮区加同一个选择器 |
-| `test` | 单测（选择器三态 + 切换带对 agentId + 布局不撑破）+ e2e 脚本 |
+| `fafe121` | 新增 `AgentSelector.tsx`（选择器）+ `useAgents.ts`（清单三态）；`useWorkspace` 加 `agentId` / `selectAgent`；`client.ts` 的 `createAiConversation(title?, agentId?)` 会带上 `agentId`；窄版头部加一行选择器，宽版头部按钮区摆**同一个**实例 |
+| `ed4023b` | 单测（选择器三态 + 切换带对 agentId + 旧会话不被改动 + 窄版 400px 不撑破）|
+| `0e1fae0` | e2e 脚本 `scripts/e2e/ai-agent-picker.cjs` + README |
+| `d022dd3` | 本笔记 |
 
 **下一步（具体到文件与命令）**：
 
