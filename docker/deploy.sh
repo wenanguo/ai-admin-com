@@ -127,7 +127,13 @@ check_deps() {
 # ─────────────────────────── 环境变量 ───────────────────────────
 # AI 服务启动时强校验的几个变量（缺一个 ⇒ 容器起不来）。
 # ⚠️ 只检查**有没有值**，**不打印值**。
-REQUIRED_ENV_VARS=(DATABASE_URL MINIMAX_CN_API_KEY AIADMIN_BASE_URL ALLOWED_ORIGINS)
+REQUIRED_ENV_VARS=(MINIMAX_CN_API_KEY AIADMIN_BASE_URL ALLOWED_ORIGINS)
+
+# ⚠️ **库连接串：两个至少要有一个**（不强制某一个 ⇒ 换库只改配置）：
+#   · DATABASE_URL    = AiAdmin 的共享库（ai_* 表默认住这儿）
+#   · AI_DATABASE_URL = 本服务**自己**的库（ai_* 表住这儿）
+# 两个都没填 ⇒ 容器起不来（服务启动时也会明确报错）。
+DB_URL_VARS=(DATABASE_URL AI_DATABASE_URL)
 
 load_env() {
   if [ ! -f "${ENV_FILE}" ]; then
@@ -146,6 +152,12 @@ load_env() {
   for v in "${REQUIRED_ENV_VARS[@]}"; do
     [ -n "${!v:-}" ] || missing+=("${v}")
   done
+  # ⚠️ 库连接串：DATABASE_URL 与 AI_DATABASE_URL **至少要有一个**
+  local db_ok=0
+  for v in "${DB_URL_VARS[@]}"; do
+    [ -n "${!v:-}" ] && db_ok=1
+  done
+  [ "${db_ok}" -eq 1 ] || missing+=("${DB_URL_VARS[*]}")
   if [ "${#missing[@]}" -gt 0 ]; then
     err "${ENV_FILE} 里这些变量还没填：${missing[*]}"
     echo "        · 只填值，不要把变量名以外的日志打出来（脚本不会打印值）" >&2

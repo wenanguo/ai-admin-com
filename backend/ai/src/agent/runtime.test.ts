@@ -74,6 +74,7 @@ function fakeConversation(): ConversationRecord {
 		conversationId: "conv-1",
 		userId: "2",
 		title: "冒烟",
+		agentId: null,
 		createdAt: new Date(),
 		updatedAt: new Date(),
 	};
@@ -447,25 +448,31 @@ describe("运行时 · 排队语义（P1）", () => {
 function makeAbortableRuntime(): {
 	runtime: AgentRuntime;
 	abortedCount: () => number;
+	/** 会话建好了吗（建会话要先读一次库拿 agent_id ⇒ 慢一拍）。 */
+	sessionCount: () => number;
 } {
 	const { store } = fakeStore(fakeConversation());
 	const audit = fakeAudit();
 	let aborted = 0;
+	let sessions = 0;
 
 	const runtime = new AgentRuntime({
 		store,
 		audit: audit.writer,
-		createSession: async (options: PiSessionOptions) => ({
-			prompt: async (): Promise<void> => {
-				void options;
-			},
-			subscribe: () => () => {},
-			dispose: () => {},
-			isStreaming: true,
-			abort: async (): Promise<void> => {
-				aborted += 1;
-			},
-		}),
+		createSession: async (options: PiSessionOptions) => {
+			sessions += 1;
+			return {
+				prompt: async (): Promise<void> => {
+					void options;
+				},
+				subscribe: () => () => {},
+				dispose: () => {},
+				isStreaming: true,
+				abort: async (): Promise<void> => {
+					aborted += 1;
+				},
+			};
+		},
 		createDataSource: () => ({
 			createTask: async (input: CreateTaskInput) => {
 				void input;
@@ -475,15 +482,16 @@ function makeAbortableRuntime(): {
 		resolveUser: async () => ({ id: 2 }),
 	});
 
-	return { runtime, abortedCount: () => aborted };
+	return { runtime, abortedCount: () => aborted, sessionCount: () => sessions };
 }
 
 describe("运行时 · 中止（P2）", () => {
 	it("abort 会叫 pi 的 session.abort()", async () => {
-		const { runtime, abortedCount } = makeAbortableRuntime();
+		const { runtime, abortedCount, sessionCount } = makeAbortableRuntime();
 
 		await runtime.submitCommand(command("cmd-1"));
-		await waitFor(() => abortedCount() >= 0);
+		// ⚠️ **等会话真的建好**（建会话要先读一次库拿 agent_id ⇒ 慢一拍）
+		await waitFor(() => sessionCount() >= 1);
 		await runtime.abort("conv-1", "2");
 
 		expect(abortedCount()).toBe(1);

@@ -29,8 +29,44 @@ describe("parseEnv", () => {
 		expect(message).toContain("MINIMAX_CN_API_KEY");
 		expect(message).toContain("AI_MODEL");
 		expect(message).toContain("AIADMIN_BASE_URL");
-		expect(message).toContain("DATABASE_URL");
 		expect(message).toContain("ALLOWED_ORIGINS");
+	});
+
+	it("⚠️ 两个库连接串都没配 ⇒ 启动即失败（点名 DATABASE_URL）", () => {
+		const message = catchMessage(() =>
+			parseEnv({ ...FULL, DATABASE_URL: undefined }),
+		);
+		expect(message).toContain("DATABASE_URL");
+		expect(message).toContain("AI_DATABASE_URL");
+	});
+
+	it("本服务自己的库（AI_DATABASE_URL）优先", () => {
+		const parsed = parseEnv({
+			...FULL,
+			AI_DATABASE_URL: "mysql://test@127.0.0.1:3306/ai_own",
+		});
+		expect(parsed.databaseUrl).toBe("mysql://test@127.0.0.1:3306/ai_own");
+		// ⚠️ 共享库的连接串**仍然留着**（别的代码可能要读它）
+		expect(parsed.DATABASE_URL).toBe("mysql://test@127.0.0.1:3306/aipm");
+	});
+
+	it("没配自己的库 ⇒ 用共享库的（今天的行为不变）", () => {
+		expect(parseEnv(FULL).databaseUrl).toBe("mysql://test@127.0.0.1:3306/aipm");
+	});
+
+	it("空串 ⇒ 当没配（compose 未设置时就是这个）", () => {
+		const parsed = parseEnv({ ...FULL, AI_DATABASE_URL: "  " });
+		expect(parsed.AI_DATABASE_URL).toBeUndefined();
+		expect(parsed.databaseUrl).toBe("mysql://test@127.0.0.1:3306/aipm");
+	});
+
+	it("只配自己的库 ⇒ 不用 AiAdmin 的库（可复用到别的系统）", () => {
+		const parsed = parseEnv({
+			...FULL,
+			DATABASE_URL: undefined,
+			AI_DATABASE_URL: "mysql://x@db:3306/ai_own",
+		});
+		expect(parsed.databaseUrl).toBe("mysql://x@db:3306/ai_own");
 	});
 
 	it("变量齐时解析成功", () => {

@@ -22,6 +22,8 @@ model AiConversation {
   projectRef String?    @map("project_ref") @db.VarChar(128)
   channel    AiChannel  @default(WEB) @map("channel")
   title      String?    @map("title") @db.VarChar(255)
+  /// 这个会话是哪个智能体的（**可空** ⇒ 迁移前的旧会话没有这个值）。
+  agentId    String?    @map("agent_id") @db.VarChar(64)
   createdAt  DateTime   @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt  DateTime   @updatedAt @map("updated_at") @db.DateTime(3)
 
