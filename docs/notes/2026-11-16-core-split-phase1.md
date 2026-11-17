@@ -48,6 +48,7 @@
 | **运行时不再有 `createDataSource` 选项** | 它是业务依赖 ⇒ 测试改用**假插件**注入假命令 | 保留 ⇒ 运行时 options 里留着业务类型 ⇒ 内核被业务污染 |
 | **`src/http/errors.ts` 仍 import 插件的 `AdapterErrorException`**（**故意留到阶段三**） | `src/http/` 现在还不在 `core/` 下 ⇒ 阶段一不违反「core 不 import 插件」；错误类带 AiAdmin 文案 ⇒ 搬进内核要重写文案 | 现在硬搬 ⇒ 阶段一就变成「业务文案进内核」⇒ 与设计冲突 |
 | **前端一行没动** | 这次是**后端内部重构** ⇒ 前端看到的 API 与行为都不变 | 顺手改前端 ⇒ 混在一次 PR 里 ⇒ 出问题分不清是谁的锅 |
+| **顺手让 `body-check` 认「分阶段 PR」**（`关联 issue：#82（阶段X，不关闭）」） | #82 分阶段 ⇒ 前几个阶段**不能**关闭那个 issue ⇒ 而检查只认 `closes/fixes` ⇒ 阶段 PR 会被打回 ⇒ 不改这条检查，本 PR 自己就合不进去 | 写 `Closes #82` ⇒ issue 提前关闭 ⇒ 阶段二~五 无家可归 |
 
 ## 怎么验
 
@@ -87,6 +88,9 @@ curl -s localhost:3100/health
   `Symlink frontend/node_modules could not be resolved`）—— 这是**工作区（junction 软链）**的环境问题，
   同一个前端文件在主 checkout 里能跑 ⇒ **与本次改动无关**（本次没动前端）。
 - ⚠️ **容器 e2e 跑不了**（本机没有 docker）⇒ 只跑了静态断言。
+- ⚠️ **提阶段 PR 时，正文里写「关联 issue：#82（阶段X，不关闭）」** ⇒ 这样 body-check 才放行
+  （本 PR 已把那条豁免加进 `.github/workflows/pr-body-check.yml`；⚠️ **该 workflow 用的是 PR 分支里的版本**
+  ⇒ 合并后，后续阶段 PR 的分支要**带上**这个改动（或从新 main 重新拉分支）才生效）。
 
 ## 下一步（阶段二~五，具体到文件与命令）
 
