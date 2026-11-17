@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { AuditWriter } from "../../audit.ts";
+import type { AuditWriter } from "../audit/audit.ts";
 import { buildCommandTools, isDestructiveCommand } from "./index.ts";
 import type { CommandContext, CommandDefinition, CommandTool } from "./types.ts";
 

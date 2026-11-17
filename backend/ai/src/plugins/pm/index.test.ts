@@ -14,7 +14,7 @@ import { taskStatusToUnified } from "./adapter/enums.ts";
 import { createPmCommands, createPmPlugin, PM_PLUGIN_ID } from "./index.ts";
 import type { TaskCreator } from "./tools/create-task.ts";
 import type { CommandContext } from "../../core/tools/types.ts";
-import type { AuditWriter } from "../../audit.ts";
+import type { AuditWriter } from "../../core/audit/audit.ts";
 
 /** 审计去处（测试不需要真的落库）。 */
 const audit: AuditWriter = {

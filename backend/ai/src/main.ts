@@ -9,7 +9,7 @@
  *    而 `server.ts` ⇒ `env.ts` 在 import 时就要校验环境变量（见 `load-env.ts` 的说明）。
  */
 
-import "./load-env.ts";
+import "./core/env/load-env.ts";
 import { registerPlugins } from "./plugins.ts";
 import { start } from "./server.ts";
 

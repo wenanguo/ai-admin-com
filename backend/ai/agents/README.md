@@ -109,4 +109,4 @@ POST /api/agent/conversations
 | `backend/ai/src/core/config/schema.ts` | 字段形状校验（纯结构） |
 | `backend/ai/src/core/config/loader.ts` | 读目录 + 读 YAML + 校验路径是否存在 |
 | `backend/ai/src/core/config/catalog.ts` | 配置 ⇒ 清单项（能力摘要） |
-| `backend/ai/src/routes/agents.ts` | `GET /api/agents` |
+| `backend/ai/src/core/routes/agents.ts` | `GET /api/agents` |

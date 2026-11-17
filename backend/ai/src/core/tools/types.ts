@@ -19,7 +19,7 @@ import type {
 	ToolAnnotations,
 } from "@earendil-works/pi-coding-agent";
 import type { Static, TSchema } from "typebox";
-import type { AuditWriter } from "../../audit.ts";
+import type { AuditWriter } from "../audit/audit.ts";
 
 /** 一个业务命令工具。 */
 export interface CommandTool<TParams extends TSchema = TSchema, TDetails = unknown> {

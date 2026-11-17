@@ -226,8 +226,8 @@ for (const name of migrationDirs.filter((dir) => dir !== '0_init_ai_tables')) {
 }
 
 // ───────────────────────────── 健康检查路由 ─────────────────────────────
-console.log('\nbackend/ai/src/routes/health.ts（健康检查）');
-const health = read('backend/ai/src/routes/health.ts');
+console.log('\nbackend/ai/src/core/routes/health.ts（健康检查）');
+const health = read('backend/ai/src/core/routes/health.ts');
 containsAll(
   health,
   ['buildHealthReport', 'createHealthRouter', 'res.status(200)'],
@@ -243,8 +243,8 @@ check(
 );
 
 // ───────────────────────────── SSE 不缓冲 ─────────────────────────────
-console.log('\nbackend/ai/src/http/sse.ts（SSE 不缓冲）');
-const sse = read('backend/ai/src/http/sse.ts');
+console.log('\nbackend/ai/src/core/http/sse.ts（SSE 不缓冲）');
+const sse = read('backend/ai/src/core/http/sse.ts');
 containsAll(
   sse,
   ['text/event-stream', 'X-Accel-Buffering', 'no-transform'],

@@ -17,7 +17,7 @@
  * 插件 → 内核 ✓（可以）；内核 → 插件 ✗（不许）。
  */
 
-import { env } from "../../env.ts";
+import { env } from "../../core/env/env.ts";
 import type { AiPlugin } from "../../core/plugins.ts";
 import {
 	CachedCurrentUserResolver,

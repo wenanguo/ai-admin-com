@@ -12,19 +12,19 @@
  */
 
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
-import { buildCorsHeaders, isPreflightRequest, originOf } from "./http/cors.ts";
-import { toErrorEnvelope } from "./http/errors.ts";
-import { MISSING_TOKEN_MESSAGE, allowedOrigins, errorBody } from "./http/respond.ts";
-import { agentRuntime } from "./agent/runtime.ts";
+import { buildCorsHeaders, isPreflightRequest, originOf } from "./core/http/cors.ts";
+import { toErrorEnvelope } from "./core/http/errors.ts";
+import { MISSING_TOKEN_MESSAGE, allowedOrigins, errorBody } from "./core/http/respond.ts";
+import { agentRuntime } from "./core/session/runtime.ts";
 import { listAgentSummaries } from "./core/config/catalog.ts";
 import { agentsRoot, loadAgentConfigs } from "./core/config/loader.ts";
-import { agentRouter } from "./routes/agent.ts";
-import { createAgentsRouter } from "./routes/agents.ts";
-import { auditRouter } from "./routes/audit.ts";
-import { eventsRouter } from "./routes/events.ts";
-import { HEALTH_CACHE_TTL_MS, createHealthRouter } from "./routes/health.ts";
-import { probeAiAdmin, probeDatabase, probeModel } from "./routes/health-probes.ts";
-import { pendingRouter } from "./routes/pending.ts";
+import { agentRouter } from "./core/routes/agent.ts";
+import { createAgentsRouter } from "./core/routes/agents.ts";
+import { auditRouter } from "./core/routes/audit.ts";
+import { eventsRouter } from "./core/routes/events.ts";
+import { HEALTH_CACHE_TTL_MS, createHealthRouter } from "./core/routes/health.ts";
+import { probeAiAdmin, probeDatabase, probeModel } from "./core/routes/health-probes.ts";
+import { pendingRouter } from "./core/routes/pending.ts";
 
 export { MISSING_TOKEN_MESSAGE };
 

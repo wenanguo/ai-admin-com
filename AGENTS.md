@@ -79,12 +79,16 @@ husky / lint-staged / commitlint 都用 `frontend/node_modules/.bin/` 里的二�
 
 ### AI 服务（`backend/ai/`）
 
-**内核**（`src/agent/`）：`pi-session.ts`（建 pi 会话：挂 MCP 扩展 + 闸门 + 技能段）·
-`runtime.ts`（会话/命令/事件流）· `gate.ts`（改数据要人点头）· `mcp.ts`（AiAdmin MCP 服务器，带用户 JWT）·
-`skills.ts` / `skill-tools.ts`（技能提示词段 + `load_skill`）· `session-entries.ts`（历史 → pi entries）·
-`event-mapper.ts`（pi 事件 → SSE 事件）· `frame-buffer.ts`（回放窗口）
+**内核**（`src/core/`，**不 import 插件** ⇒ `node scripts/check-core-purity.cjs` 有检查）：
+`session/`（`pi-session.ts` 建 pi 会话：挂 MCP 扩展 + 闸门 + 技能段 · `runtime.ts` 会话/命令/事件流 ·
+`session-entries.ts` 历史 → pi entries · `event-mapper.ts` pi 事件 → SSE 事件 · `frame-buffer.ts` 回放窗口）·
+`gate/gate.ts`（改数据要人点头）· `mcp/mcp.ts`（AiAdmin MCP 服务器，带用户 JWT）·
+`skills/`（技能提示词段 + `load_skill`）· `context/anchor.ts`（讨论上下文的通用机制）· `plugins.ts`（插件契约 + 注册表）
 
-**HTTP**（`src/routes/`）：`agent.ts`（会话/命令/approve|reject/事件流）· `events.ts`（SSE）·
+**业务插件**（`src/plugins/pm/`）：PM 的适配层 / 命令目录 / 讨论上下文 ⇒ **业务概念都归它**；
+入口 `src/plugins.ts` 是**唯一 import 插件的地方**。
+
+**HTTP**（`src/core/routes/`）：`agent.ts`（会话/命令/approve|reject/事件流）· `events.ts`（SSE）·
 `pending.ts` · `audit.ts` · `contract.ts`（9 个端点的行为契约表）
 
 **两条主线**：
