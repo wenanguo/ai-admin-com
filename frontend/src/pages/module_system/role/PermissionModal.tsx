@@ -6,7 +6,7 @@ import {
 } from '@ant-design/pro-components';
 import { Typography } from 'antd';
 import type React from 'react';
-import { useRef } from 'react';
+import { useState } from 'react';
 import DeptTreeSelect from '@/components/DeptTreeSelect';
 import MenuPermissionTree from '@/components/MenuPermissionTree';
 import type { BackendMenu } from '@/menu/adapter';
@@ -135,6 +135,13 @@ type RolePermissionFormProps = {
   roleId: number | null;
   /** 角色现有的权限(undefined = 拿不到 ⇒ 不许提交) */
   permission?: RolePermission;
+  /**
+   * 表单实例的「身份」—— 角色 id + 它现有的权限载荷。
+   *
+   * 与父组件挂这个组件时用的 `key` **同源**(同一个值),
+   * 所以它既是「重建表单」的依据,也是「这个表单是为哪份记录建的」的凭据。
+   */
+  formKey: string;
   onOpenChange: (open: boolean) => void;
 };
 
@@ -147,28 +154,79 @@ type RolePermissionFormProps = {
  * `key = 角色 id + 现有权限载荷` 挂它,记录一变就整个重建。
  * 于是下面这件事由结构保证,而不是靠时序:
  *
- * - 表单的初始值、提交闭包、这个组件的 ref **全部来自同一次渲染**;
+ * - 表单的初始值与提交闭包**全部来自同一次渲染**;
  * - 不存在「表单还是旧角色的、提交却是新角色」的中间态;
  * - 也不存在「关闭再打开,表单还拿着上一次的状态」——
  *   `destroyOnHidden` 会把表单一起销毁,重开时按**当时**的记录重新初始化。
+ *
+ * ## 「能不能提交」只有一个事实源
+ *
+ * 提交按钮的 `disabled` 与 `onFinish` 的守卫**用的是同一个 `canSubmit`**,
+ * 所以不可能出现「按钮可点、点了没反应、也不报错」的中间态:
+ * 按钮能点 ⇒ `canSubmit` 为真 ⇒ `onFinish` 一定往下走(要么提交成功,
+ * 要么接口报错由请求层弹出来)。
+ *
+ * ⚠️ **这里曾经踩过的坑**(issue #109):早先的守卫是
+ * `useRef(roleId)`(初值只在实例创建时取一次)+「提交时拿它跟当前 roleId 比」。
+ * 那个 ref 是**第二个事实源**,而且是**会过期**的:一旦记录变了而表单实例
+ * 没跟着重建(例如有人把 `key` 从父组件上拿掉),这个 ref 就永远停在旧角色上
+ * ⇒ `onFinish` 里 `return false` ⇒ **不提交、不报错、弹窗不关**
+ * ⇒ 用户看到的就是「点了确定没反应」。
+ * ⇒ 现在这份守卫改成了 `canSubmit`,它只依赖**当前这一次渲染**的事实,
+ * 没有任何会过期的副本。
  */
-const RolePermissionForm: React.FC<RolePermissionFormProps> = ({
+/**
+ * 授权表单 —— 单独导出是为了能**直接**测它:
+ * 「记录变了但表单实例没重建」(漂移)这种情形在父组件里被 `key` 挡住了,
+ * 只有绕过父组件直接渲染这个组件才造得出来。
+ */
+export const RolePermissionForm: React.FC<RolePermissionFormProps> = ({
   open,
   roleId,
   permission,
+  formKey,
   onOpenChange,
 }) => {
-  // 拿不到角色的现有权限 ⇒ 不许提交(提交等于把菜单权限清空)
-  const ready = permission !== undefined;
+  /**
+   * 这个表单实例是**为哪一份记录**建的 —— 实例出生时定下,之后不再变。
+   *
+   * 用 `useState` 的初值(而不是 `useRef`):它同样只在实例创建时算一次,
+   * 但语义上就是「这个实例的身份」,而 `useRef` 很容易被误当成
+   * 「当前的角色 id」—— 那才是 #109 那个坑的来源。
+   *
+   * 父组件用 `key={formKey}` 挂这个组件 ⇒ 记录一变,实例重建
+   * ⇒ `boundFormKey` 总是与当前的 `formKey` 一致。
+   */
+  const [boundFormKey] = useState(formKey);
 
   /**
-   * 这个表单实例是为哪个角色建的。
+   * 漂移:记录已经变了,但这个表单实例**没有**跟着重建。
    *
-   * 组件因为 key 变化而重建 ⇒ 这个 ref 里的 roleId 永远与表单里的初始值同源。
-   * 提交时再核一遍:对不上就拒掉(结构上不可能,留着当兜底 ——
-   * 万一有人以后把 roleId 从 key 里拿掉,这里会先炸而不是悄悄提交错角色)。
+   * 结构上不该发生(父组件的 `key` 就是为此存在的);
+   * 万一有人以后把 `key` 拿掉,这里会**看见**它 ——
+   * 于是按钮禁用 + 给出可见原因,**而不是**在 `onFinish` 里静默拒绝。
    */
-  const boundRoleIdRef = useRef(roleId);
+  const drifted = boundFormKey !== formKey;
+
+  /**
+   * **能不能提交 —— 唯一的事实源。**
+   *
+   * - `permission === undefined`:拿不到角色现有的菜单/部门
+   *   ⇒ 分不清「本来就没有权限」与「没拿到权限信息」
+   *   ⇒ 不许提交(提交等于把菜单权限清空);
+   * - `roleId === null`:不知道给哪个角色授权 ⇒ 不许提交;
+   * - `drifted`:表单与当前记录已经对不上 ⇒ 不许提交(表单里是旧值)。
+   *
+   * 按钮的 `disabled` 与 `onFinish` 的守卫**都用它** ⇒ 同源。
+   */
+  const canSubmit = permission !== undefined && roleId !== null && !drifted;
+
+  /** 不能提交时给用户看的原因(可见,不是「点了没反应」) */
+  const blockedReason = drifted
+    ? '这条记录已经更新过了(表单还是旧的)—— 请关掉弹窗重新打开后再授权。'
+    : permission === undefined
+      ? '这条记录里没有角色现有的菜单/部门信息,无法授权 —— 请刷新列表后重试。'
+      : '这条记录没有角色 id,无法授权 —— 请刷新列表后重试。';
 
   return (
     <ModalForm<RolePermissionFormValues>
@@ -177,7 +235,7 @@ const RolePermissionForm: React.FC<RolePermissionFormProps> = ({
       // 拿不到角色的现有权限就不让提交 —— 那等于把菜单权限清空
       submitter={{
         submitButtonProps: {
-          disabled: !ready,
+          disabled: !canSubmit,
         },
       }}
       initialValues={{
@@ -189,10 +247,10 @@ const RolePermissionForm: React.FC<RolePermissionFormProps> = ({
       modalProps={{ destroyOnHidden: true }}
       onOpenChange={onOpenChange}
       onFinish={async (values) => {
-        // 拿不到角色的现有权限就不提交 —— 免得把菜单权限清空
-        if (!permission) return false;
-        // 表单与角色对不上 ⇒ 宁可拒掉(拿一个角色的菜单覆盖另一个角色)
-        if (boundRoleIdRef.current !== roleId) return false;
+        // ⚠️ **与按钮的 disabled 同源**(同一个 canSubmit)
+        //    ⇒ 走到这里时按钮一定是可点的 ⇒ 这道守卫只可能挡住
+        //    「程序化调用」,不会造成「点了确定没反应」。
+        if (!canSubmit) return false;
         // ⚠️ **表单刚重建时，值可能还没灌进表单**（antd 的表单实例是新的）
         //    ⇒ **undefined 才回落**到记录里的值（记录才是事实源）；
         //    **空数组是用户的选择**（把菜单清空）⇒ 不回落。
@@ -218,7 +276,7 @@ const RolePermissionForm: React.FC<RolePermissionFormProps> = ({
         name="data_scope"
         label="数据权限"
         options={DATA_SCOPE_OPTIONS}
-        disabled={!ready}
+        disabled={!canSubmit}
         // ⚠️ **故意不加 required 规则**：
         //    值**总是**来自记录（见 onFinish 的兜底）⇒ 这条规则只会造成
         //    「表单刚重建、值还没灌进来时，校验失败 ⇒ 点确定**静默没反应**」。
@@ -230,7 +288,7 @@ const RolePermissionForm: React.FC<RolePermissionFormProps> = ({
             <ProForm.Item name="dept_ids" label="部门范围">
               <DeptTreeSelect
                 multiple
-                disabled={!ready}
+                disabled={!canSubmit}
                 placeholder="请选择部门"
               />
             </ProForm.Item>
@@ -238,11 +296,11 @@ const RolePermissionForm: React.FC<RolePermissionFormProps> = ({
         }
       </ProFormDependency>
       <ProForm.Item name="menu_ids" label="菜单权限">
-        <MenuPermissionTree disabled={!ready} />
+        <MenuPermissionTree disabled={!canSubmit} />
       </ProForm.Item>
-      {!ready && (
+      {!canSubmit && (
         <Typography.Text type="secondary" style={{ display: 'block' }}>
-          这条记录里没有角色现有的菜单/部门信息,无法授权 —— 请刷新列表后重试。
+          {blockedReason}
         </Typography.Text>
       )}
     </ModalForm>
@@ -275,6 +333,12 @@ const RolePermissionForm: React.FC<RolePermissionFormProps> = ({
  * - 拿不到记录里的菜单/部门时,确定按钮**禁用**、`onFinish` 也**拒绝提交**
  *   —— 分不清「这个角色本来就没有权限」与「拿到的数据里没有权限信息」时,
  *   宁可不做,也不能把角色的菜单清空。
+ *
+ * ## 「能不能点」与「能不能提交」是同一个事实源
+ *
+ * 两者都来自表单组件里的 `canSubmit`(见上面的说明)⇒
+ * 不存在「按钮可点、点了没反应、也不报错」的中间态。
+ * 按钮被禁用时,弹窗里**同时给出可见的原因**。
  */
 const RolePermissionModal: React.FC<RolePermissionModalProps> = ({
   open,
@@ -284,11 +348,18 @@ const RolePermissionModal: React.FC<RolePermissionModalProps> = ({
   // 现有权限:全部由记录推导(没有异步加载 ⇒ 没有「状态旧 / 表单新」的窗口)
   const permission = permissionOf(record);
   const roleId = record?.id ?? null;
+  // 表单实例的身份:角色 id + 现有权限载荷
+  // (既是「重建表单」的 key,也是表单内部「我为谁而建」的凭据 —— 同一个值)
+  const formKey = formKeyOf(roleId, permission);
 
   return (
     <RolePermissionForm
       // 换一个角色 / 权限载荷变了 ⇒ 表单重建(initialValues 只在初始化时生效)
-      key={formKeyOf(roleId, permission)}
+      // ⚠️ `key` 与 `formKey` 是**同一个值**:
+      //    `key` 负责「记录一变就重建表单」,`formKey` 负责让表单知道
+      //    「自己是为哪份记录建的」(万一重建没发生 ⇒ 漂移 ⇒ 按钮禁用 + 可见原因)。
+      key={formKey}
+      formKey={formKey}
       open={open}
       roleId={roleId}
       permission={permission}

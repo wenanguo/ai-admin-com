@@ -101,6 +101,65 @@ const emptyRoleListResponse = {
 };
 
 /**
+ * 两个角色的列表(给「换角色」用例用)。
+ *
+ * 菜单树里有两个模块菜单(见下面的 fixture):
+ * - 「角色管理」(id=3)与它的按钮「角色授权」(id=30);
+ * - 「岗位管理」(id=4)。
+ *
+ * 两个角色的菜单集合**刻意不一样**:
+ * - 角色 1(id=1):「角色管理 + 角色授权」;
+ * - 角色 2(id=2):**只有「岗位管理」**。
+ *
+ * ⇒ 换角色后弹窗里的勾选状态必须整个换掉(角色 1 的菜单不再勾着),
+ *   提交的内容也必须是**新**角色的(id=2 + 「岗位管理」),
+ *   否则就是「拿上一个角色的菜单去覆盖另一个角色」。
+ */
+function twoRoleListResponse() {
+  return {
+    code: 0,
+    msg: '查询角色列表成功',
+    data: {
+      items: [
+        {
+          id: 1,
+          name: '系统管理员',
+          code: 'admin',
+          order: 1,
+          data_scope: 4,
+          status: 0,
+          description: '拥有角色管理的权限',
+          created_time: '2026-06-21 17:56:33',
+          menus: [
+            { id: 3, name: '角色管理', type: 2, title: '角色管理' },
+            { id: 30, name: '角色授权', type: 3, title: '角色授权' },
+          ],
+          depts: [],
+        },
+        {
+          id: 2,
+          name: '客服',
+          code: 'kf',
+          order: 2,
+          data_scope: 4,
+          status: 0,
+          description: '只有岗位管理的权限',
+          created_time: '2026-06-21 17:56:34',
+          menus: [{ id: 4, name: '岗位管理', type: 2, title: '岗位管理' }],
+          depts: [],
+        },
+      ],
+      total: 2,
+      page_no: 1,
+      page_size: 10,
+      has_next: false,
+    },
+    status_code: 200,
+    success: true,
+  };
+}
+
+/**
  * 拦角色详情 —— 授权弹窗**不该**请求它。
  *
  * 预填走列表里那一行(后端角色列表接口就带着 menus / depts),
@@ -473,8 +532,84 @@ test.describe('角色管理页', () => {
     expect(detailRequests).toEqual([]);
   });
 
-  test('操作列的三个入口按「编辑 → 删除 → 授权」排列', async ({ page }) => {
+  test('换角色后点确定,提交的是**新**角色的 id 与它的菜单', async ({ page }) => {
+    // ⚠️ **回归用例**(issue #109):
+    //    换角色(关掉一个角色的授权弹窗,再开另一个角色的)后点「确定」,
+    //    早先的实现会**静默拒绝提交** ⇒ 不发请求、不报错、弹窗不关
+    //    ⇒ 用户看到的就是「点了确定没反应」。
+    //    ⇒ 这里钉住:换完角色点确定,**真的**发出 PUT,
+    //    而且带的是**新**角色的 id 与**新**角色的菜单。
+
+    const permissionRequests: { body: unknown }[] = [];
+    await page.route('**/api/v1/system/role/permission', (route) => {
+      permissionRequests.push({ body: route.request().postDataJSON() });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: '授权角色成功',
+          data: null,
+          status_code: 200,
+          success: true,
+        }),
+      });
+    });
+
     await setupModulePage(page, {
+      menus: [
+        roleMenu([
+          { title: '角色授权', permission: 'module_system:role:permission' },
+        ]),
+        // 第二个模块菜单:给「角色 2」当它的菜单(id=4)
+        {
+          title: '岗位管理',
+          routePath: 'position',
+          permission: 'module_system:position:query',
+        },
+      ],
+      listUrl: ROLE_LIST_URL,
+      listBody: twoRoleListResponse(),
+    });
+
+    await gotoModulePage(page, ROLE_PAGE_PATH, menuItem(page));
+
+    // ① 打开**第一个**角色的授权
+    await page.getByRole('button', { name: '授权' }).first().click();
+    // 第一个角色已有「角色管理」⇒ 它是勾选态
+    await expect(
+      page.getByRole('checkbox', { name: '角色管理' }),
+    ).toBeChecked();
+
+    // ② 关掉它(点弹窗底部的「取消」)
+    await page.locator('.ant-modal-footer button:not(.ant-btn-primary)').click();
+    await expect(page.locator('.ant-modal')).toBeHidden();
+
+    // ③ 打开**第二个**角色的授权
+    await page.getByRole('button', { name: '授权' }).nth(1).click();
+    // 第二个角色只有「岗位管理」⇒ 它的菜单勾上了,上一个角色的菜单**没**勾
+    await expect(
+      page.getByRole('checkbox', { name: '岗位管理' }),
+    ).toBeChecked();
+    await expect(
+      page.getByRole('checkbox', { name: '角色管理' }),
+    ).not.toBeChecked();
+
+    // ④ 点确定 —— 确定按钮**必须可用**(可点 ⇒ 一定会提交)
+    const confirm = page.locator('.ant-modal-footer button.ant-btn-primary');
+    await expect(confirm).toBeEnabled();
+    await confirm.click();
+
+    // ⇒ 真的提交了
+    await expect.poll(() => permissionRequests.length).toBe(1);
+    // ⇒ 提交的是**新**角色(id=2)与**新**角色的菜单(只有「岗位管理」)
+    expect(permissionRequests[0].body).toMatchObject({
+      role_ids: [2],
+      menu_ids: [4],
+    });
+  });
+
+  test('操作列的三个入口按「编辑 → 删除 → 授权」排列', async ({ page }) => {    await setupModulePage(page, {
       menus: [
         roleMenu([
           { title: '编辑角色', permission: 'module_system:role:update' },
