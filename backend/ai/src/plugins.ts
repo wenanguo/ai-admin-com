@@ -10,8 +10,15 @@
  * ⚠️ 注册表是**懒读**的 ⇒ 插件晚一点注册也没关系（运行时在**建会话时**才读）。
  */
 
-import { pluginRegistry } from "./core/plugins.ts";
+import { pluginRegistry, type AiPlugin } from "./core/plugins.ts";
 import { createPmPlugin } from "./plugins/pm/index.ts";
+
+/**
+ * 本进程要用的插件（**入口侧唯一知道业务插件的地方**）。
+ *
+ * ⚠️ **这里就是「装配点」**：换业务系统 ⇒ 换一个插件（或不挂）⇒ 内核不用改。
+ */
+export const plugins: readonly AiPlugin[] = [createPmPlugin()];
 
 /**
  * 注册本进程要用的插件。
@@ -19,7 +26,9 @@ import { createPmPlugin } from "./plugins/pm/index.ts";
  * ⚠️ 幂等（同一个 id 覆盖自己）⇒ 重复调用没坏处。
  */
 export function registerPlugins(): void {
-	pluginRegistry.register(createPmPlugin());
+	for (const plugin of plugins) {
+		pluginRegistry.register(plugin);
+	}
 }
 
 // ⚠️ **import 即注册**（模块副作用）：运行时是**模块级单例**（import 时就构造）

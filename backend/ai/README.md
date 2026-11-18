@@ -410,11 +410,15 @@ src/core/                         ★ **内核**（只懂通用概念；**不 im
   ├─ env/                         环境变量（env 校验（zod；缺变量启动即失败）/ load-env 读 .env）
   ├─ types/api.ts                 AiAdmin 响应信封（ApiResponse / SUCCESS_CODES / isSuccess）
   ├─ errors.ts                    上游错误的**归一形状**（内核认它 ⇒ 插件抛它）
+  ├─ index.ts                     ★ **公开入口**（外部只从这里 import；见 core/README.md）
+  └─ README.md                    内核说明（能力清单 / 依赖 / 硬规矩）
   └─ tools/                       命令工具的**机制**（目录从插件来 / 破坏性判定）
 src/plugins/pm/                   ★ **PM 业务插件**（任务 / 项目 / 里程碑 ⇒ 业务概念都归它）
   ├─ adapter/                     适配层（enums 枚举归一 / capabilities 能力位 / keys 统一 key / model 统一模型 / datasource 读写）
   │  └─ aadmin/                   AiAdmin HTTP 客户端（client / errors / types：路径、字段逐字对齐后端）
   ├─ context/pm-context.ts        讨论上下文（解析 / 渲染 / 可写字段白名单 / 写规则）
+  ├─ env.ts                       ★ 插件的**环境变量**（AIADMIN_* ⇒ 变量名一个字没改）
+  ├─ health.ts                    健康检查的**业务探针**（探上游能不能连上）
   ├─ tools/                       命令目录（create_task 一个命令 + 闸门形状）
   └─ index.ts                     ★ 插件装配（命令目录 + 身份查询 + 讨论上下文 + 告警去处）
 src/plugins.ts                    ★ **入口侧唯一 import 插件的地方**（注册插件进进程级注册表）

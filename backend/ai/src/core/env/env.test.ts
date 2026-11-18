@@ -5,7 +5,6 @@ import { env, parseEnv, type EnvSource } from "./env.ts";
 const FULL: EnvSource = {
 	MINIMAX_CN_API_KEY: "test-api-key",
 	AI_MODEL: "minimax-cn/MiniMax-M3.1-Flash",
-	AIADMIN_BASE_URL: "http://aiadmin.test/api/v1",
 	DATABASE_URL: "mysql://test@127.0.0.1:3306/aipm",
 	ALLOWED_ORIGINS: "http://localhost:8000,http://127.0.0.1:8000",
 };
@@ -28,7 +27,6 @@ describe("parseEnv", () => {
 		const message = catchMessage(() => parseEnv({}));
 		expect(message).toContain("MINIMAX_CN_API_KEY");
 		expect(message).toContain("AI_MODEL");
-		expect(message).toContain("AIADMIN_BASE_URL");
 		expect(message).toContain("ALLOWED_ORIGINS");
 	});
 
@@ -60,7 +58,7 @@ describe("parseEnv", () => {
 		expect(parsed.databaseUrl).toBe("mysql://test@127.0.0.1:3306/aipm");
 	});
 
-	it("只配自己的库 ⇒ 不用 AiAdmin 的库（可复用到别的系统）", () => {
+	it("只配自己的库 ⇒ 不用别人的库（可复用到别的系统）", () => {
 		const parsed = parseEnv({
 			...FULL,
 			DATABASE_URL: undefined,
@@ -73,7 +71,6 @@ describe("parseEnv", () => {
 		const parsed = parseEnv(FULL);
 		expect(parsed.MINIMAX_CN_API_KEY).toBe("test-api-key");
 		expect(parsed.AI_MODEL).toBe("minimax-cn/MiniMax-M3.1-Flash");
-		expect(parsed.AIADMIN_BASE_URL).toBe("http://aiadmin.test/api/v1");
 		expect(parsed.DATABASE_URL).toBe("mysql://test@127.0.0.1:3306/aipm");
 	});
 

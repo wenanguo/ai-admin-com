@@ -34,15 +34,6 @@ export interface Env {
 	 * ⚠️ 调用方没指定智能体时用它 ⇒ 「现有 PM 助手的行为不变」靠这条。
 	 */
 	AI_DEFAULT_AGENT: string;
-	/** AiAdmin 后端地址（base 里已含 `/api/v1`）。 */
-	AIADMIN_BASE_URL: string;
-	/**
-	 * AiAdmin 的 MCP 地址（**工具的来源**）。
-	 *
-	 * ⚠️ **缺省** `${AIADMIN_BASE_URL}/mcp` ⇒ 一般不用单独配；
-	 *    本地后端端口与线上不同时才需要显式写。
-	 */
-	AIADMIN_MCP_URL?: string;
 	/**
 	 * AiAdmin 的 MySQL 连接串（`ai_*` 元数据表与业务表同库）。
 	 *
@@ -90,12 +81,6 @@ const envSchema = z.object({
 		.optional()
 		.transform((value) => value ?? "pm")
 		.pipe(z.string().min(1, "不能为空")),
-	AIADMIN_BASE_URL: z
-		.string()
-		.min(1, "不能为空")
-		.refine((value) => /^https?:\/\/\S+$/.test(value), "必须是 http(s) 开头的 URL"),
-	// ⚠️ 缺省不配 ⇒ 运行时用 `${AIADMIN_BASE_URL}/mcp`
-	AIADMIN_MCP_URL: z.string().optional(),
 	// ⚠️ **两个库连接串至少要有一个**（见 parseEnv 的检查）
 	//    空串（compose 里未设置时就是这个）⇒ 当没配
 	DATABASE_URL: z

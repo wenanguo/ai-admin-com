@@ -160,7 +160,8 @@ export class AgentRuntime {
 	/** 审计去处（每次写操作都留一条 `ai_audit_log`）。 */
 	readonly #audit: AuditWriter;
 	/** AiAdmin 的 MCP 地址（**没配就不接 MCP**）。 */
-	readonly #mcpUrl: string | undefined;
+	/** MCP 的默认地址（`null` = **显式不接**；`undefined` = 用插件给的）。 */
+	readonly #mcpUrl: string | null | undefined;
 	/** 命令 id ⇒ 上次的 ack（**幂等**：同一个 id 不跑两遍）。 */
 	readonly #acks = new Map<string, Map<string, CommandAck>>();
 	/** 每个会话最多记多少个命令 id。 */
@@ -173,8 +174,9 @@ export class AgentRuntime {
 		this.#createSession = options.createSession ?? createPiSession;
 		this.#model = options.model ?? env.AI_MODEL;
 		this.#audit = options.audit ?? new PrismaAuditWriter();
-		this.#mcpUrl =
-			options.mcpUrl === null ? undefined : (options.mcpUrl ?? env.AIADMIN_MCP_URL);
+		// ⚠️ **默认地址归插件**（内核不认识业务系统的地址）：
+		//    `undefined` ⇒ 用插件给的；`null` ⇒ **显式不接 MCP**。
+		this.#mcpUrl = options.mcpUrl === null ? null : options.mcpUrl;
 		this.#maxTrackedCommands = options.maxTrackedCommands ?? MAX_TRACKED_COMMANDS_PER_CONVERSATION;
 		// ⚠️ **默认的智能体来源读真文件**（`agents/<id>/agent.yaml`）
 		//    ⇒ 非法配置在**构造时**就报错（启动即失败）。
@@ -236,8 +238,8 @@ export class AgentRuntime {
 	/**
 	 * 这个智能体要挂哪些 MCP 服务器（**0 / 1 / N 个**）。
 	 *
-	 * ⚠️ 配置里没写 `url` ⇒ 用全局默认（`env.AIADMIN_MCP_URL`）；
-	 *    全局也没配 ⇒ **这台不挂**（保持老行为：后端没上线时不连）。
+	 * ⚠️ 配置里没写 `url` ⇒ 用**插件给的默认地址**（内核不认识业务系统的地址 ⇒ 由插件给）；
+	 *    插件也没给 ⇒ **这台不挂**（保持老行为：后端没上线时不连）。
 	 * ⚠️ 名字来自配置 ⇒ 工具名前缀按服务器名生成 ⇒ 多服务器的工具不互相盖名。
 	 *
 	 * @param agent 智能体配置。
@@ -246,7 +248,9 @@ export class AgentRuntime {
 	#mcpServersOf(agent: AgentConfig, token: string): McpServerSpec[] {
 		const servers: McpServerSpec[] = [];
 		for (const server of agent.mcpServers) {
-			const url = server.url ?? this.#mcpUrl;
+			const url =
+				server.url ??
+				(this.#mcpUrl === null ? undefined : (this.#mcpUrl ?? this.#pluginOf(agent)?.mcpDefaultUrl));
 			if (url === undefined) {
 				continue;
 			}

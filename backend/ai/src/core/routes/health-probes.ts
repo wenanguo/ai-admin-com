@@ -39,18 +39,6 @@ export async function probeDatabase(): Promise<DependencyCheck> {
 		: { status: "down", detail: `${target.host}:${target.port} 连不上` };
 }
 
-/** AiAdmin 探针：连得上就算 up。 */
-export async function probeAiAdmin(): Promise<DependencyCheck> {
-	try {
-		const response = await fetch(env.AIADMIN_BASE_URL, {
-			signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-		});
-		return { status: "up", detail: `可达（HTTP ${response.status}）` };
-	} catch (error) {
-		return { status: "down", detail: `连不上：${describe(error)}` };
-	}
-}
-
 /** 模型探针：只查 key 在不在（**不调模型**）。 */
 export async function probeModel(): Promise<DependencyCheck> {
 	const configured = env.MINIMAX_CN_API_KEY.trim().length > 0;
@@ -90,7 +78,9 @@ export function tcpReachable(host: string, port: number, timeoutMs: number): Pro
 	});
 }
 
-/** 错误 ⇒ 一行人话。 */
+/**
+ * 错误 ⇒ 一行人话。
+ */
 function describe(error: unknown): string {
 	if (error instanceof Error) {
 		return error.message;

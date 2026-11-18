@@ -13,7 +13,7 @@
 
 // ⚠️ **必须排在所有 import 之前**：运行时是**模块级单例**（import 时就构造）
 //    ⇒ 插件必须**先注册**，否则构造时会认为「配置里的插件没注册」。
-import "./plugins.ts";
+import { plugins } from "./plugins.ts";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { buildCorsHeaders, isPreflightRequest, originOf } from "./core/http/cors.ts";
 import { toErrorEnvelope } from "./core/http/errors.ts";
@@ -26,7 +26,7 @@ import { createAgentsRouter } from "./core/routes/agents.ts";
 import { auditRouter } from "./core/routes/audit.ts";
 import { eventsRouter } from "./core/routes/events.ts";
 import { HEALTH_CACHE_TTL_MS, createHealthRouter } from "./core/routes/health.ts";
-import { probeAiAdmin, probeDatabase, probeModel } from "./core/routes/health-probes.ts";
+import { probeDatabase, probeModel } from "./core/routes/health-probes.ts";
 import { pendingRouter } from "./core/routes/pending.ts";
 
 export { MISSING_TOKEN_MESSAGE };
@@ -78,9 +78,13 @@ export function errorHandler(
  */
 export const healthRouter = createHealthRouter({
 	probes: {
+		// ⚠️ 内核只探**自己**的依赖（库、模型）
 		database: probeDatabase,
-		aiadmin: probeAiAdmin,
 		model: probeModel,
+		// ⚠️ **上游的探针由插件给**（内核不认识上游是谁 ⇒ 键名也由插件定）
+		...Object.fromEntries(
+			plugins.flatMap((plugin) => Object.entries(plugin.health ?? {})),
+		),
 	},
 	now: () => Date.now(),
 	startedAt: Date.now(),
