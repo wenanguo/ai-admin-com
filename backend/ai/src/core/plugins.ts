@@ -23,6 +23,7 @@
  */
 
 import type { ContextProvider } from "./context/anchor.ts";
+import type { DependencyCheck } from "./routes/health.ts";
 import type { CurrentUserResolver } from "./session/identity.ts";
 import type { CommandDefinition } from "./tools/types.ts";
 
@@ -40,6 +41,18 @@ export interface AiPlugin {
 	commands?: readonly CommandDefinition[];
 	/** 这个插件怎么回答「当前用户是谁」（没有 ⇒ 内核不提供身份查询）。 */
 	currentUser?: CurrentUserResolver;
+	/**
+	 * 这个插件的**健康检查探针**（探「上游」能不能连上）。
+	 *
+	 * ⚠️ **内核不认识上游是谁** ⇒ 探针由插件给（键名也由插件定 ⇒ 例如 `aiadmin`）。
+	 */
+	health?: Record<string, () => Promise<DependencyCheck>>;
+	/**
+	 * 这个插件的 **MCP 默认地址**（智能体配置里没写 `url` 时用）。
+	 *
+	 * ⚠️ 内核不认识业务系统的地址 ⇒ 由插件给。
+	 */
+	mcpDefaultUrl?: string;
 	/**
 	 * 这个插件的**讨论上下文**（解析 / 渲染 / 写规则）。
 	 *

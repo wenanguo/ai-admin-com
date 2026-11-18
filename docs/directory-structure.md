@@ -72,7 +72,7 @@ ai-admin-com/
 | 位置 | 内容 |
 | ---- | ---- |
 | `backend/ai/src/core/` | ★ **内核**（只懂通用概念；**不 import 插件** ⇒ `scripts/check-core-purity.cjs` 有检查）：`session/`（会话与命令）· `gate/`（改数据要人点头）· `mcp/` · `skills/` · `context/`（讨论上下文的通用机制）· `plugins.ts`（插件契约 + 注册表） |
-| `backend/ai/src/core/` | ★ **内核**（通用概念：命令机制 / 插件契约 / 智能体配置 / 身份契约）—— **不 import 插件** |
+| `backend/ai/src/core/` | ★ **内核**（通用概念：命令机制 / 插件契约 / 智能体配置 / 身份契约）—— **不 import 插件**（`src/core/index.ts` = **公开入口**，说明见 `src/core/README.md`） |
 | `backend/ai/src/plugins/pm/` | ★ **PM 业务插件**（`adapter/` 调 AiAdmin 的适配层：鉴权透传 / 字段映射 / 错误归一；`tools/` 命令目录） |
 | `backend/ai/src/core/routes/` | HTTP 层（`agent.ts` / `events.ts` SSE / `pending.ts` / `audit.ts` / `contract.ts`） |
 | `backend/ai/.pi/skills/` | ★ **技能**（`create-task` / `list-tasks` / `update-task`）—— 业务能力 = 加一个 markdown |

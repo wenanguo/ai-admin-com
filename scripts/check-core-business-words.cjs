@@ -55,20 +55,11 @@ const BUSINESS_WORDS = [
  * 允许清单：`<相对路径>` ⇒ 原因。
  *
  * ⚠️ 每一条都要写清**为什么**，并**在阶段 5 之前清掉**。
+ *
+ * ✅ **现在是空的** —— 阶段 5 把 `AIADMIN_*` 挪进插件之后，内核真的零业务词了。
  */
 const ALLOWLIST = new Map([
-	[
-		"backend/ai/src/core/env/env.ts",
-		"AIADMIN_* 环境变量名：设计 §12.3 说「由插件声明」⇒ 挪它要连带健康检查探针与 MCP 默认地址（阶段 5 收口）。",
-	],
-	[
-		"backend/ai/src/core/routes/health-probes.ts",
-		"探 AiAdmin 的那个探针：探针归插件（阶段 5 收口时挪）⇒ 这里暂时留着。",
-	],
-	[
-		"backend/ai/src/core/session/runtime.ts",
-		"MCP 默认地址取自 AIADMIN_MCP_URL：默认地址归插件（阶段 5 收口时挪）⇒ 这里暂时留着。",
-	],
+	// （空 ⇒ 没有豁免）
 ]);
 
 /** 收集目录下的所有 .ts 文件。 */

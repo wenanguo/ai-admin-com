@@ -517,6 +517,7 @@ src/pages/ai/workspace/    ← 全宽页
 | 事件流端点（回放 + 增量 + 去重） | `backend/ai/src/core/routes/events.ts` |
 | 命令目录 | `backend/ai/src/plugins/pm/index.ts`（**业务命令归插件**；内核机制在 `src/core/tools/index.ts`） |
 | **插件契约 + 注册表** | `backend/ai/src/core/plugins.ts`（**内核与插件之间唯一的接头**） |
+| **内核公开入口** | `backend/ai/src/core/index.ts`（外部只从这里 import；说明见 `backend/ai/src/core/README.md`） |
 | 插件注册（入口侧） | `backend/ai/src/plugins.ts`（**唯一 import 插件的地方**） |
 | 智能体用哪个插件 | `backend/ai/agents/<id>/agent.yaml` 的 `plugin:` 字段 |
 | **MCP 服务器（工具来源）** | `backend/ai/src/core/mcp/mcp.ts` |

@@ -29,6 +29,8 @@ import { AadminCurrentUserResolver } from "./adapter/aadmin/current-user.ts";
 import { AadminDataSource } from "./adapter/datasource.ts";
 import { setEnumWarningSink, standardEnumWarningSink } from "./adapter/enums.ts";
 import { pmContextProvider } from "./context/pm-context.ts";
+import { pmEnv } from "./env.ts";
+import { probeAiAdmin } from "./health.ts";
 import {
 	createCreateTaskTool,
 	CREATE_TASK_TOOL_NAME,
@@ -85,6 +87,9 @@ export function createPmPlugin(options: PmPluginOptions = {}): AiPlugin {
 		commands: createPmCommands(options),
 		currentUser: options.currentUser ?? defaultCurrentUserResolver(),
 		context: pmContextProvider,
+		// ⚠️ **探针与默认地址也归插件** ⇒ 内核不认识 AiAdmin
+		health: { aiadmin: probeAiAdmin },
+		mcpDefaultUrl: pmEnv.AIADMIN_MCP_URL,
 	};
 }
 
@@ -92,7 +97,7 @@ export function createPmPlugin(options: PmPluginOptions = {}): AiPlugin {
 function defaultDataSourceFactory(): (token: string) => TaskCreator {
 	return (token) =>
 		new AadminDataSource({
-			client: new AadminClient({ baseUrl: env.AIADMIN_BASE_URL }),
+			client: new AadminClient({ baseUrl: pmEnv.AIADMIN_BASE_URL }),
 			token,
 			// ⚠️ 告警不许被悄悄丢掉 ⇒ 注入一个会打日志的去处
 			onWarning: standardEnumWarningSink,
@@ -102,6 +107,6 @@ function defaultDataSourceFactory(): (token: string) => TaskCreator {
 /** 默认的当前用户解析器（问 AiAdmin + 内核那层短缓存）。 */
 function defaultCurrentUserResolver(): CurrentUserResolver {
 	return new CachedCurrentUserResolver(
-		new AadminCurrentUserResolver(new AadminClient({ baseUrl: env.AIADMIN_BASE_URL })),
+		new AadminCurrentUserResolver(new AadminClient({ baseUrl: pmEnv.AIADMIN_BASE_URL })),
 	);
 }
