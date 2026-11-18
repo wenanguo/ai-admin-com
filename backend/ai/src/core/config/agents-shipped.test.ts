@@ -34,6 +34,9 @@ describe("仓里的智能体配置", () => {
 		// ④ 模型：不写 ⇒ 用全局默认 `env.AI_MODEL`（与原来一样）
 		expect(pm?.model).toBeUndefined();
 
+		// ⑥ 插件：PM 助手挂 PM 插件（内核按名字取 ⇒ 内核不 import 插件）
+		expect(pm?.plugin).toBe("pm");
+
 		// ⑤ 提示词：原来写死在 `src/agent/prompt.ts` ⇒ 现在搬到了 `agents/pm/prompt.md`
 		//    （内容一字未改 ⇒ 行为不变）
 		expect(pm?.systemPrompt).toContain(
@@ -51,6 +54,9 @@ describe("仓里的智能体配置", () => {
 		expect(qa?.mcpServers).toEqual([]);
 		expect(qa?.skills).toEqual([]);
 		expect(qa?.systemPrompt).toContain("通用问答助手");
+		// ⚠️ 通用问答**不挂插件** ⇒ 没有业务命令（工具白名单也是空的）
+		expect(qa?.plugin).toBeUndefined();
+		expect(qa?.tools).toEqual([]);
 	});
 
 	it("两个智能体的提示词不一样（否则换智能体等于没换）", () => {

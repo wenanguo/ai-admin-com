@@ -73,6 +73,16 @@ export class PluginRegistry {
 		return this.list().flatMap((plugin) => plugin.commands ?? []);
 	}
 
+	/**
+	 * **默认插件**（配置里没写 `plugin:` 时用它）。
+	 *
+	 * ⚠️ 现在只有一个插件 ⇒ 「第一个注册的」就是它。
+	 *    将来有第二个插件时 ⇒ 配置里写 `plugin:` 明确指定（见 agents/<id>/agent.yaml）。
+	 */
+	defaultPlugin(): AiPlugin | undefined {
+		return this.list()[0];
+	}
+
 	/** 第一个能回答「当前用户是谁」的插件的解析器（没有 ⇒ undefined）。 */
 	currentUserResolver(): CurrentUserResolver | undefined {
 		return this.list().find((plugin) => plugin.currentUser !== undefined)?.currentUser;

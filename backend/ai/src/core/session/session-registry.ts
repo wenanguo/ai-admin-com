@@ -15,7 +15,7 @@
  */
 
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import type { ContextAnchor } from "../context/anchor.ts";
+import type { ContextAnchor, WriteToolRule } from "../context/anchor.ts";
 import { FrameBuffer, type StreamFrame } from "./frame-buffer.ts";
 
 /** SSE 订阅者：收到一帧就被叫一次。 */
@@ -76,6 +76,12 @@ export interface ConversationChannel {
 	 *    没有上下文的对话（用户没点「与 AI 讨论」）⇒ 它是 undefined。
 	 */
 	anchor: ContextAnchor | undefined;
+	/**
+	 * 这个会话的**写规则**（**插件给的** ⇒ 闸门不写死工具名/字段名）。
+	 *
+	 * ⚠️ 建会话时按**这个智能体的插件**取 ⇒ 与锚点来自同一个插件。
+	 */
+	writeRules: readonly WriteToolRule[] | undefined;
 	/**
 	 * 最近一次**写操作**（工具开始执行时记下，成功后用来发 entity_updated）。
 	 */
@@ -163,6 +169,7 @@ export class SessionRegistry {
 			token: undefined,
 			userId: undefined,
 			anchor: undefined,
+			writeRules: undefined,
 			lastWrite: undefined,
 			lastMcpWrite: undefined,
 			session: undefined,

@@ -49,6 +49,7 @@ jobs:
       - run: npx prisma generate
       - run: npm test
       - run: node ../../scripts/check-core-purity.cjs
+      - run: node ../../scripts/check-core-business-words.cjs
 
   lint:
     runs-on: ubuntu-latest

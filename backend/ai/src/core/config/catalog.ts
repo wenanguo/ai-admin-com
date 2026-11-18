@@ -33,6 +33,8 @@ export function toAgentSummary(config: AgentConfig): AgentSummary {
 		capabilities: {
 			// ⚠️ 配置里没写模型 ⇒ 用全局默认（与 `runtime.ts` 的口径一致）
 			model: config.model ?? env.AI_MODEL,
+			// ⚠️ **插件也要报出来**（界面据此知道这个智能体有哪些业务能力）
+			plugin: config.plugin,
 			skillCount: config.skills.length,
 			mcpServerCount: config.mcpServers.length,
 			toolCount: config.tools.length,

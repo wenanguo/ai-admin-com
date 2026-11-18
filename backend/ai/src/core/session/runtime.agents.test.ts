@@ -20,7 +20,7 @@ import { agentIdOfConversation } from "../config/registry.ts";
 import type { PiSessionOptions } from "./pi-session.ts";
 import { AgentError, AgentRuntime } from "./runtime.ts";
 import type { ConversationRecord, ConversationStore, MessageRecord } from "../store/store.ts";
-import { PluginRegistry } from "../plugins.ts";
+import { PluginRegistry, type AiPlugin } from "../plugins.ts";
 import type { CommandTool } from "../tools/types.ts";
 
 /**
@@ -31,7 +31,8 @@ import type { CommandTool } from "../tools/types.ts";
 function fakePlugins(): PluginRegistry {
 	const registry = new PluginRegistry();
 	registry.register({
-		id: "fake",
+		// ⚠️ id 要跟**真实智能体配置**里写的一致（agents/pm/agent.yaml ⇒ plugin: pm）
+		id: "pm",
 		commands: [
 			{
 				name: "create_task",
@@ -319,6 +320,100 @@ describe("运行时 · 按智能体配置装配会话", () => {
 		await waitFor(() => sessionOptions.length >= 1);
 
 		expect(sessionOptions[0]?.systemPrompt).toBe("你是 PM 助手");
+	});
+});
+
+describe("运行时 · 插件按智能体（阶段 4 的接线）", () => {
+	/** 造一个只提供某条命令的假插件。 */
+	function pluginWith(id: string, command: string): AiPlugin {
+		return {
+			id,
+			commands: [
+				{
+					name: command,
+					label: command,
+					build: () =>
+						({
+							name: command,
+							label: command,
+							description: "假的命令",
+							parameters: {},
+							annotations: { readOnlyHint: true },
+							execute: async () => ({ content: [] }),
+						}) as unknown as CommandTool,
+				},
+			],
+		};
+	}
+
+	/** 两个智能体各挂一个插件 ⇒ 各自的能力**明显不同**。 */
+	it("两个智能体 ⇒ 各自拿自己插件的命令", async () => {
+		const registry = new PluginRegistry();
+		registry.register(pluginWith("alpha", "cmd_alpha"));
+		registry.register(pluginWith("beta", "cmd_beta"));
+
+		const providers: AgentProvider[] = [
+			{
+				defaultAgentId: "alpha",
+				get: (agentId) =>
+					agentId === "alpha"
+						? { ...pmConfig(), id: "alpha", plugin: "alpha", tools: ["cmd_alpha"] }
+						: { ...qaConfig(), id: "beta", plugin: "beta", tools: ["cmd_beta"] },
+				list: () => [{ ...pmConfig(), id: "alpha" }, { ...qaConfig(), id: "beta" }],
+			},
+		];
+		const { store } = fakeStore();
+		const sessionOptions: PiSessionOptions[] = [];
+		const runtime = new AgentRuntime({
+			store,
+			agents: providers[0]!,
+			plugins: registry,
+			mcpUrl: null,
+			audit: { write: async () => {} },
+			createSession: async (options: PiSessionOptions) => {
+				sessionOptions.push(options);
+				return {
+					prompt: async (): Promise<void> => {},
+					subscribe: () => () => {},
+					dispose: () => {},
+					isStreaming: false,
+				};
+			},
+			resolveUser: async () => ({ id: 2 }),
+		});
+
+		const alpha = await runtime.createConversation("2", "会话", "alpha");
+		const beta = await runtime.createConversation("2", "会话", "beta");
+		await talk(runtime, alpha.conversationId, "cmd-1");
+		await talk(runtime, beta.conversationId, "cmd-2");
+		await waitFor(() => sessionOptions.length >= 2);
+
+		const alphaOptions = sessionOptions.find((o) => o.conversationId === alpha.conversationId);
+		const betaOptions = sessionOptions.find((o) => o.conversationId === beta.conversationId);
+		// ⚠️ 各自的插件给各自的命令（**不串**）
+		expect(alphaOptions?.tools.map((tool) => tool.name)).toEqual(["cmd_alpha"]);
+		expect(betaOptions?.tools.map((tool) => tool.name)).toEqual(["cmd_beta"]);
+	});
+
+	it("配置里写了没注册的插件 ⇒ **启动即失败**（不静默降级）", () => {
+		const registry = new PluginRegistry();
+		registry.register(pluginWith("alpha", "cmd_alpha"));
+		const providers: AgentProvider[] = [
+			{
+				defaultAgentId: "alpha",
+				get: () => ({ ...pmConfig(), id: "alpha", plugin: "没注册过的插件" }),
+				list: () => [{ ...pmConfig(), id: "alpha", plugin: "没注册过的插件" }],
+			},
+		];
+		const runtime = new AgentRuntime({
+			store: fakeStore().store,
+			agents: providers[0]!,
+			plugins: registry,
+			mcpUrl: null,
+			audit: { write: async () => {} },
+		});
+		// ⚠️ 入口（server.ts 的 createApp）会调它 ⇒ 拼错插件名**服务起不来**
+		expect(() => runtime.validatePlugins()).toThrow(/没注册/);
 	});
 });
 

@@ -21,3 +21,7 @@ import { createPmPlugin } from "./plugins/pm/index.ts";
 export function registerPlugins(): void {
 	pluginRegistry.register(createPmPlugin());
 }
+
+// ⚠️ **import 即注册**（模块副作用）：运行时是**模块级单例**（import 时就构造）
+//    ⇒ 注册必须发生在它**之前** ⇒ 入口 import 本文件即可（顺序：先 plugins，后 server）。
+registerPlugins();
