@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render } from 'vitest-browser-react';
 import type { RoleOut } from '@/services/api/system/types';
-import RolePermissionModal from './PermissionModal';
+import RolePermissionModal, { RolePermissionForm } from './PermissionModal';
 
 /**
  * 角色授权弹窗的预填。
@@ -387,7 +387,7 @@ describe('角色授权弹窗的预填', () => {
   });
 
   it('记录里没有菜单信息时不许提交(分不清「本来就没有」与「没拿到」)', async () => {
-    const { getByRole } = await render(
+    const { getByRole, getByText } = await render(
       <RolePermissionModal
         open
         record={recordWithoutMenus}
@@ -405,8 +405,48 @@ describe('角色授权弹窗的预填', () => {
       .element(getByRole('treeitem', { name: '角色管理' }))
       .toHaveAttribute('aria-disabled', 'true');
 
+    // ⚠️ **禁用必须带一个可见的原因**(issue #109 的验收标准):
+    //    「按钮可点、点了没反应、也不报错」是最糟的体验 ⇒ 禁用就要说清为什么。
+    await expect
+      .element(getByText(/这条记录里没有角色现有的菜单\/部门信息/))
+      .toBeVisible();
+
     // 一次请求都不该发出去
     expect(mocks.setRolePermission).not.toHaveBeenCalled();
+  });
+
+  it('换角色后确定按钮依然可点,点确定真的提交(不存在「点了没反应」)', async () => {
+    const { getByRole, rerender } = await render(
+      <RolePermissionModal open record={record} onOpenChange={() => {}} />,
+    );
+
+    await expect
+      .element(getByRole('treeitem', { name: '角色管理' }))
+      .toHaveAttribute('aria-checked', 'true');
+
+    // 换成另一个角色(弹窗还开着)
+    await rerender(
+      <RolePermissionModal open record={otherRecord} onOpenChange={() => {}} />,
+    );
+
+    // ⚠️ **按钮必须可点** —— 这条与「允许提交」是同一个事实源(canSubmit):
+    //    可点 ⇒ 点了就一定会走到 setRolePermission,不会静默拒绝。
+    const confirm = getByRole('button', { name: /确\s*认/ });
+    await expect.element(confirm).toBeEnabled();
+
+    await confirm.click();
+
+    await vi.waitFor(
+      () => {
+        expect(mocks.setRolePermission).toHaveBeenCalled();
+      },
+      { timeout: SUBMIT_TIMEOUT_MS },
+    );
+
+    // 提交的是**新**角色的 id 与它的菜单
+    const payload = payloadOf(mocks.setRolePermission);
+    expect(payload.role_ids).toEqual([8]);
+    expect([...payload.menu_ids].sort((a, b) => a - b)).toEqual([4, 40]);
   });
 
   it('换一个角色,表单里是**新**角色的菜单,不会提交上一个角色的', async () => {
@@ -451,5 +491,78 @@ describe('角色授权弹窗的预填', () => {
     expect([...payload.menu_ids].sort((a, b) => a - b)).toEqual([4, 40]);
     expect(payload.data_scope).toBe(1);
     expect(payload.dept_ids).toEqual([]);
+    });
+});
+
+/**
+ * 表单实例与记录「漂移」(记录变了但表单没重建)时的行为。
+ *
+ * ⚠️ 这个情形在 `RolePermissionModal` 里被 `key` 挡住了
+ *    (记录一变 ⇒ 整个表单重建)⇒ 只能**绕过父组件**直接渲染表单组件才造得出来。
+ *
+ * 钉住的是**修法本身**(issue #109):
+ * 早先的实现里,这种漂移会让 `onFinish` 拿一个**会过期的 ref**
+ * (`useRef(roleId)` 的初值)跟当前角色比 ⇒ 不一致就 `return false`
+ * ⇒ **不提交、不报错、弹窗不关** ⇒ 用户看到「点了确定没反应」。
+ *
+ * ⇒ 现在这种情形必须是**可见的**:按钮禁用 + 给出原因。
+ */
+describe('角色授权表单的漂移保护', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.setRolePermission.mockResolvedValue(envelope(null));
+    mocks.getCurrentUser.mockResolvedValue(envelope({ menus: menuTree }));
+    mocks.getDeptTree.mockResolvedValue(
+      envelope([{ id: 1, name: '总公司', code: 'hq', children: [] }]),
+    );
+  });
+
+  afterEach(async () => {
+    await cleanup();
+  });
+
+  it('记录变了但表单没重建 ⇒ 按钮禁用并说明原因(而不是静默拒绝提交)', async () => {
+    const permission = {
+      dataScope: 5,
+      menuIds: [2, 3],
+      deptIds: [1],
+    };
+
+    const { getByRole, getByText, rerender } = await render(
+      <RolePermissionForm
+        open
+        roleId={7}
+        permission={permission}
+        formKey="7:5:2,3:1"
+        onOpenChange={() => {}}
+      />,
+    );
+
+    // 身份与记录一致 ⇒ 可点
+    await expect
+      .element(getByRole('button', { name: /确\s*认/ }))
+      .toBeEnabled();
+
+    // 记录变了(同一个角色,菜单变了),但**表单实例没有重建**
+    await rerender(
+      <RolePermissionForm
+        open
+        roleId={7}
+        permission={permission}
+        formKey="7:5:40:1"
+        onOpenChange={() => {}}
+      />,
+    );
+
+    // ⇒ 可见:按钮禁用 + 说清为什么
+    await expect
+      .element(getByRole('button', { name: /确\s*认/ }))
+      .toBeDisabled();
+    await expect
+      .element(getByText(/这条记录已经更新过了/))
+      .toBeVisible();
+
+    // 一个请求都不该发出去
+    expect(mocks.setRolePermission).not.toHaveBeenCalled();
   });
 });
