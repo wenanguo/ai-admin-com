@@ -86,7 +86,7 @@ export function createLoadSkillTool(
 		label: "加载技能",
 		description:
 			"加载一个技能（SKILL.md）的完整说明。技能名在系统提示的 available_skills 里。" +
-			"当任务与某个技能的描述吻合时，先加载它再动手。",
+			"当要做的事与某个技能的描述吻合时，先加载它再动手。",
 		parameters: LoadSkillParameters,
 		annotations: {
 			readOnlyHint: true,

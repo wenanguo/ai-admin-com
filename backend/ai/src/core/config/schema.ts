@@ -80,6 +80,13 @@ export const agentConfigSchema = z
 		mcpServers: z.array(mcpServerSchema, { error: "必须是数组" }).default([]),
 		/** 工具白名单。 */
 		tools: z.array(z.string({ error: "必须是字符串" }), { error: "必须是字符串数组" }).default([]),
+		/**
+		 * 用哪个**业务插件**（可省 ⇒ 默认插件）。
+		 *
+		 * ⚠️ 内核按**名字**取插件（注册表）⇒ 内核不 import 插件。
+		 *    写错名字 ⇒ 启动/建会话时报「插件没注册」（不静默降级）。
+		 */
+		plugin: z.string({ error: "必须是非空字符串" }).min(1, { error: "必须是非空字符串" }).optional(),
 	})
 	// ⚠️ 二选一：`systemPrompt` 与 `systemPromptFile` 同时给 ⇒ 不知道该用哪个
 	.superRefine((value, ctx) => {

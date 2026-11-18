@@ -21,11 +21,18 @@ import { describe, expect, it } from "vitest";
 const REPO_ROOT = join(process.cwd(), "..", "..");
 /** 检查脚本。 */
 const SCRIPT = join(REPO_ROOT, "scripts", "check-core-purity.cjs");
+/** 业务词检查脚本。 */
+const WORDS_SCRIPT = join(REPO_ROOT, "scripts", "check-core-business-words.cjs");
 
 /** 跑检查脚本 ⇒ 返回 {code, output}。 */
 function runCheck(coreDir?: string): { code: number; output: string } {
+	return runScript(SCRIPT, coreDir);
+}
+
+/** 跑另一个检查脚本（同样的调用方式）。 */
+function runScript(script: string, coreDir?: string): { code: number; output: string } {
 	try {
-		const output = execFileSync("node", [SCRIPT, ...(coreDir ? [coreDir] : [])], {
+		const output = execFileSync("node", [script, ...(coreDir ? [coreDir] : [])], {
 			cwd: REPO_ROOT,
 			encoding: "utf8",
 			stdio: ["ignore", "pipe", "pipe"],
@@ -39,6 +46,25 @@ function runCheck(coreDir?: string): { code: number; output: string } {
 		};
 	}
 }
+
+describe("内核业务词", () => {
+	it("仓里的 core/ 代码里没有业务词（剥掉注释后查）", () => {
+		const result = runScript(WORDS_SCRIPT);
+		expect(result.output).not.toContain("❌");
+		expect(result.code).toBe(0);
+	});
+
+	it("检查脚本**抓得住**业务词", () => {
+		const root = mkdtempSync(join(tmpdir(), "core-words-"));
+		const core = join(root, "core");
+		mkdirSync(core, { recursive: true });
+		writeFileSync(join(core, "bad.ts"), 'const table = "pm_task";\n', "utf8");
+
+		const result = runScript(WORDS_SCRIPT, core);
+		expect(result.code).toBe(1);
+		expect(result.output).toContain("pm_task");
+	});
+});
 
 describe("内核纯净度", () => {
 	it("仓里的 core/ 没有 import plugins/（CI 也跑同一条检查）", () => {

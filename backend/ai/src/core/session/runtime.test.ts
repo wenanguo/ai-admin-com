@@ -150,7 +150,8 @@ function fakeContextProvider(): ContextProvider {
 function fakePlugins(calls: unknown[] = []): PluginRegistry {
 	const registry = new PluginRegistry();
 	registry.register({
-		id: "fake",
+		// ⚠️ id 要跟**真实智能体配置**里写的一致（agents/pm/agent.yaml ⇒ plugin: pm）
+		id: "pm",
 		commands: [
 			{
 				name: "create_task",

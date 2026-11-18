@@ -60,7 +60,7 @@ export function createFakeMcpServer(
 	const tools: FakeMcpTool[] = options.tools ?? [
 		{
 			name: "list_tasks",
-			description: "列出任务",
+			description: "列出条目",
 			inputSchema: { type: "object", properties: {} },
 		},
 	];
@@ -94,7 +94,7 @@ export function createFakeMcpServer(
 						reply(request.id as string | number, {
 							protocolVersion: "2024-11-05",
 							capabilities: { tools: {} },
-							serverInfo: { name: "fake-aipm", version: "1.0.0" },
+							serverInfo: { name: "fake-server", version: "1.0.0" },
 						});
 						return;
 					case "tools/list":

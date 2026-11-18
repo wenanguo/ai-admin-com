@@ -24,7 +24,7 @@ import { redactAuditArgs } from "../audit/audit-redact.ts";
 import { env } from "../env/env.ts";
 import { buildFrame } from "../http/sse.ts";
 import { buildCommandTools } from "../tools/index.ts";
-import { pluginRegistry, type PluginRegistry } from "../plugins.ts";
+import { pluginRegistry, type AiPlugin, type PluginRegistry } from "../plugins.ts";
 import type { CurrentUser } from "./identity.ts";
 import { SSE_EVENTS, type SseEventName, type SsePayload } from "./events.ts";
 import { AgentEventMapper, extractAssistantText, isAssistantMessage } from "./event-mapper.ts";
@@ -183,6 +183,7 @@ export class AgentRuntime {
 
 		// ⚠️ **命令与身份都来自插件**（内核不认识业务）⇒ 运行时只读注册表。
 		this.#plugins = options.plugins ?? pluginRegistry;
+
 		this.#resolveUser =
 			options.resolveUser ?? ((token: string) => this.#resolveUserByPlugin(token));
 	}
@@ -362,7 +363,13 @@ export class AgentRuntime {
 		// ⚠️ **上下文是「此刻」的**：每条带上下文的消息都会覆盖它 ⇒
 		//    用户换一条任务继续聊 ⇒ 上下文跟着换。
 		//    没有上下文（普通聊天）⇒ 清掉 ⇒ 闸门不再收窄字段。
-		const provider = this.#contextProvider();
+		// ⚠️ **这个会话的智能体**（拿不到就退回默认插件 ⇒ 这里**不抛错**
+		//    ⇒ 与之前的行为一致：智能体认不出来是在**建会话时**才报。
+		const agentId =
+			conversation.agentId ??
+			agentIdOfConversation(conversation.conversationId) ??
+			this.#agents.defaultAgentId;
+		const provider = this.#contextProvider(this.#agents.get(agentId));
 		const anchor = provider?.parse(request.context) ?? null;
 		channel.anchor = anchor ?? undefined;
 		// token 只在内存里；每次命令都刷新（token 轮换后能用新的那个）
@@ -435,13 +442,53 @@ ${message}`;
 	}
 
 	/**
+	 * 这个智能体用哪个插件（**按配置里的名字**取；没写 ⇒ 默认插件）。
+	 *
+	 * ⚠️ **拿不到就返回 undefined**（不抛错）⇒ 调用方自己决定怎么办
+	 *    （「插件没注册」在**构造时**就报过了 ⇒ 运行期只可能是「没挂插件的智能体」）。
+	 */
+	#pluginOf(agent: AgentConfig): AiPlugin | undefined {
+		const id = agent.plugin;
+		if (id === undefined) {
+			return this.#plugins.defaultPlugin();
+		}
+		return this.#plugins.get(id);
+	}
+
+	/**
+	 * 配置里写的插件都注册了吗（**没有 ⇒ 启动即失败**）。
+	 *
+	 * ⚠️ **由入口调用**（server.ts 的 createApp）⇒ 拼错插件名**服务起不来**
+	 *    （不等到有人建会话才发现）。
+	 */
+	validatePlugins(): void {
+		for (const agent of this.#agents.list()) {
+			if (agent.plugin === undefined) {
+				continue;
+			}
+			if (this.#plugins.get(agent.plugin) === undefined) {
+				throw new AgentError(
+					"NOT_FOUND",
+					`智能体 ${agent.id} 指定的插件「${agent.plugin}」没注册` +
+						`（已注册：${this.#plugins.list().map((p) => p.id).join("、") || "无"}）`,
+				);
+			}
+		}
+	}
+
+	/**
 	 * 「讨论上下文」的提供器（**插件给**）。
 	 *
 	 * ⚠️ 内核不认识「任务 / 项目」⇒ 解析、渲染、可写字段白名单**全在插件里**。
 	 *    没有插件 ⇒ 没有讨论上下文（普通聊天照旧）。
+	 *
+	 * @param agent 这个会话的智能体（**没写插件 ⇒ 用默认插件**）。
 	 */
-	#contextProvider(): ContextProvider | undefined {
-		return this.#plugins.contextProvider();
+	#contextProvider(agent?: AgentConfig): ContextProvider | undefined {
+		if (agent === undefined) {
+			return this.#plugins.contextProvider();
+		}
+		return this.#pluginOf(agent)?.context;
 	}
 
 	/**
@@ -661,9 +708,13 @@ ${message}`;
 		// ⚠️ **这个会话的智能体**（提示词 / 模型 / 技能 / MCP / 工具全按它来）
 		//    ⇒ 换智能体只改配置文件，不改代码。
 		const agent = await this.#agentOf(channel.conversationId);
+		// ⚠️ **这个智能体挂了哪个插件**（配置里的 `plugin:`；没写 ⇒ 默认插件）
+		const plugin = this.#pluginOf(agent);
+		// ⚠️ **写规则也来自同一个插件**（与锚点一致 ⇒ 收窄的是同一套语义）
+		channel.writeRules = plugin?.context?.writeRules ?? [];
 		const tools = buildCommandTools(
 			// ⚠️ **命令目录来自插件**（内核不带业务命令）
-			this.#plugins.commands(),
+			plugin?.commands ?? [],
 			{
 				currentToken: () => channel.token,
 				currentUserId: async (token: string) => (await this.#resolveUser(token)).id,
@@ -713,7 +764,7 @@ ${message}`;
 								// ⚠️ 有上下文 ⇒ 闸门把写操作**收窄**到允许回填的字段
 								anchor: channel.anchor,
 								// ⚠️ 写规则由**插件**给（闸门不写死工具名/字段名）
-								writeRules: this.#contextProvider()?.writeRules ?? [],
+								writeRules: channel.writeRules ?? [],
 								onPending: (row) => {
 									this.#publish(channel, SSE_EVENTS.PENDING, {
 										conversationId: channel.conversationId,
@@ -748,7 +799,7 @@ ${message}`;
 			const entityId = writeTargetId(
 				event.toolName,
 				channel.anchor ?? null,
-				this.#contextProvider()?.writeRules ?? [],
+				channel.writeRules ?? [],
 			);
 			if (entityId !== undefined) {
 				channel.lastWrite = {

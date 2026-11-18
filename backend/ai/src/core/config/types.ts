@@ -54,16 +54,28 @@ export interface AgentConfig {
 	mcpServers: AgentMcpServer[];
 	/** 工具白名单（工具名）。 */
 	tools: string[];
+	/**
+	 * 用哪个**业务插件**（可省 ⇒ 默认插件）。
+	 *
+	 * ⚠️ 内核按**名字**取插件（注册表）⇒ 内核不 import 插件。
+	 */
+	plugin?: string;
 	/** 配置所在目录（绝对路径）。 */
 	dir: string;
 	/** 配置文件本身（绝对路径）—— 报错时指给用户看。 */
 	configPath: string;
 }
 
-/** 能力摘要（清单里给界面看：模型 + 技能数 + MCP 数 + 工具数）。 */
+/** 能力摘要（清单里给界面看：模型 + 技能数 + MCP 数 + 工具数 + 插件）。 */
 export interface AgentCapabilities {
 	/** 实际用的模型（配置里的，或全局默认）。 */
 	model: string;
+	/**
+	 * 这个智能体挂了哪个**业务插件**（没写 ⇒ 默认插件）。
+	 *
+	 * ⚠️ 界面据此知道「这个智能体有哪些业务能力」（命令 / 上下文 / 数据源）。
+	 */
+	plugin?: string;
 	/** 技能目录数。 */
 	skillCount: number;
 	/** MCP 服务器数。 */

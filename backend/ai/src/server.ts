@@ -11,6 +11,9 @@
  * 路由本身在 `src/routes/**`（Task 4/5）。
  */
 
+// ⚠️ **必须排在所有 import 之前**：运行时是**模块级单例**（import 时就构造）
+//    ⇒ 插件必须**先注册**，否则构造时会认为「配置里的插件没注册」。
+import "./plugins.ts";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { buildCorsHeaders, isPreflightRequest, originOf } from "./core/http/cors.ts";
 import { toErrorEnvelope } from "./core/http/errors.ts";
@@ -90,6 +93,7 @@ export const healthRouter = createHealthRouter({
  * 中间件顺序：预检/CORS → 路由 → 404 → 错误处理。
  */
 export function createApp(): Express {
+
 	const app = express();
 	// 别让外部看到框架名（也少一条信息泄露）
 	app.disable("x-powered-by");
@@ -126,6 +130,16 @@ export function start(): void {
 	} catch (error) {
 		console.error(
 			`[ai-service] 智能体配置不合法，已退出：${error instanceof Error ? error.message : String(error)}`,
+		);
+		process.exit(1);
+	}
+
+	// ⚠️ **配置里写的插件必须已注册** ⇒ 拼错名字**服务起不来**（不等到建会话才发现）。
+	try {
+		agentRuntime.validatePlugins();
+	} catch (error) {
+		console.error(
+			`[ai-service] 插件配置不合法，已退出：${error instanceof Error ? error.message : String(error)}`,
 		);
 		process.exit(1);
 	}

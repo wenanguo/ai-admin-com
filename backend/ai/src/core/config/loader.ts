@@ -126,6 +126,7 @@ export function loadAgentConfig(configPath: string, dir: string): AgentConfig {
 		skills,
 		mcpServers,
 		tools: [...parsed.tools],
+		plugin: parsed.plugin,
 		dir,
 		configPath,
 	};
