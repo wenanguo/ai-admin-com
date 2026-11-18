@@ -183,10 +183,16 @@ export interface AiAgentSummary {
   name: string;
   /** 一句话说明。 */
   description: string;
-  /** 能力摘要：模型 + 技能数 + MCP 服务器数 + 工具数。 */
+  /** 能力摘要：模型 + 插件 + 技能数 + MCP 服务器数 + 工具数。 */
   capabilities: {
     /** 实际用的模型（配置里写的，或全局默认）。 */
     model: string;
+    /**
+     * 这个智能体挂了哪些**业务插件**（服务端没写 `plugin:` ⇒ 给默认插件）。
+     *
+     * ⚠️ 服务端保证这个字段**总是存在**（没有插件时是空数组）。
+     */
+    plugins: string[];
     /** 技能目录数。 */
     skillCount: number;
     /** MCP 服务器数。 */

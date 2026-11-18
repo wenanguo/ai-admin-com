@@ -243,6 +243,7 @@ describe('AI 工作台侧栏', () => {
         description: '项目管理',
         capabilities: {
           model: 'm',
+          plugins: ['pm'],
           skillCount: 1,
           mcpServerCount: 1,
           toolCount: 1,
@@ -254,6 +255,7 @@ describe('AI 工作台侧栏', () => {
         description: '测试',
         capabilities: {
           model: 'm',
+          plugins: ['pm'],
           skillCount: 1,
           mcpServerCount: 1,
           toolCount: 1,
@@ -296,6 +298,7 @@ describe('AI 工作台侧栏', () => {
         description: '项目管理',
         capabilities: {
           model: 'm',
+          plugins: ['pm'],
           skillCount: 1,
           mcpServerCount: 1,
           toolCount: 1,
@@ -307,6 +310,7 @@ describe('AI 工作台侧栏', () => {
         description: '测试',
         capabilities: {
           model: 'm',
+          plugins: ['pm'],
           skillCount: 1,
           mcpServerCount: 1,
           toolCount: 1,
@@ -338,6 +342,7 @@ describe('AI 工作台侧栏', () => {
         description: '项目管理',
         capabilities: {
           model: 'm',
+          plugins: ['pm'],
           skillCount: 1,
           mcpServerCount: 1,
           toolCount: 1,
@@ -350,6 +355,7 @@ describe('AI 工作台侧栏', () => {
         description: '测试',
         capabilities: {
           model: 'm',
+          plugins: ['pm'],
           skillCount: 1,
           mcpServerCount: 1,
           toolCount: 1,
@@ -395,6 +401,7 @@ describe('AI 工作台侧栏', () => {
         description: '项目管理',
         capabilities: {
           model: 'm',
+          plugins: ['pm'],
           skillCount: 1,
           mcpServerCount: 1,
           toolCount: 1,
@@ -406,6 +413,7 @@ describe('AI 工作台侧栏', () => {
         description: '测试',
         capabilities: {
           model: 'm',
+          plugins: ['pm'],
           skillCount: 1,
           mcpServerCount: 1,
           toolCount: 1,

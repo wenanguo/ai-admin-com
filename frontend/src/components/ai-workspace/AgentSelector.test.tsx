@@ -21,6 +21,7 @@ function agent(id: string, name: string): AiAgentSummary {
     description: `${name}的说明`,
     capabilities: {
       model: 'test-model',
+      plugins: [],
       skillCount: 1,
       mcpServerCount: 1,
       toolCount: 1,

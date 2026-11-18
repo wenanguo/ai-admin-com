@@ -279,6 +279,7 @@ describe('AI 服务客户端', () => {
           description: '项目管理助手',
           capabilities: {
             model: 'm',
+            plugins: ['pm'],
             skillCount: 1,
             mcpServerCount: 1,
             toolCount: 1,
