@@ -43,7 +43,8 @@
 ## 硬规矩
 
 1. **内核不 import 插件** ⇒ `node scripts/check-core-purity.cjs`（CI 跑）✓
-2. **内核代码里不出现业务词** ⇒ `node scripts/check-core-business-words.cjs`（CI 跑，**允许清单现在是空的**）✓
+2. **内核代码里不出现业务词** ⇒ `node scripts/check-core-purity.cjs` **第二档**（CI 跑，
+   **允许清单现在是空的** —— 清单文件：`scripts/core-business-words.allow.json`）✓
 3. **插件的依赖方向是单向的**：插件 → 内核 ✓
 4. **智能体配置是对外契约** ⇒ 字段见 [`../../agents/README.md`](../../agents/README.md)
 

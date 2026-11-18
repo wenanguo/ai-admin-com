@@ -30,7 +30,8 @@ jobs:
 
   # AI 服务（backend/ai）—— 单测 + **内核纯净度**。
   # ⚠️ 之前后端的 447 条单测**在 CI 里根本没跑**（只有容器验收）⇒ 这里补上。
-  # ⚠️ 内核纯净度 = `core/**` 不许 import `plugins/**`（依赖方向只能是 插件 → 内核）。
+  # ⚠️ 内核纯净度 = 两档（`core/**` 不许 import `plugins/**` + 代码里不许出现业务词），
+  #    都在 `scripts/check-core-purity.cjs` 里。
   ai-service:
     name: AI 服务（单测 + 内核纯净度）
     runs-on: ubuntu-latest
@@ -49,7 +50,6 @@ jobs:
       - run: npx prisma generate
       - run: npm test
       - run: node ../../scripts/check-core-purity.cjs
-      - run: node ../../scripts/check-core-business-words.cjs
 
   lint:
     runs-on: ubuntu-latest
