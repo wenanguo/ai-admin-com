@@ -103,10 +103,16 @@ const emptyRoleListResponse = {
 /**
  * 两个角色的列表(给「换角色」用例用)。
  *
- * - 角色 1(id=1):已经有「角色管理」(id=3)与它的按钮「角色授权」(id=30);
- * - 角色 2(id=2):**只有**「角色授权」(id=30)⇒ 「角色管理」只是**半选**态。
+ * 菜单树里有两个模块菜单(见下面的 fixture):
+ * - 「角色管理」(id=3)与它的按钮「角色授权」(id=30);
+ * - 「岗位管理」(id=4)。
  *
- * ⇒ 两个角色的菜单集合**不一样** ⇒ 换角色后提交的内容必须跟着变,
+ * 两个角色的菜单集合**刻意不一样**:
+ * - 角色 1(id=1):「角色管理 + 角色授权」;
+ * - 角色 2(id=2):**只有「岗位管理」**。
+ *
+ * ⇒ 换角色后弹窗里的勾选状态必须整个换掉(角色 1 的菜单不再勾着),
+ *   提交的内容也必须是**新**角色的(id=2 + 「岗位管理」),
  *   否则就是「拿上一个角色的菜单去覆盖另一个角色」。
  */
 function twoRoleListResponse() {
@@ -122,7 +128,7 @@ function twoRoleListResponse() {
           order: 1,
           data_scope: 4,
           status: 0,
-          description: '拥有全部权限',
+          description: '拥有角色管理的权限',
           created_time: '2026-06-21 17:56:33',
           menus: [
             { id: 3, name: '角色管理', type: 2, title: '角色管理' },
@@ -137,11 +143,9 @@ function twoRoleListResponse() {
           order: 2,
           data_scope: 4,
           status: 0,
-          description: '只授权了角色授权按钮',
+          description: '只有岗位管理的权限',
           created_time: '2026-06-21 17:56:34',
-          menus: [
-            { id: 30, name: '角色授权', type: 3, title: '角色授权' },
-          ],
+          menus: [{ id: 4, name: '岗位管理', type: 2, title: '岗位管理' }],
           depts: [],
         },
       ],
@@ -538,7 +542,7 @@ test.describe('角色管理页', () => {
 
     const permissionRequests: { body: unknown }[] = [];
     await page.route('**/api/v1/system/role/permission', (route) => {
-      permissionRequests.push({ body: route.postDataJSON() });
+      permissionRequests.push({ body: route.request().postDataJSON() });
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -557,6 +561,12 @@ test.describe('角色管理页', () => {
         roleMenu([
           { title: '角色授权', permission: 'module_system:role:permission' },
         ]),
+        // 第二个模块菜单:给「角色 2」当它的菜单(id=4)
+        {
+          title: '岗位管理',
+          routePath: 'position',
+          permission: 'module_system:position:query',
+        },
       ],
       listUrl: ROLE_LIST_URL,
       listBody: twoRoleListResponse(),
@@ -566,7 +576,7 @@ test.describe('角色管理页', () => {
 
     // ① 打开**第一个**角色的授权
     await page.getByRole('button', { name: '授权' }).first().click();
-    // 第一个角色已有「角色管理 + 角色授权」⇒ 两个都是全选态
+    // 第一个角色已有「角色管理」⇒ 它是勾选态
     await expect(
       page.getByRole('checkbox', { name: '角色管理' }),
     ).toBeChecked();
@@ -577,9 +587,9 @@ test.describe('角色管理页', () => {
 
     // ③ 打开**第二个**角色的授权
     await page.getByRole('button', { name: '授权' }).nth(1).click();
-    // 第二个角色只有「角色授权」⇒ 「角色管理」不再是全选
+    // 第二个角色只有「岗位管理」⇒ 它的菜单勾上了,上一个角色的菜单**没**勾
     await expect(
-      page.getByRole('checkbox', { name: '角色授权' }),
+      page.getByRole('checkbox', { name: '岗位管理' }),
     ).toBeChecked();
     await expect(
       page.getByRole('checkbox', { name: '角色管理' }),
@@ -592,10 +602,10 @@ test.describe('角色管理页', () => {
 
     // ⇒ 真的提交了
     await expect.poll(() => permissionRequests.length).toBe(1);
-    // ⇒ 提交的是**新**角色(id=2)与**新**角色的菜单(只有「角色授权」)
+    // ⇒ 提交的是**新**角色(id=2)与**新**角色的菜单(只有「岗位管理」)
     expect(permissionRequests[0].body).toMatchObject({
       role_ids: [2],
-      menu_ids: [30],
+      menu_ids: [4],
     });
   });
 
