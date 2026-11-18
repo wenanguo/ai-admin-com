@@ -66,16 +66,17 @@ export interface AgentConfig {
 	configPath: string;
 }
 
-/** 能力摘要（清单里给界面看：模型 + 技能数 + MCP 数 + 工具数 + 插件）。 */
+/** 能力摘要（清单里给界面看：模型 + 插件 + 技能数 + MCP 数 + 工具数）。 */
 export interface AgentCapabilities {
 	/** 实际用的模型（配置里的，或全局默认）。 */
 	model: string;
 	/**
-	 * 这个智能体挂了哪个**业务插件**（没写 ⇒ 默认插件）。
+	 * 这个智能体挂了哪些**业务插件**（**没写 `plugin:` ⇒ 默认插件**）。
 	 *
 	 * ⚠️ 界面据此知道「这个智能体有哪些业务能力」（命令 / 上下文 / 数据源）。
+	 * ⚠️ 现在每个智能体最多挂一个 ⇒ 是**数组**（将来能挂多个 ⇒ 不用改契约）。
 	 */
-	plugin?: string;
+	plugins: string[];
 	/** 技能目录数。 */
 	skillCount: number;
 	/** MCP 服务器数。 */
