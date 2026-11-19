@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
 	test: {
 		environment: "node",
-		include: ["src/**/*.test.ts"],
+		include: ["src/**/*.test.ts", "examples/**/*.test.ts"],
 		// 测试用环境变量：值是假的，只为让模块级的 env 校验能通过。
 		// 真值在 .env（不入库）。
 		env: {

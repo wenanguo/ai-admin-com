@@ -1,0 +1,31 @@
+# 智能体配置（示例系统自己的）
+#
+# ⚠️ **这是示例系统自己的配置**（与本仓其它系统的 `agents/` 无关）。
+#    内核按 **cwd 相对**找 `agents/<id>/agent.yaml`
+#    ⇒ 示例进程在示例目录下启动（容器里 WORKDIR=/app，agents/ 也在那）。
+#
+# 字段说明见 `backend/ai/agents/README.md`。
+
+id: notes
+name: 读书笔记助手
+description: 只管读书笔记：记一条、列已有笔记（示例系统自己的业务）。
+
+# 模型（可省 ⇒ 用全局默认 `AI_MODEL`）
+model: minimax-cn/MiniMax-M3.1-Flash
+
+# 系统提示词
+systemPromptFile: prompt.md
+
+# 技能目录（相对本配置目录；本示例没有技能）
+skills: []
+
+# MCP 服务器（**空** ⇒ 这个智能体不接 MCP ⇒ 模型看不到任何 MCP 工具）
+mcpServers: []
+
+# 用哪个**业务插件**（内核按名字从注册表取 ⇒ 插件必须已注册）
+plugin: notes
+
+# 工具白名单（**只有示例插件提供的两条命令** ⇒ 模型看不到别的工具）
+tools:
+  - add_note
+  - list_notes
