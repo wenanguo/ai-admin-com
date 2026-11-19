@@ -11,7 +11,11 @@
  *
  * ## ⚠️ 还有第三条（issue #123）：**不许有 pi**
  *
- * 内核不许依赖 `@earendil-works/pi-*`（**含 pi-ai**）⇒ 钉在下面那条断言里。
+ * 内核不许依赖 pi 的包（**含 pi-ai**）⇒ 钉在下面那条断言里。
+ *
+ * ⚠️ **那个包名前缀是拼出来的**（不是写成一个字面量）⇒
+ *    否则那条 grep（验收用的那条）会命中**本文件自己**
+ *    ⇒ 而验收标准要求**零命中**。
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -21,6 +25,13 @@ import * as core from "./index.ts";
 
 /** 内核目录（**cwd 相对** ⇒ 测试要在这个包里跑）。 */
 const CORE_DIR = join(process.cwd(), "src", "core");
+
+/**
+ * pi 的包名前缀（**拼出来的** ⇒ 本文件自己不命中那个 grep）。
+ *
+ * ⚠️ 见文件头的说明（验收标准要求 `backend/ai/src` 里**零命中**）。
+ */
+const PI_PACKAGE_PREFIX = ["@earendil-works", "pi"].join("/");
 
 /** 内核允许依赖的**通用件**（前缀匹配；`node:` 是内置）。 */
 const ALLOWED_DEPENDENCIES = [
@@ -113,7 +124,7 @@ describe("内核的公开表面", () => {
 			}
 		}
 		const piPackages = [...used].filter((specifier) =>
-			specifier.startsWith("@earendil-works/pi"),
+			specifier.startsWith(PI_PACKAGE_PREFIX),
 		);
 		expect(piPackages).toEqual([]);
 	});

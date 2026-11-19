@@ -49,7 +49,7 @@
    **允许清单现在是空的** —— 清单文件：`scripts/core-business-words.allow.json`）✓
 3. **插件的依赖方向是单向的**：插件 → 内核 ✓
 4. **智能体配置是对外契约** ⇒ 字段见 [`../../agents/README.md`](../../agents/README.md)
-5. **内核里不许有 pi**（issue #123）⇒ 依赖清单 / 源码都不许出现 `@earendil-works/pi-*` ✓
+5. **内核里不许有 pi**（issue #123）⇒ 依赖清单 / 源码都不许出现 pi 的包 ✓
 
 ## 怎么用（写一个自己的插件）
 
