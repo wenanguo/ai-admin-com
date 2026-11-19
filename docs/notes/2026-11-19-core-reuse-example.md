@@ -4,7 +4,7 @@
 
 ## 目标
 
-- **关联**：issue #116 · PR（待补）
+- **关联**：issue #116 · PR **#117**（**只开不合并**，等 PM 拍板）
 - **一句话**：造一个**不依赖 AiAdmin** 的示例系统（读书笔记），证明内核换个业务系统照样能用；
   它**只从 `core/index.ts` 公开入口**接入内核（检查脚本钉死 + 进 CI），
   并有一条**可复跑的 e2e**（docker compose：内核 + 示例插件 + 示例自己的空库）。
@@ -17,14 +17,10 @@
 
 | 提交 | 做了什么 |
 | ---- | -------- |
-| （待补） | `backend/ai/src/core/app.ts`：**内核的 HTTP 装配**（`createCoreApp` / `createCoreHealthRouter` / `assertCoreReady`）—— 公开入口原来缺这一块 |
-| （待补） | `backend/ai/src/core/index.ts`：公开入口导出上面三个（**改它 = 改对外契约**） |
-| （待补） | `backend/ai/src/server.ts`：改成薄壳（`createApp()` 委托给 `createCoreApp`）—— **行为不变** |
-| （待补） | `backend/ai/examples/reading-notes/`：示例系统（插件 / 智能体 YAML / compose / Dockerfile / README / 单测） |
-| （待补） | `scripts/check-core-reuse.cjs`：三档检查（只用公开入口 / 不碰别的业务系统 / compose 里没有别的服务）⇒ 进 CI |
-| （待补） | `scripts/e2e/reuse-core-example.cjs`：真起 compose 验收（清单能列 / 身份自己认 / 会话建得出 / 命令真能调） |
-| （待补） | `.github/workflows/reuse-core.yml`：静态断言 + 容器验收（模型 key 走 CI secret，**没 key 也过**） |
-| （待补） | `docs/how-to/reuse-core.md`：复用指南（拷内核 → 写插件 → 写 YAML → 装配） |
+| `936201d` | `backend/ai/src/core/app.ts`：**内核的 HTTP 装配**（`createCoreApp` / `createCoreHealthRouter` / `assertCoreReady`）—— 公开入口原来缺这一块；`core/index.ts` 导出它；`src/server.ts` 改成薄壳（**行为不变**）+ 单测 |
+| `a7f7db4` | `backend/ai/examples/reading-notes/`：示例系统（插件 / 智能体 YAML / compose / Dockerfile / README / 单测） |
+| `d6ae93e` | `scripts/check-core-reuse.cjs`：三档检查（只用公开入口 / 不碰别的业务系统 / compose 里没有别的服务）⇒ 进 CI；`scripts/e2e/reuse-core-example.cjs`：真起 compose 验收（清单能列 / 身份自己认 / 会话建得出 / 命令真能调） |
+| `eb22455` | `docs/how-to/reuse-core.md`：复用指南（拷内核 → 写插件 → 写 YAML → 装配）+ 短设计 + 本 note |
 
 **下一步（具体到文件与命令）**：
 
