@@ -691,3 +691,50 @@
 - **G3 并入 G4**：人最初提的「智能体市场 / 创建编辑智能体 / 技能管理 / MCP 管理」就是 #124
   ⇒ **不再单开 G3 milestone**（否则会把 dsh 已有的 persona/skill/tools 自建一遍）。
 - **草稿**：`docs/pm/drafts/2026-11-19-dsh重构.md`（六条正文原文 + 拍板记录）。
+
+### 2026-11-19 · #119 完成：dsh 底座摸底（spike 八问全钉死）+ spec/plan ⇒ ⏸️ #120 冻结等 review
+
+- **#119 已合并**（PR #126）⇒ 交付：**真尖峰**（`backend/ai/spike/dsh/`，起真 dsh 子进程跑五个阶段，全绿）
+  + **spec**（`docs/superpowers/specs/2026-11-19-dsh-底座摸底-目标架构-design.md`）
+  + **plan**（`docs/superpowers/plans/2026-11-19-dsh-底座摸底-目标架构.md`）+ 静态断言脚本（CI 必跑）
+- **八问结论（关键）**：
+  | 问 | 结论 |
+  | -- | ---- |
+  | 模型 | ✅ 成（OpenAI 兼容网关 + DeepSeek 模型） |
+  | MiniMax | ✅ 成，**几乎零工作量**（dsh 自带 `dsh-llm-pi-ai` 适配器）；自己写 provider ≈ 1.5–3 人日 |
+  | 我们的工具 | ✅ 成（cordis 插件 + `defineTool`，模型真的调用了） |
+  | 事件与流式 | ✅ 契约保得住（`assistant/message.stream` 带增量文本 ⇒ 映射到我们的 SSE） |
+  | 闸门 | ✅ 成（`approval/request` 能一路走到我们的进程；`allowed-once` / `rejected` / 无人应答 ⇒ fail closed） |
+  | **MCP** | ✅ **成**（npm 上**没有** `dsh-mcp` 这个名字，但有 **`dsh-mcp-client` / `-manager` / `-resources`** ⇒ 玩具 MCP server 实挂并被调用 `mcp__toy__toy_echo`） |
+  | 存储 | ✅ 成（可与 `ai_conversation` 共存） |
+  | 子代理 | ✅ 成（可替代 `dispatch.cjs` 的 `pi-launcher.js`） |
+- **目标架构**：dsh 以「**子进程 + stdio JSON-RPC**」挂在服务旁（与今天的 pi 用法同构）；
+  **只新增一个适配层** `core/adapter/dsh/**`，其余 `core/**` 语义不变 ⇒ **前端零改动**；
+  dsh 类型只许出现在适配层（可执行边界检查）。
+- **⏸️ #120 冻结**：#119 的验收要求「spec + plan 交人 review 通过后才允许开始 #2」⇒ 已撤 #120 的 `ready` 并留言说明。
+  ⚠️ 顺带发现：子会话 PR 正文里带了 `Closes #119` ⇒ GitHub 自动关了 #119（**本意是不关**）⇒
+  **流程漏洞已记**：分阶段的 PR 正文里**不要**写 `Closes #<号>`，否则会提前关 issue。
+- **🔴 新发现的硬前置**：`@deepseek-ai/dsh` 的 engines 要求 **Node ≥ 24.9.0**，
+  而本仓 CI 全是 **Node 22**（`engines: >=22`、Docker 基础镜像 `node:22`）⇒ **换骨架前必须先升 Node**（待人批准开单）。
+- **⚠️ 一个要人拍板的事实（D5）**：dsh 的 LLM 适配器 `@deepseek-ai/dsh-llm-pi-ai` **建在 pi 的 `pi-ai` 包上**
+  ⇒ 若用它，**依赖树里仍会有 `@earendil-works/pi-ai`**（只是不再是 `pi-coding-agent`）
+  ⇒ 「不要 pi」到底包不包括 `pi-ai`，要人明确。
+
+### 2026-11-19 · 人拍板 G4 的四个未决问题 ⇒ 放行 #120 + 新开 #128（升 Node）
+
+- **人的回复**（对 spec 的 review 结论）：
+  - **spec 按建议来** ⇒ #119 的「spec + plan 交人 review」这一关**通过** ⇒ **#120 放行**（`ready` 加回）；
+  - **D1 = A**（子进程；`text_delta` 成批到达，对外契约不变）
+  - **D2 = A + C**（abort 端点先兜住：停掉/重建该会话的 dsh 进程；**并**给 dsh 提 issue 要 `session/cancel`）
+  - **D3 = A**（用**官方 DeepSeek key** 实测；拿不到 key 就停下回报，不许拿兼容网关冒充）
+  - **D5 = A**（**「不要 pi」包含 `pi-ai`**）⇒ ⚠️ **不许用 `@deepseek-ai/dsh-llm-pi-ai`**（它建在 pi 的 `pi-ai` 上）
+    ⇒ **自己写 provider**（基于 `dsh-llm` seam）⇒ **MiniMax 也要接上**（同样不依赖 pi-ai）
+    ⇒ #123 的「拔 pi」范围扩到 **`pi-ai`**
+  - **升 Node 那条开** ⇒ 新开 **#128**
+- **#128**「升 Node 到 ≥ 24.9」= dsh 的 **engines 硬要求**（`node >= 24.9.0`）：
+  - CI **17 处** `node-version: 22`（含 `ci.yml` 的矩阵 `[22]`）· 两个 Dockerfile 的 `ARG NODE_VERSION=22`
+    （`backend/ai/Dockerfile` · `docker/web/Dockerfile`）· 根与 frontend 的 `engines.node: ">=22.0.0"`；
+  - 本机是 Node v26.13.0 ⇒ **本地能跑、CI 跑不了** ⇒ 别被本地通过骗了。
+- **四个决定已写进 #120 的验收标准**，**#120 的依赖加了 #128** ⇒ 串行顺序：**#128 → #120 → (#121/#122) → (#123/#124)**。
+- **流程改进点（记下来）**：分阶段的 PR 正文里**不要**写 `Closes #<号>` —— #126 的正文带了它，
+  GitHub 自动关了 #119（本意是「不关，等 review」）⇒ 以后分阶段 PR 用 `关联 issue：#<号>（阶段X，不关闭）`。

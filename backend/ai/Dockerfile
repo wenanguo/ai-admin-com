@@ -5,15 +5,15 @@
 #   构建上下文 = **仓根**：
 #     docker build -f backend/ai/Dockerfile -t ai-admin-ai .
 #
-#   阶段 1（builder）：node 22 ⇒ npm ci ⇒ tsc（ESM）⇒ prisma generate
-#   阶段 2（runtime）：node 22 ⇒ 只有生产依赖 + dist/ + 技能 + prisma 客户端
+#   阶段 1（builder）：node 24 ⇒ npm ci ⇒ tsc（ESM）⇒ prisma generate
+#   阶段 2（runtime）：node 24 ⇒ 只有生产依赖 + dist/ + 技能 + prisma 客户端
 #
 # ⚠️ **构建阶段不连数据库、不读 .env、不带任何凭据** ⇒ 构建机上不需要私有信息。
 # ⚠️ **不用 alpine**：prisma 的查询引擎在 musl 上要另配 openssl（且要挑对引擎变体）
 #    ⇒ 用 debian slim（与前端镜像的 node 阶段一致）。
 # ============================================================
 
-ARG NODE_VERSION=22
+ARG NODE_VERSION=24
 
 # ─────────────────────────── 构建阶段 ───────────────────────────
 FROM node:${NODE_VERSION}-bookworm-slim AS builder
@@ -24,7 +24,7 @@ ENV HUSKY=0 \
     CI=true
 
 # 钉住 npm 版本（与仓库 CI / 前端镜像一致：npm 10.9.9）
-# ⚠️ node:22 现在默认带 npm 11 ⇒ 它的「package.json 与 package-lock.json 必须同步」
+# ⚠️ node:24 默认带 npm 11 ⇒ 它的「package.json 与 package-lock.json 必须同步」
 #    检查比 npm 10 严 ⇒ 现有的 lock（npm 10 生成的）可能被判不同步 ⇒ npm ci 失败。
 RUN node -v && npm install -g npm@10.9.9 && npm -v
 

@@ -68,5 +68,5 @@ node scripts/agent/merge-pr.cjs <PR号>
 
 - ⚠️ **合并时不要把 agent 的分支签出在工作区里**再让脚本删它 ⇒ 现在脚本会挡住（只提示），
   但最好还是**合并前先把工作区切到别的分支**。
-- ⚠️ `node --test "scripts/agent/*.test.cjs"` 依赖 **node ≥ 18**（`--test` 与 glob）⇒ 本仓要求 node ≥ 22 ✔。
+- ⚠️ `node --test "scripts/agent/*.test.cjs"` 依赖 **node ≥ 18**（`--test` 与 glob）⇒ 本仓要求 node ≥ 24.9 ✔。
 - ⚠️ 改 `scripts/agent/**` 的脚本要**手测一遍**「只检查」模式（它不联网、不改任何东西，很便宜）。

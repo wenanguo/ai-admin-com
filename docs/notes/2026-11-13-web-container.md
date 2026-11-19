@@ -38,10 +38,10 @@
 | ---- | ------ | ---------- |
 | **构建上下文 = 仓根**，`.dockerignore` 放仓根 | 验收命令是 `docker build -f docker/web/Dockerfile -t ai-admin-web .` ⇒ 上下文就是仓根；`.dockerignore` 放 `docker/` 下**不生效** | `node_modules`（2.5GB，含 Windows 二进制）进上下文 ⇒ 构建慢到不可接受 |
 | **依赖层要拷 `frontend/.npmrc`**（内容：`legacy-peer-deps=true`） | 本仓的 `frontend/package-lock.json` 是**按 legacy-peer-deps 生成的**；少了这个 .npmrc ⇒ npm 按「自动装 peer」算出的树与 lock 不同 ⇒ `npm ci` 直接 EUSAGE | 镜像构建第一步就挂：`npm ci can only install packages when your package.json and package-lock.json ... are in sync` |
-| **钉 `npm@10.9.9`**（= 仓库 CI 用的版本） | `node:22` 现在默认带 **npm 11** ⇒ 它的 lock 同步检查比 npm 10 严 ⇒ 本仓的 lock 被判不同步 ⇒ `npm ci` EUSAGE | 同上（换个错误信息而已）。钉住后镜像与 CI 装出**同一棵树**（2183 个包） |
+| **钉 `npm@10.9.9`**（= 本仓 lock 的生成版本） | `node:24` 默认带 **npm 11** ⇒ 它的 lock 同步检查比 npm 10 严 ⇒ 本仓的 lock 被判不同步 ⇒ `npm ci` EUSAGE | 同上（换个错误信息而已）。钉住后镜像装出的树与 lock **完全一致**（2183 个包） |
 | **仓根的 `package.json` + `package-lock.json` 也要拷进构建目录** | utoopack 找「项目根」的规则（`@utoo/pack` 的 `findRootDir`）：从 cwd 往上找**最近的 lock 文件**，再往上找**还有 lock 文件的目录** ⇒ 本地根 = 仓根（frontend/ 与 仓根都有 lock）⇒ `frontend/src/pages/Welcome.tsx` 里 `import '../../../docs/cheatsheet.en-US.md'` 在根之内 | 镜像里根退化成 `frontend/` ⇒ 那个 import 变成「跳出根目录」⇒ utoopack 报 `Module not found: Can't resolve '../../../docs/cheatsheet.en-US.md'`（**踩了 4 次才定位**） |
 | **要拷 `docs/cheatsheet.en-US.md` / `docs/cheatsheet.zh-CN.md`** | 它们是 `frontend/src/pages/Welcome.tsx` 的**构建输入**（utoopack 的 `*.md` loader）；而 `.dockerignore` 里原本排掉了 `docs/` | 同上（文件不在镜像里 ⇒ 解析不到） |
-| builder 用 `node:22-bookworm-slim`，**不用 alpine** | `@utoo/pack`（utoopack 的 Rust 内核）、`esbuild` 的预编译二进制是 **glibc** 版；alpine=musl ⇒ 跑不起来 | 镜像构建在最后一步炸（而且只在 Linux 上炸，本机还验不出来） |
+| builder 用 `node:24-bookworm-slim`，**不用 alpine** | `@utoo/pack`（utoopack 的 Rust 内核）、`esbuild` 的预编译二进制是 **glibc** 版；alpine=musl ⇒ 跑不起来 | 镜像构建在最后一步炸（而且只在 Linux 上炸，本机还验不出来） |
 | `npm ci --ignore-scripts` + `npm rebuild esbuild` | 依赖层要能缓存（先只 COPY `package.json`/`package-lock.json`）；此时**源码还没拷进来**，root 包的 `prepare`（husky + max setup）会失败 ⇒ 跳过脚本；`--ignore-scripts` 顺带跳过 esbuild 的安装脚本 ⇒ 单独 rebuild 补回来 | 不跳过 ⇒ 依赖层缓存失效（每次改源码都重装依赖）；不 rebuild ⇒ esbuild 二进制没就位 |
 | **nginx 整份替换 `/etc/nginx/nginx.conf`**（而不是塞进 `conf.d/default.conf`） | 要控制日志到 stdout、gzip、安全头、`server_tokens off` ⇒ 这些都得在主配置里写 | 只能用默认站点配置的一半能力，日志进不了 `docker logs` |
 | `try_files $uri /index.html`（**刻意不带 `$uri/`**） | 验收标准写「任意前端路由刷新返回 index.html」；带 `$uri/` 时 `/pm/task` 会命中 umi `exportStatic` 预渲染的 `pm/task/index.html`（同一套壳，但字面不是根 index.html）⇒ 不带尾斜杠的路由精确回落到**根 index.html** | 验收方按字面核对时对不上（其实两种都是 200 的壳） |

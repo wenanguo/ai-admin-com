@@ -5,9 +5,9 @@
 
 **目标：** 产出 `ai-admin-web` 镜像（Node 构建 → nginx 托管静态产物），并把「镜像能跑起来」这件事变成可复跑的验收脚本。
 
-**方案：** ① 镜像：`docker/web/Dockerfile`（builder `node:22-bookworm-slim` → runtime `nginx:1.27-alpine`）+ `docker/web/nginx.conf`（SPA fallback / 缓存策略 / `/healthz`）+ 仓根 `.dockerignore`。② 验收：`scripts/e2e/web-container.static.cjs`（静态断言，不需要 docker）+ `scripts/e2e/web-container.cjs`（真起容器，需要 docker）+ CI workflow。
+**方案：** ① 镜像：`docker/web/Dockerfile`（builder `node:24-bookworm-slim` → runtime `nginx:1.27-alpine`）+ `docker/web/nginx.conf`（SPA fallback / 缓存策略 / `/healthz`）+ 仓根 `.dockerignore`。② 验收：`scripts/e2e/web-container.static.cjs`（静态断言，不需要 docker）+ `scripts/e2e/web-container.cjs`（真起容器，需要 docker）+ CI workflow。
 
-**技术栈：** Docker 多阶段构建 · nginx · Node 22 · GitHub Actions。
+**技术栈：** Docker 多阶段构建 · nginx · Node 24 · GitHub Actions。
 
 **设计文档：** `docs/superpowers/specs/2026-11-13-web-container-design.md`
 
@@ -89,7 +89,7 @@
 - 产出：镜像名 `ai-admin-web`（本地 tag `ai-admin-web:local`），监听端口 **80**，健康检查端点 `/healthz`。
 
 - [ ] **Step 1**：写 `docker/web/Dockerfile`：
-  - `FROM node:22-bookworm-slim AS builder`；`ENV HUSKY=0 CI=true NODE_OPTIONS=--max_old_space_size=4096`。
+  - `FROM node:24-bookworm-slim AS builder`；`ENV HUSKY=0 CI=true NODE_OPTIONS=--max_old_space_size=4096`。
   - `COPY frontend/package.json frontend/package-lock.json ./frontend/` → `RUN cd frontend && npm ci --ignore-scripts --no-audit --no-fund`。
   - `COPY frontend/ ./frontend/` → `RUN cd frontend && npm rebuild esbuild` → `RUN cd frontend && npm run build`。
   - `FROM nginx:1.27-alpine AS runtime`：`rm -f /etc/nginx/conf.d/default.conf`、`COPY docker/web/nginx.conf /etc/nginx/nginx.conf`、`COPY docker/web/snippets/ /etc/nginx/snippets/`、`COPY --from=builder /app/frontend/dist /usr/share/nginx/html`、`EXPOSE 80`、`HEALTHCHECK`（`wget -q -O /dev/null http://127.0.0.1/healthz || exit 1`）、`STOPSIGNAL SIGQUIT`。
@@ -144,7 +144,7 @@
 - 新建：`.github/workflows/docker-web.yml`
 - 新建：`docs/notes/2026-11-13-web-container.md`
 
-- [ ] **Step 1**：写 workflow：PR 触发；job `static`（node 22，跑 `node scripts/e2e/web-container.static.cjs`）；job `image`（ubuntu-latest，跑 `node scripts/e2e/web-container.cjs` —— runner 自带 docker）。
+- [ ] **Step 1**：写 workflow：PR 触发；job `static`（node 24，跑 `node scripts/e2e/web-container.static.cjs`）；job `image`（ubuntu-latest，跑 `node scripts/e2e/web-container.cjs` —— runner 自带 docker）。
 - [ ] **Step 2**：写 `docs/notes/2026-11-13-web-container.md`（模板见 `docs/notes/TEMPLATE.md`）：目标 / 状态 / 已完成表 / 决策记录 / 怎么验 / 坑。
 - [ ] **Step 3**：提交
   ```bash
