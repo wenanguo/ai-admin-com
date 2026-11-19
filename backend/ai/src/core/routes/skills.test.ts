@@ -24,7 +24,7 @@ vi.mock("../session/runtime.ts", async () => {
 		AgentError,
 		agentRuntime: {
 			resolveCurrentUser: async () => ({ id: 2, name: "测试用户" }),
-			listAgentSkills: (agentId?: string): Array<{ name: string; description: string }> => {
+			listAgentSkills: async (agentId?: string): Promise<Array<{ name: string; description: string }>> => {
 				const configs = loadAgentConfigs("agents");
 				const agent =
 					agentId === undefined
@@ -33,7 +33,7 @@ vi.mock("../session/runtime.ts", async () => {
 				if (agent === undefined) {
 					throw new AgentError("NOT_FOUND", `智能体 ${agentId} 不存在`);
 				}
-				return listSkillSummaries(agent.skills);
+				return await listSkillSummaries(agent.skills);
 			},
 		},
 	};

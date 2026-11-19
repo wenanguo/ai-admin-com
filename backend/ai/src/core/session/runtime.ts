@@ -353,7 +353,7 @@ export class AgentRuntime {
 	 *
 	 * @param agentId 智能体 id（可省 ⇒ 默认智能体）。
 	 */
-	listAgentSkills(agentId?: string): SkillSummary[] {
+	async listAgentSkills(agentId?: string): Promise<SkillSummary[]> {
 		const agent = this.#requireAgent(agentId ?? this.#agents.defaultAgentId);
 		return listSkillSummaries(agent.skills);
 	}
@@ -876,7 +876,10 @@ ${message}`;
 		userId?: string,
 	): Promise<AgentSessionLike> {
 		// ⚠️ **技能段照旧进模型上下文**（同一套技能表 ⇒ 语义保住）
-		const { systemPrompt, skills } = buildDshSystemPrompt(agent.systemPrompt, agent.skills);
+		const { systemPrompt, skills } = await buildDshSystemPrompt(
+			agent.systemPrompt,
+			agent.skills,
+		);
 		// ⚠️ **没有技能时就不注册 `load_skill`**（别给模型一个必然失败的工具）
 		const allTools = skills.length > 0 ? [...tools, createLoadSkillTool(skills)] : tools;
 		// ⚠️ **会话 ↔ dsh session 的映射**（`ai_conversation.dsh_session_id`）

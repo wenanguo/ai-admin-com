@@ -16,12 +16,11 @@
  * ⚠️ **不缓存**：每次请求都重新读 ⇒ 改完 `SKILL.md` 重启服务就能看到新说明
  * （验收标准就是这条）。
  *
- * ⚠️ **仍然走 pi 的 loader**（`loadSkills`）⇒ 不自己写技能扫描器
- * ⇒ 多目录的合并、去重、诊断都跟 pi 的会话里一致。
+ * ⚠️ **走我们自己的 loader**（`skill-loader.ts`）⇒ **不依赖 pi**
+ *    ⇒ 技能是 **Agent Skills 标准格式**（不是 pi 私有）⇒ 拔 pi 不会伤到技能。
  */
 
-import { join } from "node:path";
-import { loadSkills } from "@earendil-works/pi-coding-agent";
+import { loadSkills } from "./skill-loader.ts";
 
 /** 一个技能的摘要（给界面看的那两项）。 */
 export interface SkillSummary {
@@ -37,18 +36,15 @@ export interface SkillSummary {
  * @param skillDirs 技能目录（**绝对路径**；来自智能体配置的 `skills`）。
  * @returns 目录不存在或没有技能 ⇒ 空列表（**不许炸**：技能是可选的）。
  */
-export function listSkillSummaries(skillDirs: readonly string[]): SkillSummary[] {
+export async function listSkillSummaries(
+	skillDirs: readonly string[],
+): Promise<SkillSummary[]> {
 	if (skillDirs.length === 0) {
 		return [];
 	}
-	// ⚠️ **includeDefaults: false** ⇒ 只认**配置里列的目录**
-	//    （不扫 `<cwd>/.pi/skills`、也不扫用户家目录 ⇒ 不跨智能体串味）。
-	const result = loadSkills({
-		cwd: process.cwd(),
-		agentDir: join(process.cwd(), ".ai", "agent"),
-		skillPaths: [...skillDirs],
-		includeDefaults: false,
-	});
+	// ⚠️ **只认配置里列的目录**（不扫 `<cwd>/.pi/skills`、也不扫用户家目录
+	//    ⇒ 不跨智能体串味）。
+	const result = await loadSkills(skillDirs);
 	return result.skills.map((skill) => ({
 		name: skill.name,
 		description: skill.description,

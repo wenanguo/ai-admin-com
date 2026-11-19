@@ -25,8 +25,8 @@ function makeSkillsDir(prefix: string, names: string[]): string {
 }
 
 describe("技能清单", () => {
-	it("列出每个技能的名字与说明", () => {
-		const summaries = listSkillSummaries([
+	it("列出每个技能的名字与说明", async () => {
+		const summaries = await listSkillSummaries([
 			makeSkillsDir("skills-catalog-", ["create-task", "list-tasks"]),
 		]);
 		expect(summaries.map((s) => s.name).sort()).toEqual(["create-task", "list-tasks"]);
@@ -35,31 +35,31 @@ describe("技能清单", () => {
 		);
 	});
 
-	it("目录不存在 ⇒ 空列表（不许炸）", () => {
+	it("目录不存在 ⇒ 空列表（不许炸）", async () => {
 		expect(
-			listSkillSummaries([join(tmpdir(), "definitely-not-here-skill-dir")]),
+			await listSkillSummaries([join(tmpdir(), "definitely-not-here-skill-dir")]),
 		).toEqual([]);
 	});
 
-	it("**没配技能** ⇒ 空列表（不是异常）", () => {
-		expect(listSkillSummaries([])).toEqual([]);
+	it("**没配技能** ⇒ 空列表（不是异常）", async () => {
+		expect(await listSkillSummaries([])).toEqual([]);
 	});
 
-	it("多个目录 ⇒ 合起来（各自只看到自己的那一份）", () => {
+	it("多个目录 ⇒ 合起来（各自只看到自己的那一份）", async () => {
 		const a = makeSkillsDir("skills-a-", ["create-task"]);
 		const b = makeSkillsDir("skills-b-", ["search-docs"]);
 
-		expect(listSkillSummaries([a]).map((s) => s.name)).toEqual(["create-task"]);
-		expect(listSkillSummaries([b]).map((s) => s.name)).toEqual(["search-docs"]);
-		expect(listSkillSummaries([a, b]).map((s) => s.name).sort()).toEqual([
+		expect((await listSkillSummaries([a])).map((s) => s.name)).toEqual(["create-task"]);
+		expect((await listSkillSummaries([b])).map((s) => s.name)).toEqual(["search-docs"]);
+		expect((await listSkillSummaries([a, b])).map((s) => s.name).sort()).toEqual([
 			"create-task",
 			"search-docs",
 		]);
 	});
 
-	it("改了说明 ⇒ 读出来就是新的（不缓存）", () => {
+	it("改了说明 ⇒ 读出来就是新的（不缓存）", async () => {
 		const dir = makeSkillsDir("skills-catalog-", ["list-tasks"]);
-		const before = listSkillSummaries([dir]).find((s) => s.name === "list-tasks");
+		const before = (await listSkillSummaries([dir])).find((s) => s.name === "list-tasks");
 		expect(before?.description).toBe("list-tasks 的说明。");
 
 		writeFileSync(
@@ -67,7 +67,7 @@ describe("技能清单", () => {
 			"---\nname: list-tasks\ndescription: 列出任务（改过了）。\n---\n",
 			"utf8",
 		);
-		const after = listSkillSummaries([dir]).find((s) => s.name === "list-tasks");
+		const after = (await listSkillSummaries([dir])).find((s) => s.name === "list-tasks");
 		expect(after?.description).toBe("列出任务（改过了）。");
 	});
 });

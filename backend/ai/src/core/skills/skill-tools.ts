@@ -13,15 +13,17 @@
  *
  * ## 为什么失败时返回结果而不是抛异常
  *
- * 抛异常 ⇒ pi 会把它当成工具崩溃，模型看到的是一段噪音；
+ * 抛异常 ⇒ 宿主会把它当成工具崩溃，模型看到的是一段噪音；
  * 返回 `isError` 的结果 ⇒ 模型看到的是一句人话（「没有叫 xxx 的技能」）。
+ *
+ * ⚠️ **技能正文一个字不改**（它是提示词 ⇒ 走 git 评审）⇒ 本工具**原样返回**文件内容。
  */
 
 import { readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
-import type { Skill } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { CommandTool } from "../tools/types.ts";
+import type { SkillEntry } from "./skill-loader.ts";
 
 /** 工具名（模型用它调用）。 */
 export const LOAD_SKILL_TOOL_NAME = "load_skill";
@@ -75,10 +77,10 @@ function inside(baseDir: string, target: string): boolean {
 /**
  * 造 `load_skill` 工具。
  *
- * @param skills pi 发现的技能（名字 → 文件位置）。
+ * @param skills 发现的技能（名字 → 文件位置）。
  */
 export function createLoadSkillTool(
-	skills: readonly Skill[],
+	skills: readonly SkillEntry[],
 ): CommandTool<typeof LoadSkillParameters> {
 	const byName = new Map(skills.map((skill) => [skill.name, skill]));
 	return {

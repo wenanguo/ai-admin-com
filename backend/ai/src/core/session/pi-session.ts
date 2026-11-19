@@ -20,11 +20,13 @@ import {
 	ModelRuntime,
 	SessionManager,
 	type ExtensionAPI,
+	type LoadSkillsResult,
 } from "@earendil-works/pi-coding-agent";
 import { env } from "../env/env.ts";
 import type { CommandTool } from "../tools/types.ts";
 import { createMcpServersExtension, type McpServerSpec } from "../mcp/mcp.ts";
-import { buildSystemPrompt, createSkillsOverride } from "../skills/skills.ts";
+import { buildSystemPrompt } from "../skills/skills.ts";
+import { createSkillsOverride } from "../skills/skill-override.pi.ts";
 import { createLoadSkillTool } from "../skills/skill-tools.ts";
 import { buildSessionEntries } from "./session-entries.ts";
 import type { AgentSessionLike } from "./session-registry.ts";
@@ -139,7 +141,7 @@ export async function createPiSession(
 		// ⚠️ **额外的技能目录**（智能体配置里的那些）
 		additionalSkillPaths: skillsDirs,
 		// ⚠️ **兜底过滤**：只留配置里那些目录里的技能
-		skillsOverride: createSkillsOverride(skillsDirs),
+		skillsOverride: createSkillsOverride<LoadSkillsResult>(skillsDirs),
 	};
 
 	const discoveryLoader = new DefaultResourceLoader({

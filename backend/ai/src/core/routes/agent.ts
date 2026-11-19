@@ -65,7 +65,7 @@ agentRouter.get("/skills", async (req, res) => {
 		// ⚠️ **身份要验**（与 /conversations 等端点一致）：token 认不出用户 ⇒ 401。
 		//    技能清单本身不敏感，但口径要统一（别开一个「随便传个 token 就能用」的口子）。
 		await agentRuntime.resolveCurrentUser(token);
-		res.json(okBody(agentRuntime.listAgentSkills(agentIdOfQuery(req))));
+		res.json(okBody(await agentRuntime.listAgentSkills(agentIdOfQuery(req))));
 	} catch (error) {
 		sendError(res, error);
 	}
