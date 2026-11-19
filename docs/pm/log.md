@@ -758,3 +758,19 @@
   （诚实）⇒ 代码就绪（`DSH_BASE_URL` 默认官方、`DSH_API_KEY_ENV` 默认 `DEEPSEEK_API_KEY`）⇒ **等人给一把 key 就能补测**。
   ⇒ **待人决定**：是否单开一条跟踪 D3（PM 已记，等人批准开单）。
 - **#121 已派**（存储与审计迁到 dsh 形状；**数据模型属高风险 ⇒ `--no-merge`**，PM 亲自看）。
+
+### 2026-11-19 · #121 完成（存储与审计迁到 dsh 形状）⇒ #122 在途
+
+- **#121 已合并**（PR #133）：
+  - **结论不是二选一**：**产品事实仍在我们自己的表**（`ai_conversation` / `ai_message` 语义一字不改），
+    **执行痕迹**用 dsh 形状的**追加式事件日志**（**新增表 `ai_session_event`**）⇒ 与 `ai_conversation` **并存**；
+  - `ai_conversation` 加**可空**映射列 `dsh_session_id` ⇒ 迁移前的旧会话照读、**不用回填**（共享库上零写操作）；
+  - 审计：`ai_audit_log` 语义一字不改，**补三类留痕**（模型调用 / 工具调用 / 闸门决策）⇒ 沿用 `GET /api/audit` 检索口径；
+  - **为什么不用 `dsh-storage`**：它是给「非会话的应用数据」用的，不是 `ai_*` 表的替代品；
+    且 `@deepseek-ai/dsh-session-persistence-sqlite` 没有 `0.2.2-rc.5`（还在 `0.0.1-rc.1` 线）⇒ 强用会引入第二条依赖线。
+- **数据模型的安全做法（值得记）**：
+  - 迁移用**离线** `prisma migrate diff --from-schema-datamodel … --to-schema-datamodel` 生成
+    ⇒ **不做 drift 检查** ⇒ **绝不可能把 AiAdmin 的 56 张表算成 DROP**；
+  - ⚠️ 文件里明确写了**禁用 `prisma migrate dev` / `migrate reset`**（共享库上那两条会要求 `DROP DATABASE aipm`）；
+  - 加了**安全阀单测**：迁移里出现 `DROP|TRUNCATE|RENAME|MODIFY|DELETE FROM|ALTER COLUMN` ⇒ 直接红。
+- **#122 已派**（技能 / MCP / 插件三层；`--no-merge`）。
