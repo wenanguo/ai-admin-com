@@ -27,6 +27,8 @@ import {
 	errorHandler,
 	notFoundHandler,
 } from "./core/app.ts";
+import { createDshBridgeRouter } from "./core/adapter/dsh/bridge.ts";
+import { bridgeSecret } from "./core/adapter/dsh/runner.ts";
 
 export { MISSING_TOKEN_MESSAGE, NOT_FOUND_MESSAGE, corsMiddleware, errorHandler, notFoundHandler };
 
@@ -36,7 +38,22 @@ export { MISSING_TOKEN_MESSAGE, NOT_FOUND_MESSAGE, corsMiddleware, errorHandler,
  * 中间件顺序：预检/CORS → 路由 → 404 → 错误处理。
  */
 export function createApp(): Express {
-	return createCoreApp({ plugins, agentsRoot: agentsRoot() });
+	return createCoreApp({
+		plugins,
+		agentsRoot: agentsRoot(),
+		// ⚠️ **命令桥**（内部端点，**不在对外契约里**）：
+		//    dsh 侧的插件回调我们执行命令 ⇒ 命令本体、审计、参数收窄都在我们这边。
+		//    密钥是**进程内随机**的 ⇒ 别的进程调不动。
+		configure: (app) => {
+			app.use(
+				"/internal/dsh",
+				createDshBridgeRouter({
+					secret: bridgeSecret(),
+					execute: (input) => agentRuntime.executeDshCommand(input),
+				}),
+			);
+		},
+	});
 }
 
 /** 启动服务（监听 `PORT`，缺省 3100）。 */

@@ -23,6 +23,10 @@ const ALLOWED_DEPENDENCIES = [
 	"node:",
 	"@earendil-works/pi-coding-agent",
 	"@earendil-works/pi-mcp",
+	// ⚠️ **dsh 的 SDK 客户端**（issue #120）：DeepSeek Harness 是**通用件**
+	//    （不是业务系统）⇒ 只允许出现在**适配层**（`core/adapter/dsh/**`）
+	//    ⇒ 边界由 `scripts/check-dsh-boundary.cjs` 钉住。
+	"@deepseek-ai/dsh-sdk-client",
 	"@prisma/client",
 	"express",
 	"typebox",
