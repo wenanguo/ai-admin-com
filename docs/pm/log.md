@@ -738,3 +738,23 @@
 - **四个决定已写进 #120 的验收标准**，**#120 的依赖加了 #128** ⇒ 串行顺序：**#128 → #120 → (#121/#122) → (#123/#124)**。
 - **流程改进点（记下来）**：分阶段的 PR 正文里**不要**写 `Closes #<号>` —— #126 的正文带了它，
   GitHub 自动关了 #119（本意是「不关，等 review」）⇒ 以后分阶段 PR 用 `关联 issue：#<号>（阶段X，不关闭）`。
+
+### 2026-11-19 · #120 完成（dsh runner 上线）⇒ #121 在途；D3 官方 key 实测仍未做
+
+- **#120 已合并**（PR #131，37 个文件）⇒ AI 服务的执行层换成 **dsh（子进程 + stdio JSON-RPC）**：
+  - **对外契约零改动**（`core/routes/contract.ts` 一字未动 · `frontend/` 无 diff）⇒ 前端零改动；
+  - **双跑可切**：`AI_RUNNER=pi|dsh`（缺省 pi）⇒ 本条**不删 pi**（拔 pi 是 #123）；
+  - **闸门口径保住**：dsh 侧只负责「问」（`approval/request`），「要不要点头」仍由**我们**的 `requiresConfirmation` 算；
+  - **命令桥**：我们的命令（`create_task` 等）要库/审计/token ⇒ 跑在我们进程里，dsh 侧插件回调
+    `/internal/dsh/commands`（loopback + **进程内随机密钥**，不进对外契约）；
+  - **自己写 provider**（D5=A）：`backend/ai/dsh-plugin/`（基于 `dsh-llm` seam 的 OpenAI 兼容适配器）
+    ⇒ **DeepSeek 官方 + MiniMax** 都接上 ⇒ **没用** `dsh-llm-pi-ai`；
+  - **类型不外泄**：`core/adapter/dsh/**` + `backend/ai/dsh-plugin/**`
+    ⇒ `scripts/check-dsh-boundary.cjs`（三档：目录/类型/pi-ai）**已接进 CI**；
+  - **D2=A+C**：abort 先兜住（停掉并重建该会话的 dsh 进程）+ 已给上游提 `session/cancel`
+    ⇒ https://github.com/deepseek-ai/deepseek-harness/discussions/13766（上游 **issues 已禁用** ⇒ 只能发 discussion）；
+  - 验证：单测 **513 条全绿** · 边界检查干净 · e2e **自带假模型服务**（不要凭据、不花钱、不外网）13 条断言全绿。
+- **⚠️ D3（官方 DeepSeek key 实测）未做**：环境里**没有官方 DeepSeek key** ⇒ 子会话**没有拿兼容网关冒充**
+  （诚实）⇒ 代码就绪（`DSH_BASE_URL` 默认官方、`DSH_API_KEY_ENV` 默认 `DEEPSEEK_API_KEY`）⇒ **等人给一把 key 就能补测**。
+  ⇒ **待人决定**：是否单开一条跟踪 D3（PM 已记，等人批准开单）。
+- **#121 已派**（存储与审计迁到 dsh 形状；**数据模型属高风险 ⇒ `--no-merge`**，PM 亲自看）。
