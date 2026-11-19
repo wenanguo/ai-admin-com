@@ -659,3 +659,35 @@
      ⇒ **断言读错文件**（功能没坏）⇒ 改断言去读真正挂载的文件，**不许把 server.ts 改回去迁就断言**；
   2. Dockerfile `COPY --from=builder /app/dist` 报 **not found** ⇒ 编译产物路径与 COPY 不一致 ⇒ 对齐路径。
   ⇒ 修好后 CI 绿 ⇒ PM review 通过 ⇒ 合并（#116 自动关闭、milestone #11 关闭归档）。
+
+### 2026-11-19 · G4 开单：AI 部分完全重构到 DeepSeek Harness（#119–#124 / milestone #12）
+
+- **人的决定**（本轮对话）：
+  - 「换成 deepseek harness」⇒ D1 定了；
+  - 「建议直接把整个 AI 部分全部重构，不需要 pi 部分的内容，完全适配 deepseek harness」⇒ **D2 从「只换执行层」升级为「完全重构」**；
+  - 拍板：**「1 批 2 b 3 两步」** ⇒ 6 条全批；**P1 = B**（先跑通 DeepSeek 模型，MiniMax 适配留作后续可选）；
+    **P2 = 两步**（先换后拔：#120 换执行层 → 验收通过 → #123 拔 pi）⇒ 中间态可回退，最终态无 pi。
+- **我查到的 dsh 事实**（`deepseek-ai/deepseek-harness`，MIT · TS · Cordis「一切皆插件」· public preview）：
+  - TS SDK `@deepseek-ai/dsh-sdk-client` = **spawn dsh 运行时子进程 + stdio JSON-RPC** ⇒ **与我们今天用 pi 的方式同构**
+    ⇒ runtime/gate/skills/http 能留；
+  - 包族：`dsh-agent`(0.1.0-rc.6) `session` `tools` `llm` `llm-deepseek` `skill` `persona` `compaction`
+    `subagent` `sandbox` `shell` `workspace` `storage` `acp`；
+  - ⚠️ **npm 上没有 `dsh-mcp`** ⇒ MCP 怎么挂是未知数（#119 第 6 问）；
+  - ⚠️ **RC 阶段** ⇒ 锁版本 + 类型不外泄（写进验收）。
+- **两个澄清（避免误伤）**：
+  1. 「不要 pi」≠「不要我们自己的内核」⇒ 闸门/事件语义/技能拼装/审计/HTTP 契约/插件接口 **都保住**，只改造成 dsh 形状；
+  2. **本仓自己的 `.pi/`**（开发 agent 的提示词与技能）**保留** —— 那是我们的开发资产。
+- **开单**：milestone **#12**（`v1.0 · G4 AI 部分完全重构到 DeepSeek Harness`，due 2026-02-28）+ 六条：
+
+  | # | 需求 | 规模 | 依赖 |
+  | - | ---- | ---- | ---- |
+  | #119 | dsh 底座摸底 + 目标架构（spike 八问 + spec + plan） | 中 | 无 |
+  | #120 | AI 服务骨架换成 dsh（对外契约不变 ⇒ 前端零改动） | 很大 | #119 |
+  | #121 | 存储与审计迁到 dsh 形状（只加不改） | 大 | #120 |
+  | #122 | 技能 / MCP / 插件三层重新落地 | 大 | #120 |
+  | #123 | 拔掉 pi 依赖 + PM 派活脱离 pi | 中 | #120 #122 |
+  | #124 | AI 管理面（智能体市场 / 创建编辑智能体 / 技能管理 / MCP 管理） | 大 | #120 #121 #122 |
+
+- **G3 并入 G4**：人最初提的「智能体市场 / 创建编辑智能体 / 技能管理 / MCP 管理」就是 #124
+  ⇒ **不再单开 G3 milestone**（否则会把 dsh 已有的 persona/skill/tools 自建一遍）。
+- **草稿**：`docs/pm/drafts/2026-11-19-dsh重构.md`（六条正文原文 + 拍板记录）。
