@@ -1,0 +1,15 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"noEmit": false,
+		"module": "nodenext",
+		"moduleResolution": "nodenext",
+		"allowImportingTsExtensions": true,
+		"rewriteRelativeImportExtensions": true,
+		"outDir": "./dist",
+		"rootDir": "../..",
+		"tsBuildInfoFile": "./dist/.tsbuildinfo"
+	},
+	"include": ["./**/*.ts"],
+	"exclude": ["./**/*.test.ts", "./dist"]
+}

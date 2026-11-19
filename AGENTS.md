@@ -95,6 +95,11 @@ husky / lint-staged / commitlint 都用 `frontend/node_modules/.bin/` 里的二�
 - **工具来自后端 MCP**（`AIADMIN_MCP_URL`）⇒ 后端加接口，AI 侧不用改代码；
 - **技能（`.pi/skills/*/SKILL.md`）教模型怎么用** ⇒ 加一条能力 = 加一个 markdown。
 
+**内核可复用**：`backend/ai/src/core/index.ts` 是**唯一公开入口**（外部只从这里 import）。
+⇒ 示例系统：[`backend/ai/examples/reading-notes/`](backend/ai/examples/reading-notes/)
+（读书笔记，**不依赖 AiAdmin**）· 指南：[`docs/how-to/reuse-core.md`](docs/how-to/reuse-core.md)
+⇒ 钉它的检查：`node scripts/check-core-reuse.cjs`（只用公开入口 / 不碰别的业务系统）。
+
 **闸门口径**：**新增放行、修改要点头**（`update_*` / `patch_*` 会被拦下等人在界面点「同意」）。
 
 ## PM 调度层（可选角色）

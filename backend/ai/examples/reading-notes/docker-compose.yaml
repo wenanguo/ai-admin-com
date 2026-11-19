@@ -1,0 +1,66 @@
+# ============================================================
+# 「读书笔记」示例系统的编排（issue #116：内核可复用的验收）
+#
+#   docker compose -f backend/ai/examples/reading-notes/docker-compose.yaml up -d
+#
+# ⚠️ **这里面只有示例系统与它自己的空库** —— 这正是验收点：
+#    内核 + 示例插件 + 示例自己的库 ⇒ **不依赖任何别的业务系统**。
+#
+# ⚠️ **构建上下文 = 仓根** ⇒ `context: ../../../../..`（从本文件往上四级）。
+# ⚠️ 真值不放这里 ⇒ 模型 key 走环境变量（`MINIMAX_CN_API_KEY`）。
+# ============================================================
+
+name: core-reuse-notes
+
+services:
+  # ──────────────────── 示例自己的空库 ────────────────────
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: notes-root
+      MYSQL_DATABASE: notes
+      MYSQL_USER: notes
+      MYSQL_PASSWORD: notes
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "notes", "-pnotes"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    volumes:
+      - db-data:/var/lib/mysql
+
+  # ──────────────────── 示例系统（内核 + 读书笔记插件）────────────────────
+  app:
+    build:
+      context: ../../../..
+      dockerfile: backend/ai/examples/reading-notes/Dockerfile
+    environment:
+      PORT: "3200"
+      # ⚠️ **示例自己的空库**（内核的 `ai_*` 元数据表住这儿）
+      DATABASE_URL: mysql://notes:notes@db:3306/notes
+      # 模型 key（没有真 key 也能起 ⇒ 只验到「装配成功」这一步）
+      MINIMAX_CN_API_KEY: "${MINIMAX_CN_API_KEY:-e2e-fake-key}"
+      AI_MODEL: "${AI_MODEL:-minimax-cn/MiniMax-M3.1-Flash}"
+      # 默认智能体 = 示例自己的那个
+      AI_DEFAULT_AGENT: notes
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-http://localhost:3200}"
+    ports:
+      # ⚠️ 只绑回环（示例是玩具，别对外）
+      - "127.0.0.1:${NOTES_PORT:-13200}:3200"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:'+(process.env.PORT||3200)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  db-data:

@@ -233,9 +233,22 @@ containsAll(
   ['buildHealthReport', 'createHealthRouter', 'res.status(200)'],
   '有报告构造、有路由、恒回 200',
 );
+// ⚠️ **健康检查的挂载点搬进内核了**（issue #116）：`src/server.ts` 变成薄壳
+//    （`createApp()` 委托给内核）⇒ 真正 `app.use("/health")` 的是 `src/core/app.ts`
+//    ⇒ 断言**不能只读一个文件** ⇒ 挨个找「真正挂 /health 的那个文件」。
+const healthMountCandidates = [
+  'backend/ai/src/core/app.ts',
+  'backend/ai/src/server.ts',
+];
+const healthMountFiles = healthMountCandidates.filter((rel) =>
+  /app\.use\("\/health"/.test(read(rel)),
+);
 check(
   '健康检查挂在根路径 /health（不在 /api/agent 下）',
-  /app\.use\("\/health"/.test(read('backend/ai/src/server.ts')),
+  healthMountFiles.length > 0,
+  healthMountFiles.length > 0
+    ? ''
+    : `这些文件里都没有 app.use("/health"：${healthMountCandidates.join(' / ')}`,
 );
 check(
   '健康检查**不要 token**（编排系统没有用户 token）',

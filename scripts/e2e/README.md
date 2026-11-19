@@ -15,6 +15,7 @@
 | `deploy.cjs` | **端到端部署验收**（起 compose ⇒ 两个容器 healthy ⇒ 前端 HTML / `/api/` 通 / `/ai-api/` 通 / AI `/health` 200 ⇒ 清干净）⇒ 需要 docker |
 | `ai-container.static.cjs` | **静态断言**AI 服务镜像的配置（Dockerfile / .dockerignore / 健康检查路由 / SSE 头）⇒ **不需要 docker** |
 | `ai-container.cjs` | **真起容器**验收 AI 服务镜像（构建 → 镜像里没凭据/没 devDeps → 技能就位 → `/health` 200 → 业务路由挂载）⇒ 需要 docker |
+| `reuse-core-example.cjs` | **真起 compose**验收「通用内核可复用」（示例系统 + 示例自己的空库 ⇒ 智能体清单能列 → 身份自己认 → 会话建得出 → **示例命令真能调**）⇒ 需要 docker |
 
 ## 用法
 
@@ -120,6 +121,29 @@ node scripts/e2e/deploy-script.cjs     # 或：npm run e2e:deploy-script
 ⚠️ 只需要 **bash**（Windows 用 Git Bash / WSL；CI 是 ubuntu）⇒ **不需要 docker**。
 它会真的跑一次 `bash docker/deploy.sh`（**默认只检查模式**）并断言：**工作区没变**、**没写状态文件**、
 缺依赖时**明确报缺什么**、`--help`/未知参数的退出码对。
+
+## 内核复用验收（issue #116）
+
+```bash
+# 静态断言（不需要 docker，任何机器都能跑）
+node scripts/check-core-reuse.cjs
+# 或
+npm run check:reuse-core
+
+# 真起 compose（需要 docker；没 docker ⇒ 打印 SKIP 并退出 0）
+node scripts/e2e/reuse-core-example.cjs
+# 或
+npm run e2e:reuse-core
+```
+
+它起的是 [`backend/ai/examples/reading-notes/`](../../backend/ai/examples/reading-notes/)
+（**读书笔记示例**：自己的插件 + 自己的智能体 YAML + 自己的空库，**不依赖 AiAdmin**）。
+
+| 变量 | 默认 | 说明 |
+| ---- | ---- | ---- |
+| `MINIMAX_CN_API_KEY` | — | 模型 key（**可省** ⇒ 少了就只验到「装配成功」这一步） |
+| `NOTES_PORT` | `13200` | 宿主机端口 |
+| `SKIP_BUILD` | — | `=1` 时跳过构建（用已有镜像） |
 
 ## 端到端部署验收（issue #42）
 
