@@ -5,13 +5,13 @@
 #   构建上下文 = **仓根**：
 #     docker build -f docker/web/Dockerfile -t ai-admin-web .
 #
-#   阶段 1（builder）：node 22 → npm ci → max build ⇒ frontend/dist
+#   阶段 1（builder）：node 24 → npm ci → max build ⇒ frontend/dist
 #   阶段 2（runtime）：nginx 托管 dist（**镜像里只有构建产物**）
 #
 #   ⚠️ 构建阶段**不连后端、不读 .env** ⇒ 不需要任何私有凭据。
 # ============================================================
 
-ARG NODE_VERSION=22
+ARG NODE_VERSION=24
 ARG NGINX_VERSION=1.27
 
 # ─────────────────────────── 构建阶段 ───────────────────────────
@@ -41,7 +41,7 @@ COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./frontend
 # 打印版本 + **钉住 npm 版本**（构建日志里能看出用的是什么 node/npm）
 #
 # ⚠️ **为什么钉 npm 10.9.9**：
-#    node:22 现在默认带 **npm 11** ⇒ 它的「package.json 与 package-lock.json 必须同步」
+#    node:24 默认带 **npm 11** ⇒ 它的「package.json 与 package-lock.json 必须同步」
 #    检查比 npm 10 严 ⇒ 本仓现有的 frontend/package-lock.json（npm 10 生成的）
 #    会被 npm 11 判为不同步 ⇒ `npm ci` 直接 EUSAGE 失败
 #    （报错长这样：Invalid: lock file's xxx does not satisfy ... / Missing: ... from lock file）。
