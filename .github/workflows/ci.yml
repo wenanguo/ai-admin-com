@@ -50,6 +50,10 @@ jobs:
       - run: npx prisma generate
       - run: npm test
       - run: node ../../scripts/check-core-purity.cjs
+      # dsh 边界（issue #120）：dsh 的类型/包**只许**在适配层
+      # （backend/ai/src/core/adapter/dsh/** + backend/ai/dsh-plugin/**）
+      # ⇒ dsh 升级的影响面 = 适配层目录。
+      - run: node ../../scripts/check-dsh-boundary.cjs
       # dsh 底座摸底（issue #119）：版本锁 / 尖峰脚手架 / spec 的**静态**断言
       # ⇒ 不需要装 dsh、不需要模型凭据 ⇒ 任何 runner 都能跑。
       - run: node ../../scripts/e2e/dsh-spike.static.cjs
