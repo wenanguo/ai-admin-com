@@ -1,16 +1,17 @@
 /**
- * pi 事件 → SSE 事件的映射。
+ * 运行时事件 → SSE 事件的映射。
  *
- * pi 的事件序列（尖峰实测）：
- * `agent_start` → `turn_start` → `message_start` → `message_update`* →
- * `message_end` → `tool_execution_start` → `tool_execution_end` → … →
- * `turn_end` → `agent_end` → `agent_settled`
+ * 事件的词汇是**我们自己的**（`agent-event.ts`）⇒ 不依赖任何 SDK。
+ *
+ * 事件序列（dsh 适配层翻译后的形状）：
+ * `message_start` → `message_update`* → `message_end` →
+ * `tool_execution_start` → `tool_execution_end` → … → `agent_settled`
  *
  * 前端只认七种事件（见 `events.ts`），所以这里做一次收敛：
  * - `message_update` 只留 `text_delta` 与 `thinking_delta`
  *   （其它子事件不对前端有意义）；
  * - 助手的消息才发 `message_start` / `message_end`（用户那条不回显）；
- * - `agent_start` / `turn_*` / `agent_end` 不外发（对前端没意义）。
+ * - `agent_start` / `agent_settled` 之外的宿主事件不外发（对前端没意义）。
  *
  * ## 为什么 `message_start` 要「等有文本才发」
  *
@@ -24,7 +25,6 @@
  * MCP 的工具在模型侧叫 `mcp__<服务器名>__<工具名>` ⇒ 界面上要显示**我们自己的
  * 命令名**（`create_task`）⇒ 事件映射器接受一个**归一化函数**。
  *
- * ⚠️ **只有 dsh 路径接这个函数**（pi 路径保持原样 ⇒ 不改现有产品的显示）。
  * ⚠️ **模型侧看到的名字不变**（还是带前缀的）⇒ 技能正文里写的工具名依然对得上。
  */
 
@@ -33,12 +33,12 @@ export interface AgentEventMapperOptions {
 	/**
 	 * 工具名归一化（**给人看的名字**）。
 	 *
-	 * ⚠️ 不给 ⇒ 原样透出（pi 路径今天的行为）。
+	 * ⚠️ 不给 ⇒ 原样透出。
 	 */
 	normalizeToolName?: ((toolName: string) => string) | undefined;
 }
 
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { AgentEvent } from "./agent-event.ts";
 import { SSE_EVENTS, type SseEventName, type SsePayload } from "./events.ts";
 
 /** 映射结果。 */
@@ -124,11 +124,11 @@ export class AgentEventMapper {
 	}
 
 	/**
-	 * 把一个 pi 事件映射成若干个 SSE 事件。
+	 * 把一个运行时事件映射成若干个 SSE 事件。
 	 *
 	 * @returns 不用外发的事件返回空数组。
 	 */
-	map(conversationId: string, event: AgentSessionEvent): MappedEvent[] {
+	map(conversationId: string, event: AgentEvent): MappedEvent[] {
 		const frames: MappedEvent[] = [];
 		switch (event.type) {
 			case "message_start": {

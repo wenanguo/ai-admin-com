@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { AgentEvent, AgentMessage } from "./agent-event.ts";
 import { AgentEventMapper } from "./event-mapper.ts";
 
 const CID = "conv-1";
 
 /** 造一条助手消息（可带文本段与工具调用段）。 */
-function assistantMessage(text?: string): unknown {
+function assistantMessage(text?: string): AgentMessage {
 	const content: unknown[] = [];
 	if (text !== undefined) {
 		content.push({ type: "text", text });
@@ -15,31 +15,21 @@ function assistantMessage(text?: string): unknown {
 }
 
 /** 造一个 message_update（文本增量）事件。 */
-function textDelta(delta: string): AgentSessionEvent {
+function textDelta(delta: string): AgentEvent {
 	return {
 		type: "message_update",
 		message: assistantMessage(),
-		assistantMessageEvent: {
-			type: "text_delta",
-			contentIndex: 0,
-			delta,
-			partial: { role: "assistant", content: [] },
-		},
-	} as unknown as AgentSessionEvent;
+		assistantMessageEvent: { type: "text_delta", delta },
+	};
 }
 
 /** 造一个 message_update（思考增量）事件。 */
-function thinkingDelta(delta: string): AgentSessionEvent {
+function thinkingDelta(delta: string): AgentEvent {
 	return {
 		type: "message_update",
 		message: assistantMessage(),
-		assistantMessageEvent: {
-			type: "thinking_delta",
-			contentIndex: 0,
-			delta,
-			partial: { role: "assistant", content: [] },
-		},
-	} as unknown as AgentSessionEvent;
+		assistantMessageEvent: { type: "thinking_delta", delta },
+	};
 }
 
 describe("事件映射", () => {
@@ -48,13 +38,13 @@ describe("事件映射", () => {
 		const frames = mapper.map(CID, {
 			type: "message_start",
 			message: assistantMessage(),
-		} as unknown as AgentSessionEvent);
+		});
 		expect(frames).toEqual([]);
 
 		const endFrames = mapper.map(CID, {
 			type: "message_end",
 			message: assistantMessage(),
-		} as unknown as AgentSessionEvent);
+		});
 		expect(endFrames).toEqual([]);
 	});
 
@@ -79,7 +69,7 @@ describe("事件映射", () => {
 		const end = mapper.map(CID, {
 			type: "message_end",
 			message: assistantMessage("你好，世界"),
-		} as unknown as AgentSessionEvent);
+		});
 		expect(end.map((frame) => frame.event)).toEqual(["message_end"]);
 		expect(end[0]?.payload).toMatchObject({ text: "你好，世界" });
 	});
@@ -91,7 +81,7 @@ describe("事件映射", () => {
 			toolCallId: "call-1",
 			toolName: "create_task",
 			args: { project_key: "PRJ-1", title: "标题" },
-		} as unknown as AgentSessionEvent);
+		});
 		expect(call[0]?.event).toBe("tool_call");
 		expect(call[0]?.payload).toMatchObject({
 			toolName: "create_task",
@@ -104,7 +94,7 @@ describe("事件映射", () => {
 			toolName: "create_task",
 			isError: false,
 			result: { content: [{ type: "text", text: "好了" }], details: { summary: "已创建任务 task:1" } },
-		} as unknown as AgentSessionEvent);
+		});
 		expect(done[0]?.event).toBe("tool_result");
 		expect(done[0]?.payload).toMatchObject({
 			toolName: "create_task",
@@ -121,13 +111,13 @@ describe("事件映射", () => {
 			toolName: "create_task",
 			isError: true,
 			result: { content: [{ type: "text", text: "炸了" }], details: {} },
-		} as unknown as AgentSessionEvent);
+		});
 		expect(frames[0]?.payload).toMatchObject({ status: "error" });
 	});
 
 	it("agent_settled ⇒ agent_settled", () => {
 		const mapper = new AgentEventMapper();
-		const frames = mapper.map(CID, { type: "agent_settled", aborted: false } as unknown as AgentSessionEvent);
+		const frames = mapper.map(CID, { type: "agent_settled", aborted: false });
 		expect(frames[0]?.event).toBe("agent_settled");
 	});
 });

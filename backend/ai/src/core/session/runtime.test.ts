@@ -14,7 +14,7 @@
 
 import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "../store/db.ts";
-import type { PiSessionOptions } from "./pi-session.ts";
+import type { CreateDshSessionOptions } from "../adapter/dsh/runner.ts";
 import { AgentRuntime } from "./runtime.ts";
 import type { ConversationRecord, ConversationStore, MessageRecord } from "../store/store.ts";
 import { PluginRegistry } from "../plugins.ts";
@@ -66,8 +66,10 @@ function fakeConversation(): ConversationRecord {
 function fakeStore(conversation: ConversationRecord): {
 	store: ConversationStore;
 	appended: MessageRecord[];
+	sessionIds: string[];
 } {
 	const appended: MessageRecord[] = [];
+	const sessionIds: string[] = [];
 	const store: ConversationStore = {
 		create: async () => conversation,
 		get: async (conversationId: string) =>
@@ -92,10 +94,12 @@ function fakeStore(conversation: ConversationRecord): {
 		},
 		listMessages: async () => appended,
 		maxSeq: async () => appended.length,
-		setDshSessionId: async () => {},
+		setDshSessionId: async (conversationId: string) => {
+			sessionIds.push(conversationId);
+		},
 		touch: async () => {},
 	};
-	return { store, appended };
+	return { store, appended, sessionIds };
 }
 
 /**
@@ -187,19 +191,19 @@ function makeRuntime(options: { maxTrackedCommands?: number } = {}): {
 	calls: unknown[];
 	appended: MessageRecord[];
 	/** 造 pi 会话时收到的参数（用来断言「历史有没有交给它」）。 */
-	sessionOptions: PiSessionOptions[];
+	sessionOptions: CreateDshSessionOptions[];
 } {
 	const calls: unknown[] = [];
 	const { store, appended } = fakeStore(fakeConversation());
 	const audit = fakeAudit();
-	const sessionOptions: PiSessionOptions[] = [];
+	const sessionOptions: CreateDshSessionOptions[] = [];
 
 	const runtime = new AgentRuntime({
 		store,
 		audit: audit.writer,
 		maxTrackedCommands: options.maxTrackedCommands,
 		// 假会话：一收到 prompt 就调工具（模拟模型调 create_task）
-		createSession: async (options: PiSessionOptions) => {
+		createDshSession: async (options: CreateDshSessionOptions) => {
 			sessionOptions.push(options);
 			const tools = options.tools;
 			return {
@@ -320,47 +324,36 @@ describe("运行时 · 命令去重（Idempotency-Key）", () => {
 	});
 });
 
-/* -------------------------------------------------- P0：会话上下文还原 */
+/* -------------------------------------------------- P0：会话上下文 */
 
 /**
  * 场景：**进程重启后**（或通道被回收后），模型仍然记得之前聊过什么。
  *
- * ⇒ 验收标准：新建的 pi 会话拿到的 `history` 里**有**之前的对话。
+ * ⚠️ issue #123 拔掉 pi 之后，**上下文连续性由 dsh 自己的会话日志负责**
+ *    （会话 id = dsh 的 session id ⇒ dsh 侧按同一个 id 恢复自己的会话）
+ *    ⇒ 这里钉的是「**会话 id 就是会话 id**」与「**映射落库**」。
  */
 describe("运行时 · 会话上下文（P0）", () => {
-	it("建 pi 会话时把会话 id 与历史交给它", async () => {
+	it("dsh 会话的 id 就是我们的会话 id（⇒ dsh 侧能按同一个 id 恢复会话）", async () => {
 		const { runtime, sessionOptions } = makeRuntime();
 
 		await runtime.submitCommand(command("cmd-1"));
 		await waitFor(() => sessionOptions.length >= 1);
 
 		expect(sessionOptions[0]?.conversationId).toBe("conv-1");
-		// ⚠️ **当前这句不在历史里** —— 它随后由 `prompt()` 加进 pi 的消息列表，
-		//    两边都放的话模型会看到同一句话两遍。
-		expect(sessionOptions[0]?.history).toHaveLength(0);
 	});
 
-	it("当前这句不会既进历史又进 prompt（模型只看一遍）", async () => {
-		const { runtime, sessionOptions } = makeRuntime();
-
-		await runtime.submitCommand(command("cmd-1", "这句话别看两遍"));
-		await waitFor(() => sessionOptions.length >= 1);
-
-		expect(
-			sessionOptions[0]?.history.some((row) => row.content === "这句话别看两遍"),
-		).toBe(false);
-	});
-
-	it("⭐ 重启后新建的会话仍然带着之前的历史（模型不会失忆）", async () => {
-		const { store, appended } = fakeStore(fakeConversation());
+	it("⭐ 会话 ↔ dsh session 的映射**落库**（重启后仍然是同一个 dsh 会话）", async () => {
+		const { store, appended, sessionIds } = fakeStore(fakeConversation());
 		const audit = fakeAudit();
-		const sessionOptions: PiSessionOptions[] = [];
+		const sessionOptions: CreateDshSessionOptions[] = [];
 
 		// 第一个「进程」：聊了一轮（用户一句 + 助手一句）
 		const first = new AgentRuntime({
 			store,
 			audit: audit.writer,
-			createSession: async (options: PiSessionOptions) => {
+			sessionEvents: { list: async () => [], append: async () => {} },
+			createDshSession: async (options: CreateDshSessionOptions) => {
 				sessionOptions.push(options);
 				return {
 					prompt: async (): Promise<void> => {
@@ -383,7 +376,8 @@ describe("运行时 · 会话上下文（P0）", () => {
 		const second = new AgentRuntime({
 			store,
 			audit: audit.writer,
-			createSession: async (options: PiSessionOptions) => {
+			sessionEvents: { list: async () => [], append: async () => {} },
+			createDshSession: async (options: CreateDshSessionOptions) => {
 				sessionOptions.push(options);
 				return {
 					prompt: async (): Promise<void> => {},
@@ -398,13 +392,11 @@ describe("运行时 · 会话上下文（P0）", () => {
 		await second.submitCommand(command("cmd-2"));
 		await waitFor(() => sessionOptions.length >= 2);
 
-		// ⚠️ 关键断言：新会话拿到的历史里**有**重启前的对话
+		// ⚠️ 关键断言：新建的会话**用的是同一个会话 id** ⇒ dsh 侧恢复的是同一个会话
 		const restored = sessionOptions[1];
 		expect(restored?.conversationId).toBe("conv-1");
-		expect(restored?.history.map((row) => `${row.role}:${row.content}`)).toEqual([
-			"USER:建个任务",
-			"ASSISTANT:好，建了",
-		]);
+		// ⚠️ 映射也落库了（`ai_conversation.dsh_session_id`）⇒ 查得到「这个会话对应哪个 dsh 会话」
+		expect(sessionIds).toContain("conv-1");
 	});
 });
 
@@ -426,7 +418,7 @@ function makeStreamingRuntime(): {
 	const runtime = new AgentRuntime({
 		store,
 		audit: audit.writer,
-		createSession: async (options: PiSessionOptions) => ({
+		createDshSession: async (options: CreateDshSessionOptions) => ({
 			prompt: async (text: string): Promise<void> => {
 				prompted.push(text);
 			},
@@ -505,7 +497,7 @@ function makeAbortableRuntime(): {
 	const runtime = new AgentRuntime({
 		store,
 		audit: audit.writer,
-		createSession: async (options: PiSessionOptions) => {
+		createDshSession: async (options: CreateDshSessionOptions) => {
 			sessions += 1;
 			return {
 				prompt: async (): Promise<void> => {
@@ -557,17 +549,17 @@ describe("运行时 · token 轮换（P4）", () => {
 	/** 造一个能记录 createSession 参数的运行时。 */
 	function makeRuntimeWithMcp(mcpUrl: string | null): {
 		runtime: AgentRuntime;
-		created: PiSessionOptions[];
+		created: CreateDshSessionOptions[];
 	} {
 		const { store } = fakeStore(fakeConversation());
 		const audit = fakeAudit();
-		const created: PiSessionOptions[] = [];
+		const created: CreateDshSessionOptions[] = [];
 
 		const runtime = new AgentRuntime({
 			store,
 			audit: audit.writer,
 			mcpUrl,
-			createSession: async (options: PiSessionOptions) => {
+			createDshSession: async (options: CreateDshSessionOptions) => {
 				created.push(options);
 				return {
 					prompt: async (): Promise<void> => {},
@@ -649,7 +641,7 @@ describe("运行时 · 讨论上下文（与 AI 讨论）", () => {
 		const runtime = new AgentRuntime({
 			store,
 			audit: fakeAudit().writer,
-			createSession: async () => ({
+			createDshSession: async () => ({
 				prompt: async (message: string): Promise<void> => {
 					prompts.push(message);
 				},

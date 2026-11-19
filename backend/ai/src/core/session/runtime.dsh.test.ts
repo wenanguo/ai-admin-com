@@ -3,13 +3,14 @@
  *
  * ## 钉住的事
  *
- * 1. **dsh 路径**：MCP 的工具在模型侧叫 `mcp__aiadmin__create_task`
+ * 1. MCP 的工具在模型侧叫 `mcp__aiadmin__create_task`
  *    ⇒ **给人看的名字**是 `create_task`（界面 / 待确认 / 审计）；
- * 2. **模型侧的名字不变**（还是带前缀的）⇒ 技能正文里写的工具名依然对得上；
- * 3. **pi 路径不动**（保持今天的行为 ⇒ 不改现有产品的显示 ⇒ #123 拔 pi 时自然统一）。
+ * 2. **模型侧的名字不变**（还是带前缀的）⇒ 技能正文里写的工具名依然对得上。
+ *
+ * ⚠️ issue #123 拔掉 pi 之后**只有一个执行层** ⇒ 不再有「pi 路径不动」的分支。
  */
 import { describe, expect, it } from "vitest";
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { AgentEvent } from "./agent-event.ts";
 import { AgentRuntime } from "./runtime.ts";
 import type { AgentSessionLike } from "./session-registry.ts";
 import type { ConversationRecord, ConversationStore, MessageRecord } from "../store/store.ts";
@@ -77,7 +78,7 @@ function agentConfig(): AgentConfig {
 
 /** 假会话（**一说话就发一个工具调用事件**）。 */
 function fakeSession(toolName: string): AgentSessionLike {
-	const listeners = new Set<(event: AgentSessionEvent) => void>();
+	const listeners = new Set<(event: AgentEvent) => void>();
 	return {
 		prompt: async () => {
 			for (const listener of listeners) {
@@ -86,7 +87,7 @@ function fakeSession(toolName: string): AgentSessionLike {
 					toolCallId: "call-1",
 					toolName,
 					args: { title: "写文档" },
-				} as unknown as AgentSessionEvent);
+				});
 			}
 		},
 		subscribe: (listener) => {
@@ -98,13 +99,12 @@ function fakeSession(toolName: string): AgentSessionLike {
 	};
 }
 
-/** 造一个运行时（**指定 runner**）。 */
-function makeRuntime(runner: "pi" | "dsh"): AgentRuntime {
+/** 造一个运行时（**唯一的执行层：dsh**）。 */
+function makeRuntime(): AgentRuntime {
 	return new AgentRuntime({
 		store: fakeStore(),
 		audit: { write: async () => {} },
 		sessionEvents: { list: async () => [], append: async () => {} },
-		runner,
 		agents: {
 			defaultAgentId: "pm",
 			get: (id: string) => (id === "pm" ? agentConfig() : undefined),
@@ -112,14 +112,12 @@ function makeRuntime(runner: "pi" | "dsh"): AgentRuntime {
 		},
 		// ⚠️ **dsh 会话是假的**（不起进程 ⇒ 单测快）。
 		createDshSession: async () => fakeSession("mcp__aiadmin__create_task"),
-		// ⚠️ **pi 路径**：假会话发同样的事件（用来验证 pi 路径不变）。
-		createSession: async () => fakeSession("mcp__aiadmin__create_task"),
 	});
 }
 
-describe("运行时 · dsh 路径的工具名归一化", () => {
+describe("运行时 · 工具名归一化", () => {
 	it("MCP 的工具名 ⇒ **给人看的名字**是我们的命令名", async () => {
-		const runtime = makeRuntime("dsh");
+		const runtime = makeRuntime();
 		await runtime.createConversation("2");
 		const frames: { event: string; data: string }[] = [];
 		runtime.subscribe("conv-1", (frame) => {
@@ -137,28 +135,5 @@ describe("运行时 · dsh 路径的工具名归一化", () => {
 		expect(toolCall).toBeDefined();
 		const payload = JSON.parse(toolCall?.data ?? "{}") as { toolName?: string };
 		expect(payload.toolName).toBe("create_task");
-	});
-});
-
-describe("运行时 · pi 路径**不动**（不改现有产品的显示）", () => {
-	it("pi 路径的工具名**原样**（还是带前缀的）", async () => {
-		const runtime = makeRuntime("pi");
-		await runtime.createConversation("2");
-		const frames: { event: string; data: string }[] = [];
-		runtime.subscribe("conv-1", (frame) => {
-			frames.push({ event: frame.event, data: frame.data });
-		});
-		await runtime.submitCommand({
-			conversationId: "conv-1",
-			token: "t",
-			message: "建个任务",
-			commandId: "cmd-1",
-			userId: "2",
-		});
-		await new Promise((resolve) => setTimeout(resolve, 100));
-		const toolCall = frames.find((frame) => frame.event === "tool_call");
-		expect(toolCall).toBeDefined();
-		const payload = JSON.parse(toolCall?.data ?? "{}") as { toolName?: string };
-		expect(payload.toolName).toBe("mcp__aiadmin__create_task");
 	});
 });

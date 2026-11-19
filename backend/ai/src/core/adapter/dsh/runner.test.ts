@@ -1,26 +1,12 @@
 /**
- * dsh runner 的配置（**双跑开关 + 环境变量**）。
+ * dsh runner 的配置（**环境变量**）。
+ *
+ * ⚠️ issue #123 拔掉 pi 之后**没有「双跑开关」了** ⇒ dsh 是唯一的执行层。
  */
 
 import { describe, expect, it } from "vitest";
 import { bridgeSecret, buildChildEnv, dshRunnerConfig } from "./runner.ts";
 import { PendingWaiterRegistry } from "../../gate/pending-waiters.ts";
-import { runnerFromEnv } from "../../session/runtime.ts";
-
-describe("双跑开关", () => {
-	it("缺省是 pi（**不配就是今天的行为**）", () => {
-		expect(runnerFromEnv({})).toBe("pi");
-		expect(runnerFromEnv({ AI_RUNNER: "pi" })).toBe("pi");
-	});
-
-	it("`AI_RUNNER=dsh` ⇒ 走 dsh（**切回 pi 不用改代码**）", () => {
-		expect(runnerFromEnv({ AI_RUNNER: "dsh" })).toBe("dsh");
-	});
-
-	it("不认识的值 ⇒ 落回 pi（**不猜**）", () => {
-		expect(runnerFromEnv({ AI_RUNNER: "别的" })).toBe("pi");
-	});
-});
 
 describe("dsh runner 的配置", () => {
 	it("缺省值（**官方 DeepSeek 路由 + 官方 key 的环境变量**）", () => {

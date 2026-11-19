@@ -3,8 +3,11 @@
  *
  * ## 口径不变：「新增放行、修改要点头」
  *
- * 判定仍在**我们的命令定义**这边（`core/gate/gate.ts` 的 `requiresConfirmation`：
+ * 判定住在**我们的命令定义**这边（`core/gate/gate.ts` 的 `requiresConfirmation`：
  * `update_` / `patch_` 要点头）⇒ dsh 只是**执行点**（它的一问一答审批缝）。
+ *
+ * ⚠️ **决策只有一份**（`core/gate/decision.ts` ⇒ 与宿主无关）⇒
+ *    这里只做「把结论翻译成 dsh 的 outcome」。
  *
  * ## 往返
  *
@@ -20,12 +23,11 @@
  */
 
 import {
-	blockedWriteReason,
-	narrowWriteArgs,
 	type ContextAnchor,
 	type WriteToolRule,
 } from "../../context/anchor.ts";
 import { requiresConfirmation } from "../../gate/gate.ts";
+import { decideWrite } from "../../gate/decision.ts";
 import { bareToolName } from "../../mcp/tool-names.ts";
 import type { PendingWaiterRegistry } from "../../gate/pending-waiters.ts";
 import { DSH_APPROVAL_OUTCOMES, type DshApprovalOutcome, type DshApprovalRequest } from "./protocol.ts";
@@ -38,7 +40,7 @@ export interface DshGateContext {
 	userId: string;
 	/** 当前讨论的锚点（**没有就是 undefined** ⇒ 不收窄字段）。 */
 	anchor?: ContextAnchor | undefined;
-	/** 写规则（**插件给的** ⇒ 闸门不写死工具名/字段名）。 */
+	/** 写规则（**插件给的** ⇒ 闸门不写死工具名 / 字段名）。 */
 	writeRules?: readonly WriteToolRule[] | undefined;
 	/** 挂起后通知外界（推 SSE `pending`）。 */
 	onPending: (row: { id: string; command: string; args: Record<string, unknown> }) => void;
@@ -60,7 +62,7 @@ export interface DshGateContext {
 	/**
 	 * 决策落地了（**人做的决定**）⇒ 回报给留痕层（审计 + 事件日志）。
 	 *
-	 * ⚠️ 不给 ⇒ 不留痕（**留痕失败不许影响放行/拒绝**）。
+	 * ⚠️ 不给 ⇒ 不留痕（**留痕失败不许影响放行 / 拒绝**）。
 	 */
 	onDecision?: ((input: {
 		command: string;
@@ -88,42 +90,40 @@ export async function decideApproval(
 
 	const anchor = context.anchor ?? null;
 	const rules = context.writeRules ?? [];
-	// ⚠️ **插件说这个工具在这个 scope 里不许用** ⇒ 直接拒（不留孤儿待确认）。
-	const blocked = blockedWriteReason(command, anchor, rules);
-	if (blocked !== undefined) {
-		return DSH_APPROVAL_OUTCOMES.REJECTED;
-	}
 
 	// ⚠️ **参数从 `tool/call` 事件里取**（审批载荷里没有参数 ⇒ 靠 callId 关联）。
 	const input = context.argsOf(request.callId) ?? {};
-	let args: Record<string, unknown>;
-	try {
-		args = narrowWriteArgs(command, input, anchor, rules).args;
-	} catch {
-		// 收窄失败（基线缺必填字段）⇒ 别把一个会 422 的写放出去
-		return DSH_APPROVAL_OUTCOMES.REJECTED;
-	}
 
-	const row = await context.createPending({
-		conversationId: context.conversationId,
-		userId: context.userId,
-		command,
-		args,
-		preview: { tool: command, args },
-		ttlMs: context.timeoutMs,
-	});
-	context.onPending({ id: row.id, command, args });
+	// ⚠️ **决策只有一份**（`core/gate/decision.ts`）⇒ 这里只翻译结论。
+	const decision = await decideWrite(
+		{ toolName: command, args: input },
+		{
+			conversationId: context.conversationId,
+			userId: context.userId,
+			anchor: anchor ?? undefined,
+			writeRules: rules,
+			onPending: context.onPending,
+			waiters: context.waiters,
+			createPending: context.createPending,
+			timeoutMs: context.timeoutMs,
+		},
+	);
 
-	const decision = await context.waiters.wait(row.id, context.timeoutMs);
-	const approved = decision === "approved";
-	// ⚠️ **留痕**（人做的决定）⇒ 审计 + 事件日志。
+	// ⚠️ **留痕**（**人做的决定**）⇒ 审计 + 事件日志。
+	//    只有真的问过人（建过待确认）才留痕（被规则拦下的不算人的决定）。
 	//    失败不许影响放行 / 拒绝 ⇒ 外面包一层。
-	try {
-		context.onDecision?.({ command, args, decision: approved ? "approved" : "rejected" });
-	} catch (error) {
-		console.error("[dsh] 闸门决策留痕失败（不影响放行 / 拒绝）", error);
+	if (decision.asked) {
+		try {
+			context.onDecision?.({
+				command: decision.command,
+				args: decision.args,
+				decision: decision.kind === "allow" ? "approved" : "rejected",
+			});
+		} catch (error) {
+			console.error("[dsh] 闸门决策留痕失败（不影响放行 / 拒绝）", error);
+		}
 	}
-	if (approved) {
+	if (decision.kind === "allow") {
 		return DSH_APPROVAL_OUTCOMES.ALLOWED_ONCE;
 	}
 	return DSH_APPROVAL_OUTCOMES.REJECTED;

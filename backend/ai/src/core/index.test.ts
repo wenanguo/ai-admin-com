@@ -4,10 +4,14 @@
  * ## 钉住的两条
  *
  * 1. **公开入口是唯一的** ⇒ `core/index.ts` 导出对外的那一套（改它 = 改对外契约）；
- * 2. **依赖不外泄** ⇒ 内核只依赖**通用件**（pi SDK / express / prisma / zod / typebox / yaml /
+ * 2. **依赖不外泄** ⇒ 内核只依赖**通用件**（express / prisma / zod / typebox / yaml /
  *    node 内置）⇒ **不依赖任何业务系统** ⇒ 换个系统只要带自己的插件。
  *
  * ⚠️ 这两条都是**可执行**的断言（不是靠人盯）。
+ *
+ * ## ⚠️ 还有第三条（issue #123）：**不许有 pi**
+ *
+ * 内核不许依赖 `@earendil-works/pi-*`（**含 pi-ai**）⇒ 钉在下面那条断言里。
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -21,8 +25,6 @@ const CORE_DIR = join(process.cwd(), "src", "core");
 /** 内核允许依赖的**通用件**（前缀匹配；`node:` 是内置）。 */
 const ALLOWED_DEPENDENCIES = [
 	"node:",
-	"@earendil-works/pi-coding-agent",
-	"@earendil-works/pi-mcp",
 	// ⚠️ **dsh 的 SDK 客户端**（issue #120）：DeepSeek Harness 是**通用件**
 	//    （不是业务系统）⇒ 只允许出现在**适配层**（`core/adapter/dsh/**`）
 	//    ⇒ 边界由 `scripts/check-dsh-boundary.cjs` 钉住。
@@ -98,5 +100,21 @@ describe("内核的公开表面", () => {
 				),
 		);
 		expect(unexpected).toEqual([]);
+	});
+
+	it("⚠️ **不许有 pi**（issue #123：拔掉 pi ⇒ 内核一处都不许 import 它）", () => {
+		const used = new Set<string>();
+		for (const file of tsFiles(CORE_DIR)) {
+			const source = readFileSync(file, "utf8");
+			const pattern = /(?:from|import)\s*\(?\s*["']([^"']+)["']/g;
+			let match: RegExpExecArray | null;
+			while ((match = pattern.exec(source)) !== null) {
+				used.add(match[1] ?? "");
+			}
+		}
+		const piPackages = [...used].filter((specifier) =>
+			specifier.startsWith("@earendil-works/pi"),
+		);
+		expect(piPackages).toEqual([]);
 	});
 });

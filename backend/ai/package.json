@@ -19,8 +19,8 @@
 		"spike:prisma": "node --env-file=.env spike/scripts/03-prisma-client.mjs"
 	},
 	"dependencies": {
+		"@ai-admin/dsh-stub": "file:./stubs/dsh-llm-pi-ai",
 		"@deepseek-ai/dsh-sdk-client": "0.2.2-rc.5",
-		"@earendil-works/pi-coding-agent": "1.5.0",
 		"@prisma/client": "6.19.1",
 		"express": "^5.3.0",
 		"typebox": "1.3.27",
@@ -36,5 +36,16 @@
 		"tsx": "^4.23.15",
 		"typescript": "5.9.3",
 		"vitest": "^5.1.0"
+	},
+	"overrides": {
+		"@deepseek-ai/dsh-llm-pi-ai": "$@ai-admin/dsh-stub"
+	},
+	"comment": {
+		"overrides": [
+			"⚠️ issue #123 · D5=A：把 dsh 自带的「pi-ai 支撑的 provider 适配器」换成本空壳",
+			"   ⇒ **pi-ai 物理上不在依赖树里**（我们自己写 provider ⇒ 不需要它）。",
+			"   那个适配器在 dsh 侧本来就是休眠的（零路由）⇒ 行为不变。",
+			"   详见 stubs/dsh-llm-pi-ai/index.js 与 scripts/e2e/dispatch-dsh.static.cjs。"
+		]
 	}
 }

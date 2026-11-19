@@ -15,14 +15,13 @@
  * 统一名 → 适配层入参的映射**只在这个文件里发生**。
  */
 
-import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 import type { AuditWriter } from "../../../core/audit/audit.ts";
 import { redactAuditArgs } from "../../../core/audit/audit-redact.ts";
 import type { CreateTaskInput } from "../adapter/datasource.ts";
 import type { UnifiedTask } from "../adapter/model.ts";
 import { AdapterErrorException, isAdapterErrorException } from "../../../core/errors.ts";
-import { ALLOW_ALL_GATE, type CommandGate, type CommandTool } from "../../../core/tools/types.ts";
+import { ALLOW_ALL_GATE, type CommandGate, type CommandTool, type ToolResult } from "../../../core/tools/types.ts";
 
 /** 工具名（模型用它来调用）。 */
 export const CREATE_TASK_TOOL_NAME = "create_task";
@@ -149,7 +148,7 @@ export const CREATE_TASK_DESCRIPTION = `在 AiAdmin 项目管理系统里**新�
 - 本命令只新建、不改动已有数据，所以不必再向用户确认；但项目编码一定要先确认清楚。`;
 
 /** 造一个失败结果。 */
-function failure(message: string, errorKind?: string): AgentToolResult<CreateTaskDetails> {
+function failure(message: string, errorKind?: string): ToolResult<CreateTaskDetails> {
 	const details: CreateTaskDetails = { summary: message, ok: false };
 	if (errorKind !== undefined) {
 		details.errorKind = errorKind;

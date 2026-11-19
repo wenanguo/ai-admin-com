@@ -1,0 +1,21 @@
+{
+	"name": "@deepseek-ai/dsh-llm-pi-ai",
+	"version": "0.2.2-rc.5",
+	"private": true,
+	"type": "module",
+	"description": "空壳：把 dsh 自带的「pi-ai 支撑的 provider 适配器」换掉（issue #123 · D5=A）",
+	"main": "index.js",
+	"exports": {
+		".": "./index.js"
+	},
+	"comment": [
+		"⚠️ **为什么有这个空壳**：dsh 的底座（dsh-base）默认挂着 `@deepseek-ai/dsh-llm-pi-ai`，",
+		"   而它的依赖里有 `@earendil-works/pi-ai` ⇒ **pi-ai 会进我们的依赖树**。",
+		"   人 2026-11-19 定的 D5=A：**我们不依赖 pi-ai**（provider 是我们自己写的，见",
+		"   `backend/ai/dsh-plugin/src/provider.js`）⇒ 用 npm `overrides` 把这个适配器换成本空壳。",
+		"⚠️ **dsh 侧那个适配器本来就是「休眠」的**（不配 `llm-pi-ai:` 设置段 ⇒ 零路由）",
+		"   ⇒ 换掉它**不影响任何行为**（我们走自己的 provider）。",
+		"⚠️ **别删这个空壳** ⇒ 删了 pi-ai 就又进依赖树了（`npm ls` 会看见）。",
+		"   守卫见 `scripts/e2e/dispatch-dsh.static.cjs` 与 `scripts/check-dsh-boundary.cjs`。"
+	]
+}

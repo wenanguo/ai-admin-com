@@ -2,7 +2,7 @@
  * Agent 运行时 —— 把「会话 / 命令 / 事件流」串起来。
  *
  * ```
- * 前端 ──POST /command──▶ 运行时 ──▶ 启动锁（同会话串行）──▶ pi 会话
+ * 前端 ──POST /command──▶ 运行时 ──▶ 启动锁（同会话串行）──▶ 会话（dsh 运行时）
  *   │                          │                                  │
  *   │                          ├──▶ ai_message（用户/助手的话）    │
  *   └──GET /events (SSE)◀──────┴──── 事件发布 ◀──────────────────┘
@@ -10,15 +10,20 @@
  *
  * ## 关键约定
  *
- * - **同一会话的 prompt 串行**（启动锁）：pi 在流式输出期间再 `prompt()` 会抛
+ * - **同一会话的 prompt 串行**（启动锁）：会话在流式输出期间再 `prompt()` 会抛
  *   `Agent is already processing` ⇒ 必须排队，不能报错。
  * - **命令立即返回**：HTTP 响应只说「收到了」，真正的结果走 SSE
  *   （`success: true` 的含义是「已受理并排队」）。
  * - **快照才是真相**：`GET /api/agent/:cid/state` 返回完整的会话与消息，
  *   客户端随时可以用它重建界面。
+ *
+ * ## ⚠️ 只有**一个**执行层了（issue #123：拔掉 pi）
+ *
+ * 以前这里是「双跑可切」（`AI_RUNNER=pi|dsh`）⇒ 现在只剩 dsh
+ * ⇒ **不留双份实现**（会话工厂、事件词汇、闸门口径都是一份）。
  */
 
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { AgentEvent } from "./agent-event.ts";
 import { PrismaAuditWriter, type AuditWriter } from "../audit/audit.ts";
 import { AuditTrail } from "../audit/audit-trail.ts";
 import { redactAuditArgs } from "../audit/audit-redact.ts";
@@ -32,13 +37,12 @@ import { SSE_EVENTS, type SseEventName, type SsePayload } from "./events.ts";
 import { AgentEventMapper, extractAssistantText, isAssistantMessage } from "./event-mapper.ts";
 import type { ContextAnchor, ContextProvider } from "../context/anchor.ts";
 import { changedFields, writeTargetId } from "../context/anchor.ts";
-import { createGateExtension, DEFAULT_GATE_TIMEOUT_MS } from "../gate/gate.ts";
+import { DEFAULT_GATE_TIMEOUT_MS } from "../gate/gate.ts";
 import { createPendingAction } from "../gate/pending-write.ts";
 import type { McpServerSpec } from "../mcp/mcp.ts";
 import { mcpToolPrefix, stripMcpToolPrefix } from "../mcp/tool-names.ts";
 import { listSkillSummaries, type SkillSummary } from "../skills/skill-catalog.ts";
 import { pendingWaiters } from "../gate/pending-waiters.ts";
-import { createPiSession, type PiSessionOptions } from "./pi-session.ts";
 import {
 	createDshSession,
 	type CreateDshSessionOptions,
@@ -102,8 +106,8 @@ export interface CommandAck {
  * | `prompt-followup` | 明确排队：当前轮干完活再处理这句 |
  * | `prompt-steer` | 打断：插到当前助手轮次（及其工具调用）之后 |
  *
- * ⚠️ 后两种是 pi 的**原生**排队语义（`session.followUp()` / `session.steer()`），
- * 见 SDK 文档的 Prompting 一节。自己造队列只能做到「等整轮跑完」。
+ * ⚠️ 后两种是会话宿主的**原生**排队语义（`session.followUp()` / `session.steer()`）
+ * ⇒ 自己造队列只能做到「等整轮跑完」⇒ 能用原生的就用原生的。
  */
 export type CommandType = "prompt" | "prompt-followup" | "prompt-steer";
 
@@ -133,10 +137,8 @@ export interface ConversationState {
 
 /** 运行时可注入的依赖（测试用假实现，生产用默认）。 */
 export interface AgentRuntimeOptions {
-	/** 造 pi 会话（带会话 id 与历史 —— 上下文就靠这个还原）。 */
-	createSession?: (options: PiSessionOptions) => Promise<AgentSessionLike>;
 	/**
-	 * 造 **dsh 会话**（双跑的另一半）。
+	 * 造 **dsh 会话**（**唯一的执行层** —— issue #123 拔掉 pi 之后只剩它）。
 	 *
 	 * ⚠️ **测试可注入**（单测不起 dsh 进程）。
 	 */
@@ -176,35 +178,12 @@ export interface AgentRuntimeOptions {
 	 * ⚠️ 测试可以注入假的 ⇒ 单测不必依赖仓里的真配置。
 	 */
 	agents?: AgentProvider;
-	/**
-	 * **用哪个 runner**（issue #120 的「双跑可切」）。
-	 *
-	 * - `pi`（**缺省**）⇒ 今天的 pi 会话；
-	 * - `dsh` ⇒ DeepSeek Harness（子进程 + stdio JSON-RPC）。
-	 *
-	 * ⚠️ 不给 ⇒ 看环境变量 `AI_RUNNER`（再缺省就是 `pi`）
-	 *    ⇒ **切回 pi 不用改代码**（只改环境变量）。
-	 */
-	runner?: RunnerKind;
-}
-
-/** runner 的种类（**双跑开关**）。 */
-export type RunnerKind = "pi" | "dsh";
-
-/**
- * 从环境变量读 runner（**缺省 `pi`** ⇒ 不配就是今天的行为）。
- *
- * @param source 环境变量来源。
- */
-export function runnerFromEnv(source: NodeJS.ProcessEnv = process.env): RunnerKind {
-	return source.AI_RUNNER === "dsh" ? "dsh" : "pi";
 }
 
 export class AgentRuntime {
 	readonly #registry = new SessionRegistry();
 	readonly #lock = new StartupLock();
 	readonly #store: ConversationStore;
-	readonly #createSession: NonNullable<AgentRuntimeOptions["createSession"]>;
 	/** 造 dsh 会话（测试可注入假的）。 */
 	readonly #createDshSession: NonNullable<AgentRuntimeOptions["createDshSession"]>;
 	readonly #plugins: PluginRegistry;
@@ -225,14 +204,10 @@ export class AgentRuntime {
 	readonly #maxTrackedCommands: number;
 	/** 智能体来源（提示词 / 模型 / 技能 / MCP / 工具都从这里来）。 */
 	readonly #agents: AgentProvider;
-	/** **用哪个 runner**（双跑开关；缺省 `pi`）。 */
-	readonly #runner: RunnerKind;
 
 	constructor(options: AgentRuntimeOptions = {}) {
 		this.#store = options.store ?? new ConversationStore();
-		this.#createSession = options.createSession ?? createPiSession;
 		this.#createDshSession = options.createDshSession ?? createDshSession;
-		this.#runner = options.runner ?? runnerFromEnv();
 		this.#model = options.model ?? env.AI_MODEL;
 		this.#audit = new AuditTrail(options.audit ?? new PrismaAuditWriter());
 		this.#sessionEvents = options.sessionEvents ?? new PrismaSessionEventStore();
@@ -413,7 +388,7 @@ export class AgentRuntime {
 
 		// ⚠️ **token 变了 ⇒ 重建会话**：老会话的 MCP 连接带着**旧 token**
 		//    ⇒ 模型调 MCP 时用的还是上一个人的身份（越权）。
-		//    ⇒ 直接把老通道关掉（连带 dispose 掉 pi 会话与 MCP 连接）。
+		//    ⇒ 直接把老通道关掉（连带 dispose 掉会话与 MCP 连接）。
 		const previous = this.#registry.get(request.conversationId);
 		if (
 			previous !== undefined &&
@@ -463,7 +438,6 @@ ${message}`;
 			channel,
 			modelMessage,
 			request.type ?? "prompt",
-			userMessage.id,
 			request.userId,
 		).catch((error: unknown) => {
 			this.#publishTurnError(channel, error);
@@ -595,7 +569,7 @@ ${message}`;
 		}
 	}
 
-	/** 关掉一个会话（释放 pi 会话）。 */
+	/** 关掉一个会话（释放会话资源）。 */
 	close(conversationId: string): void {
 		this.#registry.close(conversationId);
 	}
@@ -609,7 +583,7 @@ ${message}`;
 	 * 停掉当前正在跑的那一轮（用户点「停止生成」）。
 	 *
 	 * ⚠️ SDK 的 `session.abort()`：停掉当前操作并等到会话空闲。
-	 *    pi 自己会发 `agent_settled` ⇒ 前端的输入框会解禁。
+	 *    会话自己会发 `agent_settled` ⇒ 前端的输入框会解禁。
 	 *
 	 * @param conversationId 会话 id。
 	 * @param userId 当前用户 id（不是他的会话就不给停）。
@@ -714,7 +688,7 @@ ${message}`;
 	/**
 	 * 发起一轮对话。
 	 *
-	 * ## 排队语义（用 pi 的原生能力）
+	 * ## 排队语义（用会话宿主的原生能力）
 	 *
 	 * - 当前**没有**轮次在跑 ⇒ 直接 `prompt()`；
 	 * - 当前**有**轮次在跑 ⇒
@@ -727,18 +701,16 @@ ${message}`;
 	 * @param channel 会话通道。
 	 * @param message 用户说的那句话。
 	 * @param type 命令类型。
-	 * @param currentMessageId **当前这句**消息的 id（要排除在历史之外，见下）。
 	 */
 	async #dispatchTurn(
 		channel: ConversationChannel,
 		message: string,
 		type: CommandType,
-		currentMessageId: string,
 		userId: string,
 	): Promise<void> {
-		const session = await this.#ensureSession(channel, currentMessageId, userId);
+		const session = await this.#ensureSession(channel, userId);
 
-		// 已经有轮次在跑 ⇒ 走 pi 的排队语义
+		// 已经有轮次在跑 ⇒ 走会话原生的排队语义
 		if (session.isStreaming && (await this.#queueInto(channel, session, message, type))) {
 			return;
 		}
@@ -755,7 +727,7 @@ ${message}`;
 	/**
 	 * 把这句话排进当前正在跑的那一轮。
 	 *
-	 * @returns 排进去了 ⇒ true；pi 不接受 ⇒ false（落回普通排队）。
+	 * @returns 排进去了 ⇒ true；会话不接受 ⇒ false（落回普通排队）。
 	 */
 	async #queueInto(
 		channel: ConversationChannel,
@@ -773,17 +745,16 @@ ${message}`;
 				return true;
 			}
 		} catch (error) {
-			// ⚠️ pi 不接受这句话（比如它被当成了扩展命令）⇒ 落回普通排队。
+			// ⚠️ 会话不接受这句话（比如它被当成了扩展命令）⇒ 落回普通排队。
 			//    不当错误报出去：那句话本身没毛病，只是排队的路子走不通。
 			console.warn("[agent] 排队进当前轮没成，改成正常排队", error);
 		}
 		return false;
 	}
 
-	/** 懒创建 pi 会话（同一个会话复用同一个）。 */
+	/** 懒创建会话（同一个会话复用同一个）。 */
 	async #ensureSession(
 		channel: ConversationChannel,
-		currentMessageId?: string,
 		userId?: string,
 	): Promise<AgentSessionLike> {
 		if (channel.session !== undefined) {
@@ -808,62 +779,12 @@ ${message}`;
 			// ⚠️ **工具白名单**：配置里没列的工具**不注册**（模型看不到）
 			{ only: agent.tools },
 		);
-		// ★ 把这个会话的历史交给 pi ⇒ **模型记得之前聊过什么**。
-		//    pi 会话是内存态、懒创建的 ⇒ 不还原历史的话，进程重启或通道被回收后
-		//    新建的会话是空白的（前端看得见历史，模型看不见）。
-		//
-		// ⚠️ **当前这句要从历史里排除**：它随后会被 `session.prompt(message)`
-		//    加进 pi 的消息列表 ⇒ 两边都放 ⇒ 模型看到同一句话两遍。
-		const messages = await this.#store.listMessages(channel.conversationId);
-		const history =
-			currentMessageId === undefined
-				? messages
-				: messages.filter((row) => row.id !== currentMessageId);
 		// ⚠️ **MCP 服务器来自配置**（可以 0 / 1 / N 个；名字决定工具名前缀）。
 		const mcpServers = this.#mcpServersOf(agent, channel.token ?? "");
 		// ⚠️ **记住这些前缀**（事件里要靠它认出「这是哪台服务器的 MCP 工具」）
 		channel.mcpPrefixes = this.#mcpPrefixesOf(agent);
-		// ⚠️ **双跑**：pi 走今天的路；dsh 走适配层（**对外契约一模一样**）。
-		const session =
-			this.#runner === "dsh"
-				? await this.#buildDshSession(channel, agent, tools, mcpServers, userId)
-				: await this.#createSession({
-			tools,
-			// ⚠️ **提示词来自配置**（不再是写死的 `PM_AGENT_PROMPT`）
-			systemPrompt: agent.systemPrompt,
-			conversationId: channel.conversationId,
-			history,
-			// ⚠️ **模型来自配置**（没写 ⇒ 用全局默认）
-			model: agent.model ?? this.#model,
-			// ⚠️ **技能目录来自配置**（给 pi 当额外技能目录）
-			skillsDirs: agent.skills,
-			// ⚠️ MCP 的身份 = **当次调用方的 token**（每个会话一份）
-			mcpServers,
-			// ⚠️ **闸门**：修改已有数据要等人点头（用户 2026-11-06 定的口径）。
-			//    挂起时推一个 `pending` 事件 ⇒ 前端「待确认」页签能看到。
-			gate:
-				userId === undefined
-					? undefined
-					: createGateExtension({
-							waiters: pendingWaiters,
-							context: () => ({
-								conversationId: channel.conversationId,
-								userId: userId as string,
-								// ⚠️ 有上下文 ⇒ 闸门把写操作**收窄**到允许回填的字段
-								anchor: channel.anchor,
-								// ⚠️ 写规则由**插件**给（闸门不写死工具名/字段名）
-								writeRules: channel.writeRules ?? [],
-								onPending: (row) => {
-									this.#publish(channel, SSE_EVENTS.PENDING, {
-										conversationId: channel.conversationId,
-										id: row.id,
-										command: row.command,
-										args: row.args,
-									});
-								},
-							}),
-						}),
-		});
+		// ⚠️ **只有一个执行层**（issue #123 拔掉 pi）⇒ 会话一律走 dsh 适配层。
+		const session = await this.#buildDshSession(channel, agent, tools, mcpServers, userId);
 		channel.session = session;
 		channel.unsubscribe = session.subscribe((event) => {
 			this.#handleEvent(channel, event);
@@ -875,7 +796,7 @@ ${message}`;
 	 * 造一个 **dsh 会话**（双跑的另一半）。
 	 *
 	 * ⚠️ **对外契约一模一样**：提示词、技能段、工具白名单、闸门口径
-	 *    都与 pi 路径同源 ⇒ 前端零改动。
+	 *    都与智能体配置同源 ⇒ 前端零改动。
 	 *
 	 * @param channel 会话通道。
 	 * @param agent 这个会话的智能体（提示词 / 模型 / 技能都按它来）。
@@ -926,7 +847,7 @@ ${message}`;
 			// ⚠️ **MCP 服务器**（同一份配置 ⇒ 语义不变；只是换成 dsh 的形状）
 			mcpServers,
 			tracer,
-			// ⚠️ **闸门**：修改已有数据要等人点头（与 pi 路径**同一套**口径）
+			// ⚠️ **闸门**：修改已有数据要等人点头（**唯一一套**口径 ⇒ `core/gate/decision.ts`）
 			gate: () => ({
 				conversationId: channel.conversationId,
 				userId: userId ?? "",
@@ -954,7 +875,7 @@ ${message}`;
 	/**
 	 * **命令桥**：dsh 侧插件回调我们执行一条命令。
 	 *
-	 * ⚠️ **只有 dsh runner 的会话认这个**（pi 会话没有 `executeCommand`）。
+	 * ⚠️ **只有 dsh 会话认这个**（别的会话没有 `executeCommand`）。
 	 *
 	 * @param input 会话 id、工具名、参数。
 	 */
@@ -978,8 +899,8 @@ ${message}`;
 		return session.executeCommand(input.tool, input.args);
 	}
 
-	/** pi 事件 → 发布 SSE 帧。 */
-	#handleEvent(channel: ConversationChannel, event: AgentSessionEvent): void {
+	/** 运行时事件 → 发布 SSE 帧。 */
+	#handleEvent(channel: ConversationChannel, event: AgentEvent): void {
 		// ⚠️ **写回成功 ⇒ 告诉前端「哪条任务变了」**
 		//    （前端据此刷新左边的列表/看板/甘特，并把那一行高亮）。
 		//    ⚠️ 参数在闸门里被**就地改写过**（收窄成允许回填的字段）⇒
@@ -1052,21 +973,16 @@ ${message}`;
 		if (existing !== undefined) {
 			return existing;
 		}
-		// ⚠️ **只有 dsh 路径归一化工具名**（spec §5.3）：
+		// ⚠️ **工具名一律归一化**（spec §5.3）：
 		//    MCP 的工具在模型侧叫 `mcp__<server>__<tool>` ⇒ 界面上要显示
 		//    **我们自己的命令名**（`create_task`）。
-		//    ⚠️ pi 路径**保持原样**（不改现有产品的显示 ⇒ #123 拔 pi 时自然统一）。
 		//    ⚠️ **模型侧看到的名字不变** ⇒ 技能正文里写的工具名依然对得上。
-		const mapper = new AgentEventMapper(
-			this.#runner === "dsh"
-				? {
-						normalizeToolName: (toolName) => {
-							const channel = this.#registry.get(conversationId);
-							return stripMcpToolPrefix(toolName, channel?.mcpPrefixes ?? []);
-						},
-					}
-				: {},
-		);
+		const mapper = new AgentEventMapper({
+			normalizeToolName: (toolName) => {
+				const channel = this.#registry.get(conversationId);
+				return stripMcpToolPrefix(toolName, channel?.mcpPrefixes ?? []);
+			},
+		});
 		this.#mappers.set(conversationId, mapper);
 		return mapper;
 	}
