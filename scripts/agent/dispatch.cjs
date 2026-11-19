@@ -119,8 +119,10 @@ function getIssue(n) {
 /**
  * 取某条 issue 的 PR。
  *
- * ⚠️ **不能只按分支名找**：子会话会**自己起分支名**（如 \`feat/101-agent-picker\`），
- * 跟我建的 \`agent/pm-dev-<号>\` 无关 ⇒ 还得按 **PR 正文/标题里含 issue 号**来找。
+ * ⚠️ **不能只按「正文里提到这个号」来找** ⇒ PM 自己的文档 PR（正文里会提到 issue 号）
+ *    会被误认成开发 PR（实测：#110 的文档 PR 被当成了 #109 的开发 PR）。
+ *    ⇒ 认准两个信号：**正文里 \`Closes #<号>\` / \`Fixes #<号>\`**（开发 agent 的 PR 一律带），
+ *    或**分支名里带这个号**。
  */
 function findPr(branch, issueNumber) {
   const byBranch = JSON.parse(
@@ -131,9 +133,10 @@ function findPr(branch, issueNumber) {
   const all = JSON.parse(
     run('gh', ['pr', 'list', '--state', 'all', '--limit', '50', '--json', 'number,state,url,title,headRefName,mergedAt,body']),
   );
-  const tag = `#${issueNumber}`;
-  const hits = all.filter((p) => (p.title ?? '').includes(tag) || (p.body ?? '').includes(tag));
-  // 最新的在前（gh 默认按创建时间倒序）⇒ 取第一个 open 的，没有就用第一个
+  const closes = new RegExp(`\\b(closes|fixes)\\s+#${issueNumber}\\b`, 'i');
+  const hits = all.filter(
+    (p) => closes.test(p.body ?? '') || new RegExp(`(^|[^0-9])#${issueNumber}([^0-9]|$)`).test(p.headRefName ?? ''),
+  );
   return hits.find((p) => p.state === 'OPEN') ?? hits[0] ?? null;
 }
 
