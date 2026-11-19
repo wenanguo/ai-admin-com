@@ -43,7 +43,9 @@ ENV DATABASE_URL=mysql://build:build@127.0.0.1:3306/build
 RUN npx prisma generate
 
 # ⑤ 编译：示例 + 它引用的内核（ESM，pi SDK 是 ESM-only ⇒ 必须是 ESM）
-#    ⚠️ 产物布局：`dist/examples/reading-notes/main.js` + `dist/src/core/**`
+#    ⚠️ **产物落在 `/app/examples/reading-notes/dist`** —— `outDir: "./dist"` 是相对
+#       **示例自己的 tsconfig** 解析的（不是相对 WORKDIR）⇒ **不是 `/app/dist`**。
+#    产物布局（相对那个 outDir）：`examples/reading-notes/main.js` + `src/core/**`
 RUN npx tsc -p examples/reading-notes/tsconfig.json
 
 # ─────────────────────────── 运行阶段 ───────────────────────────
@@ -67,7 +69,11 @@ ENV DATABASE_URL=mysql://notes:notes@127.0.0.1:3306/notes
 RUN npm install -g npm@10.9.9 && npm ci --no-audit --no-fund
 
 # ② 编译产物（示例 + 内核）
-COPY --from=builder /app/dist ./dist
+#    ⚠️ **源路径 = 构建阶段的真实产物目录**（`outDir` 相对示例的 tsconfig 解析
+#       ⇒ `/app/examples/reading-notes/dist`，**不是 `/app/dist`**）
+#    拷到运行阶段后是 `/app/dist` ⇒ 里面是 `examples/reading-notes/main.js` + `src/core/**`
+#    ⇒ 与下面的 `CMD ["node", "dist/examples/reading-notes/main.js"]` 对得上。
+COPY --from=builder /app/examples/reading-notes/dist ./dist
 
 # ③ 智能体配置（**cwd 相对** ⇒ 必须和 WORKDIR 同一个相对位置）
 #    ⚠️ 这是**示例自己的** agents/（不是 AiAdmin 的）
