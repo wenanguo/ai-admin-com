@@ -215,6 +215,26 @@ console.log('⑤ 依赖树不因升 Node 而变');
       const base = JSON.parse(baseText);
       const current = readJson(rel);
 
+      // ⚠️ **这条 PR 自己加了/改了依赖 ⇒ 本项不适用**（那是功能改动，不是「只换 Node 运行时」）。
+      //    例：issue #120 给 AI 服务加了 `@deepseek-ai/dsh-sdk-client`。
+      const manifestRel = rel.replace(/package-lock\.json$/, 'package.json');
+      const baseManifestText = gitShow(baseRef, manifestRel);
+      if (baseManifestText !== null) {
+        const baseManifest = JSON.parse(baseManifestText);
+        const currentManifest = readJson(manifestRel);
+        const depsOf = (manifest) =>
+          JSON.stringify({
+            dependencies: manifest?.dependencies ?? {},
+            devDependencies: manifest?.devDependencies ?? {},
+          });
+        if (depsOf(baseManifest) !== depsOf(currentManifest)) {
+          console.log(
+            `  ⚠ ${rel}：这条 PR 自己改了依赖 ⇒ 「依赖树没变」这项不适用（跳过）`,
+          );
+          continue;
+        }
+      }
+
       // 只允许「根包的 engines」不同 ⇒ 其余（依赖树）必须逐字段相同
       if (base.packages?.['']) delete base.packages[''].engines;
       if (current.packages?.['']) delete current.packages[''].engines;

@@ -24,17 +24,22 @@ import { redactAuditArgs } from "../audit/audit-redact.ts";
 import { env } from "../env/env.ts";
 import { buildFrame } from "../http/sse.ts";
 import { buildCommandTools } from "../tools/index.ts";
+import type { CommandTool } from "../tools/types.ts";
 import { pluginRegistry, type AiPlugin, type PluginRegistry } from "../plugins.ts";
 import type { CurrentUser } from "./identity.ts";
 import { SSE_EVENTS, type SseEventName, type SsePayload } from "./events.ts";
 import { AgentEventMapper, extractAssistantText, isAssistantMessage } from "./event-mapper.ts";
 import type { ContextAnchor, ContextProvider } from "../context/anchor.ts";
 import { changedFields, writeTargetId } from "../context/anchor.ts";
-import { createGateExtension } from "../gate/gate.ts";
+import { createGateExtension, DEFAULT_GATE_TIMEOUT_MS } from "../gate/gate.ts";
+import { createPendingAction } from "../gate/pending-write.ts";
 import { mcpToolPrefix, stripMcpToolPrefix, type McpServerSpec } from "../mcp/mcp.ts";
 import { listSkillSummaries, type SkillSummary } from "../skills/skill-catalog.ts";
 import { pendingWaiters } from "../gate/pending-waiters.ts";
 import { createPiSession, type PiSessionOptions } from "./pi-session.ts";
+import { createDshSession } from "../adapter/dsh/runner.ts";
+import { buildDshSystemPrompt } from "../adapter/dsh/system-prompt.ts";
+import { createLoadSkillTool } from "../skills/skill-tools.ts";
 import { agentsRoot } from "../config/loader.ts";
 import {
 	agentIdOfConversation,
@@ -145,6 +150,28 @@ export interface AgentRuntimeOptions {
 	 * ⚠️ 测试可以注入假的 ⇒ 单测不必依赖仓里的真配置。
 	 */
 	agents?: AgentProvider;
+	/**
+	 * **用哪个 runner**（issue #120 的「双跑可切」）。
+	 *
+	 * - `pi`（**缺省**）⇒ 今天的 pi 会话；
+	 * - `dsh` ⇒ DeepSeek Harness（子进程 + stdio JSON-RPC）。
+	 *
+	 * ⚠️ 不给 ⇒ 看环境变量 `AI_RUNNER`（再缺省就是 `pi`）
+	 *    ⇒ **切回 pi 不用改代码**（只改环境变量）。
+	 */
+	runner?: RunnerKind;
+}
+
+/** runner 的种类（**双跑开关**）。 */
+export type RunnerKind = "pi" | "dsh";
+
+/**
+ * 从环境变量读 runner（**缺省 `pi`** ⇒ 不配就是今天的行为）。
+ *
+ * @param source 环境变量来源。
+ */
+export function runnerFromEnv(source: NodeJS.ProcessEnv = process.env): RunnerKind {
+	return source.AI_RUNNER === "dsh" ? "dsh" : "pi";
 }
 
 export class AgentRuntime {
@@ -168,10 +195,13 @@ export class AgentRuntime {
 	readonly #maxTrackedCommands: number;
 	/** 智能体来源（提示词 / 模型 / 技能 / MCP / 工具都从这里来）。 */
 	readonly #agents: AgentProvider;
+	/** **用哪个 runner**（双跑开关；缺省 `pi`）。 */
+	readonly #runner: RunnerKind;
 
 	constructor(options: AgentRuntimeOptions = {}) {
 		this.#store = options.store ?? new ConversationStore();
 		this.#createSession = options.createSession ?? createPiSession;
+		this.#runner = options.runner ?? runnerFromEnv();
 		this.#model = options.model ?? env.AI_MODEL;
 		this.#audit = options.audit ?? new PrismaAuditWriter();
 		// ⚠️ **默认地址归插件**（内核不认识业务系统的地址）：
@@ -743,7 +773,11 @@ ${message}`;
 		const mcpServers = this.#mcpServersOf(agent, channel.token ?? "");
 		// ⚠️ **记住这些前缀**（事件里要靠它认出「这是哪台服务器的 MCP 工具」）
 		channel.mcpPrefixes = this.#mcpPrefixesOf(agent);
-		const session = await this.#createSession({
+		// ⚠️ **双跑**：pi 走今天的路；dsh 走适配层（**对外契约一模一样**）。
+		const session =
+			this.#runner === "dsh"
+				? await this.#createDshSession(channel, agent, tools, userId)
+				: await this.#createSession({
 			tools,
 			// ⚠️ **提示词来自配置**（不再是写死的 `PM_AGENT_PROMPT`）
 			systemPrompt: agent.systemPrompt,
@@ -785,6 +819,82 @@ ${message}`;
 			this.#handleEvent(channel, event);
 		});
 		return session;
+	}
+
+	/**
+	 * 造一个 **dsh 会话**（双跑的另一半）。
+	 *
+	 * ⚠️ **对外契约一模一样**：提示词、技能段、工具白名单、闸门口径
+	 *    都与 pi 路径同源 ⇒ 前端零改动。
+	 *
+	 * @param channel 会话通道。
+	 * @param agent 这个会话的智能体（提示词 / 模型 / 技能都按它来）。
+	 * @param tools 业务命令工具（**已按白名单过滤**）。
+	 * @param userId 当前用户 id（闸门要记「谁干的」）。
+	 */
+	async #createDshSession(
+		channel: ConversationChannel,
+		agent: AgentConfig,
+		tools: readonly CommandTool[],
+		userId?: string,
+	): Promise<AgentSessionLike> {
+		// ⚠️ **技能段照旧进模型上下文**（同一套技能表 ⇒ 语义保住）
+		const { systemPrompt, skills } = buildDshSystemPrompt(agent.systemPrompt, agent.skills);
+		// ⚠️ **没有技能时就不注册 `load_skill`**（别给模型一个必然失败的工具）
+		const allTools = skills.length > 0 ? [...tools, createLoadSkillTool(skills)] : tools;
+		return createDshSession({
+			conversationId: channel.conversationId,
+			tools: allTools,
+			systemPrompt,
+			// ⚠️ **模型来自配置**（没写 ⇒ 用全局默认）
+			model: agent.model ?? this.#model,
+			mcpPrefixes: channel.mcpPrefixes,
+			// ⚠️ **闸门**：修改已有数据要等人点头（与 pi 路径**同一套**口径）
+			gate: () => ({
+				conversationId: channel.conversationId,
+				userId: userId ?? "",
+				anchor: channel.anchor,
+				writeRules: channel.writeRules ?? [],
+				onPending: (row) => {
+					this.#publish(channel, SSE_EVENTS.PENDING, {
+						conversationId: channel.conversationId,
+						id: row.id,
+						command: row.command,
+						args: row.args,
+					});
+				},
+				waiters: pendingWaiters,
+				createPending: createPendingAction,
+				timeoutMs: DEFAULT_GATE_TIMEOUT_MS,
+			}),
+		});
+	}
+
+	/**
+	 * **命令桥**：dsh 侧插件回调我们执行一条命令。
+	 *
+	 * ⚠️ **只有 dsh runner 的会话认这个**（pi 会话没有 `executeCommand`）。
+	 *
+	 * @param input 会话 id、工具名、参数。
+	 */
+	async executeDshCommand(input: {
+		conversationId: string;
+		tool: string;
+		args: Record<string, unknown>;
+	}): Promise<{ ok: boolean; summary: string; details?: unknown }> {
+		const channel = this.#registry.get(input.conversationId);
+		const session = channel?.session as unknown as
+			| {
+					executeCommand?: (
+						tool: string,
+						args: Record<string, unknown>,
+					) => Promise<{ ok: boolean; summary: string; details?: unknown }>;
+			  }
+			| undefined;
+		if (session?.executeCommand === undefined) {
+			return { ok: false, summary: "这个会话没有可执行的命令（不是 dsh runner？）" };
+		}
+		return session.executeCommand(input.tool, input.args);
 	}
 
 	/** pi 事件 → 发布 SSE 帧。 */

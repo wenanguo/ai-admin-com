@@ -27,6 +27,8 @@
     "e2e:ai:static": "node scripts/e2e/ai-container.static.cjs",
     "e2e:ai-agent": "node scripts/e2e/ai-agent-picker.cjs",
     "e2e:dsh:static": "node scripts/e2e/dsh-spike.static.cjs",
+    "e2e:dsh": "node scripts/e2e/dsh-runner.cjs",
+    "check:dsh-boundary": "node scripts/check-dsh-boundary.cjs",
     "e2e:node-version:static": "node scripts/e2e/node-version.static.cjs",
     "check:reuse-core": "node scripts/check-core-reuse.cjs",
     "e2e:reuse-core": "node scripts/e2e/reuse-core-example.cjs",

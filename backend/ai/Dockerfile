@@ -98,6 +98,13 @@ COPY backend/ai/.pi ./.pi
 #    （否则容器里一个智能体都没有 ⇒ `/api/agents` 永远空）。
 COPY backend/ai/agents ./agents
 
+# ⑥ **dsh runner**（issue #120；`AI_RUNNER=dsh` 时才用得到）
+#    ⚠️ dsh 的 profile 是**独立的 pnpm 工程** ⇒ 镜像里要有 pnpm，
+#    还要有**我们自己的 dsh 侧插件源码**（首次起会话时装进 profile）。
+#    ⚠️ dsh 的运行时本身来自 node_modules（`@deepseek-ai/dsh` 是 SDK 客户端的依赖）✔
+RUN npm install -g pnpm@11.22.0 && pnpm -v
+COPY backend/ai/dsh-plugin ./dsh-plugin
+
 EXPOSE 3100
 
 # 健康检查：打 /health（**恒 200** ⇒ 依赖挂了不会把容器判死，只体现在 status 字段里）
