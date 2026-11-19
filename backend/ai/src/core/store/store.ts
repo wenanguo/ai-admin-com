@@ -25,6 +25,13 @@ export interface ConversationRecord {
 	 * ⚠️ **事实源是这一列**（会话 id 里那个前缀只是「同义反复」⇒ 见 runtime 的 `#agentOf`）。
 	 */
 	agentId: string | null;
+	/**
+	 * 这个会话对应的 dsh session id（**可空** ⇒ 迁移前的旧会话没有这个值）。
+	 *
+	 * ⚠️ **只增不改**（共享库规矩）：今天 dsh 的 session id 就等于会话 id ⇒ 等值映射；
+	 *    这一列先留好 ⇒ dsh 哪天自己分配 session id 时直接用（不用再动数据模型）。
+	 */
+	dshSessionId: string | null;
 	createdAt: Date;
 	updatedAt: Date;
 }
@@ -68,6 +75,21 @@ export class ConversationStore {
 	async get(conversationId: string): Promise<ConversationRecord | undefined> {
 		const row = await prisma.aiConversation.findUnique({ where: { id: conversationId } });
 		return row === null ? undefined : toConversation(row);
+	}
+
+	/**
+	 * 记下「这个会话对应哪个 dsh session」。
+	 *
+	 * ⚠️ **只加一列**（不改别的）⇒ 写失败不许影响对话（老库还没迁移 ⇒ 列都不存在）。
+	 *
+	 * @param conversationId 会话 id。
+	 * @param dshSessionId dsh 的 session id。
+	 */
+	async setDshSessionId(conversationId: string, dshSessionId: string): Promise<void> {
+		await prisma.aiConversation.update({
+			where: { id: conversationId },
+			data: { dshSessionId },
+		});
 	}
 
 	/** 列某个用户的会话（最近更新的在前）。 */
@@ -126,6 +148,7 @@ function toConversation(row: {
 	userId: string;
 	title: string | null;
 	agentId: string | null;
+	dshSessionId: string | null;
 	createdAt: Date;
 	updatedAt: Date;
 }): ConversationRecord {
@@ -134,6 +157,7 @@ function toConversation(row: {
 		userId: row.userId,
 		title: row.title,
 		agentId: row.agentId,
+		dshSessionId: row.dshSessionId,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
 	};
