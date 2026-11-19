@@ -24,11 +24,17 @@ model AiConversation {
   title      String?    @map("title") @db.VarChar(255)
   /// 这个会话是哪个智能体的（**可空** ⇒ 迁移前的旧会话没有这个值）。
   agentId    String?    @map("agent_id") @db.VarChar(64)
+  /// 这个会话对应的 dsh session id（**可空** ⇒ 迁移前的旧会话没有这个值）。
+  ///
+  /// ⚠️ **只增不改**（共享库规矩）：今天 dsh 的 session id 就等于会话 id ⇒ 等值映射；
+  ///    这一列先留好 ⇒ dsh 哪天自己分配 session id 时直接用（不用再动数据模型）。
+  dshSessionId String?  @map("dsh_session_id") @db.VarChar(64)
   createdAt  DateTime   @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt  DateTime   @updatedAt @map("updated_at") @db.DateTime(3)
 
   messages       AiMessage[]
   pendingActions AiPendingAction[]
+  sessionEvents  AiSessionEvent[]
 
   @@index([userId, updatedAt])
   @@map("ai_conversation")
@@ -93,6 +99,37 @@ model AiAuditLog {
   @@index([userId, createdAt])
   @@index([undoOf])
   @@map("ai_audit_log")
+}
+
+/// 会话事件日志（**dsh 形状**：追加式事件流 —— 一行 = 一个事件）。
+///
+/// ## 为什么要有这张表
+///
+/// dsh 把「这一轮发生了什么」记成**追加式事件日志**（模型调用 / 工具调用 / 审批 / 流）；
+/// 我们以前只有**关系型行**（会话 / 消息 / 审计）⇒ 运行细节查不到。
+/// ⇒ 这张表是 **dsh 形状的会话持久化**（落在同一个 MySQL ⇒ 不依赖容器本地磁盘）。
+///
+/// ⚠️ **只增不改**（共享库规矩）：没有 UPDATE / DELETE 的语义 ⇒ 只追加。
+/// ⚠️ `payload` 是**截断后**的事件载荷（模型流可能很大 ⇒ 不截会把库撑爆）。
+model AiSessionEvent {
+  id             String   @id @default(cuid()) @db.VarChar(64)
+  conversationId String   @map("conversation_id") @db.VarChar(64)
+  /// dsh 的 session id（**可空** ⇒ 迁移前的旧会话没有这个值）。
+  dshSessionId   String?  @map("dsh_session_id") @db.VarChar(64)
+  /// 会话内递增的序号（追加式的顺序）。
+  seq            Int      @default(0)
+  /// 事件种类（`model_call` / `tool_call` / `tool_result` / `gate_asked` / `gate_decided` / `turn_end` / `other`）。
+  kind           String   @db.VarChar(32)
+  /// 事件名（dsh 的事件名，如 `assistant/message`；我们自己的闸门决策用 `gate/decided`）。
+  eventName      String   @map("event_name") @db.VarChar(64)
+  /// 事件载荷（JSON）。
+  payload        Json
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, seq])
+  @@map("ai_session_event")
 }
 
 /// 外部业务实体的本地引用（只存 id 与标题缓存，不复制业务数据）。
