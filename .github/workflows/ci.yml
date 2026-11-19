@@ -28,6 +28,27 @@ jobs:
           node-version: 24
       - run: node --test "scripts/agent/*.test.cjs"
 
+  # Node 版本基线（issue #128）—— **静态断言**：
+  #   CI 的 Node 版本 / 三个 package.json 的 engines / 三个 Dockerfile 的 NODE_VERSION /
+  #   文档里的版本说法 —— 四处不许漂移；
+  #   且「依赖树不因升 Node 而变」有**机器可查**的证据（lock 与基线分支逐字段相同，只差 engines）。
+  # ⚠️ fetch-depth: 0 ⇒ 拿得到基线分支（origin/main）⇒ lock 比对才有效（否则脚本只警告并跳过）。
+  node-baseline:
+    name: Node 版本基线
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: node scripts/e2e/node-version.static.cjs
+
   # AI 服务（backend/ai）—— 单测 + **内核纯净度**。
   # ⚠️ 之前后端的 447 条单测**在 CI 里根本没跑**（只有容器验收）⇒ 这里补上。
   # ⚠️ 内核纯净度 = 两档（`core/**` 不许 import `plugins/**` + 代码里不许出现业务词），
