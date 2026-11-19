@@ -197,14 +197,14 @@ check(
   migrationDirs.includes('0_init_ai_tables') && migrationDirs.length >= 2,
   migrationDirs.join(' / '),
 );
-// ⚠️ **增量迁移只许「加列」** —— 共享库上 DROP/CREATE TABLE 会毁掉别人的数据
+// ⚠️ **增量迁移只许「加列 / 加表」** —— 共享库上 DROP/CREATE TABLE 会毁掉别人的数据
 for (const name of migrationDirs.filter((dir) => dir !== '0_init_ai_tables')) {
   const sql = fs.readFileSync(path.join(migrationsDir, name, 'migration.sql'), 'utf8');
-  const statements = sql
+  const lines = sql
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !line.startsWith('--'));
-  const dangerous = statements.filter(
+  const dangerous = lines.filter(
     (line) =>
       /DROP\s/i.test(line) ||
       /TRUNCATE/i.test(line) ||
@@ -218,10 +218,19 @@ for (const name of migrationDirs.filter((dir) => dir !== '0_init_ai_tables')) {
     dangerous.length === 0,
     dangerous.join(' | '),
   );
+  // ⚠️ **按「语句」判**（不是按行）—— CREATE TABLE 的列定义行里没有表名。
+  const statements = lines
+    .join('\n')
+    .split(';')
+    .map((statement) => statement.trim())
+    .filter((statement) => statement.length > 0);
+  const foreignTables = statements.filter(
+    (statement) => !/ai_conversation|ai_session_event/.test(statement),
+  );
   check(
-    `迁移 ${name} 只动 ai_conversation`,
-    statements.every((line) => /ai_conversation/.test(line)),
-    statements.join(' | '),
+    `迁移 ${name} 只动 ai_conversation / ai_session_event`,
+    foreignTables.length === 0,
+    foreignTables.join(' | '),
   );
 }
 

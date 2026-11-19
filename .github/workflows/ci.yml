@@ -83,6 +83,9 @@ jobs:
       # dsh 底座摸底（issue #119）：版本锁 / 尖峰脚手架 / spec 的**静态**断言
       # ⇒ 不需要装 dsh、不需要模型凭据 ⇒ 任何 runner 都能跑。
       - run: node ../../scripts/e2e/dsh-spike.static.cjs
+      # dsh 存储与审计（issue #121）：数据模型**只加不改** / 迁移安全 / 契约不变
+      # ⇒ 静态断言（不需要数据库）。
+      - run: node ../../scripts/e2e/dsh-storage.static.cjs
 
   lint:
     runs-on: ubuntu-latest
