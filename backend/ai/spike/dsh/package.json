@@ -1,0 +1,24 @@
+{
+	"name": "ai-admin-ai-dsh-spike",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "issue #119：DeepSeek Harness(dsh) 底座摸底 spike —— 玩具任务（模型 + 工具）",
+	"comment": [
+		"⚠️ 这是**尖峰沙盒**，不是 AI 服务的依赖 ⇒ 不要把它合进 backend/ai/package.json。",
+		"⚠️ dsh 生态用 **pnpm**（dsh 的 profile/plugin 机制本身就是 pnpm）⇒ 这里用 pnpm 装，",
+		"   版本锁在 dsh-versions.lock.json（精确版本，无 ^/~）。",
+		"⚠️ 需要 Node ≥ 24.9（@deepseek-ai/dsh 的 engines 要求）。"
+	],
+	"scripts": {
+		"spike": "node scripts/01-toy-task.mjs"
+	},
+	"dependencies": {
+		"@deepseek-ai/dsh": "0.2.2-rc.5",
+		"@deepseek-ai/dsh-sdk-client": "0.2.2-rc.5",
+		"@deepseek-ai/dsh-llm-pi-ai": "0.2.2-rc.5",
+		"@deepseek-ai/dsh-mcp-client": "0.2.2-rc.5",
+		"@modelcontextprotocol/sdk": "1.32.2",
+		"zod": "4.6.7"
+	}
+}

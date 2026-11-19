@@ -1,0 +1,31 @@
+# dsh profile 补丁（spike 用）—— 挂三样东西：
+#   1) LLM 路由（provider-neutral seam ⇒ 走 pi-ai 适配器接一个 OpenAI 兼容网关上的 DeepSeek 模型）
+#   2) **我们自己的**玩具工具（cordis 插件 ⇒ 证明「我们的工具能挂进 dsh 的 tool registry」）
+#   3) **玩具 MCP server**（证明「MCP 能挂」⇒ dsh 自带 @deepseek-ai/dsh-mcp-client）
+#
+# ⚠️ 补丁语法（dsh loader / vendor/include）：
+#   - 改已有条目：`- id: <已有条目 id>` + config
+#   - **加**新插件：`- insert: [ { id, name, config } ]`（顶层无 id ⇒ 追加到根条目树）
+- id: llm-pi-ai
+  name: '@deepseek-ai/dsh-llm-pi-ai'
+  config:
+    providers:
+      spike-gw:
+        apiKeyEnv: DSH_SPIKE_API_KEY
+        baseURL: !!js process.env.DSH_SPIKE_BASE_URL
+        api: openai-completions
+        models:
+          - id: deepseek-v4-flash
+            contextWindow: 131072
+            maxTokens: 8192
+- insert:
+    - id: toy-tool
+      name: '@ai-admin/dsh-toy-tool'
+    - id: mcp-toy
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: toy
+        transport: stdio
+        command: !!js process.execPath
+        args:
+          - !!js process.env.DSH_SPIKE_MCP_SERVER
