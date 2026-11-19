@@ -226,7 +226,7 @@ async function runTurn(
  * ------------------------------------------------------------------ */
 
 console.log("① 准备 dsh profile（装我们的插件）…");
-ensureDshProfile({ dshHome, profile: "sdk", dshBin, pluginPath });
+await ensureDshProfile({ dshHome, profile: "sdk", dshBin, pluginPath });
 
 console.log("② 批准 ⇒ 工具真的执行");
 const approved = await runTurn("approved");

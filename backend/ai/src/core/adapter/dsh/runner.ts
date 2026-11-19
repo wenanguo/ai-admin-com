@@ -130,7 +130,8 @@ export async function createDshSession(
 		);
 	}
 	// ⚠️ **profile 必须先准备好**（我们的插件要装进去 ⇒ 工具与 provider 才在）。
-	ensureDshProfile({
+	//    （每个进程只做一次 ⇒ 这里 await 的是那个缓存的 promise。）
+	await ensureDshProfile({
 		dshHome: config.dshHome,
 		profile: config.profile,
 		dshBin: config.dshBin,

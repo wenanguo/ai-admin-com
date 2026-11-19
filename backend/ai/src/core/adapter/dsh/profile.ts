@@ -36,12 +36,38 @@ export interface EnsureProfileOptions {
 }
 
 /**
- * 保证 profile 存在且装了我们的插件。
+ * 保证 profile 存在且装了我们的插件（**每个进程只做一次**）。
+ *
+ * ⚠️ **一次**：profile 引导要跑 `pnpm add`（几秒）⇒ 每个会话都跑一遍太慢
+ *    ⇒ 进程内缓存（`promise`）⇒ 第一个会话做一次，后面的直接用。
  *
  * @param options 引导参数。
  */
-export function ensureDshProfile(options: EnsureProfileOptions): void {
-	const profileDir = join(options.dshHome, "profiles", options.profile);
+export function ensureDshProfile(options: EnsureProfileOptions): Promise<void> {
+	bootstrap ??= bootstrapProfile(options);
+	return bootstrap;
+}
+
+/** 进程内的引导结果（**只做一次**）。 */
+let bootstrap: Promise<void> | undefined;
+
+/**
+ * 写 profile 的 `pnpm-workspace.yaml`（**放开供应链策略**）。
+ *
+ * @param profileDir profile 目录。
+ */
+function writePnpmWorkspace(profileDir: string): void {
+	const file = join(profileDir, "pnpm-workspace.yaml");
+	const existing = existsSync(file) ? readFileSync(file, "utf8") : "";
+	const kept = existing
+		.split("\n")
+		.filter((line) => !line.trim().startsWith("minimumReleaseAge"))
+		.join("\n");
+	writeFileSync(file, `${kept.trimEnd()}\nminimumReleaseAge: 0\n`, "utf8");
+}
+
+/** 真正做引导的那一段。 */
+async function bootstrapProfile(options: EnsureProfileOptions): Promise<void> {	const profileDir = join(options.dshHome, "profiles", options.profile);
 	if (!existsSync(profileDir)) {
 		const created = spawnSync(
 			process.execPath,
@@ -62,14 +88,22 @@ export function ensureDshProfile(options: EnsureProfileOptions): void {
 	if (!existsSync(manifestPath)) {
 		throw new Error(`dsh profile 的清单不在：${manifestPath}`);
 	}
+
+	// ⚠️ **pnpm 的供应链策略要放开**（`minimumReleaseAge: 0`）。
+	//
+	//    dsh 的包是 rc（刚发布不到一天）⇒ pnpm 11 默认会拦
+	//    （尖峰里已经踩过：见 `backend/ai/spike/dsh/pnpm-workspace.yaml`）。
+	//    ⇒ 我们**精确锁死**了版本（dsh-versions.lock.json）⇒ 不是「装最新的」。
+	writePnpmWorkspace(profileDir);
 	const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
 		dependencies?: Record<string, string>;
 		dsh?: { profile?: { bundles?: string[] } };
 	};
 	const installed = manifest.dependencies?.[DSH_PLUGIN_PACKAGE];
-	// ⚠️ **用 `link:` 而不是 `file:`** ⇒ pnpm 建的是**符号链接**
-	//    ⇒ 改了插件源码**立即生效**（不用重装）⇒ 开发时不会拿着旧代码跑。
-	const wanted = `link:${options.pluginPath.replace(/\\/g, "/")}`;
+	// ⚠️ **用 `file:` 而不是 `link:`** ⇒ pnpm 会把插件**拷贝**进 profile
+	//    （连带装上它的依赖）⇒ 插件在 dsh 进程里能 import 到 @deepseek-ai/*。
+	//    （`link:` 在开发时方便，但插件的依赖不会被装进 profile ⇒ import 会失败。）
+	const wanted = `file:${options.pluginPath.replace(/\\/g, "/")}`;
 	if (installed !== wanted) {
 		// ⚠️ Windows 上 `.cmd` 只能经 shell 起（Node 的安全限制）⇒ 用一条命令串 + 引号。
 		const added = spawnSync(
