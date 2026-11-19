@@ -640,3 +640,22 @@
      但又卡在补 notes 的 PR #114 上 ⇒ 我接手合了它（纯文档）。
   2. **子会话做完不清理 issue 上的 `in-progress`** ⇒ **PM 要收尾时清标签**（本轮已清 #112）。
 - **状态**：GitHub 上 **0 milestone / 0 issue / 0 PR**；巡检 ✅。
+
+### 2026-11-19 · G2「内核复用验收」完成（#116 / PR #117）
+
+- **为什么做**：G1 收工后内核/插件/配置/接线都齐了，但**只有 AiAdmin 一个使用方** ⇒ 「可复用」是自说自话。
+  阶段 5 造的 `core/index.ts`（唯一公开入口）**还没有第二个使用方验证它**。
+- **交付**：
+  - `backend/ai/src/core/app.ts` —— **`createCoreApp({plugins, configure, agentsRoot})`** 公开装配工厂（只装配不监听）
+  - `backend/ai/src/server.ts` 瘦身成 **39 行薄入口**
+  - `backend/ai/examples/reading-notes/` —— 示例系统：读书笔记插件（`add_note`/`list_notes`）+ 自己的 store
+    + 自己的智能体 YAML + 自己的 compose（**没有 aiadmin**）
+  - `scripts/check-core-reuse.cjs` —— **「只用公开入口」的检查**（示例 import core 内部路径就报错）⇒ 接进 CI
+  - `scripts/e2e/reuse-core-example.cjs` —— 真 compose 起（app + db）→ 智能体清单 → 建会话 → 助手回话
+    （⚠️ 故意**不打印 `compose config`**，避免把模型 key 打进日志）
+  - `docs/how-to/reuse-core.md` —— 三步 + 装配 + 三条容易踩的坑 + 「自检（把你的系统也钉一遍）」
+- **过程**：子会话第一次跑完 **CI 红两处** ⇒ PM **重试一次**（派到同一分支）：
+  1. 一条静态断言在**读 `server.ts` 的源码文本**找 `app.use("/health"`，而 health 已挂到 `core/app.ts`
+     ⇒ **断言读错文件**（功能没坏）⇒ 改断言去读真正挂载的文件，**不许把 server.ts 改回去迁就断言**；
+  2. Dockerfile `COPY --from=builder /app/dist` 报 **not found** ⇒ 编译产物路径与 COPY 不一致 ⇒ 对齐路径。
+  ⇒ 修好后 CI 绿 ⇒ PM review 通过 ⇒ 合并（#116 自动关闭、milestone #11 关闭归档）。
