@@ -87,9 +87,17 @@ for (const [name, version] of Object.entries(spikeDeps)) {
     `spike=${version} / lock=${locked ?? '(没锁)'}`,
   );
 }
+// ⚠️ **issue #120 之后**：AI 服务**要**依赖 dsh 的 **SDK 客户端**
+//    （`@deepseek-ai/dsh-sdk-client` —— 子进程 + stdio JSON-RPC 的那一个）
+//    ⇒ 但**只允许这一个**（其余 dsh 包只许在 dsh 侧插件包里 ⇒ 由
+//    `scripts/check-dsh-boundary.cjs` 盯住）。
+const serviceDeps = Object.keys(
+  JSON.parse(read('backend/ai/package.json')).dependencies ?? {},
+).filter((name) => name.startsWith('@deepseek-ai/'));
 check(
-  'spike 不进 AI 服务的依赖（backend/ai/package.json 里没有 @deepseek-ai/*）',
-  !JSON.stringify(JSON.parse(read('backend/ai/package.json'))).includes('@deepseek-ai/'),
+  'AI 服务只依赖 dsh 的 SDK 客户端（spike 的沙盒不进生产依赖）',
+  serviceDeps.length === 1 && serviceDeps[0] === '@deepseek-ai/dsh-sdk-client',
+  `实际：${serviceDeps.join('、') || '(没有)'}`,
 );
 
 // ───────────────────────────── profile 补丁 ─────────────────────────────
