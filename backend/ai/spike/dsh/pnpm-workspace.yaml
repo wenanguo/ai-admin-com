@@ -1,0 +1,13 @@
+# dsh spike 的 pnpm 工作区（只此一处用 pnpm：dsh 的 profile/plugin 机制本身就是 pnpm）
+#
+# ⚠️ minimumReleaseAge: 0 —— dsh 的 rc 包刚发布不到一天，pnpm 11 的供应链策略默认会拦；
+#    这里显式放开（版本已经由 dsh-versions.lock.json 精确锁死，不是「装最新的」）。
+packages:
+  - .
+allowBuilds:
+  '@deepseek-ai/dsh-subprocess-local': set this to true or false
+  '@google/genai': set this to true or false
+  koffi: set this to true or false
+  node-pty: set this to true or false
+  protobufjs: set this to true or false
+minimumReleaseAge: 0

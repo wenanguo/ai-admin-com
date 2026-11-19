@@ -1,0 +1,63 @@
+{
+  "$comment": [
+    "dsh 版本锁 —— 本仓（ai-admin-com）与 DeepSeek Harness 的唯一版本出处。",
+    "规则：",
+    "1. 全部**精确版本**（不带 ^ / ~）⇒ npm 的 latest dist-tag 在 dsh 上是坏的（见 spec §7.1）。",
+    "2. **同一条发布线**：0.2.2-rc.5（= 仓库 master 的 2026-11-18 发布，npm dist-tag: next）。",
+    "3. 升级 = **单独一条 issue**，不顺手升；升之前重跑 backend/ai/spike/dsh 的验收脚本。",
+    "4. 改动本文件 ⇒ 必须同步改 docs/superpowers/specs/2026-11-19-dsh-底座摸底-目标架构-design.md §7。"
+  ],
+  "lockedAt": "2026-11-19",
+  "releaseLine": "0.2.2-rc.5",
+  "npmDistTagAtLockTime": {
+    "latest": "0.0.1-rc.1（多数包） / 0.1.0-rc.6（dsh-agent）—— 两条线混用 ⇒ 安装直接失败",
+    "next": "0.2.2-rc.5（= 本锁）"
+  },
+  "packages": {
+    "@deepseek-ai/dsh": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-sdk-client": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-sdk-protocol": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-base": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-agent": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-agent-loop": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-session": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-session-persistence": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-session-persistence-jsonl": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-session-format": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-session-projection": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-system-prompt": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-llm-deepseek": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-llm-deepseek-api-key": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-mcp-client": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-mcp-manager": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-user-approval": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-permission-presets": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-skill": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-skill-filesystem": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-subagent": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-subagent-spawn-in-process": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-subagent-dsh-sdk": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-storage": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-storage-sqlite": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-compaction": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-persona": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-workspace": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-sandbox": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-shell": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-acp": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-headless": "0.2.2-rc.5"
+  },
+  "knownGaps": {
+    "@deepseek-ai/dsh-session-persistence-sqlite": "没有 0.2.2-rc.5（仍是 0.0.1-rc.1 线）⇒ 本轮存储只走 JSONL"
+  },
+  "notLocked": {
+    "@deepseek-ai/dsh-invariants": "0.2.0-rc.2（这条线最高就是 rc.2；由 peer 依赖带进来，不单独锁）"
+  },
+  "nonDshDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2（玩具 MCP server 用；标准 MCP 协议）",
+    "zod": "4.6.7（玩具 MCP server 用）"
+  }
+}

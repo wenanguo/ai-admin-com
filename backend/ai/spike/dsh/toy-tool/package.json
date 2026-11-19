@@ -1,0 +1,11 @@
+{
+	"name": "@ai-admin/dsh-toy-tool",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "spike 用的玩具工具（cordis 插件）—— 证明「我们自己的工具」能挂进 dsh 的 tool registry",
+	"main": "src/index.js",
+	"dependencies": {
+		"@deepseek-ai/dsh-tools": "0.2.2-rc.5"
+	}
+}

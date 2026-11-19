@@ -26,6 +26,7 @@
     "e2e:ai": "node scripts/e2e/ai-container.cjs",
     "e2e:ai:static": "node scripts/e2e/ai-container.static.cjs",
     "e2e:ai-agent": "node scripts/e2e/ai-agent-picker.cjs",
+    "e2e:dsh:static": "node scripts/e2e/dsh-spike.static.cjs",
     "check:reuse-core": "node scripts/check-core-reuse.cjs",
     "e2e:reuse-core": "node scripts/e2e/reuse-core-example.cjs",
     "biome": "npm --prefix frontend run biome",
