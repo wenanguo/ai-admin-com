@@ -221,6 +221,30 @@
 
 ---
 
+### G2 · 内核复用验收　`v0.9 · G2 内核复用验收`（milestone #11，已关闭归档）　**状态：已完成 ✅
+
+- **due**：2026-12-19（实际 2026-11-19 收工）
+- **范围**：给「通用内核可复用」做一次**诚实验收** —— 造一个**不依赖 AiAdmin 的示例系统**。
+- **为什么做**：G1 收工时内核/插件/配置/接线都齐了，但**至今只有 AiAdmin 一个使用方**
+  ⇒ 「可复用」还是自说自话；阶段 5 造的 `core/index.ts`（唯一公开入口）**还没有第二个使用方验证它**。
+- **完成判据**：示例系统**只通过 `core/index.ts` 公开入口**接入内核（不许 import 内部路径）；
+  自己的插件 + 自己的智能体 YAML + 自己的 compose（**里面没有 aiadmin**）；可复跑的 e2e；一份复用指南。
+- **开单**：
+
+  | issue | 需求 | 规模 | 依赖 | 状态 |
+  | ----- | ---- | ---- | ---- | ---- |
+  | #116 | **通用内核复用验收**：读书笔记示例系统（只用 `core/index.ts`） | 中 | 无 | ✅ **已完成**（PR #117） |
+
+- **交付了什么**：
+  - `backend/ai/src/core/app.ts` —— **`createCoreApp({plugins, configure, agentsRoot})`** 公开装配工厂（只装配、不监听）
+  - `backend/ai/src/server.ts` 瘦身成 **39 行薄入口**（只 import plugins + createCoreApp）
+  - `backend/ai/examples/reading-notes/` —— 示例系统：读书笔记插件（`add_note` / `list_notes`）+ 自己的 store
+    + 自己的智能体 YAML + 自己的 compose（**没有 aiadmin**）
+  - `scripts/check-core-reuse.cjs` —— **「只用公开入口」的检查脚本**（示例 import 了 `core/session/...` 内部路径就报错）⇒ 接进 CI
+  - `scripts/e2e/reuse-core-example.cjs` —— 真 compose 起（app + db）→ 智能体清单 → 建会话 → 助手回话
+    （⚠️ 故意**不打印 `compose config`**，避免把模型 key 打进日志）
+  - `docs/how-to/reuse-core.md` —— 三步（拷内核 → 写插件 → 写 YAML）+ 装配 + 三条容易踩的坑 + 「自检（把你的系统也钉一遍）」
+
 ## v6.1.0 · 基建线
 
 ### L1 · 清理与修 bug　`v6.1.0 · L1 清理与修 bug`（milestone #7，**已关闭归档**）　**状态：已完成 ✅
