@@ -719,3 +719,22 @@
 - **⚠️ 一个要人拍板的事实（D5）**：dsh 的 LLM 适配器 `@deepseek-ai/dsh-llm-pi-ai` **建在 pi 的 `pi-ai` 包上**
   ⇒ 若用它，**依赖树里仍会有 `@earendil-works/pi-ai`**（只是不再是 `pi-coding-agent`）
   ⇒ 「不要 pi」到底包不包括 `pi-ai`，要人明确。
+
+### 2026-11-19 · 人拍板 G4 的四个未决问题 ⇒ 放行 #120 + 新开 #128（升 Node）
+
+- **人的回复**（对 spec 的 review 结论）：
+  - **spec 按建议来** ⇒ #119 的「spec + plan 交人 review」这一关**通过** ⇒ **#120 放行**（`ready` 加回）；
+  - **D1 = A**（子进程；`text_delta` 成批到达，对外契约不变）
+  - **D2 = A + C**（abort 端点先兜住：停掉/重建该会话的 dsh 进程；**并**给 dsh 提 issue 要 `session/cancel`）
+  - **D3 = A**（用**官方 DeepSeek key** 实测；拿不到 key 就停下回报，不许拿兼容网关冒充）
+  - **D5 = A**（**「不要 pi」包含 `pi-ai`**）⇒ ⚠️ **不许用 `@deepseek-ai/dsh-llm-pi-ai`**（它建在 pi 的 `pi-ai` 上）
+    ⇒ **自己写 provider**（基于 `dsh-llm` seam）⇒ **MiniMax 也要接上**（同样不依赖 pi-ai）
+    ⇒ #123 的「拔 pi」范围扩到 **`pi-ai`**
+  - **升 Node 那条开** ⇒ 新开 **#128**
+- **#128**「升 Node 到 ≥ 24.9」= dsh 的 **engines 硬要求**（`node >= 24.9.0`）：
+  - CI **17 处** `node-version: 22`（含 `ci.yml` 的矩阵 `[22]`）· 两个 Dockerfile 的 `ARG NODE_VERSION=22`
+    （`backend/ai/Dockerfile` · `docker/web/Dockerfile`）· 根与 frontend 的 `engines.node: ">=22.0.0"`；
+  - 本机是 Node v26.13.0 ⇒ **本地能跑、CI 跑不了** ⇒ 别被本地通过骗了。
+- **四个决定已写进 #120 的验收标准**，**#120 的依赖加了 #128** ⇒ 串行顺序：**#128 → #120 → (#121/#122) → (#123/#124)**。
+- **流程改进点（记下来）**：分阶段的 PR 正文里**不要**写 `Closes #<号>` —— #126 的正文带了它，
+  GitHub 自动关了 #119（本意是「不关，等 review」）⇒ 以后分阶段 PR 用 `关联 issue：#<号>（阶段X，不关闭）`。
