@@ -17,6 +17,7 @@
  * | 智能体配置（装载 / 清单 / 类型） | 外部要读智能体配置时 |
  * | 插件契约与注册表 | 外部要写自己的插件时 |
  * | 会话运行时 | 外部要起自己的服务时 |
+ * | **HTTP 装配**（`createCoreApp`） | 外部要**起自己的服务**时（issue #116） |
  * | 上下文锚点 / 命令工具的类型 | 外部要写插件时 |
  * | 当前用户的形状与契约 | 外部要接自己的身份系统时 |
  */
@@ -36,6 +37,16 @@ export type {
 	AgentMcpServer,
 	AgentSummary,
 } from "./config/types.ts";
+export {
+	assertCoreReady,
+	corsMiddleware,
+	createCoreApp,
+	createCoreHealthRouter,
+	errorHandler,
+	notFoundHandler,
+	NOT_FOUND_MESSAGE,
+	type CoreAppOptions,
+} from "./app.ts";
 export {
 	blockedWriteReason,
 	changedFields,

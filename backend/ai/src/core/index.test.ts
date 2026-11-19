@@ -55,6 +55,10 @@ describe("内核的公开表面", () => {
 		expect(core.pluginRegistry).toBeDefined();
 		// 会话运行时
 		expect(typeof core.AgentRuntime).toBe("function");
+		// ⚠️ **HTTP 装配**（issue #116：外部系统要能**起自己的服务**）
+		expect(typeof core.createCoreApp).toBe("function");
+		expect(typeof core.createCoreHealthRouter).toBe("function");
+		expect(typeof core.assertCoreReady).toBe("function");
 		// 上下文锚点 / 命令工具
 		expect(typeof core.narrowWriteArgs).toBe("function");
 		expect(typeof core.buildCommandTools).toBe("function");
