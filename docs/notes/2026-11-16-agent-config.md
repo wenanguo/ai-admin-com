@@ -1,4 +1,7 @@
 # 智能体配置（YAML）+ 装载器 + `GET /api/agents`（2026-11-16）
+> ⚠️ **历史**：本篇讲的是 **pi 时代**的事 ⇒ pi 已于 issue #123 拔掉
+> ⇒ 里面的 `pi-session.ts` / `session-entries.ts` / `skillsOverride` 等**都不在了**
+> ⇒ 现在的样子见 [`2026-11-19-拔掉-pi.md`](2026-11-19-拔掉-pi.md)。
 
 > 交接文档 —— 让下一棒（可能是另一个会话的 agent）接得上。
 

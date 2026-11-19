@@ -11,15 +11,18 @@
  * - **类型边界**：dsh 的类型名（`LlmAdapter` / `HarnessClient` / `defineTool` ……）
  *   不许出现在适配层**以外**的服务代码里；
  * - **依赖边界**：dsh 侧不许出现 pi-ai（issue #120 的 D5=A 决定：
- *   **绝对不许用 `@deepseek-ai/dsh-llm-pi-ai`**，它建在 pi 的 `pi-ai` 上 ⇒ 自己的 provider 走 `dsh-llm` seam）。
+ *   **绝对不许用 `@deepseek-ai/dsh-llm-pi-ai`**，它建在 pi 的 `pi-ai` 上 ⇒ 自己的 provider 走 `dsh-llm` seam）；
+ * - **pi 禁令**（issue #123）：**服务里一处 pi 都不许有**
+ *   （依赖清单 / 源码 import ⇒ `@earendil-works/pi-*` 全不许）。
  *
- * ## 三档检查
+ * ## 四档检查
  *
  * | 档 | 查什么 | 怎么查 |
  * | -- | ------ | ------ |
  * | **一** | dsh 的包只许在适配层 | 解析 import 说明符 ⇒ 算出落点 |
  * | **二** | dsh 的类型名不外泄 | 扫标识符（剥掉注释与字符串字面量） |
  * | **三** | dsh 侧不许有 pi-ai | 扫依赖清单 + 源码 |
+ * | **四** | **服务里不许有 pi**（拔干净了） | 扫依赖清单 + 源码 import |
  *
  * ## 用法
  *
@@ -117,6 +120,13 @@ const FORBIDDEN_PI_PACKAGES = [
 	"@earendil-works/pi-coding-agent",
 	"@deepseek-ai/dsh-llm-pi-ai",
 ];
+
+/**
+ * **服务里不许出现的 pi 包**（issue #123：拔干净了）。
+ *
+ * ⚠️ **前缀匹配** ⇒ `@earendil-works/pi-*` 一律不许（`pi-ai` / `pi-coding-agent` / `pi-mcp`……）。
+ */
+const FORBIDDEN_PI_PREFIX = "@earendil-works/pi";
 
 /* ------------------------------------------------------------------ *
  * 工具
@@ -292,6 +302,15 @@ for (const file of filesOf(root, [".ts", ".js", ".mjs", ".cjs", ".json"])) {
 	if (file.endsWith("package-lock.json")) {
 		continue;
 	}
+	// ⚠️ **清单文件另说**（下面那段按依赖表查 ⇒ 更准）
+	//    ⇒ 这里只看「清单里有没有提到它」（`overrides` 里提到是**故意的** ⇒ 放过）。
+	if (file.endsWith("package.json")) {
+		continue;
+	}
+	// ⚠️ **空壳目录放过**（`stubs/dsh-llm-pi-ai/` ⇒ 它**必须**叫那个名字才能顶替它）
+	if (relative.startsWith("stubs/")) {
+		continue;
+	}
 	for (const forbidden of FORBIDDEN_DSH_PACKAGES) {
 		if (haystack.includes(forbidden)) {
 			report(file, "pi-ai 禁令", `出现了「${forbidden}」（D5=A：自己写 provider，不许用它）`);
@@ -325,11 +344,45 @@ for (const manifestName of ["dsh-plugin/package.json", "package.json"]) {
 }
 
 /* ------------------------------------------------------------------ *
+ * 第四档：pi 禁令（issue #123：拔干净了）
+ * ------------------------------------------------------------------ */
+
+for (const file of filesOf(root, [".ts", ".tsx", ".js", ".mjs", ".cjs"])) {
+	const relative = relOf(file);
+	const source = fs.readFileSync(file, "utf8");
+	// ⚠️ **源码只看真的 import**（字符串里提一句「pi」不算 ⇒ 断言里会写那个名字）。
+	const pattern = /(?:from|import|require)\s*\(?\s*["'](@earendil-works\/pi[^"']*)["']/g;
+	let match;
+	while ((match = pattern.exec(source)) !== null) {
+		report(file, "pi 禁令", `import 了 pi 的包「${match[1]}」（服务里一处 pi 都不许有）`);
+	}
+}
+
+// 依赖清单里也不许有 pi（**直接依赖** ⇒ 一律不许）
+for (const manifestName of ["dsh-plugin/package.json", "package.json"]) {
+	const manifestPath = path.join(root, manifestName);
+	if (!fs.existsSync(manifestPath)) {
+		continue;
+	}
+	const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+	const deps = {
+		...(manifest.dependencies ?? {}),
+		...(manifest.devDependencies ?? {}),
+		...(manifest.peerDependencies ?? {}),
+	};
+	for (const name of Object.keys(deps)) {
+		if (name.startsWith(FORBIDDEN_PI_PREFIX)) {
+			report(manifestPath, "pi 禁令", `依赖清单里有 pi 的包「${name}」`);
+		}
+	}
+}
+
+/* ------------------------------------------------------------------ *
  * 打印
  * ------------------------------------------------------------------ */
 
 if (violations.length === 0) {
-	console.log("✅ dsh 边界干净（目录 / 类型 / pi-ai 三档）");
+	console.log("✅ dsh 边界干净（目录 / 类型 / pi-ai / pi 四档）");
 	process.exit(0);
 }
 
