@@ -774,3 +774,20 @@
   - ⚠️ 文件里明确写了**禁用 `prisma migrate dev` / `migrate reset`**（共享库上那两条会要求 `DROP DATABASE aipm`）；
   - 加了**安全阀单测**：迁移里出现 `DROP|TRUNCATE|RENAME|MODIFY|DELETE FROM|ALTER COLUMN` ⇒ 直接红。
 - **#122 已派**（技能 / MCP / 插件三层；`--no-merge`）。
+
+### 2026-11-19 · #122 完成（技能 / MCP / 插件三层落到 dsh）⇒ #123 在途
+
+- **#122 已合并**（PR #135）：
+  - **技能**：新增**我们自己的 loader**（`core/skills/skill-loader.ts`：发现 / frontmatter / 去重 / 诊断）
+    ⇒ 技能层**不依赖 pi**（#123 的前置）；⚠️ **技能正文一个字不改**（提示词资产）；
+    提示词段（`<available_skills>` XML）**一字不改**、`load_skill` 照旧；
+    ⭐ 有**对照测试**：同一批目录，**我们的 loader 与 pi 的 loader 结果一致** ⇒ 两个 runner 看到的技能一模一样；
+  - **MCP**：用 dsh 自带的 `@deepseek-ai/dsh-mcp-client`（不自己写）⇒ 服务器清单**运行时算** ⇒ per-用户 token 天然成立、不落盘；
+    `agent.yaml` 的 `mcpServers` 语义不变；**工具名归一化**（模型侧仍叫 `mcp__aiadmin__create_task`，
+    人看的地方显示 `create_task`）⇒ **规则只有一处**（`core/mcp/tool-names.ts`）；
+  - ⚠️ **抓到一个真问题并修掉**：MCP 的工具是 dsh 直接注册的（不走命令桥 ⇒ **闸门看不见它 ⇒ 口径会被绕过**）
+    ⇒ 改用 dsh 的**统一拦截点**（`tools/pre-execute` ⇒ `ask`）⇒ 回到我们的闸门；
+    实测：**拒绝 ⇒ MCP 服务器一次都没被叫**；批准 ⇒ 真的执行；
+  - **插件**：业务插件 `backend/ai/src/plugins/pm/**` **一个字没改**（`git diff` 为空）⇒ 命令语义不变；
+    注册表机制原样（`core/plugins.ts` 注册表 + 依赖注入不变、`src/plugins.ts` 仍是唯一 import 处）⇒ `check-core-purity.cjs` 仍绿。
+- **#123 已派**（拔 pi，**含 pi-ai**，D5=A）⇒ 它会改**我们自己的派活流程** ⇒ `--no-merge`，PM 亲自看并实测。
