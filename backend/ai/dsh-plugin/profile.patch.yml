@@ -1,0 +1,11 @@
+# 我们的 dsh profile 补丁 —— **把我们的插件插进 profile**。
+#
+# ⚠️ dsh 的 profile 是一份**配置树**；插件本体要能被 profile 解析到
+#    ⇒ 还得把它 `pnpm add file:<我们的插件路径>` 装进那个 profile 工程
+#    （见 `core/adapter/dsh/profile.ts` 的 `ensureDshProfile`）。
+#
+# ⚠️ **插件的配置全走环境变量**（路由 / baseURL / key / 提示词 / 工具目录）
+#    ⇒ 这份补丁里没有配置项 ⇒ **凭据不落盘**。
+- insert:
+    - id: ai-admin
+      name: '@ai-admin/dsh-plugin'
