@@ -27,8 +27,8 @@ import {
 	SessionManager,
 	type AgentSession,
 } from "@earendil-works/pi-coding-agent";
-import { createFakeMcpServer, type FakeMcpServer } from "../mcp/mcp.fake.ts";
-import { createMcpServersExtension } from "../mcp/mcp.ts";
+import { createFakeMcpServer, type FakeMcpServer } from "../mcp/mcp.pi.fake.ts";
+import { createMcpServersExtension } from "../mcp/mcp.pi.ts";
 import { createGateExtension } from "./gate.ts";
 import { PendingWaiterRegistry } from "./pending-waiters.ts";
 

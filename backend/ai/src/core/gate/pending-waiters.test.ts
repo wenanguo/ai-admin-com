@@ -29,6 +29,20 @@ describe("待确认等待者", () => {
 		expect(registry.decide("nope", "approved")).toBe(false);
 	});
 
+	it("⚠️ 决定**先到**（等待者还没注册）⇒ 等的人一注册就拿到", async () => {
+		// ⚠️ 挂起流程是「先通知外面（onPending）⇒ 再等（wait）」
+		//    ⇒ 人在通知那一刻就点了「同意」 ⇒ 决定先于 wait 到达。
+		const registry = new PendingWaiterRegistry();
+		expect(registry.decide("p-early", "approved")).toBe(false);
+		expect(await registry.wait("p-early", 1000)).toBe("approved");
+	});
+
+	it("决定先到且被消费了 ⇒ 不会影响后面的等待", async () => {
+		const registry = new PendingWaiterRegistry();
+		registry.decide("p-once", "rejected");
+		expect(await registry.wait("p-once", 50)).toBe("rejected");
+	});
+
 	it("重复决定只生效一次（幂等）", async () => {
 		const registry = new PendingWaiterRegistry();
 		const waiting = registry.wait("p4", 1000);

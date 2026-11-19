@@ -18,7 +18,25 @@
  * （正文为空），前端会多出一个空气泡。
  * ⇒ `message_start` 推迟到**第一条文本增量**到来时才发；
  * 整轮都没有正文 ⇒ 这一轮一个气泡都不开。
+ *
+ * ## 工具名归一化（**可选**）
+ *
+ * MCP 的工具在模型侧叫 `mcp__<服务器名>__<工具名>` ⇒ 界面上要显示**我们自己的
+ * 命令名**（`create_task`）⇒ 事件映射器接受一个**归一化函数**。
+ *
+ * ⚠️ **只有 dsh 路径接这个函数**（pi 路径保持原样 ⇒ 不改现有产品的显示）。
+ * ⚠️ **模型侧看到的名字不变**（还是带前缀的）⇒ 技能正文里写的工具名依然对得上。
  */
+
+/** 事件映射器的参数。 */
+export interface AgentEventMapperOptions {
+	/**
+	 * 工具名归一化（**给人看的名字**）。
+	 *
+	 * ⚠️ 不给 ⇒ 原样透出（pi 路径今天的行为）。
+	 */
+	normalizeToolName?: ((toolName: string) => string) | undefined;
+}
 
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { SSE_EVENTS, type SseEventName, type SsePayload } from "./events.ts";
@@ -92,6 +110,18 @@ export function summarizeToolResult(result: unknown, toolName: string): string {
 export class AgentEventMapper {
 	/** 这一轮助手消息是否已经发过 `message_start`。 */
 	#messageStarted = false;
+	/** 工具名归一化（不给 ⇒ 原样）。 */
+	readonly #normalizeToolName: ((toolName: string) => string) | undefined;
+
+	constructor(options: AgentEventMapperOptions = {}) {
+		this.#normalizeToolName = options.normalizeToolName;
+	}
+
+	/** 工具名（**归一化后** ⇒ 给人看的名字）。 */
+	#toolName(toolName: string): string {
+		const normalize = this.#normalizeToolName;
+		return normalize === undefined ? toolName : normalize(toolName);
+	}
 
 	/**
 	 * 把一个 pi 事件映射成若干个 SSE 事件。
@@ -159,19 +189,24 @@ export class AgentEventMapper {
 			case "tool_execution_start": {
 				frames.push({
 					event: SSE_EVENTS.TOOL_CALL,
-					payload: { conversationId, toolName: event.toolName, args: event.args },
+					payload: {
+						conversationId,
+						toolName: this.#toolName(event.toolName),
+						args: event.args,
+					},
 				});
 				break;
 			}
 			case "tool_execution_end": {
 				const result: unknown = event.result;
+				const toolName = this.#toolName(event.toolName);
 				frames.push({
 					event: SSE_EVENTS.TOOL_RESULT,
 					payload: {
 						conversationId,
-						toolName: event.toolName,
+						toolName,
 						status: event.isError ? "error" : "ok",
-						summary: summarizeToolResult(result, event.toolName),
+						summary: summarizeToolResult(result, toolName),
 						details: asRecord(result)?.["details"],
 					},
 				});

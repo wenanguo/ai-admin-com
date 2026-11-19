@@ -20,11 +20,13 @@ import {
 	ModelRuntime,
 	SessionManager,
 	type ExtensionAPI,
+	type LoadSkillsResult,
 } from "@earendil-works/pi-coding-agent";
 import { env } from "../env/env.ts";
 import type { CommandTool } from "../tools/types.ts";
-import { createMcpServersExtension, type McpServerSpec } from "../mcp/mcp.ts";
-import { buildSystemPrompt, createSkillsOverride } from "../skills/skills.ts";
+import { createMcpServersExtension, type PiMcpServerSpec } from "../mcp/mcp.pi.ts";
+import { buildSystemPrompt } from "../skills/skills.ts";
+import { createSkillsOverride } from "../skills/skill-override.pi.ts";
 import { createLoadSkillTool } from "../skills/skill-tools.ts";
 import { buildSessionEntries } from "./session-entries.ts";
 import type { AgentSessionLike } from "./session-registry.ts";
@@ -81,7 +83,7 @@ export interface PiSessionOptions {
 	 * ⚠️ token 是**这次调用方**的 ⇒ 每个会话一份（后端靠它做权限码校验）。
 	 * ⚠️ 名字决定**工具名前缀**（`mcp__<name>__<tool>`）⇒ 多服务器的工具不会盖名。
 	 */
-	mcpServers?: McpServerSpec[];
+	mcpServers?: PiMcpServerSpec[];
 	/**
 	 * 闸门扩展（**修改已有数据要人点头**；不给就不拦）。
 	 *
@@ -139,7 +141,7 @@ export async function createPiSession(
 		// ⚠️ **额外的技能目录**（智能体配置里的那些）
 		additionalSkillPaths: skillsDirs,
 		// ⚠️ **兜底过滤**：只留配置里那些目录里的技能
-		skillsOverride: createSkillsOverride(skillsDirs),
+		skillsOverride: createSkillsOverride<LoadSkillsResult>(skillsDirs),
 	};
 
 	const discoveryLoader = new DefaultResourceLoader({

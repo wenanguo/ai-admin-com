@@ -1,7 +1,7 @@
 /**
- * 技能提示词段 —— 把 pi 发现的技能（`SKILL.md`）渲染进系统提示词。
+ * 技能提示词段 —— 把发现的技能（`SKILL.md`）渲染进系统提示词。
  *
- * ## 为什么自己渲染，不直接用 pi 的 `formatSkillsForPrompt`
+ * ## 为什么自己渲染，不直接用宿主（pi / dsh）的技能段
  *
  * pi 只在模型声明了 `read` 或 `bash` 工具时，才把技能段写进系统提示
  * （`dist/core/system-prompt.js`）⇒ 我们必须放行其中一个工具才能用上它。
@@ -12,15 +12,20 @@
  *
  * ⇒ 提示词段自己拼：格式照 Agent Skills 规范的 XML（与 pi 的输出一致，
  * 别的 Agent 宿主也能认），措辞指向 `load_skill`。
+ *
+ * ## 技能表从哪来
+ *
+ * ⚠️ **我们自己的 loader**（`skill-loader.ts`）⇒ **不依赖 pi**
+ *    ⇒ 技能资产（`backend/ai/.pi/skills/**`）是 **Agent Skills 标准格式**，
+ *    不是 pi 私有 ⇒ 拔 pi（#123）不会伤到技能。
  */
 
-import { resolve, sep } from "node:path";
-import type { ResourceDiagnostic, Skill } from "@earendil-works/pi-coding-agent";
+import type { SkillEntry } from "./skill-loader.ts";
 
-/** 技能表的形状（pi 的 `loadSkills` 的返回）。 */
+/** 技能表的形状（**我们自己的 loader** 的返回）。 */
 export interface SkillsResult {
-	skills: Skill[];
-	diagnostics: ResourceDiagnostic[];
+	skills: SkillEntry[];
+	diagnostics: { path?: string; message: string }[];
 }
 
 /** XML 转义（与 pi 的实现一致）。 */
@@ -36,10 +41,10 @@ function escapeXml(value: string): string {
 /**
  * 渲染技能提示词段。
  *
- * @param skills pi 发现的技能（**只认 loader 给的那份**，我们自己不再扫目录）。
+ * @param skills 发现的技能（**只认 loader 给的那份**，我们自己不再扫目录）。
  * @returns 没有可见技能时返回空串（提示词里不留空段）。
  */
-export function renderSkillsSection(skills: readonly Skill[]): string {
+export function renderSkillsSection(skills: readonly SkillEntry[]): string {
 	const visible = skills.filter((skill) => !skill.disableModelInvocation);
 	if (visible.length === 0) {
 		return "";
@@ -67,58 +72,12 @@ export function renderSkillsSection(skills: readonly Skill[]): string {
 }
 
 /**
- * 把技能表**限定在指定的技能目录内**。
- *
- * ## 为什么需要它
- *
- * pi 的 loader 除了项目的 `.pi/skills/`，**还会扫用户家目录的 `~/.agents/skills/`**
- * （Agent Skills 的标准位置）—— 实测：开发机上它会把用户自己的二十多个技能
- * 一并带进来。
- *
- * ⇒ 那些技能与本服务无关，却会占系统提示词，还可能让模型去读用户目录里的文件
- * ⇒ 用 pi 的官方钩子 `skillsOverride` 把技能**过滤到我们自己的目录**。
- * （钩子在 loader 内部生效 ⇒ 去重与诊断仍然是 pi 做的，我们只做最后一道过滤。）
- *
- * ⚠️ **本条（智能体配置）起**：过滤的目标是**智能体配置里写的技能目录**
- *    （可以有好几个，也可以是空 ⇒ 一个技能都没有）⇒ 不跨智能体串味。
- *
- * @param dirs 技能目录（绝对路径）。
- */
-export function createSkillsOverride(
-	dirs: readonly string[],
-): (base: SkillsResult) => SkillsResult {
-	const roots = dirs.map((dir) => resolve(dir) + sep);
-	const inside = (path: string): boolean => {
-		const resolved = resolve(path);
-		return roots.some((root) => resolved.startsWith(root));
-	};
-	return (base) => ({
-		skills: base.skills.filter((skill) => inside(skill.filePath)),
-		// 诊断也只留我们目录里的（别人的技能撞名与本服务无关）
-		diagnostics: base.diagnostics.filter((diagnostic) =>
-			diagnostic.path === undefined ? false : inside(diagnostic.path),
-		),
-	});
-}
-
-/**
- * 把技能表限定在**项目技能目录**内（老口径：只有 `<cwd>/.pi/skills` 算数）。
- *
- * @param rootDir 项目技能目录（通常是 `<cwd>/.pi/skills`）。
- */
-export function createProjectSkillsOverride(
-	rootDir: string,
-): (base: SkillsResult) => SkillsResult {
-	return createSkillsOverride([rootDir]);
-}
-
-/**
  * 把技能段接到系统提示词后面。
  *
  * @param base 基础系统提示词。
- * @param skills pi 发现的技能。
+ * @param skills 发现的技能。
  */
-export function buildSystemPrompt(base: string, skills: readonly Skill[]): string {
+export function buildSystemPrompt(base: string, skills: readonly SkillEntry[]): string {
 	const section = renderSkillsSection(skills);
 	return section.length === 0 ? base : `${base}\n${section}`;
 }

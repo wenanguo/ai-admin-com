@@ -79,6 +79,16 @@ const DSH_TYPE_NAMES = [
 	"ApprovalOutcome",
 	"ApprovalService",
 	"ContextSnapshotSection",
+	// ⚠️ issue #122：**MCP 客户端**与**工具管线**的类型（它们住在 dsh 侧插件里）。
+	"ToolsService",
+	"PreToolDecision",
+	"PostToolDecision",
+	"ToolGuard",
+	"ToolGuardDenial",
+	"McpResult",
+	"McpToolDefinitionOptions",
+	"McpConnectionStatus",
+	"SERVER_NAME_PATTERN",
 ];
 
 /**
@@ -87,6 +97,9 @@ const DSH_TYPE_NAMES = [
  * ⚠️ dsh 的**运行时**是个子进程 ⇒ 我们只需要“能跟它说话”的那个客户端
  *    （`@deepseek-ai/dsh-sdk-client`）⇒ 其余 dsh 包（llm / tools / user-approval……）
  *    **只许**出现在 dsh 侧插件包（`dsh-plugin/**`）里。
+ *
+ * ⚠️ issue #122：**MCP 客户端**（`@deepseek-ai/dsh-mcp-client`）也只许在 dsh 侧
+ *    ⇒ 它**不在**这个清单里 ⇒ 服务侧一旦 import 它就会被拦下。
  */
 const ALLOWED_SERVICE_DSH_PACKAGES = ["@deepseek-ai/dsh-sdk-client"];
 

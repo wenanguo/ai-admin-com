@@ -432,7 +432,7 @@ describe("运行时 · 技能按智能体", () => {
 		return dir;
 	}
 
-	it("各智能体只看到**自己**的技能（没配就是没有）", () => {
+	it("各智能体只看到**自己**的技能（没配就是没有）", async () => {
 		const pmSkills = makeSkillsDir("create-task");
 		const providers: AgentProvider[] = [
 			{
@@ -454,15 +454,15 @@ describe("运行时 · 技能按智能体", () => {
 		});
 
 		// ① PM 助手看得到自己的技能
-		expect(runtime.listAgentSkills("pm").map((s) => s.name)).toEqual([
+		expect((await runtime.listAgentSkills("pm")).map((s) => s.name)).toEqual([
 			"create-task",
 		]);
 		// ② 通用问答没配技能 ⇒ 空列表（**不是异常**）
-		expect(runtime.listAgentSkills("qa")).toEqual([]);
+		expect(await runtime.listAgentSkills("qa")).toEqual([]);
 		// ③ 不给智能体 ⇒ 默认智能体（PM 助手）
-		expect(runtime.listAgentSkills().map((s) => s.name)).toEqual(["create-task"]);
+		expect((await runtime.listAgentSkills()).map((s) => s.name)).toEqual(["create-task"]);
 		// ④ 不认识的智能体 ⇒ 报错
-		expect(() => runtime.listAgentSkills("nope")).toThrowError(/不存在/);
+		await expect(runtime.listAgentSkills("nope")).rejects.toThrowError(/不存在/);
 	});
 });
 

@@ -6,25 +6,27 @@
  * 后端已经把「接口」变成「MCP tool」（`AiAdmin/backend/app/plugin/module_mcp`）⇒
  * 后端加接口，AI 侧**一行代码都不用改**。
  *
- * ## 为什么每个会话单独注册
+ * ## 配置形状：**语义不变**（agent.yaml 的 `mcpServers`）
+ *
+ * | 我们的配置 | dsh 的形状（`@deepseek-ai/dsh-mcp-client`） |
+ * | ---------- | ------------------------------------------- |
+ * | `name` | `serverName`（工具名前缀：`mcp__<name>__`） |
+ * | `url` | `url`（streamable-http） |
+ * | `type: http \| sse` | `transport: streamable-http`（dsh 只这一种 HTTP 传输） |
+ * | `exposure: direct` | （无对应 ⇒ 直接给模型看） |
+ * | `exposure: deferred \| codemode` | （无对应 ⇒ 同 direct） |
+ * | `exposure: hidden` | **不挂这台**（模型看不到） |
+ * | 调用方的 token | `headers: { Authorization: "Bearer …" }` |
+ *
+ * ⚠️ **token 只活在内存里**（子进程的环境变量 ⇒ 绝不落盘、绝不进日志）。
+ *
+ * ## 为什么每个会话单独挂
  *
  * MCP 调用要带**调用方的 JWT**（后端靠它做权限码校验）⇒ 每个用户、每个会话的
- * token 都不同 ⇒ 不能用静态的 `.pi/mcp.json`，只能运行时 `registerMcpServer`。
- *
- * ⚠️ token **只活在内存里**（服务器配置对象里），绝不落盘、绝不进日志。
- *
- * ## 服务器名是**配置来的**（不再写死）
- *
- * 工具名的前缀是 `mcp__<服务器名>__<工具名>` ⇒ 名字由配置决定 ⇒
- * ① 多台服务器的工具**不会互相盖名**；② 接新的外部系统**不用改代码**。
- *
- * ⚠️ pi 会把名字里的非法字符换成 `_`（`mcp__<server>__<tool>` 的规则）⇒
- *    算前缀时要用**同一套规则**，否则认不出自己的工具。
+ * token 都不同 ⇒ 不能用静态配置，只能运行时算。
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-
-/** 传输类型（本服务是 HTTP 服务 ⇒ 只做 http；`sse` 走同一个 HTTP 传输）。 */
+/** 传输类型（本服务是 HTTP 服务 ⇒ 只做 http；`sse` 也走 HTTP 传输）。 */
 export type McpTransportType = "http" | "sse";
 
 /** 暴露方式（pi 的口径：直接给模型 / 延迟加载 / 只给 codemode / 隐藏）。 */
@@ -42,83 +44,59 @@ export interface McpServerSpec {
 	exposure?: McpExposure;
 	/** 调用方的 token（AiAdmin 的 MCP 靠它做权限码校验）。 */
 	token?: string;
-	/** 传输层工厂（**测试用**：注入假 MCP 服务器）。 */
-	createTransport?: (
-		entry: unknown,
-		cwd: string,
-		authProvider: unknown,
-	) => unknown;
-}
-
-/** MCP 服务器配置（pi 的 `McpHttpServerConfig` 的形状）。 */
-export interface McpServerConfig {
-	type: "http";
-	url: string;
-	headers: Record<string, string>;
-	exposure: McpExposure;
 }
 
 /**
- * 造一台 MCP 服务器的 pi 配置。
+ * **dsh 的 MCP 客户端配置**（`@deepseek-ai/dsh-mcp-client` 的 `Config` 的形状）。
  *
- * @param spec 服务器（名字、地址、token、暴露方式）。
+ * ⚠️ **我们自己声明这份类型**（不 import dsh 的类型）⇒ dsh 升级不会炸我们的编译
+ *    （见 spec §7「类型边界」）。
  */
-export function createMcpServerConfig(spec: McpServerSpec): McpServerConfig {
-	return {
-		type: "http",
-		url: spec.url,
-		// ⚠️ **token 只在内存里**（绝不落盘、绝不进日志）
-		headers:
-			spec.token === undefined
-				? {}
-				: { Authorization: `Bearer ${spec.token}` },
-		exposure: spec.exposure ?? "direct",
-	};
+export interface DshMcpClientConfig {
+	/** 传输（dsh 只有 `streamable-http` 一种 HTTP 传输）。 */
+	transport: "streamable-http";
+	/** 服务器名（工具名前缀：`mcp__<serverName>__`）。 */
+	serverName: string;
+	/** MCP 端点地址。 */
+	url: string;
+	/** 附加的请求头（**token 在这里 ⇒ 只在内存里**）。 */
+	headers: Record<string, string>;
+	/** 一次工具调用的超时（毫秒）。 */
+	toolCallTimeoutMs: number;
 }
 
+/** 一次 MCP 工具调用的默认超时（毫秒）。 */
+export const DEFAULT_MCP_TOOL_CALL_TIMEOUT_MS = 60_000;
+
 /**
- * 造一个注册 **若干** MCP 服务器的扩展。
+ * 把「我们的 MCP 服务器清单」翻译成 **dsh 的客户端配置**。
  *
- * ⚠️ 这是 **inline extension**：pi 在加载扩展时调用它 ⇒
- *    正好是「会话建立」的时刻 ⇒ 每个会话带自己的 token。
+ * ⚠️ **语义不变**（agent.yaml 的 `mcpServers` 怎么写，这里就怎么理解）：
+ *    - `exposure: hidden` ⇒ **不挂**（模型看不到这家服务器）；
+ *    - 其余暴露方式在 dsh 形状里都等价于「直接给模型看」。
  *
  * @param servers 要挂的服务器（**可以 0 / 1 / N 个**）。
  */
-export function createMcpServersExtension(
+export function buildDshMcpClientConfigs(
 	servers: readonly McpServerSpec[],
-): (pi: ExtensionAPI) => void {
-	return (pi: ExtensionAPI) => {
-		for (const server of servers) {
-			pi.registerMcpServer(server.name, createMcpServerConfig(server));
+): DshMcpClientConfig[] {
+	const configs: DshMcpClientConfig[] = [];
+	for (const server of servers) {
+		if ((server.exposure ?? "direct") === "hidden") {
+			// ⚠️ **hidden ⇒ 不挂**（模型不该看到它）。
+			continue;
 		}
-	};
-}
-
-/**
- * MCP 工具名的**服务器前缀**（pi 的规则：`mcp__<server>__`，非法字符变 `_`）。
- *
- * ⚠️ 必须和 pi 用**同一套规则**（否则认不出自己的工具 ⇒ 写操作判不出来）。
- */
-export function mcpToolPrefix(serverName: string): string {
-	return `mcp__${serverName.replace(/[^A-Za-z0-9_]/g, "_")}__`;
-}
-
-/**
- * 去掉 MCP 工具名的服务器前缀 ⇒ **工具本名**（如 `update_task`）。
- *
- * @param toolName 工具名（`mcp__<server>__<tool>`）。
- * @param prefixes 这个会话用到的服务器前缀（**认得准** ⇒ 不会认错服务器）。
- */
-export function stripMcpToolPrefix(
-	toolName: string,
-	prefixes: readonly string[],
-): string {
-	for (const prefix of prefixes) {
-		if (toolName.startsWith(prefix)) {
-			return toolName.slice(prefix.length);
-		}
+		configs.push({
+			transport: "streamable-http",
+			serverName: server.name,
+			url: server.url,
+			// ⚠️ **token 只在内存里**（绝不落盘、绝不进日志）
+			headers:
+				server.token === undefined
+					? {}
+					: { Authorization: `Bearer ${server.token}` },
+			toolCallTimeoutMs: DEFAULT_MCP_TOOL_CALL_TIMEOUT_MS,
+		});
 	}
-	// 兜底：按 pi 的解析方式（非贪婪）
-	const match = /^mcp__(.+?)__(.+)$/.exec(toolName);
-	return match?.[2] ?? toolName;
+	return configs;
 }

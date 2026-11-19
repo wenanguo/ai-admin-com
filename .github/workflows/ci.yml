@@ -86,6 +86,9 @@ jobs:
       # dsh 存储与审计（issue #121）：数据模型**只加不改** / 迁移安全 / 契约不变
       # ⇒ 静态断言（不需要数据库）。
       - run: node ../../scripts/e2e/dsh-storage.static.cjs
+      # dsh 技能 / MCP / 插件（issue #122）：三层在 dsh 上的形状
+      # ⇒ 静态断言（不需要 pnpm、不需要模型凭据）。
+      - run: node ../../scripts/e2e/dsh-skills-mcp-plugins.static.cjs
 
   lint:
     runs-on: ubuntu-latest

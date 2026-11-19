@@ -27,6 +27,8 @@
  * 那些都是**业务**知识 ⇒ 由插件用 `WriteToolRule` 描述，core 只负责**按数据算**。
  */
 
+import { bareToolName } from "../mcp/tool-names.ts";
+
 /** 作用域（通用）：插件自己定义 type 与 id 的形状。 */
 export interface ContextScope {
 	/** 作用域类型（**插件自己定义**；core 不解释）。 */
@@ -105,11 +107,6 @@ export interface NarrowedWrite {
 	args: Record<string, unknown>;
 	/** 被丢掉的字段名（模型给了但不在允许范围里）。 */
 	stripped: string[];
-}
-
-/** 剥掉工具名上的 `mcp__<server>__` 前缀。 */
-function bareToolName(toolName: string): string {
-	return toolName.replace(/^mcp__[^_]+__/, "");
 }
 
 /**

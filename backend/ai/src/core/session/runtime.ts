@@ -34,11 +34,15 @@ import type { ContextAnchor, ContextProvider } from "../context/anchor.ts";
 import { changedFields, writeTargetId } from "../context/anchor.ts";
 import { createGateExtension, DEFAULT_GATE_TIMEOUT_MS } from "../gate/gate.ts";
 import { createPendingAction } from "../gate/pending-write.ts";
-import { mcpToolPrefix, stripMcpToolPrefix, type McpServerSpec } from "../mcp/mcp.ts";
+import type { McpServerSpec } from "../mcp/mcp.ts";
+import { mcpToolPrefix, stripMcpToolPrefix } from "../mcp/tool-names.ts";
 import { listSkillSummaries, type SkillSummary } from "../skills/skill-catalog.ts";
 import { pendingWaiters } from "../gate/pending-waiters.ts";
 import { createPiSession, type PiSessionOptions } from "./pi-session.ts";
-import { createDshSession } from "../adapter/dsh/runner.ts";
+import {
+	createDshSession,
+	type CreateDshSessionOptions,
+} from "../adapter/dsh/runner.ts";
 import { DshTracer } from "../adapter/dsh/persistence.ts";
 import { buildDshSystemPrompt } from "../adapter/dsh/system-prompt.ts";
 import { createLoadSkillTool } from "../skills/skill-tools.ts";
@@ -132,6 +136,12 @@ export interface AgentRuntimeOptions {
 	/** 造 pi 会话（带会话 id 与历史 —— 上下文就靠这个还原）。 */
 	createSession?: (options: PiSessionOptions) => Promise<AgentSessionLike>;
 	/**
+	 * 造 **dsh 会话**（双跑的另一半）。
+	 *
+	 * ⚠️ **测试可注入**（单测不起 dsh 进程）。
+	 */
+	createDshSession?: (options: CreateDshSessionOptions) => Promise<AgentSessionLike>;
+	/**
 	 * 插件注册表（**命令目录与身份查询都从这儿来**）。
 	 *
 	 * ⚠️ 缺省用**进程级**注册表 ⇒ 生产由入口（`src/plugins.ts`）注册插件；
@@ -195,6 +205,8 @@ export class AgentRuntime {
 	readonly #lock = new StartupLock();
 	readonly #store: ConversationStore;
 	readonly #createSession: NonNullable<AgentRuntimeOptions["createSession"]>;
+	/** 造 dsh 会话（测试可注入假的）。 */
+	readonly #createDshSession: NonNullable<AgentRuntimeOptions["createDshSession"]>;
 	readonly #plugins: PluginRegistry;
 	readonly #resolveUser: (token: string) => Promise<CurrentUser>;
 	readonly #model: string;
@@ -219,6 +231,7 @@ export class AgentRuntime {
 	constructor(options: AgentRuntimeOptions = {}) {
 		this.#store = options.store ?? new ConversationStore();
 		this.#createSession = options.createSession ?? createPiSession;
+		this.#createDshSession = options.createDshSession ?? createDshSession;
 		this.#runner = options.runner ?? runnerFromEnv();
 		this.#model = options.model ?? env.AI_MODEL;
 		this.#audit = new AuditTrail(options.audit ?? new PrismaAuditWriter());
@@ -353,7 +366,7 @@ export class AgentRuntime {
 	 *
 	 * @param agentId 智能体 id（可省 ⇒ 默认智能体）。
 	 */
-	listAgentSkills(agentId?: string): SkillSummary[] {
+	async listAgentSkills(agentId?: string): Promise<SkillSummary[]> {
 		const agent = this.#requireAgent(agentId ?? this.#agents.defaultAgentId);
 		return listSkillSummaries(agent.skills);
 	}
@@ -813,7 +826,7 @@ ${message}`;
 		// ⚠️ **双跑**：pi 走今天的路；dsh 走适配层（**对外契约一模一样**）。
 		const session =
 			this.#runner === "dsh"
-				? await this.#createDshSession(channel, agent, tools, userId)
+				? await this.#buildDshSession(channel, agent, tools, mcpServers, userId)
 				: await this.#createSession({
 			tools,
 			// ⚠️ **提示词来自配置**（不再是写死的 `PM_AGENT_PROMPT`）
@@ -869,14 +882,18 @@ ${message}`;
 	 * @param tools 业务命令工具（**已按白名单过滤**）。
 	 * @param userId 当前用户 id（闸门要记「谁干的」）。
 	 */
-	async #createDshSession(
+	async #buildDshSession(
 		channel: ConversationChannel,
 		agent: AgentConfig,
 		tools: readonly CommandTool[],
+		mcpServers: readonly McpServerSpec[],
 		userId?: string,
 	): Promise<AgentSessionLike> {
 		// ⚠️ **技能段照旧进模型上下文**（同一套技能表 ⇒ 语义保住）
-		const { systemPrompt, skills } = buildDshSystemPrompt(agent.systemPrompt, agent.skills);
+		const { systemPrompt, skills } = await buildDshSystemPrompt(
+			agent.systemPrompt,
+			agent.skills,
+		);
 		// ⚠️ **没有技能时就不注册 `load_skill`**（别给模型一个必然失败的工具）
 		const allTools = skills.length > 0 ? [...tools, createLoadSkillTool(skills)] : tools;
 		// ⚠️ **会话 ↔ dsh session 的映射**（`ai_conversation.dsh_session_id`）
@@ -899,13 +916,15 @@ ${message}`;
 			trail: this.#audit,
 			mcpPrefixes: channel.mcpPrefixes,
 		});
-		return createDshSession({
+		return this.#createDshSession({
 			conversationId: channel.conversationId,
 			tools: allTools,
 			systemPrompt,
 			// ⚠️ **模型来自配置**（没写 ⇒ 用全局默认）
 			model: agent.model ?? this.#model,
 			mcpPrefixes: channel.mcpPrefixes,
+			// ⚠️ **MCP 服务器**（同一份配置 ⇒ 语义不变；只是换成 dsh 的形状）
+			mcpServers,
 			tracer,
 			// ⚠️ **闸门**：修改已有数据要等人点头（与 pi 路径**同一套**口径）
 			gate: () => ({
@@ -1033,7 +1052,21 @@ ${message}`;
 		if (existing !== undefined) {
 			return existing;
 		}
-		const mapper = new AgentEventMapper();
+		// ⚠️ **只有 dsh 路径归一化工具名**（spec §5.3）：
+		//    MCP 的工具在模型侧叫 `mcp__<server>__<tool>` ⇒ 界面上要显示
+		//    **我们自己的命令名**（`create_task`）。
+		//    ⚠️ pi 路径**保持原样**（不改现有产品的显示 ⇒ #123 拔 pi 时自然统一）。
+		//    ⚠️ **模型侧看到的名字不变** ⇒ 技能正文里写的工具名依然对得上。
+		const mapper = new AgentEventMapper(
+			this.#runner === "dsh"
+				? {
+						normalizeToolName: (toolName) => {
+							const channel = this.#registry.get(conversationId);
+							return stripMcpToolPrefix(toolName, channel?.mcpPrefixes ?? []);
+						},
+					}
+				: {},
+		);
 		this.#mappers.set(conversationId, mapper);
 		return mapper;
 	}

@@ -33,6 +33,7 @@ import { ensureDshProfile } from "./profile.ts";
 import type { DshGateContext } from "./approvals.ts";
 import type { AgentSessionLike } from "../../session/session-registry.ts";
 import type { CommandTool } from "../../tools/types.ts";
+import { buildDshMcpClientConfigs, type McpServerSpec } from "../../mcp/mcp.ts";
 
 /** ESM 里的 `require.resolve`（用来找 SDK 自带的 dsh 运行时）。 */
 const requireFromHere = createRequire(import.meta.url);
@@ -106,6 +107,13 @@ export interface CreateDshSessionOptions {
 	cwd?: string | undefined;
 	/** MCP 工具名前缀（用来归一化工具名）。 */
 	mcpPrefixes?: readonly string[];
+	/**
+	 * 要挂的 MCP 服务器（**可以 0 / 1 / N 个**；不给 ⇒ 不挂）。
+	 *
+	 * ⚠️ **每个会话一份**（token 是**当次调用方**的）⇒ 算好了塞进子进程的环境变量
+	 *    ⇒ **凭据不落盘**。
+	 */
+	mcpServers?: readonly McpServerSpec[];
 	/** 闸门上下文（**每次调用时取** ⇒ 锚点变了也能用）。 */
 	gate: () => Omit<DshGateContext, "argsOf">;
 	/** 留痕层（**不给 ⇒ 不留痕**）。 */
@@ -141,22 +149,7 @@ export async function createDshSession(
 		pluginPath: PLUGIN_DIR,
 	});
 
-	const catalog = buildToolCatalog(options.tools, options.mcpPrefixes ?? []);
-	const childEnv: NodeJS.ProcessEnv = {
-		...source,
-		DSH_HOME: config.dshHome,
-		DSH_AI_PROVIDER: config.provider,
-		DSH_AI_MODEL: options.model ?? config.model,
-		DSH_AI_BASE_URL: config.baseURL,
-		DSH_AI_API_KEY: apiKey,
-		DSH_AI_CONTEXT_WINDOW: String(config.contextWindow),
-		DSH_AI_MAX_TOKENS: String(config.maxTokens),
-		DSH_AI_SYSTEM_PROMPT: encode(options.systemPrompt),
-		DSH_AI_TOOLS: encode(JSON.stringify(catalog)),
-		DSH_AI_BRIDGE_URL: config.bridgeUrl,
-		DSH_AI_BRIDGE_SECRET: bridgeSecret(),
-		DSH_AI_CONVERSATION_ID: options.conversationId,
-	};
+	const childEnv = buildChildEnv({ options, config, source, apiKey });
 
 	return new DshSession({
 		conversationId: options.conversationId,
@@ -175,6 +168,43 @@ export async function createDshSession(
 		bridgeSecret: bridgeSecret(),
 		tracer: options.tracer,
 	});
+}
+
+/**
+ * 组网的**子进程环境变量**（**凭据只走这里**。
+ *
+ * ⚠️ **凭据不落盘**（只在子进程的环境变量里）。
+ * ⚠️ 多行文本（提示词 / 工具目录 / MCP 清单）⇒ **base64**（免得换行问题）。
+ *
+ * @param input 会话参数、配置、环境变量来源、模型 key。
+ */
+export function buildChildEnv(input: {
+	options: CreateDshSessionOptions;
+	config: DshRunnerConfig;
+	source: NodeJS.ProcessEnv;
+	apiKey: string;
+}): NodeJS.ProcessEnv {
+	const { options, config, source, apiKey } = input;
+	const catalog = buildToolCatalog(options.tools, options.mcpPrefixes ?? []);
+	// ⚠️ **MCP 服务器**（dsh 形状）⇒ 交给 dsh 侧插件挂上去。
+	//    ⚠️ **token 只在子进程的环境变量里**（绝不落盘、绝不进日志）。
+	const mcpConfigs = buildDshMcpClientConfigs(options.mcpServers ?? []);
+	return {
+		...source,
+		DSH_HOME: config.dshHome,
+		DSH_AI_PROVIDER: config.provider,
+		DSH_AI_MODEL: options.model ?? config.model,
+		DSH_AI_BASE_URL: config.baseURL,
+		DSH_AI_API_KEY: apiKey,
+		DSH_AI_CONTEXT_WINDOW: String(config.contextWindow),
+		DSH_AI_MAX_TOKENS: String(config.maxTokens),
+		DSH_AI_SYSTEM_PROMPT: encode(options.systemPrompt),
+		DSH_AI_TOOLS: encode(JSON.stringify(catalog)),
+		DSH_AI_MCP_SERVERS: encode(JSON.stringify(mcpConfigs)),
+		DSH_AI_BRIDGE_URL: config.bridgeUrl,
+		DSH_AI_BRIDGE_SECRET: bridgeSecret(),
+		DSH_AI_CONVERSATION_ID: options.conversationId,
+	};
 }
 
 /**
