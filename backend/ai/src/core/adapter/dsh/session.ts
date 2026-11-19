@@ -21,6 +21,7 @@ import { DshClient } from "./client.ts";
 import { DshEventTranslator } from "./events.ts";
 import { decideApproval, type DshGateContext } from "./approvals.ts";
 import type { DshApprovalOutcome, DshSessionEvent } from "./protocol.ts";
+import type { DshTracer } from "./persistence.ts";
 import type { CommandTool } from "../../tools/types.ts";
 import type { AgentSessionLike } from "../../session/session-registry.ts";
 import { narrowWriteArgs, type ContextAnchor, type WriteToolRule } from "../../context/anchor.ts";
@@ -55,6 +56,8 @@ export interface DshSessionOptions {
 	bridgeUrl?: string | undefined;
 	/** 命令桥的密钥（**进程内随机 ⇒ 不落盘**；走环境变量传给插件）。 */
 	bridgeSecret?: string | undefined;
+	/** 留痕层（**dsh 事件 / 闸门决策 ⇒ 事件日志 + 审计**；不给 ⇒ 不留痕）。 */
+	tracer?: DshTracer | undefined;
 }
 
 /** 命令桥的执行结果。 */
@@ -199,6 +202,9 @@ export class DshSession implements AgentSessionLike {
 				}
 			}
 		}
+		// ⚠️ **留痕放在订阅者之后** ⇒ 运行时的写审计（`tool/result` ⇒ 写工具自己写过审计）
+		//    已经落在留痕带上了 ⇒ 留痕层才不会把同一件事记两遍。
+		void this.#options.tracer?.handleEvent(event);
 	}
 
 	/** dsh 的审批请求 ⇒ 我们的闸门。 */

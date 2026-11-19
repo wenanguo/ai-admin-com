@@ -56,6 +56,7 @@ function fakeConversation(): ConversationRecord {
 		userId: "2",
 		title: "冒烟",
 		agentId: null,
+		dshSessionId: null,
 		createdAt: new Date(),
 		updatedAt: new Date(),
 	};
@@ -91,6 +92,7 @@ function fakeStore(conversation: ConversationRecord): {
 		},
 		listMessages: async () => appended,
 		maxSeq: async () => appended.length,
+		setDshSessionId: async () => {},
 		touch: async () => {},
 	};
 	return { store, appended };

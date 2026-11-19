@@ -277,6 +277,9 @@ agentRouter.get("/:conversationId/state", async (req, res) => {
 				})),
 				isStreaming: state.isStreaming,
 				model: state.model,
+				// ⚠️ **会话事件**（dsh 形状的日志折叠）—— **新增字段**。
+				//    ⚠️ 前端零改动（它忽略不认识的字段）⇒ 契约表一个字都不用改。
+				sessionEvents: state.sessionEvents ?? [],
 			}),
 		);
 	} catch (error) {
