@@ -50,7 +50,7 @@
 
 | 方案 | 做法 | 取舍 |
 | ---- | ---- | ---- |
-| **A. 多阶段镜像（本选）** | 仓根为构建上下文；`node:22` 阶段 `npm ci` + `npm run build`；`nginx:alpine` 阶段只 `COPY dist` | 镜像自洽（不依赖宿主机构建产物）、可复现、CI 一条命令就能验；代价：构建耗时长（npm ci + umi build） |
+| **A. 多阶段镜像（本选）** | 仓根为构建上下文；`node:24` 阶段 `npm ci` + `npm run build`；`nginx:alpine` 阶段只 `COPY dist` | 镜像自洽（不依赖宿主机构建产物）、可复现、CI 一条命令就能验；代价：构建耗时长（npm ci + umi build） |
 | B. 宿主机构建 → 拷进 nginx 目录挂载（AiAdmin 现有做法） | 宿主机 `npm run build`，产物挂载进 nginx 容器 | 快；但**产物与镜像版本可能对不上**，CI 不好验 ⇒ 本仓要「一条命令出镜像」，不选 |
 | C. 单阶段：node 跑 `max preview` | 一个镜像跑 umi preview | 镜像大、preview 不是生产服务器（无缓存头、无 gzip）⇒ 否 |
 
@@ -75,10 +75,10 @@ docker/
 ### 4.2 Dockerfile
 
 - **构建上下文 = 仓根**（验收命令 `docker build -f docker/web/Dockerfile -t ai-admin-web .`）⇒ `.dockerignore` 放仓根。
-- **builder**：`node:22-bookworm-slim`（**不用 alpine**：`@utoo/pack`（utoopack 内核）、`esbuild` 等预编译二进制是 glibc 版，musl 跑不起来）。
+- **builder**：`node:24-bookworm-slim`（**不用 alpine**：`@utoo/pack`（utoopack 内核）、`esbuild` 等预编译二进制是 glibc 版，musl 跑不起来）。
   - 依赖层缓存：先 `COPY frontend/package.json frontend/package-lock.json frontend/.npmrc` → `npm ci --ignore-scripts` → 再 `COPY frontend/` → 源码改动不重装依赖。
   - ⚠️ **必须带 `frontend/.npmrc`**（`legacy-peer-deps=true`）：本仓的 lock 是按 legacy-peer-deps 生成的；少了它 ⇒ `npm ci` 报 lock 不同步（EUSAGE）。
-  - ⚠️ **钉 `npm@10.9.9`**（= 仓库 CI 用的版本）：`node:22` 自带 npm 11 ⇒ lock 同步检查更严 ⇒ 同样会 EUSAGE。
+  - ⚠️ **钉 `npm@10.9.9`**（= 仓库 CI 用的版本）：`node:24` 自带 npm 11 ⇒ lock 同步检查更严 ⇒ 同样会 EUSAGE。
   - `--ignore-scripts` 会跳过 `esbuild` 的安装脚本（它负责把二进制就位）⇒ 紧跟一条 `npm rebuild esbuild` 补回来。
   - ⚠️ **仓根的 `package.json` + `package-lock.json` 也要拷进构建目录**：utoopack（`@utoo/pack` 的 `findRootDir`）靠 **lock 文件链**找项目根 ⇒ 本地根 = 仓根；镜像里少了根 lock ⇒ 根退化成 `frontend/` ⇒ `Welcome.tsx` 里 `import '../../../docs/cheatsheet.*.md'` 变成「跳根」⇒ 解析失败。
   - ⚠️ **要拷 `docs/cheatsheet.en-US.md` / `docs/cheatsheet.zh-CN.md`**：它们是 `frontend/src/pages/Welcome.tsx` 的构建输入（utoopack 的 `*.md` loader）。

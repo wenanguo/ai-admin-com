@@ -96,7 +96,7 @@ docker run -d --name ai-admin-ai -p 3100:3100 \
 | **技能目录来自智能体配置** | 每个智能体在 `agents/<id>/agent.yaml` 的 `skills` 里列自己的技能目录（相对配置目录解析）⇒ 技能**按智能体**装配 | `WORKDIR /app` ⇒ 智能体配置必须在 `/app/agents`（镜像里已就位）；PM 助手那份指向 `/app/.pi/skills` |
 | **凭据不入镜像** | `.ai/auth.json` 是 pi 的凭据文件 | 镜像里**没有** `/app/.ai` ⇒ 运行时挂载（`-v ...:/app/.ai`） |
 | **启动命令不读 `.env`** | 容器里没有 `.env` ⇒ `node --env-file=.env` 会直接退出 | `CMD ["node", "dist/main.js"]`（`src/load-env.ts` 会「有就读、没有就用环境变量」） |
-| **ESM-only** | pi SDK 是 ESM-only | 基础镜像 node 22 + `dist/` 是 ESM |
+| **ESM-only** | pi SDK 是 ESM-only | 基础镜像 node 24 + `dist/` 是 ESM |
 
 ### 健康检查 `GET /health`
 

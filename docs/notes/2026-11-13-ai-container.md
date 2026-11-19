@@ -28,7 +28,7 @@
 ## 短设计（规模：中 ⇒ 几段话，不写 spec）
 
 1. **镜像**：`backend/ai/Dockerfile`，**构建上下文 = 仓根**（与前端镜像同构 ⇒ 共用仓根
-   `.dockerignore`）。两阶段：builder（node 22 ⇒ `npm ci` ⇒ `tsc` ⇒ `prisma generate`）
+   `.dockerignore`）。两阶段：builder（node 24 ⇒ `npm ci` ⇒ `tsc` ⇒ `prisma generate`）
    ⇒ runtime（`npm ci --omit=dev` ⇒ 只拷 `dist/` + 生成的 prisma 客户端 + `/app/.pi`）。
 2. **健康检查**：新路由 `backend/ai/src/routes/health.ts`，挂在**根路径 `/health`**（不跟业务
    路由混在一起），**不要 token**，**恒回 200**；依赖状态写在 `checks` 里，
@@ -62,7 +62,7 @@
 | **健康检查不要 token、挂在根路径** | 编排系统没有用户 token；混进 `/api/agent` 会和业务路由混淆 | 探针 401 ⇒ 容器永远「不健康」 |
 | **数据库只探 TCP，不跑 SQL** | 探针不该有副作用，也不该依赖 prisma 引擎/驱动（`mysql2` 是 devDependency） | 探针在生产里堆积连接 / 拖慢响应 |
 | **`skipped` 不算 degraded** | 没配某个依赖不是故障 | 每次都「degraded」⇒ 看不出真故障 |
-| **基础镜像用 `node:22-bookworm-slim`，不用 alpine** | prisma 查询引擎在 musl 上要另配 openssl、还要挑对引擎变体 | 容器一起来就报引擎找不到 |
+| **基础镜像用 `node:24-bookworm-slim`，不用 alpine** | prisma 查询引擎在 musl 上要另配 openssl、还要挑对引擎变体 | 容器一起来就报引擎找不到 |
 | **`npm ci --omit=dev --ignore-scripts`（runtime）** | `prisma` CLI 是 devDependency ⇒ 运行时生成不了客户端 ⇒ 必须从 builder 拷 `.prisma`；`--ignore-scripts` 免得 `@prisma/client` 的 postinstall 在没有 schema 的容器里失败 | 镜像里没有 prisma 客户端 ⇒ 服务一起来就炸 |
 | **启动命令 `node dist/main.js`（不用 `--env-file=.env`）** | 容器里没有 `.env` ⇒ `--env-file` 缺文件会**直接退出**；`src/load-env.ts` 本来就是「有就读、没有就用环境变量」 | 容器一起来就退出，日志只有一行 `ENOENT` |
 | **`prisma generate` 排在 `tsc` 之前** | `@prisma/client` 的类型是从 `.prisma/client` re-export 的 ⇒ 客户端没生成时 tsc 编译不过 | 镜像构建直接失败（CI 第一版就踩了） |

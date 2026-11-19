@@ -23,6 +23,19 @@ ai-admin-com/
 
 ---
 
+## 前置条件
+
+| 需要 | 版本 | 怎么查 |
+| ---- | ---- | ------ |
+| **Node.js** | **≥ 24.9.0** | `node -v` ⇒ 必须 ≥ `v24.9.0` |
+| npm | 10 / 11 都行（lock 是 npm 10 生成的，两者都认） | `npm -v` |
+
+⚠️ **为什么是 24.9**：`@deepseek-ai/dsh`（DeepSeek Harness）的 engines 要求 `node >= 24.9.0`
+⇒ 版本太低**根本装不上 dsh** ⇒ 本仓的 **CI（`.github/workflows/`）与两个 Dockerfile 统一用 Node 24**。
+⇒ 本地先升 Node 再 `npm install`（`package.json` 的 `engines.node` 也会拦你）。
+
+---
+
 ## 快速开始
 
 ```bash
