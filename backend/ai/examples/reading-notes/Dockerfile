@@ -12,7 +12,7 @@
 #    （与 AI 服务镜像、前端镜像的 node 阶段一致）。
 # ============================================================
 
-ARG NODE_VERSION=22
+ARG NODE_VERSION=24
 
 # ─────────────────────────── 构建阶段 ───────────────────────────
 FROM node:${NODE_VERSION}-bookworm-slim AS builder
