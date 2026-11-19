@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
       - run: node --test "scripts/agent/*.test.cjs"
 
   # AI 服务（backend/ai）—— 单测 + **内核纯净度**。
@@ -43,9 +43,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: backend/ai/package-lock.json
+      # ⚠️ **钉住 npm 版本**（= 本仓 lock 的生成版本）：node 24 自带 npm 11，
+      #    它的「package.json 与 package-lock.json 必须同步」检查比 npm 10 严
+      #    ⇒ 可能把现有 lock 判成不同步 ⇒ `npm ci` 直接 EUSAGE。
+      #    ⇒ 钉到 10.9.9 ⇒ CI 装出的树与 lock、与镜像完全一致（依赖树不因升 Node 而变）。
+      - run: npm install -g npm@10.9.9
       - run: npm ci
       - run: npx prisma generate
       - run: npm test
@@ -60,9 +65,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - run: npm install -g npm@10.9.9
       - run: npm ci
       - run: npm run biome:lint
 
@@ -72,9 +78,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - run: npm install -g npm@10.9.9
       - run: npm ci
       - run: npm run tsc
 
@@ -82,7 +89,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        node_version: [22]
+        node_version: [24]
         os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -92,6 +99,7 @@ jobs:
           node-version: ${{ matrix.node_version }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - run: npm install -g npm@10.9.9
       - run: echo ${{github.ref}}
       - uses: utooland/setup-utoo@e7aa4d726a17f79f68aed736476ea5bd68f8ba52 # v1
         with:

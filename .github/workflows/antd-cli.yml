@@ -30,9 +30,11 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      # ⚠️ 钉住 npm 版本（= lock 的生成版本；node 24 自带 npm 11 ⇒ lock 同步检查更严）
+      - run: npm install -g npm@10.9.9
       - run: npm ci
       - name: Run Ant Design CLI checks
         id: antd-cli
