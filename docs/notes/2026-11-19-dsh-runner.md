@@ -4,13 +4,16 @@
 
 ## 目标
 
-- **关联**：issue **#120**（G4 主战役）· PR（本 PR）
+- **关联**：issue **#120**（G4 主战役）· PR **#131**（**已开、未合并** ⇒ 等人/PM 拍板）
 - **一句话**：把 AI 服务的**执行层**换成 DeepSeek Harness（**子进程 + stdio JSON-RPC**），
   **对外契约一字不改** ⇒ 前端零改动；**双跑可切**（`AI_RUNNER=pi|dsh`），本期**不删 pi**。
 
 ## 状态
 
-**已完成**（PR 已开、**未合并** —— 等人/PM 拍板：这是高风险改动）。
+**已完成**（PR **#131** 已开、**未合并** —— 等人/PM 拍板：这是高风险改动）。
+
+上游的 `session/cancel` 请求已提（该仓 issues 禁用 ⇒ 发 discussion）：
+**https://github.com/deepseek-ai/deepseek-harness/discussions/13766**。
 
 ## 已完成
 
