@@ -22,6 +22,7 @@
 import type { CommandTool } from "../../tools/types.ts";
 import { requiresConfirmation } from "../../gate/gate.ts";
 import { asRecord, asString } from "./protocol.ts";
+import { bareToolName } from "../../mcp/tool-names.ts";
 
 /** dsh 的**值 schema**（我们自己声明的形状 ⇒ 不 import dsh 的类型）。 */
 export type DshValueSchema =
@@ -70,6 +71,9 @@ export interface DshToolSpec {
 /**
  * 工具名归一化：剥掉已知的 `mcp__<server>__` 前缀。
  *
+ * ⚠️ **规则只有一处**（`core/mcp/tool-names.ts`）⇒ 界面 / 审计 / 待确认
+ *    看到的名字**永远一致**。
+ *
  * @param name 原始工具名。
  * @param prefixes 已知的服务器前缀（如 `mcp__aiadmin__`）。
  */
@@ -79,7 +83,7 @@ export function normalizeToolName(name: string, prefixes: readonly string[]): st
 			return name.slice(prefix.length);
 		}
 	}
-	return name;
+	return bareToolName(name);
 }
 
 /**

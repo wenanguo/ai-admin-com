@@ -25,8 +25,8 @@ import {
 	SessionManager,
 	type AgentSession,
 } from "@earendil-works/pi-coding-agent";
-import { createFakeMcpServer, type FakeMcpServer } from "./mcp.fake.ts";
-import { createMcpServersExtension } from "./mcp.ts";
+import { createFakeMcpServer, type FakeMcpServer } from "./mcp.pi.fake.ts";
+import { createMcpServersExtension } from "./mcp.pi.ts";
 import { createPiSession } from "../session/pi-session.ts";
 
 /** 造一个带假 MCP 服务器的会话（与生产同构：扩展工厂挂在 loader 上）。 */

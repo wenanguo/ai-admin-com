@@ -37,6 +37,7 @@ import {
 	type WriteToolRule,
 } from "../context/anchor.ts";
 import type { PendingWaiterRegistry } from "./pending-waiters.ts";
+import { bareToolName } from "../mcp/tool-names.ts";
 
 /** 默认等多久（毫秒）。 */
 export const DEFAULT_GATE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -47,7 +48,7 @@ export const DEFAULT_GATE_TIMEOUT_MS = 5 * 60 * 1000;
  * @param toolName 工具名（可能带 `mcp__<server>__` 前缀）。
  */
 export function requiresConfirmation(toolName: string): boolean {
-	const bare = toolName.replace(/^mcp__[^_]+__/, "");
+	const bare = bareToolName(toolName);
 	return bare.startsWith("update_") || bare.startsWith("patch_");
 }
 

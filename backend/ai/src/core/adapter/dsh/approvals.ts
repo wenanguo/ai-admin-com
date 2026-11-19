@@ -26,6 +26,7 @@ import {
 	type WriteToolRule,
 } from "../../context/anchor.ts";
 import { requiresConfirmation } from "../../gate/gate.ts";
+import { bareToolName } from "../../mcp/tool-names.ts";
 import type { PendingWaiterRegistry } from "../../gate/pending-waiters.ts";
 import { DSH_APPROVAL_OUTCOMES, type DshApprovalOutcome, type DshApprovalRequest } from "./protocol.ts";
 
@@ -78,7 +79,7 @@ export async function decideApproval(
 	request: DshApprovalRequest,
 	context: DshGateContext,
 ): Promise<DshApprovalOutcome> {
-	const command = request.toolName;
+	const command = bareToolName(request.toolName);
 	// ⚠️ **口径**：`update_` / `patch_` 要点头，其余放行。
 	//    （dsh 侧只对「我们标了 confirm」的工具问 ⇒ 这里再判一次是双保险。）
 	if (!requiresConfirmation(command)) {

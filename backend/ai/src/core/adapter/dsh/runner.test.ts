@@ -3,7 +3,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { bridgeSecret, dshRunnerConfig } from "./runner.ts";
+import { bridgeSecret, buildChildEnv, dshRunnerConfig } from "./runner.ts";
+import { PendingWaiterRegistry } from "../../gate/pending-waiters.ts";
 import { runnerFromEnv } from "../../session/runtime.ts";
 
 describe("双跑开关", () => {
@@ -52,5 +53,76 @@ describe("dsh runner 的配置", () => {
 	it("命令桥的密钥：**进程内稳定**（起 dsh 与挂路由用的是同一个）", () => {
 		expect(bridgeSecret()).toBe(bridgeSecret());
 		expect(bridgeSecret()).toMatch(/^[0-9a-f]{48}$/);
+	});
+});
+
+describe("dsh runner · MCP 服务器", () => {
+	/** 造一份配置（测试用）。 */
+	const config = {
+		profile: "sdk",
+		dshHome: "C:/tmp/dsh-home",
+		dshBin: "C:/tmp/dsh",
+		patches: [],
+		provider: "deepseek-direct",
+		model: "deepseek-chat",
+		baseURL: "http://127.0.0.1:1/v1",
+		apiKeyEnv: "DSH_AI_API_KEY",
+		contextWindow: 1024,
+		maxTokens: 256,
+		bridgeUrl: "http://127.0.0.1:1/internal/dsh/commands",
+	};
+
+	it("MCP 服务器 ⇒ 翻译成 dsh 的客户端配置（**token 只在环境变量里**）", () => {
+		const env = buildChildEnv({
+			options: {
+				conversationId: "conv-1",
+				tools: [],
+				systemPrompt: "你是助手。",
+				mcpServers: [{ name: "aiadmin", url: "https://a.test/mcp", token: "jwt" }],
+				gate: () => ({
+					conversationId: "conv-1",
+					userId: "1",
+					onPending: () => undefined,
+					waiters: new PendingWaiterRegistry(),
+					createPending: async () => ({ id: "p-1" }),
+					timeoutMs: 1000,
+				}),
+			},
+			config,
+			source: {},
+			apiKey: "fake",
+		});
+		const servers = JSON.parse(
+			Buffer.from(env.DSH_AI_MCP_SERVERS ?? "", "base64").toString("utf8"),
+		) as Array<Record<string, unknown>>;
+		expect(servers).toHaveLength(1);
+		expect(servers[0]?.["serverName"]).toBe("aiadmin");
+		expect(servers[0]?.["transport"]).toBe("streamable-http");
+		expect(servers[0]?.["headers"]).toEqual({ Authorization: "Bearer jwt" });
+	});
+
+	it("没配 MCP ⇒ 空清单（**不是异常**）", () => {
+		const env = buildChildEnv({
+			options: {
+				conversationId: "conv-1",
+				tools: [],
+				systemPrompt: "你是助手。",
+				gate: () => ({
+					conversationId: "conv-1",
+					userId: "1",
+					onPending: () => undefined,
+					waiters: new PendingWaiterRegistry(),
+					createPending: async () => ({ id: "p-1" }),
+					timeoutMs: 1000,
+				}),
+			},
+			config,
+			source: {},
+			apiKey: "fake",
+		});
+		const servers = JSON.parse(
+			Buffer.from(env.DSH_AI_MCP_SERVERS ?? "", "base64").toString("utf8"),
+		) as unknown[];
+		expect(servers).toEqual([]);
 	});
 });

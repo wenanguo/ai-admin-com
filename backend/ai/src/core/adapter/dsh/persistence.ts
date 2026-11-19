@@ -36,7 +36,7 @@
 import { redactAuditArgs } from "../../audit/audit-redact.ts";
 import type { AuditWriter } from "../../audit/audit.ts";
 import type { AuditTrail } from "../../audit/audit-trail.ts";
-import { stripMcpToolPrefix } from "../../mcp/mcp.ts";
+import { stripMcpToolPrefix } from "../../mcp/tool-names.ts";
 import type { SessionEventKind, SessionEventStore } from "../../store/session-events.ts";
 import { DSH_EVENTS, asRecord, asString, type DshSessionEvent } from "./protocol.ts";
 

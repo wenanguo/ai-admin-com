@@ -1,23 +1,26 @@
 /**
  * 我们的 dsh 插件 —— 装进 dsh 的 profile 里（**跑在 dsh 运行时进程里**）。
  *
- * ## 它做三件事
+ * ## 它做四件事
  *
  * ① **注册我们自己的 provider**（`dsh-llm` 的缝 ⇒ **不依赖 pi-ai**）：
  *    一个 OpenAI 兼容的适配器 ⇒ DeepSeek 官方与 MiniMax 都走它（换 baseURL + key）。
  * ② **把系统提示词（含技能段）交给 dsh**：注册成一个 prompt section
  *    ⇒ 技能照旧进模型上下文（**语义保住**）。
  * ③ **把我们的命令挂进 dsh 的工具表**（命令本体仍在我们的进程里 ⇒ 走命令桥）。
+ * ④ **把 MCP 服务器挂进 dsh 的工具表**（用 dsh 自带的 `dsh-mcp-client`）
+ *    ⇒ 并给 MCP 的写操作补上**闸门**（修改已有数据要人点头）。
  *
  * ## 配置全走环境变量
  *
  * ⚠️ 这个包会被 `pnpm add file:<路径>` 装进 dsh 的 profile ⇒ 它**没有自己的配置文件**
- *    ⇒ 路由、baseURL、key、提示词、工具目录、命令桥地址**全部由环境变量给**
+ *    ⇒ 路由、baseURL、key、提示词、工具目录、命令桥地址、MCP 清单**全部由环境变量给**
  *    ⇒ **凭据不落盘**（只活在子进程的内存里）。
  */
 
 import { OpenAiCompatibleAdapter } from './provider.js'
 import { registerTools } from './tools.js'
+import { registerGate, registerMcpServers } from './mcp.js'
 
 /** dsh 里的插件名。 */
 export const name = 'ai-admin'
@@ -30,8 +33,8 @@ export const inject = ['llm', 'tools', 'systemPrompt']
  *
  * @param {object} ctx cordis 上下文。
  */
-export function apply(ctx) {
-	// ⚠️ **三步各自兜住**：一段失败不许连累别的（插件挂不上去 ⇒ 工具与 provider 全没有）。
+export async function apply(ctx) {
+	// ⚠️ **几步各自兜住**：一段失败不许连累别的（插件挂不上去 ⇒ 工具与 provider 全没有）。
 	try {
 		registerProvider(ctx)
 	} catch (error) {
@@ -46,6 +49,21 @@ export function apply(ctx) {
 		registerTools(ctx)
 	} catch (error) {
 		console.error('[ai-admin] 工具注册失败：', error)
+	}
+	try {
+		// ⚠️ **闸门先挂**（MCP 的写操作也要人点头 ⇒ 拦在工具执行之前）。
+		registerGate(ctx)
+	} catch (error) {
+		console.error('[ai-admin] 闸门注册失败：', error)
+	}
+	try {
+		// ⚠️ **MCP 最后挂**（它要连服务器 ⇒ 慢 ⇒ 别拖住别的）。
+		const count = await registerMcpServers(ctx)
+		if (count > 0) {
+			console.error(`[ai-admin] MCP 服务器挂上 ${count} 台`)
+		}
+	} catch (error) {
+		console.error('[ai-admin] MCP 注册失败：', error)
 	}
 }
 
