@@ -120,6 +120,7 @@ function fakeStore(): {
 				userId,
 				title,
 				agentId: agentId ?? null,
+				dshSessionId: null,
 				createdAt: new Date(),
 				updatedAt: new Date(),
 			};
@@ -150,6 +151,7 @@ function fakeStore(): {
 			messages.filter((row) => row.conversationId === conversationId),
 		maxSeq: async (conversationId: string) =>
 			messages.filter((row) => row.conversationId === conversationId).length,
+		setDshSessionId: async () => {},
 		touch: async () => {},
 	};
 	return { store, created };

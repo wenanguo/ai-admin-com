@@ -20,6 +20,7 @@
 
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { PrismaAuditWriter, type AuditWriter } from "../audit/audit.ts";
+import { AuditTrail } from "../audit/audit-trail.ts";
 import { redactAuditArgs } from "../audit/audit-redact.ts";
 import { env } from "../env/env.ts";
 import { buildFrame } from "../http/sse.ts";
@@ -38,6 +39,7 @@ import { listSkillSummaries, type SkillSummary } from "../skills/skill-catalog.t
 import { pendingWaiters } from "../gate/pending-waiters.ts";
 import { createPiSession, type PiSessionOptions } from "./pi-session.ts";
 import { createDshSession } from "../adapter/dsh/runner.ts";
+import { DshTracer } from "../adapter/dsh/persistence.ts";
 import { buildDshSystemPrompt } from "../adapter/dsh/system-prompt.ts";
 import { createLoadSkillTool } from "../skills/skill-tools.ts";
 import { agentsRoot } from "../config/loader.ts";
@@ -56,6 +58,12 @@ import {
 } from "./session-registry.ts";
 import { StartupLock } from "./startup-lock.ts";
 import { ConversationStore, type ConversationRecord, type MessageRecord } from "../store/store.ts";
+import {
+	PrismaSessionEventStore,
+	summarizeSessionEvent,
+	type SessionEventStore,
+	type SessionEventSummary,
+} from "../store/session-events.ts";
 
 /** 运行时的错误种类。 */
 export type AgentErrorKind = "NOT_FOUND" | "VALIDATION" | "AUTH_EXPIRED" | "UPSTREAM";
@@ -111,6 +119,12 @@ export interface ConversationState {
 	messages: MessageRecord[];
 	isStreaming: boolean;
 	model: string;
+	/**
+	 * 会话事件（**dsh 形状的追加式日志折叠出来的**）。
+	 *
+	 * ⚠️ **新增字段** ⇒ 前端零改动（它忽略不认识的字段）⇒ 契约表一个字都不用改。
+	 */
+	sessionEvents: SessionEventSummary[];
 }
 
 /** 运行时可注入的依赖（测试用假实现，生产用默认）。 */
@@ -132,6 +146,8 @@ export interface AgentRuntimeOptions {
 	model?: string;
 	/** 审计去处（生产用 `PrismaAuditWriter`，测试用假实现）。 */
 	audit?: AuditWriter;
+	/** 会话事件日志（**dsh 形状**；生产用 Prisma，测试用假实现）。 */
+	sessionEvents?: SessionEventStore;
 	/**
 	 * AiAdmin 的 MCP 地址。
 	 *
@@ -185,7 +201,9 @@ export class AgentRuntime {
 	/** 每个会话的事件映射器。 */
 	readonly #mappers = new Map<string, AgentEventMapper>();
 	/** 审计去处（每次写操作都留一条 `ai_audit_log`）。 */
-	readonly #audit: AuditWriter;
+	readonly #audit: AuditTrail;
+	/** 会话事件日志（**dsh 形状的追加式日志**）。 */
+	readonly #sessionEvents: SessionEventStore;
 	/** AiAdmin 的 MCP 地址（**没配就不接 MCP**）。 */
 	/** MCP 的默认地址（`null` = **显式不接**；`undefined` = 用插件给的）。 */
 	readonly #mcpUrl: string | null | undefined;
@@ -203,7 +221,8 @@ export class AgentRuntime {
 		this.#createSession = options.createSession ?? createPiSession;
 		this.#runner = options.runner ?? runnerFromEnv();
 		this.#model = options.model ?? env.AI_MODEL;
-		this.#audit = options.audit ?? new PrismaAuditWriter();
+		this.#audit = new AuditTrail(options.audit ?? new PrismaAuditWriter());
+		this.#sessionEvents = options.sessionEvents ?? new PrismaSessionEventStore();
 		// ⚠️ **默认地址归插件**（内核不认识业务系统的地址）：
 		//    `undefined` ⇒ 用插件给的；`null` ⇒ **显式不接 MCP**。
 		this.#mcpUrl = options.mcpUrl === null ? null : options.mcpUrl;
@@ -542,7 +561,25 @@ ${message}`;
 			messages,
 			isStreaming: channel?.isStreaming ?? false,
 			model: this.#model,
+			// ⚠️ **会话事件**（dsh 形状的日志折叠）⇒ 工具调用 / 闸门记录查得到。
+			//    **读不到不许报错**（老库还没迁移 ⇒ 表都不存在）⇒ 空列表。
+			sessionEvents: await this.#readSessionEvents(conversationId),
 		};
+	}
+
+	/**
+	 * 读会话事件（**折叠成一行一条的摘要**）。
+	 *
+	 * ⚠️ **失败当没有**（表还没迁移 / 库连不上）⇒ 快照端点照常回。
+	 */
+	async #readSessionEvents(conversationId: string): Promise<SessionEventSummary[]> {
+		try {
+			const rows = await this.#sessionEvents.list(conversationId);
+			return rows.map(summarizeSessionEvent);
+		} catch (error) {
+			console.error("[agent] 读会话事件失败（不影响快照）", error);
+			return [];
+		}
 	}
 
 	/** 关掉一个会话（释放 pi 会话）。 */
@@ -842,6 +879,26 @@ ${message}`;
 		const { systemPrompt, skills } = buildDshSystemPrompt(agent.systemPrompt, agent.skills);
 		// ⚠️ **没有技能时就不注册 `load_skill`**（别给模型一个必然失败的工具）
 		const allTools = skills.length > 0 ? [...tools, createLoadSkillTool(skills)] : tools;
+		// ⚠️ **会话 ↔ dsh session 的映射**（`ai_conversation.dsh_session_id`）
+		//    今天 dsh 的 session id 就是我们指定的会话 id ⇒ 等值映射；
+		//    列先留好 ⇒ dsh 哪天自己分配 id 时直接用。
+		//    ⚠️ **写失败不许影响对话**（老库还没迁移 ⇒ 列都不存在）。
+		await this.#store.setDshSessionId(channel.conversationId, channel.conversationId).catch(
+			(error: unknown) => {
+				console.error("[agent] 写 dsh 会话映射失败（不影响对话）", error);
+			},
+		);
+		// ⚠️ **留痕层**：dsh 事件 / 闸门决策 ⇒ 事件日志 + 审计。
+		const tracer = new DshTracer({
+			conversationId: channel.conversationId,
+			dshSessionId: channel.conversationId,
+			userId,
+			model: agent.model ?? this.#model,
+			events: this.#sessionEvents,
+			audit: this.#audit,
+			trail: this.#audit,
+			mcpPrefixes: channel.mcpPrefixes,
+		});
 		return createDshSession({
 			conversationId: channel.conversationId,
 			tools: allTools,
@@ -849,6 +906,7 @@ ${message}`;
 			// ⚠️ **模型来自配置**（没写 ⇒ 用全局默认）
 			model: agent.model ?? this.#model,
 			mcpPrefixes: channel.mcpPrefixes,
+			tracer,
 			// ⚠️ **闸门**：修改已有数据要等人点头（与 pi 路径**同一套**口径）
 			gate: () => ({
 				conversationId: channel.conversationId,
@@ -866,6 +924,10 @@ ${message}`;
 				waiters: pendingWaiters,
 				createPending: createPendingAction,
 				timeoutMs: DEFAULT_GATE_TIMEOUT_MS,
+				// ⚠️ **闸门决策要留痕**（人做的决定 ⇒ 审计 + 事件日志）
+				onDecision: (decision) => {
+					void tracer.handleGateDecision(decision);
+				},
 			}),
 		});
 	}

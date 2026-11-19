@@ -56,6 +56,16 @@ export interface DshGateContext {
 	timeoutMs: number;
 	/** 取这次工具调用的参数（**按 callId 关联 `tool/call` 事件**）。 */
 	argsOf: (callId: string | undefined) => Record<string, unknown> | undefined;
+	/**
+	 * 决策落地了（**人做的决定**）⇒ 回报给留痕层（审计 + 事件日志）。
+	 *
+	 * ⚠️ 不给 ⇒ 不留痕（**留痕失败不许影响放行/拒绝**）。
+	 */
+	onDecision?: ((input: {
+		command: string;
+		args: Record<string, unknown>;
+		decision: "approved" | "rejected";
+	}) => void) | undefined;
 }
 
 /**
@@ -104,7 +114,15 @@ export async function decideApproval(
 	context.onPending({ id: row.id, command, args });
 
 	const decision = await context.waiters.wait(row.id, context.timeoutMs);
-	if (decision === "approved") {
+	const approved = decision === "approved";
+	// ⚠️ **留痕**（人做的决定）⇒ 审计 + 事件日志。
+	//    失败不许影响放行 / 拒绝 ⇒ 外面包一层。
+	try {
+		context.onDecision?.({ command, args, decision: approved ? "approved" : "rejected" });
+	} catch (error) {
+		console.error("[dsh] 闸门决策留痕失败（不影响放行 / 拒绝）", error);
+	}
+	if (approved) {
 		return DSH_APPROVAL_OUTCOMES.ALLOWED_ONCE;
 	}
 	return DSH_APPROVAL_OUTCOMES.REJECTED;

@@ -27,6 +27,7 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DshSession } from "./session.ts";
+import type { DshTracer } from "./persistence.ts";
 import { buildToolCatalog } from "./tools.ts";
 import { ensureDshProfile } from "./profile.ts";
 import type { DshGateContext } from "./approvals.ts";
@@ -107,6 +108,8 @@ export interface CreateDshSessionOptions {
 	mcpPrefixes?: readonly string[];
 	/** 闸门上下文（**每次调用时取** ⇒ 锚点变了也能用）。 */
 	gate: () => Omit<DshGateContext, "argsOf">;
+	/** 留痕层（**不给 ⇒ 不留痕**）。 */
+	tracer?: DshTracer | undefined;
 	/** 配置（不给 ⇒ 从环境变量读）。 */
 	config?: DshRunnerConfig | undefined;
 	/** 环境变量来源（不给 ⇒ `process.env`）。 */
@@ -170,6 +173,7 @@ export async function createDshSession(
 		gate: options.gate,
 		bridgeUrl: config.bridgeUrl,
 		bridgeSecret: bridgeSecret(),
+		tracer: options.tracer,
 	});
 }
 

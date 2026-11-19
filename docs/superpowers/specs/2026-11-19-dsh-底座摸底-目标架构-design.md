@@ -229,6 +229,10 @@ dsh 的官方仓 `deepseek-ai/deepseek-harness`（MIT · TypeScript · Cordis）
   2. dsh 的会话日志当**执行痕迹**（落在 `dshHome` 下，或实现一个 MySQL 持久化后端）；
   3. 会话 id 映射：`ai_conversation.dsh_session_id`（新增列）↔ dsh session id。
 - ⚠️ `@deepseek-ai/dsh-session-persistence-sqlite` **没有 0.2.2-rc.5**（还在 0.0.1-rc.1 线）⇒ 本轮只走 JSONL。
+- ✅ **落地结果（#121）**：按上面的「两边都要」做 ⇒ 产品事实仍在 `ai_conversation` / `ai_message`，
+  **执行痕迹**用**新增表 `ai_session_event`**（dsh 形状的追加式事件日志，落在同一个 MySQL），
+  会话 ↔ dsh session 用**新增列 `ai_conversation.dsh_session_id`** 映射。
+  ⇒ 详细设计见 [`2026-11-20-dsh-存储与审计-design.md`](./2026-11-20-dsh-存储与审计-design.md)。
 
 ### 2.8 子代理：能替代 `dispatch.cjs` 现在 spawn 的 `pi-launcher.js` 吗？
 
