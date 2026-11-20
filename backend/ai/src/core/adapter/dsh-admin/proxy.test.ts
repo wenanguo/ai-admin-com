@@ -134,7 +134,7 @@ describe("dsh 管理面的反代", () => {
 
 	it("**iframe 导航**（带不了 Authorization 头）⇒ 认 cookie 里的 token", async () => {
 		const response = await fetch(`${base}/dsh-admin/`, {
-			headers: { cookie: `aipm_admin=${ADMIN_TOKEN}` },
+			headers: { cookie: `admin_access_token=${ADMIN_TOKEN}` },
 		});
 		expect(response.status).toBe(200);
 		expect(seen).toHaveLength(1);

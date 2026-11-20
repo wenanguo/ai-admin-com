@@ -56,12 +56,14 @@ const DSH_AUTH_COOKIE_PREFIX = "dsh-auth-";
 const ADMIN_TOKEN_QUERY_KEY = "access_token";
 
 /**
- * 管理面 token 的**cookie 名**（`aipm_admin`）。
+ * 管理面 token 的 **cookie 名**（`admin_access_token`）。
  *
  * ⚠️ **为什么需要它**：管理面是**整页 iframe** ⇒ 浏览器发的是**导航请求**
  *    ⇒ **带不了 `Authorization` 头** ⇒ 只能靠 cookie / 查询参数。
+ *
+ * ⚠️ 名字里**不许有产品代号**（内核不认业务 ⇒ 见 `scripts/check-core-purity.cjs`）。
  */
-const ADMIN_TOKEN_COOKIE = "aipm_admin";
+const ADMIN_TOKEN_COOKIE = "admin_access_token";
 
 /** dsh web 挂了时的说法（502）。 */
 const DSH_ADMIN_UNAVAILABLE_MESSAGE = "AI 管理面暂时不可用（dsh web 没起来？）";

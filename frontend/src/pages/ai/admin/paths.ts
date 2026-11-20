@@ -29,4 +29,4 @@ export const DSH_ADMIN_IFRAME_SRC = `${DSH_ADMIN_MOUNT_PATH}/`;
  *
  * ⚠️ cookie 的 **Path 限定在 `/dsh-admin`** ⇒ 别的路由收不到它。
  */
-export const ADMIN_TOKEN_COOKIE = 'aipm_admin';
+export const ADMIN_TOKEN_COOKIE = 'admin_access_token';
