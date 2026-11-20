@@ -39,7 +39,6 @@
  *    （**只借凭据，不依赖它的代码** ⇒ 依赖树里没有 pi）。
  */
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 
@@ -76,20 +75,66 @@ function resolveDshBin(repoRoot, env = process.env) {
 }
 
 /**
+ * **加载 `backend/ai/.env`**（⇒ 凭据只写一份，服务与派活都用它）。
+ *
+ * ## 为什么
+ *
+ * 服务本体读 `backend/ai/.env`（`src/core/env/load-env.ts`）⇒ key 放在那儿。
+ * 但派活器是**另一个进程**（`scripts/agent/dispatch.cjs`）⇒ 原来只看**自己的环境变量**
+ * ⇒ 要么用户得把 key 导进 OS 环境变量（⇒ 换台机器就断），要么每个进程各配一份。
+ *
+ * ⇒ 这里也读同一个 `.env` ⇒ **一处写，两处用**。
+ *
+ * ⚠️ **不覆盖**已存在的环境变量（`process.loadEnvFile` 的行为）⇒
+ *    CI / 临时覆盖（`DISPATCH_API_KEY=xxx node …`）仍然优先。
+ *
+ * @param {string} repoRoot 仓根目录。
+ */
+function loadRepoEnvFile(repoRoot) {
+  const envPath = path.join(repoRoot, 'backend', 'ai', '.env');
+  if (!fs.existsSync(envPath)) {
+    return;
+  }
+  try {
+    process.loadEnvFile(envPath);
+  } catch {
+    // 读不了就算了 ⇒ 退回进程环境变量
+  }
+}
+
+/**
  * 派活的配置（**全走环境变量** ⇒ 凭据不落盘）。
  *
  * @param {string} repoRoot 仓根目录。
  * @param {NodeJS.ProcessEnv} env 环境变量。
  */
 function dispatchConfig(repoRoot, env = process.env) {
+  // ⚠️ **先定路由，再派生模型与地址**（⇒ 不会出现「minimax 路由 + deepseek 模型」这种配错）。
+  //
+  // ⚠️ **按手里有什么 key 选路由**（⇒ 一处写、两处用）：
+  //    - 显式 `DISPATCH_PROVIDER` ⇒ 听它的；
+  //    - 有 `DEEPSEEK_API_KEY` ⇒ 走 **DeepSeek 官方**（与服务本体的缺省一致）；
+  //    - 只有 `MINIMAX_CN_API_KEY` ⇒ 走 MiniMax（仓库里的 .env 现在的样子）；
+  //    - 都没有 ⇒ 默认 DeepSeek 官方（并在派活时报「没有 key」）。
+  const hasDeepseek = (env.DEEPSEEK_API_KEY ?? '').length > 0;
+  const hasMinimax = (env.MINIMAX_CN_API_KEY ?? '').length > 0;
+  const provider =
+    env.DISPATCH_PROVIDER ??
+    (!hasDeepseek && hasMinimax ? 'minimax' : 'deepseek-direct');
+  // ⚠️ 路由 → (默认模型, 默认地址) 的配对表（⚠️ **配错就认证失败** ⇒ 不许各选各的）。
+  const PRESET = {
+    minimax: { model: 'MiniMax-M3.1-Flash', baseURL: 'https://api.minimaxi.com/v1' },
+    'deepseek-direct': { model: 'deepseek-chat', baseURL: 'https://api.deepseek.com/v1' },
+  };
+  const preset = PRESET[provider] ?? PRESET['deepseek-direct'];
   return {
     dshBin: resolveDshBin(repoRoot, env),
     dshHome:
       env.DISPATCH_DSH_HOME ?? path.join(repoRoot, '.scratch', 'dispatch', 'dsh-home'),
     profile: env.DISPATCH_DSH_PROFILE ?? 'dispatch',
-    provider: env.DISPATCH_PROVIDER ?? 'minimax',
-    model: env.DISPATCH_MODEL ?? 'MiniMax-M3.1-Flash',
-    baseURL: env.DISPATCH_BASE_URL ?? 'https://api.minimaxi.com/v1',
+    provider,
+    model: env.DISPATCH_MODEL ?? preset.model,
+    baseURL: env.DISPATCH_BASE_URL ?? preset.baseURL,
     apiKeyEnv: env.DISPATCH_API_KEY_ENV ?? 'DISPATCH_API_KEY',
     /** 我们插件的目录（**仓里的源码** ⇒ 装进 dsh 的 profile）。 */
     pluginPath: path.join(repoRoot, 'backend', 'ai', 'dsh-plugin'),
@@ -101,7 +146,11 @@ function dispatchConfig(repoRoot, env = process.env) {
 /**
  * 取模型 key（**只在内存里** ⇒ 不落盘、不进日志）。
  *
- * ⚠️ 顺序：指定的环境变量 ⇒ `DSH_AI_API_KEY` ⇒ **过渡期**：pi 的 `auth.json`。
+ * ⚠️ 顺序：指定的环境变量（`DISPATCH_API_KEY`）⇒ `DSH_AI_API_KEY` ⇒ `DEEPSEEK_API_KEY`
+ *    （后两个来自 `backend/ai/.env` ⇒ **服务与派活共用一把 key**）。
+ *
+ * ⚠️ **不再回退到 pi 的 `auth.json`**（issue #123 的收尾）：
+ *    派活**彻底不碰 pi 的任何东西**（连凭据文件也不借）⇒ 「不要 pi」更彻底。
  *
  * @param {object} config 派活配置。
  * @param {NodeJS.ProcessEnv} env 环境变量。
@@ -112,25 +161,18 @@ function resolveApiKey(config, env = process.env) {
   if (direct !== undefined && direct.length > 0) {
     return direct;
   }
+  // ⚠️ **按路由选对应的 key**（⇒ 配了哪个路由就用哪个 key ⇒ 不会拿错钥匙）。
+  const routeKey = config.provider.startsWith('minimax')
+    ? env.MINIMAX_CN_API_KEY
+    : env.DEEPSEEK_API_KEY;
+  if (routeKey !== undefined && routeKey.length > 0) {
+    return routeKey;
+  }
   const shared = env.DSH_AI_API_KEY;
   if (shared !== undefined && shared.length > 0) {
     return shared;
   }
-  // ⚠️ **过渡期**：凭据还放在 pi 的 auth.json 里 ⇒ 只借它的**凭据**
-  //    （**不依赖它的代码** ⇒ 依赖树里没有 pi ⇒ D5=A 仍然成立）。
-  const authPath = path.join(
-    env.USERPROFILE || env.HOME || os.homedir(),
-    '.pi',
-    'agent',
-    'auth.json',
-  );
-  try {
-    const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));
-    const key = auth[config.provider]?.key ?? auth['minimax-cn']?.key;
-    return typeof key === 'string' ? key : '';
-  } catch {
-    return '';
-  }
+  return '';
 }
 
 /**
@@ -263,6 +305,9 @@ function buildChildEnv(config, input, env = process.env) {
  */
 function startDispatchSession(input) {
   const env = input.env ?? process.env;
+  // ⚠️ **先读 `backend/ai/.env`** ⇒ 一把 key 两处用（服务与派活）。
+  //    ⚠️ **不覆盖**已存在的环境变量 ⇒ CI / 临时覆盖仍然优先。
+  loadRepoEnvFile(input.repoRoot);
   const config = dispatchConfig(input.repoRoot, env);
   if (config.dshBin === '') {
     throw new Error(
@@ -271,7 +316,10 @@ function startDispatchSession(input) {
   }
   const apiKey = resolveApiKey(config, env);
   if (apiKey === '') {
-    throw new Error(`没有模型 key（${config.apiKeyEnv}）⇒ 派不了活`);
+    throw new Error(
+      `没有模型 key（${config.apiKeyEnv} / DEEPSEEK_API_KEY）⇒ 派不了活。` +
+        `⇒ 在 backend/ai/.env 里写一行 DEEPSEEK_API_KEY=…（那个文件已被 gitignore）`,
+    );
   }
   const systemPrompt = fs.readFileSync(config.promptPath, 'utf8');
   ensureDispatchProfile(config);
@@ -298,6 +346,7 @@ module.exports = {
   buildChildEnv,
   dispatchConfig,
   ensureDispatchProfile,
+  loadRepoEnvFile,
   profileManifest,
   profilePatch,
   resolveApiKey,
