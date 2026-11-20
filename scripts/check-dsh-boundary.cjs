@@ -107,6 +107,21 @@ const DSH_TYPE_NAMES = [
 const ALLOWED_SERVICE_DSH_PACKAGES = ["@deepseek-ai/dsh-sdk-client"];
 
 /**
+ * **dsh 运行时**（`@deepseek-ai/dsh`）—— 只许作为 **devDependency** 出现在服务清单里。
+ *
+ * ## 为什么允许（而 `dependencies` 里不许）
+ *
+ * `@deepseek-ai/dsh` 是 **dsh 的运行时本体**（CLI + headless 子会话）。
+ * 我们的**服务**不需要它（服务只通过 `dsh-sdk-client` 跟 dsh 说话 ⇒ 运行时是**别人**起的子进程）。
+ * 但 **PM 派活链路**需要它（issue #123：派活改成 `dsh --profile dispatch "<任务>"`）
+ * ⇒ 它是**工具链**的依赖，不是服务的依赖 ⇒ 放 devDependencies。
+ *
+ * ⚠️ **只放行这一个包，且只许在 devDependencies** ⇒ 服务真的 `dependencies` 里
+ * 出现 dsh 运行时 ⇒ 照样被拦下（那会让镜像把运行时带进生产）。
+ */
+const ALLOWED_SERVICE_DSH_DEV_PACKAGES = ["@deepseek-ai/dsh"];
+
+/**
  * **pi-ai 禁令**（D5=A）。
  *
  * ⚠️ `@deepseek-ai/dsh-llm-pi-ai` 是 dsh 官方的「pi-ai 支撑的 provider 适配器」
@@ -327,7 +342,6 @@ for (const manifestName of ["dsh-plugin/package.json", "package.json"]) {
 	const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 	const deps = {
 		...(manifest.dependencies ?? {}),
-		...(manifest.devDependencies ?? {}),
 		...(manifest.peerDependencies ?? {}),
 	};
 	for (const [name] of Object.entries(deps)) {
@@ -336,8 +350,24 @@ for (const manifestName of ["dsh-plugin/package.json", "package.json"]) {
 			report(manifestPath, "pi-ai 禁令", `dsh 侧的依赖里有「${name}」`);
 		}
 		if (name.startsWith(DSH_PACKAGE_PREFIX) && !isDshSide) {
+			// ⚠️ **只许** ALLOWED_SERVICE_DSH_PACKAGES（依赖里不许有 dsh 运行时）
 			if (!ALLOWED_SERVICE_DSH_PACKAGES.includes(name)) {
 				report(manifestPath, "目录边界", `服务的依赖清单里有 dsh 的包「${name}」`);
+			}
+		}
+	}
+	// devDependencies **单独判**（⚠️ 不要跟 dependencies 合并 ⇒ 同名两处会互相豁免）
+	for (const [name] of Object.entries(manifest.devDependencies ?? {})) {
+		const isDshSide = manifestName.startsWith("dsh-plugin/");
+		if (isDshSide && FORBIDDEN_PI_PACKAGES.includes(name)) {
+			report(manifestPath, "pi-ai 禁令", `dsh 侧的依赖里有「${name}」`);
+		}
+		if (name.startsWith(DSH_PACKAGE_PREFIX) && !isDshSide) {
+			const isAllowed =
+				ALLOWED_SERVICE_DSH_PACKAGES.includes(name) ||
+				ALLOWED_SERVICE_DSH_DEV_PACKAGES.includes(name);
+			if (!isAllowed) {
+				report(manifestPath, "目录边界", `服务的 devDependencies 里有 dsh 的包「${name}」`);
 			}
 		}
 	}
