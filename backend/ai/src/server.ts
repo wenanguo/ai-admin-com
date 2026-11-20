@@ -34,6 +34,7 @@ import { bridgeSecret } from "./core/adapter/dsh/runner.ts";
 import { dshAdminConfig } from "./core/adapter/dsh-admin/config.ts";
 import { DshAdminInstance } from "./core/adapter/dsh-admin/instance.ts";
 import { createDshAdminProxy, type DshAdminProxyHandler } from "./core/adapter/dsh-admin/proxy.ts";
+import { pluginRegistry } from "./core/plugins.ts";
 import type { AdminJudge } from "./core/session/identity.ts";
 
 export { MISSING_TOKEN_MESSAGE, NOT_FOUND_MESSAGE, corsMiddleware, errorHandler, notFoundHandler };
@@ -119,18 +120,14 @@ function createDshAdmin(): DshAdminWiring | undefined {
 }
 
 /**
- * 从已注册的插件里取 admin 判定器（**没有 ⇒ undefined** ⇒ 反代一律拒绝）。
+ * 从**插件注册表**里取 admin 判定器（**没有 ⇒ undefined** ⇒ 反代一律拒绝）。
  *
  * ⚠️ **插件 → 内核**的依赖方向 ⇒ 内核不 import 插件；
  *    这里在**入口侧**（`src/server.ts`）取 ⇒ 装配点仍在外面。
+ * ⚠️ 注册表是**内核与插件之间唯一的接头**（`core/plugins.ts`）⇒ 走它 ⇒ 口径只有一份。
  */
 function adminJudgeOfPlugins(): AdminJudge | undefined {
-	for (const plugin of plugins) {
-		if (plugin.adminJudge !== undefined) {
-			return plugin.adminJudge;
-		}
-	}
-	return undefined;
+	return pluginRegistry.adminJudge();
 }
 
 /** 启动服务（监听 `PORT`，缺省 3100）。 */
