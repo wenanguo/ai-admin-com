@@ -363,6 +363,7 @@ try {
   child = startDispatchSession({
     repoRoot: REPO_ROOT,
     worktreePath,
+    branch,
     message: task,
     logPath,
   });

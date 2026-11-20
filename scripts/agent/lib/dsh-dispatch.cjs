@@ -63,6 +63,37 @@ function numberEnv(env, name, fallback) {
 }
 
 /**
+ * **拼系统提示词** = 我们的开发流程（`.pi/prompts/dev.md`）+ **工作区说明**。
+ *
+ * ## 为什么必须拼「工作区说明」
+ *
+ * 实测（第一次 dsh 派活）：子代理**不知道自己在哪个目录** ⇒ 它的工具调用用了
+ * **主 checkout 的绝对路径**（`D:\project\ai-admin-com\...`）⇒
+ * 一旦它写文件，**会写进别人的 checkout**（而主 checkout 是 PM 自己在用的 ⇒ 会互相打架）。
+ *
+ * ⇒ 明确告诉它：**只在这个工作区里干活**（含分支名 ⇒ 它知道该提哪个 PR）。
+ *
+ * @param {object} config 派活配置。
+ * @param {string} worktreePath 工作区路径。
+ * @param {string} [branch] 分支名。
+ * @returns {string} 系统提示词。
+ */
+function buildSystemPrompt(config, worktreePath, branch) {
+  const base = fs.readFileSync(config.promptPath, 'utf8');
+  return (
+    `${base}\n\n` +
+    `---\n\n` +
+    `## 你的工作区（**只在这里干活**）\n\n` +
+    `- 工作区（cwd）：\`${worktreePath}\`\n` +
+    (branch ? `- 分支：\`${branch}\`（⇒ PR 就提到这个分支）\n` : '') +
+    `- ⚠️ **所有**文件读写、命令、git 操作都必须在上面这个目录里。\n` +
+    `- ⚠️ **不要碰主 checkout**（\`${config.repoRoot ?? ''}\` —— 那是 PM 自己在用的那份）\n` +
+    `  ⇒ 写进去会互相打架（分支、文件、提交都会撞）。\n` +
+    `- ⚠️ 相对路径就是相对**工作区** ⇒ 直接用 \`backend/ai/...\` 这种写法就行。\n`
+  );
+}
+
+/**
  * 找 dsh 的可执行文件（**JS 入口** ⇒ 用 node 起）。
  *
  * ⚠️ 顺序：`DISPATCH_DSH_BIN` ⇒ 仓里 `backend/ai/node_modules` ⇒ PATH 上的 `dsh`。
@@ -142,6 +173,7 @@ function dispatchConfig(repoRoot, env = process.env) {
   };
   const preset = PRESET[provider] ?? PRESET['deepseek-direct'];
   return {
+    repoRoot,
     dshBin: resolveDshBin(repoRoot, env),
     dshHome:
       env.DISPATCH_DSH_HOME ?? path.join(repoRoot, '.scratch', 'dispatch', 'dsh-home'),
@@ -346,7 +378,7 @@ function startDispatchSession(input) {
         `⇒ 在 backend/ai/.env 里写一行 DEEPSEEK_API_KEY=…（那个文件已被 gitignore）`,
     );
   }
-  const systemPrompt = fs.readFileSync(config.promptPath, 'utf8');
+  const systemPrompt = buildSystemPrompt(config, input.worktreePath, input.branch);
   ensureDispatchProfile(config);
 
   const out = fs.openSync(input.logPath, 'a');
@@ -369,6 +401,7 @@ module.exports = {
   DSH_PLUGIN_PACKAGE,
   PROFILE_BUNDLES,
   buildChildEnv,
+  buildSystemPrompt,
   dispatchConfig,
   ensureDispatchProfile,
   loadRepoEnvFile,
