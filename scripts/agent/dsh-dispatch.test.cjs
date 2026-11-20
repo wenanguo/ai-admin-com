@@ -50,7 +50,7 @@ test('dispatchConfig：缺省值（**我们自己的 provider** ⇒ 不是 pi �
 test('dispatchConfig：**按手里有什么 key 选路由**（只有 MiniMax ⇒ minimax）', () => {
   const config = dispatchConfig(REPO_ROOT, { MINIMAX_CN_API_KEY: 'mm' });
   assert.strictEqual(config.provider, 'minimax');
-  assert.strictEqual(config.model, 'MiniMax-M3.1-Flash');
+  assert.strictEqual(config.model, 'MiniMax-M3');
   assert.strictEqual(config.baseURL, 'https://api.minimaxi.com/v1');
 });
 
@@ -70,7 +70,7 @@ test('dispatchConfig：显式 provider ⇒ **模型与地址跟着换**（不许
     DISPATCH_PROVIDER: 'minimax',
   });
   assert.strictEqual(config.provider, 'minimax');
-  assert.strictEqual(config.model, 'MiniMax-M3.1-Flash');
+  assert.strictEqual(config.model, 'MiniMax-M3');
   assert.strictEqual(config.baseURL, 'https://api.minimaxi.com/v1');
 });
 
@@ -108,7 +108,7 @@ test('profilePatch：插我们的插件 + 指定模型路由（**provider 名要
   const patch = profilePatch(config);
   assert.ok(patch.includes("name: '@ai-admin/dsh-plugin'"));
   assert.ok(patch.includes('provider: minimax'));
-  assert.ok(patch.includes('model: MiniMax-M3.1-Flash'));
+  assert.ok(patch.includes('model: MiniMax-M3'));
 });
 
 test('buildChildEnv：系统提示词是 base64 的**开发流程** + 权限是「不等人」', () => {

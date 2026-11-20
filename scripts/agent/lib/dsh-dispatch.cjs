@@ -30,7 +30,7 @@
  * | `DISPATCH_DSH_HOME` | `<repo>/.scratch/dispatch/dsh-home` | dsh 的 home（profile / 会话） |
  * | `DISPATCH_DSH_PROFILE` | `dispatch` | 派活用的 profile 名 |
  * | `DISPATCH_PROVIDER` | `minimax` | provider 路由名（我们自己的那个） |
- * | `DISPATCH_MODEL` | `MiniMax-M3.1-Flash` | 模型 id |
+ * | `DISPATCH_MODEL` | `MiniMax-M3` | 模型 id（⚠️ **别用 M3.1-Flash** ⇒ 实测它只读不写，见下） |
  * | `DISPATCH_BASE_URL` | `https://api.minimaxi.com/v1` | OpenAI 兼容的根地址 |
  * | `DISPATCH_API_KEY` | —— | 模型 key（**只在环境变量里**） |
  * | `DISPATCH_API_KEY_ENV` | `DISPATCH_API_KEY` | key 放在哪个环境变量里 |
@@ -168,7 +168,11 @@ function dispatchConfig(repoRoot, env = process.env) {
     (!hasDeepseek && hasMinimax ? 'minimax' : 'deepseek-direct');
   // ⚠️ 路由 → (默认模型, 默认地址) 的配对表（⚠️ **配错就认证失败** ⇒ 不许各选各的）。
   const PRESET = {
-    minimax: { model: 'MiniMax-M3.1-Flash', baseURL: 'https://api.minimaxi.com/v1' },
+    // ⚠️ **实测（2026-11-20）**：`MiniMax-M3.1-Flash` 在 dsh 的 headless 里会**只读不写**
+    //    （三轮派活 · 每轮 40~60 分钟 · 100+ 次工具调用 · **零文件** ⇒ 全作废）。
+    //    换成 `MiniMax-M3` ⇒ 同一个任务 7 分钟就开始写代码、40 分钟交出 3 个提交 + PR。
+    //    ⇒ 派活的缺省模型必须是**全量 M3**，不是 Flash。
+    minimax: { model: 'MiniMax-M3', baseURL: 'https://api.minimaxi.com/v1' },
     'deepseek-direct': { model: 'deepseek-chat', baseURL: 'https://api.deepseek.com/v1' },
   };
   const preset = PRESET[provider] ?? PRESET['deepseek-direct'];
