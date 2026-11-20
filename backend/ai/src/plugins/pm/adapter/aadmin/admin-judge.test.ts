@@ -14,8 +14,9 @@
 
 import { describe, expect, it } from "vitest";
 import { AadminClient } from "./client.ts";
-import { createAdminJudge, createCachedAdminJudge } from "./admin-judge.ts";
+import { createAdminJudge } from "./admin-judge.ts";
 import { AadminCurrentUserResolver } from "./current-user.ts";
+import { CachedCurrentUserResolver } from "../../../../core/session/identity.ts";
 
 /** 线上 base（含 `/api/v1`），与 env.AIADMIN_BASE_URL 同形。 */
 const BASE_URL = "https://www.pmdict.cn/api/v1";
@@ -60,6 +61,16 @@ function userResponse(data: unknown): Response {
 	});
 }
 
+/**
+ * 造一个**带缓存**的判定器（**插件侧就是这么装的**）：
+ * 内核的 `CachedCurrentUserResolver` 套在解析器外面。
+ */
+function cachedJudge(client: AadminClient) {
+	return createAdminJudge(
+		new CachedCurrentUserResolver(new AadminCurrentUserResolver(client)),
+	);
+}
+
 describe("admin 判定（问 AiAdmin）", () => {
 	it("`is_superuser: true` ⇒ 是 admin", async () => {
 		const judge = createAdminJudge({
@@ -91,7 +102,7 @@ describe("admin 判定（问 AiAdmin）", () => {
 			// 权威系统的回答：这个 token 对应的是**普通用户**
 			userResponse({ id: 4, username: "mallory", is_superuser: false }),
 		]);
-		const judge = createCachedAdminJudge(client);
+		const judge = cachedJudge(client);
 
 		expect(await judge(forgedToken)).toBe(false);
 		// ⚠️ **真的去问了 AiAdmin**（不是靠载荷判的）
@@ -101,7 +112,7 @@ describe("admin 判定（问 AiAdmin）", () => {
 
 	it("⚠️ **同一个 token 的重复判定只问一次 AiAdmin**（缓存 ⇒ iframe 不刷爆上游）", async () => {
 		const { client, calls } = makeClient([userResponse({ id: 5, is_superuser: true })]);
-		const judge = createCachedAdminJudge(client);
+		const judge = cachedJudge(client);
 
 		expect(await judge(TOKEN)).toBe(true);
 		expect(await judge(TOKEN)).toBe(true);
@@ -116,7 +127,7 @@ describe("admin 判定（问 AiAdmin）", () => {
 			userResponse({ id: 6, is_superuser: true }),
 			userResponse({ id: 7, is_superuser: false }),
 		]);
-		const judge = createCachedAdminJudge(client);
+		const judge = cachedJudge(client);
 
 		expect(await judge("token-a")).toBe(true);
 		expect(await judge("token-b")).toBe(false);
@@ -130,7 +141,7 @@ describe("admin 判定（问 AiAdmin）", () => {
 				headers: { "Content-Type": "application/json" },
 			}),
 		]);
-		const judge = createCachedAdminJudge(client);
+		const judge = cachedJudge(client);
 		await expect(judge(TOKEN)).rejects.toThrow();
 	});
 });

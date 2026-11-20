@@ -209,7 +209,8 @@ console.log("④ ⚠️ admin 判定**不许解 JWT 载荷**（载荷没验签 �
 		"没找到 isAdmin 选项",
 	);
 
-	// ④-4 插件侧**有**判定器（问 AiAdmin 的 current/info）
+	// ④-4 判定器**带缓存**（同一个 token 只问一次 AiAdmin）
+	//     ⇒ 缓存由内核的 `CachedCurrentUserResolver` 管（插件侧把它套在解析器外面）
 	const judgePath = path.join(
 		BACKEND,
 		"src",
@@ -231,10 +232,11 @@ console.log("④ ⚠️ admin 判定**不许解 JWT 载荷**（载荷没验签 �
 		),
 		"current-user.ts 里没有映射 is_superuser",
 	);
+	const pluginIndex = fs.readFileSync(path.join(BACKEND, "src", "plugins", "pm", "index.ts"), "utf8");
 	check(
 		"判定器**带缓存**（同一个 token 只问一次 AiAdmin）",
-		/CachedCurrentUserResolver/.test(judge),
-		"admin-judge.ts 里没有用 CachedCurrentUserResolver",
+		/CachedCurrentUserResolver/.test(pluginIndex),
+		"plugins/pm/index.ts 里没有用 CachedCurrentUserResolver",
 	);
 
 	// ④-5 入口侧**真的把判定器注入**了（不是只定义了不用）

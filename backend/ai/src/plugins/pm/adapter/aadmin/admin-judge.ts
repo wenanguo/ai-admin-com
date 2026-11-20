@@ -24,15 +24,16 @@
  * - **判不出来 = 不是 admin**（fail closed）。
  */
 
-import { CachedCurrentUserResolver } from "../../../../core/session/identity.ts";
 import type { AdminJudge, CurrentUserResolver } from "../../../../core/session/identity.ts";
-import { AadminCurrentUserResolver } from "./current-user.ts";
-import type { AadminClient } from "./client.ts";
 
 /**
- * 造一个 admin 判定器（**问 AiAdmin** + **内核那层短缓存**）。
+ * 造一个 admin 判定器（**问 AiAdmin**）。
  *
- * @param resolver 问当前用户的解析器（**带缓存**的那层）。
+ * ⚠️ **缓存不在这里** —— 要带缓存就把内核的 `CachedCurrentUserResolver` 套在外面
+ *    （插件侧 `index.ts` 就是这么装的 ⇒ 「当前用户」与「admin 判定」**共用一份缓存**）
+ *    ⇒ 同一个 token 只问一次 AiAdmin（管理面是整页 iframe ⇒ 几十个资源）。
+ *
+ * @param resolver 问当前用户的解析器。
  * @returns 判定器：token 对应的是超级管理员就 `true`。
  */
 export function createAdminJudge(resolver: CurrentUserResolver): AdminJudge {
@@ -41,18 +42,4 @@ export function createAdminJudge(resolver: CurrentUserResolver): AdminJudge {
 		// ⚠️ **fail closed**：字段缺失 / 不是 true ⇒ 不是 admin
 		return user.isSuperuser === true;
 	};
-}
-
-/**
- * 造一个 admin 判定器（**自带缓存**的版本 —— 直接问 AiAdmin）。
- *
- * ⚠️ 缓存由内核的 `CachedCurrentUserResolver` 管（按 token 指纹 · 默认 5 分钟）
- *    ⇒ 同一个 token 的重复请求只打一次 AiAdmin。
- *
- * @param client AiAdmin 的 HTTP 客户端。
- */
-export function createCachedAdminJudge(client: AadminClient): AdminJudge {
-	return createAdminJudge(
-		new CachedCurrentUserResolver(new AadminCurrentUserResolver(client)),
-	);
 }
