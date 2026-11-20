@@ -49,6 +49,20 @@ const DSH_PLUGIN_PACKAGE = '@ai-admin/dsh-plugin';
 const PROFILE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'];
 
 /**
+ * 读一个正整数环境变量（**读不懂就用缺省** ⇒ 不因为配置写错而崩溃）。
+ *
+ * @param {NodeJS.ProcessEnv} env 环境变量。
+ * @param {string} name 变量名。
+ * @param {number} fallback 缺省值。
+ * @returns {number} 数值。
+ */
+function numberEnv(env, name, fallback) {
+  const raw = env[name];
+  const value = Number.parseInt(raw ?? '', 10);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+/**
  * 找 dsh 的可执行文件（**JS 入口** ⇒ 用 node 起）。
  *
  * ⚠️ 顺序：`DISPATCH_DSH_BIN` ⇒ 仓里 `backend/ai/node_modules` ⇒ PATH 上的 `dsh`。
@@ -136,6 +150,10 @@ function dispatchConfig(repoRoot, env = process.env) {
     model: env.DISPATCH_MODEL ?? preset.model,
     baseURL: env.DISPATCH_BASE_URL ?? preset.baseURL,
     apiKeyEnv: env.DISPATCH_API_KEY_ENV ?? 'DISPATCH_API_KEY',
+    // ⚠️ **输出上限**（dsh 缺省 8192 ⇒ 长消息被截断 ⇒ 整个会话作废 ⇒ 派活给足）。
+    maxTokens: numberEnv(env, 'DISPATCH_MAX_TOKENS', 32768),
+    // ⚠️ **上下文窗口**（探索型任务读很多文件 ⇒ 给足）。
+    contextWindow: numberEnv(env, 'DISPATCH_CONTEXT_WINDOW', 262144),
     /** 我们插件的目录（**仓里的源码** ⇒ 装进 dsh 的 profile）。 */
     pluginPath: path.join(repoRoot, 'backend', 'ai', 'dsh-plugin'),
     /** 开发流程的提示词（**我们自己的资产** ⇒ 保留）。 */
@@ -287,6 +305,13 @@ function buildChildEnv(config, input, env = process.env) {
     DSH_AI_MODEL: config.model,
     DSH_AI_BASE_URL: config.baseURL,
     DSH_AI_API_KEY: input.apiKey,
+    // ⚠️ **输出上限**（issue #123 收尾实测出来的坑）：
+    //    dsh 的缺省是 **8192** ⇒ 一条长任务消息正好被截断
+    //    （实测：#124 的子会话探索到第 67 步，最后那条消息被 8192 截掉 ⇒ **整个会话作废**）。
+    //    ⇒ 派活给到 32768（长任务要有地方写）。
+    DSH_AI_MAX_TOKENS: String(config.maxTokens),
+    // ⚠️ **上下文窗口**（探索型任务会读很多文件 ⇒ 给足）。
+    DSH_AI_CONTEXT_WINDOW: String(config.contextWindow),
     // ⚠️ **系统提示词 = 我们的开发流程**（base64 ⇒ 多行文本不进环境变量的坑）。
     DSH_AI_SYSTEM_PROMPT: Buffer.from(input.systemPrompt, 'utf8').toString('base64'),
   };
