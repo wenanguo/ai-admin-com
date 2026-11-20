@@ -36,14 +36,42 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..');
 
 test('dispatchConfig：缺省值（**我们自己的 provider** ⇒ 不是 pi 的 provider/model）', () => {
   const config = dispatchConfig(REPO_ROOT, {});
-  assert.strictEqual(config.provider, 'minimax');
-  assert.strictEqual(config.model, 'MiniMax-M3.1-Flash');
+  // ⚠️ **手里没 key 时**的缺省：DeepSeek 官方（与服务本体一致 ⇒ 一把 key 两处用）。
+  assert.strictEqual(config.provider, 'deepseek-direct');
+  assert.strictEqual(config.model, 'deepseek-chat');
   assert.strictEqual(config.profile, 'dispatch');
-  assert.strictEqual(config.baseURL, 'https://api.minimaxi.com/v1');
+  assert.strictEqual(config.baseURL, 'https://api.deepseek.com/v1');
   // ⚠️ dsh 的 home 在 `.scratch` 下 ⇒ 不进 git
   assert.ok(config.dshHome.includes(path.join('.scratch', 'dispatch')));
   // ⚠️ 系统提示词还是**我们的开发流程**（`.pi/` 是我们的资产 ⇒ 保留）
   assert.strictEqual(config.promptPath, path.join(REPO_ROOT, '.pi', 'prompts', 'dev.md'));
+});
+
+test('dispatchConfig：**按手里有什么 key 选路由**（只有 MiniMax ⇒ minimax）', () => {
+  const config = dispatchConfig(REPO_ROOT, { MINIMAX_CN_API_KEY: 'mm' });
+  assert.strictEqual(config.provider, 'minimax');
+  assert.strictEqual(config.model, 'MiniMax-M3.1-Flash');
+  assert.strictEqual(config.baseURL, 'https://api.minimaxi.com/v1');
+});
+
+test('dispatchConfig：有 DeepSeek key ⇒ 官方路由（两个 key 都在也优先它）', () => {
+  const config = dispatchConfig(REPO_ROOT, {
+    DEEPSEEK_API_KEY: 'ds',
+    MINIMAX_CN_API_KEY: 'mm',
+  });
+  assert.strictEqual(config.provider, 'deepseek-direct');
+  assert.strictEqual(config.model, 'deepseek-chat');
+  assert.strictEqual(config.baseURL, 'https://api.deepseek.com/v1');
+});
+
+test('dispatchConfig：显式 provider ⇒ **模型与地址跟着换**（不许配错）', () => {
+  const config = dispatchConfig(REPO_ROOT, {
+    DEEPSEEK_API_KEY: 'ds',
+    DISPATCH_PROVIDER: 'minimax',
+  });
+  assert.strictEqual(config.provider, 'minimax');
+  assert.strictEqual(config.model, 'MiniMax-M3.1-Flash');
+  assert.strictEqual(config.baseURL, 'https://api.minimaxi.com/v1');
 });
 
 test('dispatchConfig：环境变量覆盖（换厂商只改配置）', () => {
@@ -92,9 +120,19 @@ test('buildChildEnv：系统提示词是 base64 的**开发流程** + 权限是�
   );
   // ⚠️ 派活的子代理**没人点同意** ⇒ 不能停在等人批准上
   assert.strictEqual(env.DSH_PERMISSION_MODE, 'danger-full-access');
-  assert.strictEqual(env.DSH_AI_PROVIDER, 'minimax');
+  assert.strictEqual(env.DSH_AI_PROVIDER, 'deepseek-direct');
   assert.strictEqual(env.DSH_AI_API_KEY, 'k');
   assert.strictEqual(env.DSH_HOME, config.dshHome);
+});
+
+test('buildChildEnv：凭据**只**进 DSH_AI_API_KEY（不许漏到别的变量里）', () => {
+  const config = dispatchConfig(REPO_ROOT, {});
+  const env = buildChildEnv(config, { systemPrompt: 'p', apiKey: 'secret-key' }, {});
+  assert.strictEqual(env.DSH_AI_API_KEY, 'secret-key');
+  const leaks = Object.entries(env).filter(
+    ([name, value]) => name !== 'DSH_AI_API_KEY' && String(value).includes('secret-key'),
+  );
+  assert.deepStrictEqual(leaks, []);
 });
 
 test('resolveApiKey：环境变量优先', () => {
@@ -102,7 +140,7 @@ test('resolveApiKey：环境变量优先', () => {
   assert.strictEqual(resolveApiKey(config, { DISPATCH_API_KEY: 'from-env' }), 'from-env');
 });
 
-test('resolveApiKey：过渡期可以从 pi 的 auth.json 借**凭据**（**不依赖它的代码**）', () => {
+test('resolveApiKey：**不再**借 pi 的 auth.json（派活彻底不碰 pi 的任何东西）', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-home-'));
   fs.mkdirSync(path.join(home, '.pi', 'agent'), { recursive: true });
   fs.writeFileSync(
@@ -112,7 +150,8 @@ test('resolveApiKey：过渡期可以从 pi 的 auth.json 借**凭据**（**不�
   );
   const config = dispatchConfig(REPO_ROOT, {});
   const key = resolveApiKey(config, { HOME: home, USERPROFILE: home });
-  assert.strictEqual(key, 'borrowed');
+  // ⚠️ issue #123 收尾：连**凭据文件**也不借 ⇒ 「不要 pi」更彻底。
+  assert.strictEqual(key, '');
 });
 
 test('resolveApiKey：什么都没有 ⇒ 空串（**不猜**）', () => {

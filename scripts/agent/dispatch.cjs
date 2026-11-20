@@ -43,7 +43,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { parseDependencies, isSettled } = require('./lib/deps.cjs');
-const { dispatchConfig, startDispatchSession } = require('./lib/dsh-dispatch.cjs');
+const {
+  dispatchConfig,
+  loadRepoEnvFile,
+  startDispatchSession,
+} = require('./lib/dsh-dispatch.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const STATE_DIR = path.join(REPO_ROOT, '.scratch', 'dispatch');
@@ -254,6 +258,10 @@ if (!issueNumber) {
   console.error('      node scripts/agent/dispatch.cjs --collect <号>');
   process.exit(2);
 }
+
+// ⚠️ **先读 `backend/ai/.env`** ⇒ 凭据只写一处（服务与派活共用）。
+//    ⚠️ **不覆盖**已存在的环境变量 ⇒ CI / 临时覆盖仍然优先。
+loadRepoEnvFile(REPO_ROOT);
 
 const n = Number(issueNumber);
 const issue = getIssue(n);
