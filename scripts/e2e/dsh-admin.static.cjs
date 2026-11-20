@@ -15,6 +15,15 @@
  *    核心里不许出现 `mcp-servers` / `plugin-market` 这类 CRUD）；
  * ③ **配置项齐了**（4 个环境变量都有实现与文档）。
  *
+ * ## ⚠️ 还有第四条（PR #147 的修复轮）：**admin 判定不许解 JWT 载荷**
+ *
+ * 载荷**没验签** ⇒ 任何人伪造 `{"access":"admin"}` 就能拿到 dsh 的完整管理 UI
+ * （插件市场 / 终端 / 文件）⇒ **权限提升**。
+ * ⇒ 这里用**静态检查**钉死：
+ *
+ * ④ **反代里没有「解载荷」的代码**（不许出现 `base64url` / `decodeJwt` /
+ *    `access === 'admin'` 这类形状）⇒ 且 **没注入判定器就拒绝**（fail closed）。
+ *
  * ⚠️ **静态**（不真起服务）⇒ 快、能进 CI ⇒ 但它管不了「dsh 的 UI 长什么样」
  *    （那一条只能人工验 ⇒ 见 PR 正文）。
  */
@@ -156,6 +165,84 @@ console.log("③ 配置项齐了（4 个环境变量都有实现与文档）");
 		"总开关缺省是关的（enabled 缺省 false）",
 		/enabled:\s*isEnabled\(/.test(config),
 		"没找到 enabled 的缺省",
+	);
+}
+
+console.log("④ ⚠️ admin 判定**不许解 JWT 载荷**（载荷没验签 ⇒ 伪造即提权）");
+{
+	const proxyPath = path.join(DSH_ADMIN_DIR, "proxy.ts");
+	const proxy = fs.existsSync(proxyPath) ? fs.readFileSync(proxyPath, "utf8") : "";
+
+	// ④-1 反代里**不许**出现「解载荷」的形状
+	//     （base64url 解码 / split(".") / 读 access 字段 ⇒ 都是「信载荷」）
+	const payloadPatterns = [
+		{ label: "base64url 解码", pattern: /base64url/ },
+		{ label: "按 '.' 切 JWT", pattern: /split\(\s*["']\.["']\s*\)/ },
+		{ label: "读 access 字段", pattern: /\[\s*["']access["']\s*\]/ },
+		{ label: "读 is_superuser 字段", pattern: /\[\s*["']is_superuser["']\s*\]/ },
+	];
+	for (const entry of payloadPatterns) {
+		check(
+			`反代里没有「${entry.label}」这种解载荷的代码`,
+			!entry.pattern.test(proxy),
+			`proxy.ts 里出现了 ${entry.pattern}`,
+		);
+	}
+
+	// ④-2 **fail closed**：没注入判定器 ⇒ 拒绝（不许回退到解载荷）
+	check(
+		"没注入判定器就拒绝（fail closed）",
+		/options\.isAdmin\s*===\s*undefined/.test(proxy) ||
+			/judge\s*===\s*undefined/.test(proxy),
+		"没找到「没判定器 ⇒ 拒绝」的分支（⇒ 可能回退到了解载荷）",
+	);
+	check(
+		"判定器缺省值**不是**某个本地函数（不许有兜底判定）",
+		!/options\.isAdmin\s*\?\?/.test(proxy),
+		"找到了 `options.isAdmin ?? …`（⇒ 有兜底判定 ⇒ 可能解载荷）",
+	);
+
+	// ④-3 判定器是**注入的**（问权威系统）
+	check(
+		"判定器是注入的（`isAdmin` 选项）",
+		/isAdmin\??:\s*\(token:\s*string\)/.test(proxy),
+		"没找到 isAdmin 选项",
+	);
+
+	// ④-4 插件侧**有**判定器（问 AiAdmin 的 current/info）
+	const judgePath = path.join(
+		BACKEND,
+		"src",
+		"plugins",
+		"pm",
+		"adapter",
+		"aadmin",
+		"admin-judge.ts",
+	);
+	const judge = fs.existsSync(judgePath) ? fs.readFileSync(judgePath, "utf8") : "";
+	check("插件侧有 admin 判定器（admin-judge.ts）", judge.length > 0, "找不到 admin-judge.ts");
+	check(
+		"判定器认的是 `is_superuser`（真后端的字段名）",
+		/is_superuser/.test(
+			fs.readFileSync(
+				path.join(BACKEND, "src", "plugins", "pm", "adapter", "aadmin", "current-user.ts"),
+				"utf8",
+			),
+		),
+		"current-user.ts 里没有映射 is_superuser",
+	);
+	check(
+		"判定器**带缓存**（同一个 token 只问一次 AiAdmin）",
+		/CachedCurrentUserResolver/.test(judge),
+		"admin-judge.ts 里没有用 CachedCurrentUserResolver",
+	);
+
+	// ④-5 入口侧**真的把判定器注入**了（不是只定义了不用）
+	const serverText = fs.readFileSync(path.join(BACKEND, "src", "server.ts"), "utf8");
+	check(
+		"server.ts 把 admin 判定器注进了反代",
+		/isAdmin:\s*adminJudge/.test(serverText),
+		"server.ts 里没有 `isAdmin: adminJudge…`",
 	);
 }
 

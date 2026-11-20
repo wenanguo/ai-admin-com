@@ -87,18 +87,61 @@ describe("AI 管理面（dsh 的 Web UI 反代）", () => {
 
 	it("给了 `dshAdmin` ⇒ 挂在 `/dsh-admin`（**普通用户 403**）", async () => {
 		const app = createCoreApp({
+			dshAdmin: createDshAdminProxy({
+				port: 1,
+				authCookie: "dsh-auth-x=y",
+				// ⚠️ 判定器**问权威系统** ⇒ 只有 `admin-token` 是 admin
+				isAdmin: async (token) => token === "admin-token",
+			}),
+		});
+		const customServer = app.listen(0);
+		await new Promise<void>((resolve) => customServer.once("listening", () => resolve()));
+		const address = customServer.address() as AddressInfo;
+		try {
+			// 判定器不认这个 token ⇒ 403（**进代理之前**就拦住了）
+			const response = await fetch(`http://127.0.0.1:${address.port}/dsh-admin/`, {
+				headers: { authorization: `Bearer ${fakeJwt({ access: "user" })}` },
+			});
+			expect(response.status).toBe(403);
+		} finally {
+			await new Promise<void>((resolve) => customServer.close(() => resolve()));
+		}
+	});
+
+	it("⚠️ **伪造 `access: 'admin'` 的载荷 ⇒ 403**（解载荷提不了权）", async () => {
+		const app = createCoreApp({
+			dshAdmin: createDshAdminProxy({
+				port: 1,
+				authCookie: "dsh-auth-x=y",
+				isAdmin: async (token) => token === "admin-token",
+			}),
+		});
+		const customServer = app.listen(0);
+		await new Promise<void>((resolve) => customServer.once("listening", () => resolve()));
+		const address = customServer.address() as AddressInfo;
+		try {
+			const forged = fakeJwt({ access: "admin" });
+			const response = await fetch(`http://127.0.0.1:${address.port}/dsh-admin/`, {
+				headers: { authorization: `Bearer ${forged}` },
+			});
+			expect(response.status).toBe(403);
+		} finally {
+			await new Promise<void>((resolve) => customServer.close(() => resolve()));
+		}
+	});
+
+	it("⚠️ **没注入判定器 ⇒ 503**（fail closed：默认拒绝）", async () => {
+		const app = createCoreApp({
 			dshAdmin: createDshAdminProxy({ port: 1, authCookie: "dsh-auth-x=y" }),
 		});
 		const customServer = app.listen(0);
 		await new Promise<void>((resolve) => customServer.once("listening", () => resolve()));
 		const address = customServer.address() as AddressInfo;
 		try {
-			// 载荷里 `access: 'user'` ⇒ 不是 admin ⇒ 403（**进代理之前**就拦住了）
-			const userToken = fakeJwt({ access: "user" });
 			const response = await fetch(`http://127.0.0.1:${address.port}/dsh-admin/`, {
-				headers: { authorization: `Bearer ${userToken}` },
+				headers: { authorization: "Bearer admin-token" },
 			});
-			expect(response.status).toBe(403);
+			expect(response.status).toBe(503);
 		} finally {
 			await new Promise<void>((resolve) => customServer.close(() => resolve()));
 		}

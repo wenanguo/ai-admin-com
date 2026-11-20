@@ -21,11 +21,13 @@ import { env } from "../../core/env/env.ts";
 import type { AiPlugin } from "../../core/plugins.ts";
 import {
 	CachedCurrentUserResolver,
+	type AdminJudge,
 	type CurrentUserResolver,
 } from "../../core/session/identity.ts";
 import type { CommandDefinition } from "../../core/tools/types.ts";
 import { AadminClient } from "./adapter/aadmin/client.ts";
 import { AadminCurrentUserResolver } from "./adapter/aadmin/current-user.ts";
+import { createAdminJudge } from "./adapter/aadmin/admin-judge.ts";
 import { AadminDataSource } from "./adapter/datasource.ts";
 import { setEnumWarningSink, standardEnumWarningSink } from "./adapter/enums.ts";
 import { pmContextProvider } from "./context/pm-context.ts";
@@ -46,6 +48,8 @@ export interface PmPluginOptions {
 	createDataSource?: (token: string) => TaskCreator;
 	/** 怎么问当前用户（默认：问 AiAdmin）。 */
 	currentUser?: CurrentUserResolver;
+	/** 怎么判 admin（默认：问 AiAdmin 的 `is_superuser`）。 */
+	adminJudge?: AdminJudge;
 }
 
 /**
@@ -81,11 +85,16 @@ export function createPmPlugin(options: PmPluginOptions = {}): AiPlugin {
 	// ⚠️ 进程级的告警去处也装上（不只数据源这一条路径）
 	//    ⇒ 「不猜语义」的承诺是**可观测**的（枚举归一遇到不认识的线上码要打日志）。
 	setEnumWarningSink(standardEnumWarningSink);
+	// ⚠️ **身份与 admin 判定共用同一份缓存** ⇒ 同一个 token 只问一次 AiAdmin
+	//    （管理面是整页 iframe ⇒ 几十个资源 ⇒ 不缓存就是几十次问权威系统）。
+	const currentUser = options.currentUser ?? defaultCurrentUserResolver();
 	return {
 		id: PM_PLUGIN_ID,
 		label: "PM 业务插件",
 		commands: createPmCommands(options),
-		currentUser: options.currentUser ?? defaultCurrentUserResolver(),
+		currentUser,
+		// ⚠️ **admin 判定 = 问 AiAdmin**（不是解 token 载荷 ⇒ 伪造载荷提不了权）
+		adminJudge: options.adminJudge ?? createAdminJudge(currentUser),
 		context: pmContextProvider,
 		// ⚠️ **探针与默认地址也归插件** ⇒ 内核不认识 AiAdmin
 		health: { aiadmin: probeAiAdmin },
@@ -104,7 +113,12 @@ function defaultDataSourceFactory(): (token: string) => TaskCreator {
 		});
 }
 
-/** 默认的当前用户解析器（问 AiAdmin + 内核那层短缓存）。 */
+/**
+ * 默认的当前用户解析器（问 AiAdmin + 内核那层短缓存）。
+ *
+ * ⚠️ **缓存很重要**：管理面是整页 iframe ⇒ 几十个静态资源 ⇒
+ *    不缓存就是几十次「问权威系统」。
+ */
 function defaultCurrentUserResolver(): CurrentUserResolver {
 	return new CachedCurrentUserResolver(
 		new AadminCurrentUserResolver(new AadminClient({ baseUrl: pmEnv.AIADMIN_BASE_URL })),

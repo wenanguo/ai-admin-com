@@ -24,12 +24,18 @@
  *
  * ⚠️ token 与 cookie **只在内存里**（不落盘、不进日志）——同 `core/audit/audit-redact.ts` 的口径。
  *
- * ## ⚠️ admin 判定的口径（**不是**安全边界）
+ * ## admin 判定：**问权威系统**（不是解 token 载荷）
  *
- * 缺省口径 = **解 JWT 载荷**看 `access === 'admin'`
- * （与前端 `access.ts` / mock 的 `currentUser.access === 'admin'` 同一套）。
- * ⚠️ **不验签** ⇒ 它挡得住「普通用户」，挡不住「伪造载荷的人」。
- * ⇒ 要更严就注入 `isAdmin`（去 AiAdmin 问 currentUser）——本模块留了这个口子。
+ * ⚠️ **载荷没验签** ⇒ 任何人都能伪造 `{"access":"admin"}` ⇒
+ *    拿它判权限 = **权限提升**（dsh 的插件市场能装包 ⇒ 等于拿到装包权）。
+ *    ⇒ 这里**不再解载荷**，判定器是**注入的**（`isAdmin`）。
+ *
+ * 判定器做的事：**问权威系统「你是谁」** ⇒ 判它返回的「是不是超级管理员」
+ * （插件侧的映射见 `plugins/pm/adapter/aadmin/current-user.ts`；
+ *  缓存由内核的 `CachedCurrentUserResolver` 管 ⇒ **iframe 的每个资源不会各打一次**）。
+ *
+ * ⚠️ **默认一律 fail closed**：没注入判定器 ⇒ **拒绝**（不猜、不回退到解载荷）。
+ *    判定器报错（权威系统挂了 / token 无效）⇒ **同样拒绝**（502，拒的是访问）。
  */
 
 import { Buffer } from "node:buffer";
@@ -38,6 +44,7 @@ import { Socket } from "node:net";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { extractBearerToken } from "../../http/auth.ts";
+import { toErrorEnvelope } from "../../http/errors.ts";
 import { errorBody } from "../../http/respond.ts";
 
 /** 管理面的挂载前缀（前端 iframe 的 `src` 就是它）。 */
@@ -90,9 +97,15 @@ export interface DshAdminProxyOptions {
 	 */
 	mountPath?: string;
 	/**
-	 * admin 判定（缺省 = 解 JWT 载荷看 `access === 'admin'`）。
+	 * admin 判定器（**问权威系统**：token 是不是有效、是不是超级管理员）。
 	 *
-	 * ⚠️ 可以注入成「去 AiAdmin 问 currentUser」⇒ 那才是**权威**判定。
+	 * ⚠️ **不给就一律拒绝**（fail closed）—— 本模块**不再**解 JWT 载荷
+	 *    （载荷没验签 ⇒ 伪造 `{"access":"admin"}` 就能提权）。
+	 *
+	 * ⚠️ 判定器**报错**（权威系统挂了 / token 无效）⇒ 也拒（502 / 403）。
+	 *
+	 * @param token `Bearer` 后面那串（**只在内存里** ⇒ 不落盘、不进日志）。
+	 * @returns 是不是超级管理员。
 	 */
 	isAdmin?: (token: string) => boolean | Promise<boolean>;
 	/**
@@ -113,52 +126,6 @@ export interface DshAdminProxyHandler extends RequestHandler {
 
 /** admin 判定的结果。 */
 type AdminVerdict = { ok: true } | { ok: false; status: number; message: string };
-
-/**
- * 解 JWT 的**载荷**（不验签）。
- *
- * ⚠️ 只用于「是不是 admin」这个**提示性**判定 ⇒ 真正的边界应注入 `isAdmin`。
- *
- * @param token `Bearer` 后面那串。
- * @returns 载荷；不是 JWT / 解不开 ⇒ `undefined`。
- */
-export function decodeJwtClaims(token: string): Record<string, unknown> | undefined {
-	const parts = token.split(".");
-	if (parts.length < 2) {
-		return undefined;
-	}
-	try {
-		const json = Buffer.from(parts[1] ?? "", "base64url").toString("utf8");
-		const claims: unknown = JSON.parse(json);
-		if (typeof claims !== "object" || claims === null) {
-			return undefined;
-		}
-		return claims as Record<string, unknown>;
-	} catch {
-		return undefined;
-	}
-}
-
-/**
- * 缺省的 admin 判定：**载荷里**是不是 admin。
- *
- * 认两个口径（前端两处都在用）：
- *
- * - `access === 'admin'`（mock 的 `currentUser.access`）；
- * - `is_superuser === true`（真后端 `access.ts` 的 `canAdmin`）。
- *
- * @param token `Bearer` 后面那串。
- */
-export function defaultIsAdmin(token: string): boolean {
-	const claims = decodeJwtClaims(token);
-	if (claims === undefined) {
-		return false;
-	}
-	if (claims["access"] === "admin") {
-		return true;
-	}
-	return claims["is_superuser"] === true;
-}
 
 /**
  * 找调用方的 token（**三处都认**）。
@@ -217,11 +184,23 @@ function cookieValue(cookieHeader: string | undefined, name: string): string | u
 	return undefined;
 }
 
+/** 没注入判定器时的说法（503）。 */
+export const DSH_ADMIN_NO_JUDGE_MESSAGE =
+	"AI 管理面没配好（缺 admin 判定器 ⇒ 默认拒绝访问）";
+
+/** 判定器问权威系统失败时的说法（502）。 */
+export const DSH_ADMIN_JUDGE_FAILED_MESSAGE = "AI 管理面暂时不可用（问不动权威系统）";
+
+/** 判定器说「这个 token 过期了」时的说法（401）。 */
+export const DSH_ADMIN_INVALID_TOKEN_MESSAGE = "登录状态已失效（请重新登录后再试）";
+
 /**
  * 判调用方是不是 admin。
  *
  * - 没有 token ⇒ **401**（连 dsh 都不用打）；
- * - 有 token 但不是 admin ⇒ **403**。
+ * - **没注入判定器** ⇒ **503**（fail closed：宁可管理面不可用，也不放行）；
+ * - 有 token 但不是 admin ⇒ **403**；
+ * - 判定器**报错** ⇒ **401**（token 过期）或 **502**（权威系统挂了）⇒ **同样不放行**。
  */
 async function judgeAdmin(
 	token: string | undefined,
@@ -230,12 +209,50 @@ async function judgeAdmin(
 	if (token === undefined || token.length === 0) {
 		return { ok: false, status: 401, message: DSH_ADMIN_NO_TOKEN_MESSAGE };
 	}
-	const isAdmin = options.isAdmin ?? defaultIsAdmin;
-	const allowed = await isAdmin(token);
+	// ⚠️ **fail closed**：没判定器 ⇒ 拒绝（**不许**回退到「解 token 载荷」）
+	const judge = options.isAdmin;
+	if (judge === undefined) {
+		return { ok: false, status: 503, message: DSH_ADMIN_NO_JUDGE_MESSAGE };
+	}
+	let allowed: boolean;
+	try {
+		allowed = await judge(token);
+	} catch (error) {
+		// ⚠️ 判定器报错 ⇒ **拒**（不回退、不猜）
+		return judgeFailure(error);
+	}
 	if (allowed) {
 		return { ok: true };
 	}
 	return { ok: false, status: 403, message: DSH_ADMIN_FORBIDDEN_MESSAGE };
+}
+
+/**
+ * 判定器报错 ⇒ 翻译成「拒绝」。
+ *
+ * ⚠️ **401** = 权威系统说这个 token 过期了；**其余**（权威系统挂了等）⇒ **502**。
+ *    ⚠️ 两种都**不放行** ⇒ 判定器挂了 = 管理面不可用（不是「谁都能进」）。
+ */
+function judgeFailure(error: unknown): AdminVerdict {
+	const { status } = toErrorEnvelope(error);
+	if (status === 401) {
+		return { ok: false, status: 401, message: DSH_ADMIN_INVALID_TOKEN_MESSAGE };
+	}
+	return { ok: false, status: 502, message: DSH_ADMIN_JUDGE_FAILED_MESSAGE };
+}
+
+/** WS 升级被拒时的 reason 短语（按状态码挑一个像样的）。 */
+function wsReasonOf(status: number): string {
+	switch (status) {
+		case 401:
+			return "Unauthorized";
+		case 403:
+			return "Forbidden";
+		case 503:
+			return "Service Unavailable";
+		default:
+			return "Bad Gateway";
+	}
 }
 
 /** cookie 对里 `name=value` 的 name。 */
@@ -390,7 +407,7 @@ export function createDshAdminProxy(options: DshAdminProxyOptions): DshAdminProx
 					});
 					const verdict = await judgeAdmin(token, options);
 					if (!verdict.ok) {
-						const reason = verdict.status === 401 ? "Unauthorized" : "Forbidden";
+						const reason = wsReasonOf(verdict.status);
 						socket.write(`HTTP/1.1 ${verdict.status} ${reason}\r\n\r\n`);
 						socket.destroy();
 						return;

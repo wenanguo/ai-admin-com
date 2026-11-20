@@ -34,6 +34,7 @@ import { bridgeSecret } from "./core/adapter/dsh/runner.ts";
 import { dshAdminConfig } from "./core/adapter/dsh-admin/config.ts";
 import { DshAdminInstance } from "./core/adapter/dsh-admin/instance.ts";
 import { createDshAdminProxy, type DshAdminProxyHandler } from "./core/adapter/dsh-admin/proxy.ts";
+import type { AdminJudge } from "./core/session/identity.ts";
 
 export { MISSING_TOKEN_MESSAGE, NOT_FOUND_MESSAGE, corsMiddleware, errorHandler, notFoundHandler };
 
@@ -94,6 +95,9 @@ function createDshAdmin(): DshAdminWiring | undefined {
 		// ⚠️ **每次问实例要 cookie** ⇒ dsh 重启换了 cookie 立刻生效
 		authCookie: () => instance.authCookie,
 		onAuthCookie: (cookie) => instance.setAuthCookie(cookie),
+		// ⚠️ **admin 判定 = 问权威系统**（插件给的判定器 ⇒ 内核不认识 AiAdmin）
+		//    ⇒ 伪造 token 载荷提不了权；没判定器 ⇒ **默认拒绝**（fail closed）。
+		isAdmin: adminJudgeOfPlugins(),
 	});
 	return {
 		handler,
@@ -112,6 +116,21 @@ function createDshAdmin(): DshAdminWiring | undefined {
 		},
 		stop: () => instance.stop(),
 	};
+}
+
+/**
+ * 从已注册的插件里取 admin 判定器（**没有 ⇒ undefined** ⇒ 反代一律拒绝）。
+ *
+ * ⚠️ **插件 → 内核**的依赖方向 ⇒ 内核不 import 插件；
+ *    这里在**入口侧**（`src/server.ts`）取 ⇒ 装配点仍在外面。
+ */
+function adminJudgeOfPlugins(): AdminJudge | undefined {
+	for (const plugin of plugins) {
+		if (plugin.adminJudge !== undefined) {
+			return plugin.adminJudge;
+		}
+	}
+	return undefined;
 }
 
 /** 启动服务（监听 `PORT`，缺省 3100）。 */
