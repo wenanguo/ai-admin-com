@@ -167,7 +167,7 @@ export function defaultIsAdmin(token: string): boolean {
  * | ---- | ---- |
  * | `Authorization: Bearer <token>` | 普通请求（前端 `fetch` / `request` 带的）|
  * | `?access_token=<token>` | 手工调试 / 分享链接 |
- * | cookie `aipm_admin` | **iframe 导航**（浏览器发不了自定义头 ⇒ 只能靠 cookie）|
+ * | cookie `admin_access_token` | **iframe 导航**（浏览器发不了自定义头 ⇒ 只能靠 cookie）|
  *
  * @param input 请求头与 URL。
  */
