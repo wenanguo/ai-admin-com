@@ -791,3 +791,25 @@
   - **插件**：业务插件 `backend/ai/src/plugins/pm/**` **一个字没改**（`git diff` 为空）⇒ 命令语义不变；
     注册表机制原样（`core/plugins.ts` 注册表 + 依赖注入不变、`src/plugins.ts` 仍是唯一 import 处）⇒ `check-core-purity.cjs` 仍绿。
 - **#123 已派**（拔 pi，**含 pi-ai**，D5=A）⇒ 它会改**我们自己的派活流程** ⇒ `--no-merge`，PM 亲自看并实测。
+
+### 2026-11-19 · #123 完成（pi 彻底出库）⇒ **PM 派活链路也换到 dsh**；#124 在途
+
+- **#123 已合并**（PR #139）：
+  - **内核不再 import pi**：新增 `core/session/agent-event.ts`（运行时事件词汇**我们自己的**）·
+    `core/gate/decision.ts`（闸门决策与宿主无关）· `core/tools/types.ts`（工具类型自己声明）；
+    删掉 pi 专用实现（`pi-session.ts` / `session-entries.ts` / `mcp.pi.ts` / `skill-override.pi.ts`）⇒ 不留双份实现；
+    运行时**只剩一个执行层**（dsh）⇒ 去掉 `AI_RUNNER` 双跑开关；
+  - **依赖树里没有 pi**：`package.json` 去掉 `@earendil-works/pi-coding-agent`；
+    dsh 底座默认挂着的「pi-ai 支撑的 provider 适配器」用 npm `overrides` 顶成**空壳**
+    （`backend/ai/stubs/dsh-llm-pi-ai/`）⇒ **pi-ai 物理上不在树里**（比「不用它」更强：它用不了）；
+  - **派活改用 dsh**：`scripts/agent/dispatch.cjs` 不再 spawn `pi-launcher.js`
+    ⇒ 改起 `dsh --profile dispatch "<任务>"`（headless）⇒ 系统提示词仍是我们的 `.pi/prompts/dev.md`
+    ⇒ **本仓的 `.pi/` 开发资产保留**（`.agents/skills/**` 与技能正文都没动）；
+  - **守卫加第四档**（服务里不许有 pi）+ 新增 `scripts/e2e/dispatch-dsh.static.cjs`。
+- **🔧 落地时踩到并修掉的坑（PR #141）**：
+  - **第一次用新链路派活就失败**：「找不到 dsh 运行时」⇒ **仓里根本没装 dsh 运行时**
+    ⇒ 把 `@deepseek-ai/dsh@0.2.2-rc.5` 装成 `backend/ai` 的 **devDependency**（服务不需要它 ⇒ 只在 devDependencies）；
+  - 守卫 \`check-dsh-boundary.cjs\` 精确化：dsh 运行时**只许**在 devDependencies ⇒ \`dependencies\` 里出现就拦；
+    ⚠️ **顺手修掉我自己引入的漏洞**：原先把 dependencies 与 devDependencies **合并**判 ⇒ 同名两处互相豁免；
+  - 新增 **负例测试**（`scripts/e2e/dsh-boundary.static.cjs`，进 CI）⇒ 把「放行」不许被改松。
+- **里程碑意义**：**PM 自己的开发流程现在也跑在 DeepSeek Harness 上**（子会话 = \`dsh --profile dispatch\`）。
