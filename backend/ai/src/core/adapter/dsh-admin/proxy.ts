@@ -69,8 +69,9 @@ export interface DshAdminProxyOptions {
 	 * dsh 的**签名 cookie**（免登录用；用启动 token 换来的那份）。
 	 *
 	 * ⚠️ 只在内存里 ⇒ 不落盘、不进日志。
+	 * ⚠️ 可以给一个**取值的函数** ⇒ dsh 重启换了 cookie 时能立刻用上新的。
 	 */
-	authCookie?: string;
+	authCookie?: string | (() => string | undefined);
 	/**
 	 * 挂载前缀（缺省 `/dsh-admin`）⇒ 决定 cookie 的 `Path` 改写成什么。
 	 */
@@ -247,7 +248,14 @@ function stripMountPath(url: string, mountPath: string): string {
 export function createDshAdminProxy(options: DshAdminProxyOptions): DshAdminProxyHandler {
 	const mountPath = options.mountPath ?? DSH_ADMIN_MOUNT_PATH;
 	// ⚠️ 缓存里的签名 cookie（只在内存里）⇒ 抓到新的就换掉
-	let authCookie = options.authCookie ?? "";
+	let cachedCookie = typeof options.authCookie === "string" ? options.authCookie : "";
+	/** 取当前的签名 cookie（给了函数就**每次问它** ⇒ 上层换了立刻生效）。 */
+	const readCookie = (): string => {
+		if (typeof options.authCookie === "function") {
+			return options.authCookie() ?? "";
+		}
+		return cachedCookie;
+	};
 
 	const proxy = createProxyMiddleware<IncomingMessage, Response>({
 		target: `http://127.0.0.1:${options.port}`,
@@ -260,15 +268,15 @@ export function createDshAdminProxy(options: DshAdminProxyOptions): DshAdminProx
 		on: {
 			// ⚠️ 免登录：把 dsh 的签名 cookie 追加进去
 			proxyReq: (proxyReq) => {
-				injectAuthCookie(proxyReq, authCookie);
+				injectAuthCookie(proxyReq, readCookie());
 			},
 			proxyReqWs: (proxyReq) => {
-				injectAuthCookie(proxyReq, authCookie);
+				injectAuthCookie(proxyReq, readCookie());
 			},
 			// 抓 dsh 发的签名 cookie ⇒ 存起来（给下一批请求用）
 			proxyRes: (proxyRes) => {
 				captureAuthCookie(proxyRes, (cookie) => {
-					authCookie = cookie;
+					cachedCookie = cookie;
 					options.onAuthCookie?.(cookie);
 				});
 			},

@@ -42,6 +42,10 @@ const ALLOWED_DEPENDENCIES = [
 	"@deepseek-ai/dsh-sdk-client",
 	"@prisma/client",
 	"express",
+	// ⚠️ **反代中间件**（issue #124：AI 管理面 = 嵌 dsh 自带的 Web UI ⇒ 要反代）
+	//    也是**通用件**（不是业务系统）⇒ 只允许出现在**适配层**
+	//    （`core/adapter/dsh-admin/**`）。
+	"http-proxy-middleware",
 	"typebox",
 	"vitest",
 	"yaml",

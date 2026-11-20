@@ -17,6 +17,8 @@
 //    ⇒ 插件必须**先注册**，否则构造时会认为「配置里的插件没注册」。
 import { plugins } from "./plugins.ts";
 import type { Express } from "express";
+import type { Server } from "node:http";
+import type { Socket } from "node:net";
 import { agentsRoot, loadAgentConfigs } from "./core/config/loader.ts";
 import { agentRuntime } from "./core/session/runtime.ts";
 import {
@@ -29,6 +31,9 @@ import {
 } from "./core/app.ts";
 import { createDshBridgeRouter } from "./core/adapter/dsh/bridge.ts";
 import { bridgeSecret } from "./core/adapter/dsh/runner.ts";
+import { dshAdminConfig } from "./core/adapter/dsh-admin/config.ts";
+import { DshAdminInstance } from "./core/adapter/dsh-admin/instance.ts";
+import { createDshAdminProxy, type DshAdminProxyHandler } from "./core/adapter/dsh-admin/proxy.ts";
 
 export { MISSING_TOKEN_MESSAGE, NOT_FOUND_MESSAGE, corsMiddleware, errorHandler, notFoundHandler };
 
@@ -36,11 +41,14 @@ export { MISSING_TOKEN_MESSAGE, NOT_FOUND_MESSAGE, corsMiddleware, errorHandler,
  * 装配 app（**不监听**）。
  *
  * 中间件顺序：预检/CORS → 路由 → 404 → 错误处理。
+ *
+ * @param options 装配选项（`dshAdmin` = AI 管理面的反代；不给就没有那条路由）。
  */
-export function createApp(): Express {
+export function createApp(options: { dshAdmin?: DshAdminProxyHandler } = {}): Express {
 	return createCoreApp({
 		plugins,
 		agentsRoot: agentsRoot(),
+		dshAdmin: options.dshAdmin,
 		// ⚠️ **命令桥**（内部端点，**不在对外契约里**）：
 		//    dsh 侧的插件回调我们执行命令 ⇒ 命令本体、审计、参数收窄都在我们这边。
 		//    密钥是**进程内随机**的 ⇒ 别的进程调不动。
@@ -54,6 +62,56 @@ export function createApp(): Express {
 			);
 		},
 	});
+}
+
+/** AI 管理面的接线（dsh 的 Web UI ⇒ 反代 ⇒ admin 页的 iframe）。 */
+interface DshAdminWiring {
+	/** 反代中间件（挂到 `/dsh-admin`）。 */
+	handler: DshAdminProxyHandler;
+	/** 把 **WS 升级**也交给代理（`app.use` **不拦**升级请求）。 */
+	attach: (server: Server) => void;
+	/** 起 dsh web（**不阻塞** HTTP 服务 ⇒ dsh 慢也不拖慢我们）。 */
+	start: () => void;
+	/** 停 dsh web。 */
+	stop: () => Promise<void>;
+}
+
+/**
+ * 造 AI 管理面的接线（**缺省关** ⇒ `DSH_ADMIN_ENABLED` 不是 1 就返回 `undefined`）。
+ */
+function createDshAdmin(): DshAdminWiring | undefined {
+	const config = dshAdminConfig();
+	if (!config.enabled) {
+		return undefined;
+	}
+	const instance = new DshAdminInstance({
+		port: config.port,
+		home: config.home,
+		trustedHost: config.trustedHost,
+	});
+	const handler = createDshAdminProxy({
+		port: config.port,
+		// ⚠️ **每次问实例要 cookie** ⇒ dsh 重启换了 cookie 立刻生效
+		authCookie: () => instance.authCookie,
+		onAuthCookie: (cookie) => instance.setAuthCookie(cookie),
+	});
+	return {
+		handler,
+		attach: (server) => {
+			// ⚠️ **WS 升级不走 Express 挂载** ⇒ 得自己接（socket 的类型按 node 的说法是 Duplex）
+			server.on("upgrade", (req, socket, head) => {
+				handler.upgrade(req, socket as unknown as Socket, head);
+			});
+		},
+		start: () => {
+			void instance.start().catch((error: unknown) => {
+				console.error(
+					`[dsh-admin] dsh web 起不来：${error instanceof Error ? error.message : String(error)}`,
+				);
+			});
+		},
+		stop: () => instance.stop(),
+	};
 }
 
 /** 启动服务（监听 `PORT`，缺省 3100）。 */
@@ -80,15 +138,21 @@ export function start(): void {
 	}
 
 	const port = Number(process.env.PORT ?? 3100);
-	const app = createApp();
+	// ⚠️ **AI 管理面**（缺省关 ⇒ 不起 dsh web、不挂 `/dsh-admin`）
+	const dshAdmin = createDshAdmin();
+	const app = createApp({ dshAdmin: dshAdmin?.handler });
 	const server = app.listen(port, () => {
 		console.log(`[ai-service] 已启动：http://localhost:${port}`);
 	});
+	dshAdmin?.attach(server);
+	dshAdmin?.start();
 
 	// 优雅退出：先停止接新连接，再退出
 	for (const signal of ["SIGTERM", "SIGINT"] as const) {
 		process.on(signal, () => {
 			console.log(`[ai-service] 收到 ${signal}，正在关闭…`);
+			// ⚠️ **dsh web 也得停**（别留一个孤儿进程占着端口）
+			void dshAdmin?.stop().catch(() => {});
 			server.close(() => process.exit(0));
 			// 兜底：SSE 长连接可能挂着 ⇒ 最多等 5 秒
 			setTimeout(() => process.exit(0), 5000).unref();

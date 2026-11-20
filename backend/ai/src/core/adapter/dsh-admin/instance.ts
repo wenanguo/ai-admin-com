@@ -202,6 +202,15 @@ export class DshAdminInstance {
 		return this.#cookie;
 	}
 
+	/**
+	 * 换掉签名 cookie（dsh 发了新的 ⇒ 用新的）。
+	 *
+	 * ⚠️ 只在内存里。
+	 */
+	setAuthCookie(cookie: string): void {
+		this.#cookie = cookie.length > 0 ? cookie : undefined;
+	}
+
 	/** 崩溃重启了几次（诊断用）。 */
 	get restarts(): number {
 		return this.#restarts;
