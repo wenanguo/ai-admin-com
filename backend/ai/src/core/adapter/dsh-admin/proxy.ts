@@ -52,6 +52,17 @@ export const DSH_ADMIN_FORBIDDEN_MESSAGE = "只有管理员能访问 AI 管理�
 /** dsh 签名 cookie 的名前缀（dsh 自己发的：`dsh-auth-…`）。 */
 const DSH_AUTH_COOKIE_PREFIX = "dsh-auth-";
 
+/** 管理面 token 的**查询参数名**（`/dsh-admin/?access_token=…`）。 */
+const ADMIN_TOKEN_QUERY_KEY = "access_token";
+
+/**
+ * 管理面 token 的**cookie 名**（`aipm_admin`）。
+ *
+ * ⚠️ **为什么需要它**：管理面是**整页 iframe** ⇒ 浏览器发的是**导航请求**
+ *    ⇒ **带不了 `Authorization` 头** ⇒ 只能靠 cookie / 查询参数。
+ */
+const ADMIN_TOKEN_COOKIE = "aipm_admin";
+
 /** dsh web 挂了时的说法（502）。 */
 const DSH_ADMIN_UNAVAILABLE_MESSAGE = "AI 管理面暂时不可用（dsh web 没起来？）";
 
@@ -148,17 +159,73 @@ export function defaultIsAdmin(token: string): boolean {
 }
 
 /**
+ * 找调用方的 token（**三处都认**）。
+ *
+ * | 来源 | 谁用 |
+ * | ---- | ---- |
+ * | `Authorization: Bearer <token>` | 普通请求（前端 `fetch` / `request` 带的）|
+ * | `?access_token=<token>` | 手工调试 / 分享链接 |
+ * | cookie `aipm_admin` | **iframe 导航**（浏览器发不了自定义头 ⇒ 只能靠 cookie）|
+ *
+ * @param input 请求头与 URL。
+ */
+export function extractAdminToken(input: {
+	authorization?: string | undefined;
+	url?: string | undefined;
+	cookie?: string | undefined;
+}): string | undefined {
+	const fromHeader = extractBearerToken(input.authorization);
+	if (fromHeader !== undefined) {
+		return fromHeader;
+	}
+	const fromQuery = queryValue(input.url, ADMIN_TOKEN_QUERY_KEY);
+	if (fromQuery !== undefined && fromQuery.length > 0) {
+		return fromQuery;
+	}
+	return cookieValue(input.cookie, ADMIN_TOKEN_COOKIE);
+}
+
+/** URL 里的查询参数值。 */
+function queryValue(url: string | undefined, key: string): string | undefined {
+	if (url === undefined || url.length === 0) {
+		return undefined;
+	}
+	try {
+		return new URL(url, "http://localhost").searchParams.get(key) ?? undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/** Cookie 头里某个 cookie 的值。 */
+function cookieValue(cookieHeader: string | undefined, name: string): string | undefined {
+	if (cookieHeader === undefined || cookieHeader.length === 0) {
+		return undefined;
+	}
+	for (const part of cookieHeader.split(";")) {
+		const trimmed = part.trim();
+		if (trimmed.length === 0) {
+			continue;
+		}
+		if (cookieName(trimmed) === name) {
+			const separator = trimmed.indexOf("=");
+			return separator === -1 ? "" : trimmed.slice(separator + 1).trim();
+		}
+	}
+	return undefined;
+}
+
+/**
  * 判调用方是不是 admin。
  *
  * - 没有 token ⇒ **401**（连 dsh 都不用打）；
  * - 有 token 但不是 admin ⇒ **403**。
  */
 async function judgeAdmin(
-	authorization: string | undefined,
+	token: string | undefined,
 	options: DshAdminProxyOptions,
 ): Promise<AdminVerdict> {
-	const token = extractBearerToken(authorization);
-	if (token === undefined) {
+	if (token === undefined || token.length === 0) {
 		return { ok: false, status: 401, message: DSH_ADMIN_NO_TOKEN_MESSAGE };
 	}
 	const isAdmin = options.isAdmin ?? defaultIsAdmin;
@@ -296,7 +363,12 @@ export function createDshAdminProxy(options: DshAdminProxyOptions): DshAdminProx
 		function dshAdminProxy(req: Request, res: Response, next: NextFunction): void {
 			void (async () => {
 				// ⚠️ **判定在进代理之前** ⇒ 普通用户根本不会打到 dsh
-				const verdict = await judgeAdmin(req.get("authorization"), options);
+				const token = extractAdminToken({
+					authorization: req.get("authorization"),
+					url: req.originalUrl ?? req.url,
+					cookie: req.headers.cookie,
+				});
+				const verdict = await judgeAdmin(token, options);
 				if (!verdict.ok) {
 					res.status(verdict.status).json(errorBody(verdict.status, verdict.message));
 					return;
@@ -309,7 +381,12 @@ export function createDshAdminProxy(options: DshAdminProxyOptions): DshAdminProx
 		{
 			upgrade: (req: IncomingMessage, socket: Socket, head: Buffer): void => {
 				void (async () => {
-					const verdict = await judgeAdmin(req.headers.authorization, options);
+					const token = extractAdminToken({
+						authorization: req.headers.authorization,
+						url: req.url,
+						cookie: req.headers.cookie,
+					});
+					const verdict = await judgeAdmin(token, options);
 					if (!verdict.ok) {
 						const reason = verdict.status === 401 ? "Unauthorized" : "Forbidden";
 						socket.write(`HTTP/1.1 ${verdict.status} ${reason}\r\n\r\n`);

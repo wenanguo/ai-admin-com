@@ -132,6 +132,22 @@ describe("dsh 管理面的反代", () => {
 		expect(seen).toHaveLength(0);
 	});
 
+	it("**iframe 导航**（带不了 Authorization 头）⇒ 认 cookie 里的 token", async () => {
+		const response = await fetch(`${base}/dsh-admin/`, {
+			headers: { cookie: `aipm_admin=${ADMIN_TOKEN}` },
+		});
+		expect(response.status).toBe(200);
+		expect(seen).toHaveLength(1);
+	});
+
+	it("认查询参数里的 token（`?access_token=…`）", async () => {
+		const response = await fetch(
+			`${base}/dsh-admin/?access_token=${encodeURIComponent(ADMIN_TOKEN)}`,
+		);
+		expect(response.status).toBe(200);
+		expect(seen).toHaveLength(1);
+	});
+
 	it("admin ⇒ 放行（响应体原样透传）", async () => {
 		const response = await fetch(`${base}/dsh-admin/`, {
 			headers: { authorization: `Bearer ${ADMIN_TOKEN}` },

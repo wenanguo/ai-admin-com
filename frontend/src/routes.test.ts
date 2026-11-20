@@ -16,6 +16,8 @@ interface RouteNode {
   path?: string;
   redirect?: string;
   component?: string;
+  /** umi 的 access 字段（'canAdmin' 之类） */
+  access?: string;
   routes?: RouteNode[];
 }
 
@@ -114,5 +116,21 @@ describe('路由重定向约定', () => {
     expect(
       ai?.routes?.some((r) => r.path === '/ai/workspace' && !r.redirect),
     ).toBe(true);
+  });
+
+  /**
+   * AI 管理面（issue #124）= 整页嵌 dsh 自带的 Web UI。
+   *
+   * ⚠️ **只有 admin 看得见** ⇒ 路由上挂了 `access: 'canAdmin'`
+   *    （umi 的 access 插件拦 ⇒ 普通用户连路由都进不去；
+   *    即便手工敲地址，后端反代也会 403）。
+   */
+  it('AI 管理面 /ai/admin 只有 admin 进得去', () => {
+    const ai = (routes as RouteNode[]).find((r) => r.path === '/ai');
+    const admin = ai?.routes?.find((r) => r.path === '/ai/admin');
+
+    expect(admin).toBeDefined();
+    expect(admin?.component).toBe('./ai/admin');
+    expect(admin?.access).toBe('canAdmin');
   });
 });

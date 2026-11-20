@@ -25,6 +25,8 @@ import {
 import { AiWorkspaceShell } from '@/components/ai-workspace/AiWorkspaceShell';
 import type { BackendMenu } from '@/menu/adapter';
 import {
+  AI_ADMIN_MENU_PATH,
+  buildAiAdminMenuItem,
   buildHomeMenuItem,
   buildMenuItems,
   collectPaths,
@@ -217,7 +219,24 @@ export const layout: RunTimeLayoutConfig = ({
        *    就会出现两个「首页」⇒ 所以先查一下后端菜单里有没有。
        */
       const hasHome = items.some((item) => item.path === HOME_MENU_PATH);
-      return hasHome ? items : [buildHomeMenuItem(routeIcons), ...items];
+      /*
+       * 「AI 管理」也是**前端自有**的菜单项（issue #124）。
+       *
+       * ⚠️ 后端下发的菜单里**没有**它（AiAdmin 是另一个仓 ⇒ 改它要单独提 PR）
+       *    ⇒ 与「首页」一样，前端自己加。
+       *
+       * ⚠️ **只有 admin 加** ⇒ 普通用户的侧边栏里看不到这个入口
+       *    （页面的路由也挂了 `access: 'canAdmin'` ⇒ 两道闸门）。
+       */
+      const canAdmin = Boolean(initialState?.currentUser?.is_superuser);
+      const hasAiAdmin = items.some((item) => item.path === AI_ADMIN_MENU_PATH);
+      const withAiAdmin =
+        canAdmin && !hasAiAdmin
+          ? [...items, buildAiAdminMenuItem(routeIcons)]
+          : items;
+      return hasHome
+        ? withAiAdmin
+        : [buildHomeMenuItem(routeIcons), ...withAiAdmin];
     },
     actionsRender: () => {
       // `locale: false` opts out of the language switcher. ProLayout's own
