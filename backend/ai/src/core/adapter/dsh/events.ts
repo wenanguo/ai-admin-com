@@ -1,18 +1,18 @@
 /**
  * dsh 事件 → **我们的事件词汇**（运行时已经在说的那套）。
  *
- * ## 为什么映射到「pi 形状」而不是直接出 SSE
+ * ## 为什么映射到「我们的事件词汇」而不是直接出 SSE
  *
  * 运行时的闸门 / 审计 / 落库逻辑（`core/session/runtime.ts`）都挂在**事件**上
- * （工具开始 / 工具结束 / 助手说完话）⇒ 两个 runner 必须说**同一种话**，
- * 否则运行时就得长出两条分支（⇒ 双跑不可切、契约容易走样）。
+ * （工具开始 / 工具结束 / 助手说完话）⇒ 适配层必须说**运行时懂的那套话**，
+ * 否则运行时就得长出两条分支（⇒ 契约容易走样）。
  *
- * ⇒ 适配层把 dsh 的事件**翻译成运行时已经懂的那套事件**
+ * ⇒ 适配层把 dsh 的事件**翻译成我们的词汇**
  * （`agent_start` / `message_update` / `tool_execution_start` / …）。
  * ⇒ **运行时代码一个字不改** ⇒ 对外契约（9 个端点 + SSE 事件）一字不改。
  *
- * ⚠️ 这层词汇以后会随「拔 pi」（#123）改名成我们自己的 —— 但**形状不变**，
- *    所以那一次只是改名，不是重写。
+ * ⚠️ 这层词汇是**我们自己的**（`core/session/agent-event.ts`）⇒ 拔掉 pi 之后
+ *    它不再需要改名 —— 形状本来就是照着运行时的用法定的。
  *
  * ## dsh 事件 → 我们的事件
  *
@@ -27,7 +27,7 @@
  *    ⇒ 事件名与载荷不变 ⇒ **前端零改动**。
  */
 
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { AgentEvent, AgentMessage } from "../../session/agent-event.ts";
 import { DSH_EVENTS, asRecord, asString, type DshSessionEvent } from "./protocol.ts";
 
 /** 一次工具调用的参数（`tool/call` 的 `arguments` 是 **JSON 字符串**）。 */
@@ -48,7 +48,7 @@ export class DshEventTranslator {
 	 *
 	 * @returns 我们的事件（不用外发的返回空数组）。
 	 */
-	translate(event: DshSessionEvent): AgentSessionEvent[] {
+	translate(event: DshSessionEvent): AgentEvent[] {
 		switch (event.type) {
 			case DSH_EVENTS.ASSISTANT_MESSAGE:
 				return this.#assistantMessage(event);
@@ -80,7 +80,7 @@ export class DshEventTranslator {
 	}
 
 	/** 助手消息 ⇒ 开始 / 增量 / 结束。 */
-	#assistantMessage(event: DshSessionEvent): AgentSessionEvent[] {
+	#assistantMessage(event: DshSessionEvent): AgentEvent[] {
 		const data = asRecord(event.data);
 		const message = asRecord(data?.["message"]);
 		const text = textOf(message);
@@ -88,18 +88,18 @@ export class DshEventTranslator {
 			// ⚠️ 这一轮只有工具调用、没有正文 ⇒ **不开泡**（与今天一致）
 			return [];
 		}
-		const frames: AgentSessionEvent[] = [];
+		const frames: AgentEvent[] = [];
 		frames.push({
 			type: "message_start",
 			message: emptyAssistantMessage(),
-		} as unknown as AgentSessionEvent);
+		});
 		for (const chunk of textChunksOf(data)) {
 			if (chunk.length > 0) {
 				frames.push({
 					type: "message_update",
 					message: emptyAssistantMessage(),
 					assistantMessageEvent: { type: "text_delta", delta: chunk },
-				} as unknown as AgentSessionEvent);
+				});
 			}
 		}
 		frames.push({
@@ -108,12 +108,12 @@ export class DshEventTranslator {
 				role: "assistant",
 				content: [{ type: "text", text }],
 			},
-		} as unknown as AgentSessionEvent);
+		});
 		return frames;
 	}
 
 	/** 工具调用 ⇒ 开始执行。 */
-	#toolCall(event: DshSessionEvent): AgentSessionEvent[] {
+	#toolCall(event: DshSessionEvent): AgentEvent[] {
 		const data = asRecord(event.data);
 		const callId = asString(data?.["callId"]) ?? "";
 		const name = asString(data?.["name"]) ?? "";
@@ -131,7 +131,7 @@ export class DshEventTranslator {
 	}
 
 	/** 工具结果 ⇒ 执行结束。 */
-	#toolResult(event: DshSessionEvent): AgentSessionEvent[] {
+	#toolResult(event: DshSessionEvent): AgentEvent[] {
 		const data = asRecord(event.data);
 		const message = asRecord(data?.["message"]);
 		const callId = asString(message?.["toolCallId"]) ?? "";
@@ -157,11 +157,11 @@ export class DshEventTranslator {
 }
 
 /**
- * 一个**空的**助手消息（pi 的消息类型要一整套模型元信息 ⇒ 这里只借它的形状）。
+ * 一个**空的**助手消息（我们的事件词汇只要求 `role` 与 `content`）。
  *
  * ⚠️ 运行时只读 `role` 与 `content`（见 `event-mapper.ts`）⇒ 够用。
  */
-function emptyAssistantMessage(): unknown {
+function emptyAssistantMessage(): AgentMessage {
 	return { role: "assistant", content: [] };
 }
 

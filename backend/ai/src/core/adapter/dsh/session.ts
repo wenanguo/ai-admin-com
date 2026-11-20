@@ -16,7 +16,7 @@
  *    （我们的消息历史在 `ai_message` 表里 ⇒ 下一次重建时会把历史还原回去）。
  */
 
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { AgentEvent } from "../../session/agent-event.ts";
 import { DshClient } from "./client.ts";
 import { DshEventTranslator } from "./events.ts";
 import { decideApproval, type DshGateContext } from "./approvals.ts";
@@ -76,7 +76,7 @@ export interface DshCommandResult {
 export class DshSession implements AgentSessionLike {
 	readonly #options: DshSessionOptions;
 	readonly #translator = new DshEventTranslator();
-	readonly #listeners = new Set<(event: AgentSessionEvent) => void>();
+	readonly #listeners = new Set<(event: AgentEvent) => void>();
 	#client: DshClient | undefined;
 	#unsubscribe: (() => void) | undefined;
 	#streaming = false;
@@ -102,7 +102,7 @@ export class DshSession implements AgentSessionLike {
 	}
 
 	/** 订阅事件；返回退订函数。 */
-	subscribe(listener: (event: AgentSessionEvent) => void): () => void {
+	subscribe(listener: (event: AgentEvent) => void): () => void {
 		this.#listeners.add(listener);
 		return () => {
 			this.#listeners.delete(listener);

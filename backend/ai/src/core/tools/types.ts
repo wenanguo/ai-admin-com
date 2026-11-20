@@ -1,25 +1,65 @@
 /**
- * 命令工具的类型 —— 本服务注册给 pi 的**业务命令**。
+ * 命令工具的类型 —— 本服务注册给模型宿主的**业务命令**。
  *
- * ## 与 SDK 的 `ToolDefinition` 的差别（只有一个）
+ * ## 工具类型是**我们自己的**（issue #123：拔掉 pi）
  *
- * SDK 的 `execute` 是五参 `(toolCallId, params, signal, onUpdate, ctx)`，
- * 后三个是**必填**（可以是 `undefined`）。我们把自己的形状放宽成
- * `signal? / onUpdate? / ctx?` —— 这样单元测试可以直接 `execute("id", params)`
- * 调用，不用造 SDK 上下文桩。
+ * 以前这里 import 的是 pi SDK 的 `AgentToolResult` / `ToolAnnotations` / … ⇒
+ * 内核的类型直接长在 SDK 上 ⇒ 换宿主就得改内核。
  *
- * 放宽后仍然可以直接交给 SDK 的 `customTools`（方法参数是双变的，
- * 且 `onUpdate` 一律用 `AgentToolUpdateCallback<unknown>`，避免逆变不兼容）。
+ * ⇒ 现在这些形状**我们自己声明**（`ToolResult` / `ToolAnnotations` / …）⇒
+ * - 内核不依赖任何 SDK 的类型（拔 pi 只改这一个文件 + 它的引用点）；
+ * - 适配层负责把我们的形状翻译成宿主的形状（见 `adapter/dsh/tools.ts`）。
+ *
+ * ## `execute` 的签名
+ *
+ * 五参 `(toolCallId, params, signal?, onUpdate?, ctx?)` —— 后三个**可省**
+ * ⇒ 单元测试可以直接 `execute("id", params)` 调用，不用造上下文桩。
  */
 
-import type {
-	AgentToolResult,
-	AgentToolUpdateCallback,
-	ExtensionToolContext,
-	ToolAnnotations,
-} from "@earendil-works/pi-coding-agent";
 import type { Static, TSchema } from "typebox";
 import type { AuditWriter } from "../audit/audit.ts";
+
+/**
+ * 工具标注（只读？破坏性？幂等？）。
+ *
+ * ⚠️ **唯一事实源**：闸门与待确认队列都读它（`isDestructiveCommand`）。
+ */
+export interface ToolAnnotations {
+	/** 只读（不改数据）。 */
+	readOnlyHint?: boolean;
+	/** 破坏性（改坏了就回不来 ⇒ 要先问人）。 */
+	destructiveHint?: boolean;
+	/** 幂等（跑两遍结果一样）。 */
+	idempotentHint?: boolean;
+}
+
+/** 工具回给模型的一段内容（**我们只发文本**）。 */
+export interface ToolContentPart {
+	/** 段类型（`text`）。 */
+	type: "text";
+	/** 正文。 */
+	text: string;
+}
+
+/** 工具的执行结果（**我们的形状** ⇒ 宿主无关）。 */
+export interface ToolResult<TDetails = unknown> {
+	/** 回给模型的内容。 */
+	content: ToolContentPart[];
+	/** 结构化详情（界面 / 审计用）。 */
+	details?: TDetails;
+	/** 这次执行是不是失败了（**失败也要返回结果，不要抛异常**）。 */
+	isError?: boolean;
+}
+
+/** 工具执行中的进度回调（**可省** ⇒ 单测不用造）。 */
+export type ToolUpdateCallback<T = unknown> = (update: T) => void | Promise<void>;
+
+/**
+ * 工具执行时的上下文（**可省**）。
+ *
+ * ⚠️ **只放通用能力**（会话 id 之类）⇒ 业务需要的依赖由**插件自己闭包持有**。
+ */
+export type ToolContext = Record<string, unknown>;
 
 /** 一个业务命令工具。 */
 export interface CommandTool<TParams extends TSchema = TSchema, TDetails = unknown> {
@@ -38,9 +78,9 @@ export interface CommandTool<TParams extends TSchema = TSchema, TDetails = unkno
 		toolCallId: string,
 		params: Static<TParams>,
 		signal?: AbortSignal,
-		onUpdate?: AgentToolUpdateCallback<unknown>,
-		ctx?: ExtensionToolContext,
-	): Promise<AgentToolResult<TDetails>>;
+		onUpdate?: ToolUpdateCallback<unknown>,
+		ctx?: ToolContext,
+	): Promise<ToolResult<TDetails>>;
 }
 
 /**
@@ -48,7 +88,7 @@ export interface CommandTool<TParams extends TSchema = TSchema, TDetails = unkno
  *
  * 本切片只有一个命令（`create_task`），它是**非破坏性**的（新建的东西可以补偿撤销），
  * 所以闸门恒放行。但**形状先留好**：完整版里破坏性命令（删除、改状态）要接
- * 「待确认队列」（`ai_pending_action` 表 + `pi.on("tool_call")` 的 `block`），
+ * 「待确认队列」（`ai_pending_action` 表 + 适配层的审批缝），
  * 那时不用改工具本身。
  */
 export interface CommandGate {

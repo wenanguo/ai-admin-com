@@ -2,11 +2,11 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { Skill } from "@earendil-works/pi-coding-agent";
+import type { SkillEntry } from "./skill-loader.ts";
 import { createLoadSkillTool, LOAD_SKILL_TOOL_NAME } from "./skill-tools.ts";
 
 /** 造一个技能目录（SKILL.md + 一个附属文件）。 */
-function makeSkill(): Skill {
+function makeSkill(): SkillEntry {
 	const baseDir = mkdtempSync(join(tmpdir(), "skill-"));
 	mkdirSync(join(baseDir, "references"));
 	writeFileSync(join(baseDir, "SKILL.md"), "# 建任务\n\n先查项目。\n", "utf8");
@@ -17,7 +17,7 @@ function makeSkill(): Skill {
 		filePath: join(baseDir, "SKILL.md"),
 		baseDir,
 		disableModelInvocation: false,
-	} as Skill;
+	};
 }
 
 /** 从工具结果里取文本。 */
@@ -61,7 +61,7 @@ describe("load_skill 工具", () => {
 
 	it("文件读不到 ⇒ 失败得是人话，不带堆栈", async () => {
 		const skill = makeSkill();
-		const broken = { ...skill, filePath: join(skill.baseDir, "gone.md") } as Skill;
+		const broken = { ...skill, filePath: join(skill.baseDir, "gone.md") } as SkillEntry;
 		const brokenTool = createLoadSkillTool([broken]);
 		const result = await brokenTool.execute("call-1", { name: "create-task" });
 		expect(result.isError).toBe(true);
@@ -82,7 +82,7 @@ describe("load_skill 工具", () => {
 			filePath: join(baseDir, "SKILL.md"),
 			baseDir,
 			disableModelInvocation: false,
-		} as Skill;
+		} as SkillEntry;
 		const tool = createLoadSkillTool([skill]);
 		const result = await tool.execute("call-1", { name: "big" });
 		expect(textOf(result)).toContain("已截断");

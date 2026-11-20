@@ -9,3 +9,11 @@
 - insert:
     - id: ai-admin
       name: '@ai-admin/dsh-plugin'
+
+# ⚠️ **把 dsh 自带的「pi-ai 支撑的 provider 适配器」关掉**（issue #123 · D5=A）。
+#
+#    我们的 provider 是**自己写的**（`dsh-plugin/src/provider.js` ⇒ 建在 `dsh-llm` 的缝上）
+#    ⇒ pi-ai 那个适配器**用不到** ⇒ 关掉（它本来就是休眠的 ⇒ 行为不变）。
+#    依赖树里也**没有 pi-ai**（见 `backend/ai/package.json` 的 `overrides`）。
+- id: llm-pi-ai
+  disabled: true

@@ -1,4 +1,7 @@
 # AI 能力扩展：MCP 工具 + Skills 配方（2026-11-06 ~ 2026-11-10）
+> ⚠️ **历史**：本篇讲的是 **pi 时代**的事 ⇒ pi 已于 issue #123 拔掉
+> ⇒ 里面的 `pi-session.ts` / `session-entries.ts` / `skillsOverride` 等**都不在了**
+> ⇒ 现在的样子见 [`2026-11-19-拔掉-pi.md`](2026-11-19-拔掉-pi.md)。
 
 > 这份是「把 AI 的能力扩展成本从『开发者写代码』降到『写一个 markdown』」那次改造的交接与决策记录。
 > 设计文档：`docs/superpowers/specs/2026-11-06-aipm-mcp-skills-design.md`（在 `backend/ai/docs/`）

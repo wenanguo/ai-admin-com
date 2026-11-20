@@ -10,7 +10,7 @@
 | 目录 | 是什么 | 技术栈 |
 | ---- | ------ | ------ |
 | `frontend/` | 前端（管理后台） | Umi Max 4 · React 19 · antd 6 · ProComponents 3 |
-| `backend/ai/` | AI 服务（智能体） | Express 5 · `@earendil-works/pi-coding-agent`（pi SDK）· Prisma |
+| `backend/ai/` | AI 服务（智能体） | Express 5 · **DeepSeek Harness（dsh）** · Prisma |
 
 ⚠️ **AiAdmin 后端（FastAPI）不在这个仓里** —— 独立项目，通过 HTTP / MCP 对话。
 ⚠️ **依赖各装各的**（两套 npm）⇒ 根目录**没有** node_modules ⇒
@@ -41,8 +41,8 @@ husky / lint-staged / commitlint 都用 `frontend/node_modules/.bin/` 里的二�
 **AI 服务（cd backend/ai）**：`npm run dev`（tsx watch，3100）· `npm run build`（tsc → ESM）·
 `npm start` · `npm test`（Vitest）· `npm run typecheck`
 
-⚠️ pi SDK 是 **ESM-only** ⇒ AI 服务的产物必须是 ESM。
-⚠️ AI 服务依赖 **cwd 相对**的 `.pi/skills` 与 `.ai/auth.json` ⇒ 必须在 `backend/ai/` 下启动。
+⚠️ AI 服务是 **ESM-only** ⇒ 产物必须是 ESM。
+⚠️ AI 服务依赖 **cwd 相对**的 `.pi/skills` ⇒ 必须在 `backend/ai/` 下启动。
 
 ## Critical Rules
 
@@ -54,6 +54,8 @@ husky / lint-staged / commitlint 都用 `frontend/node_modules/.bin/` 里的二�
 - **TypeScript strict** · **Node ≥ 24.9**（`node -v` 要 ≥ v24.9.0 · 起因：`@deepseek-ai/dsh` 的 engines 要求）· **`package-lock.json`** (not yarn/pnpm)
 - **`.umi` dir is auto-generated** — delete `src/.umi` and restart if dev server acts up
 - **技能（`backend/ai/.pi/skills/**`）是提示词** ⇒ 它进模型上下文 ⇒ 走 git 评审，别写凭据
+- ⚠️ **服务里不许有 pi**（issue #123）⇒ 依赖清单 / 源码都不许出现 `@earendil-works/pi-*`
+  ⇒ 守卫：`node scripts/check-dsh-boundary.cjs` 与 `node scripts/e2e/dispatch-dsh.static.cjs`
 
 ## Architecture Essentials
 
@@ -80,9 +82,11 @@ husky / lint-staged / commitlint 都用 `frontend/node_modules/.bin/` 里的二�
 ### AI 服务（`backend/ai/`）
 
 **内核**（`src/core/`，**不 import 插件** ⇒ `node scripts/check-core-purity.cjs` 有检查）：
-`session/`（`pi-session.ts` 建 pi 会话：挂 MCP 扩展 + 闸门 + 技能段 · `runtime.ts` 会话/命令/事件流 ·
-`session-entries.ts` 历史 → pi entries · `event-mapper.ts` pi 事件 → SSE 事件 · `frame-buffer.ts` 回放窗口）·
-`gate/gate.ts`（改数据要人点头）· `mcp/mcp.ts`（AiAdmin MCP 服务器，带用户 JWT）·
+`session/`（`runtime.ts` 会话/命令/事件流 · `agent-event.ts` **我们自己的事件词汇** ·
+`event-mapper.ts` 事件 → SSE 事件 · `frame-buffer.ts` 回放窗口 · `session-registry.ts` 通道）·
+`adapter/dsh/`（**执行层**：dsh 运行时子进程 + 事件翻译 + 闸门接线）·
+`gate/gate.ts` + `gate/decision.ts`（改数据要人点头；**口径只有一份**）·
+`mcp/mcp.ts`（AiAdmin MCP 服务器，带用户 JWT）·
 `skills/`（技能提示词段 + `load_skill`）· `context/anchor.ts`（讨论上下文的通用机制）· `plugins.ts`（插件契约 + 注册表）
 
 **业务插件**（`src/plugins/pm/`）：PM 的适配层 / 命令目录 / 讨论上下文 ⇒ **业务概念都归它**；

@@ -14,7 +14,7 @@
  * - `close()` 显式关掉一个会话（会话被删、用户点了「结束对话」时用）。
  */
 
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { AgentEvent } from "./agent-event.ts";
 import type { ContextAnchor, WriteToolRule } from "../context/anchor.ts";
 import { FrameBuffer, type StreamFrame } from "./frame-buffer.ts";
 
@@ -31,7 +31,7 @@ export interface AgentSessionLike {
 		options?: { expandPromptTemplates?: boolean; streamingBehavior?: "steer" | "followUp" },
 	): Promise<void>;
 	/** 订阅事件；返回退订函数。 */
-	subscribe(listener: (event: AgentSessionEvent) => void): () => void;
+	subscribe(listener: (event: AgentEvent) => void): () => void;
 	/** 释放会话。 */
 	dispose(): void;
 	/** 正在流式输出？ */

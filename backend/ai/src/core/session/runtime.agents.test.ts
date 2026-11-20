@@ -17,7 +17,7 @@ import { prisma } from "../store/db.ts";
 import type { AgentConfig } from "../config/types.ts";
 import type { AgentProvider } from "../config/registry.ts";
 import { agentIdOfConversation } from "../config/registry.ts";
-import type { PiSessionOptions } from "./pi-session.ts";
+import type { CreateDshSessionOptions } from "../adapter/dsh/runner.ts";
 import { AgentError, AgentRuntime } from "./runtime.ts";
 import type { ConversationRecord, ConversationStore, MessageRecord } from "../store/store.ts";
 import { PluginRegistry, type AiPlugin } from "../plugins.ts";
@@ -60,6 +60,33 @@ function fakePlugins(): PluginRegistry {
 
 /* ------------------------------------------------------------------ 假实现 */
 
+/**
+ * PM 助手的技能目录（**真目录 + 真技能** ⇒ 提示词里真的有技能段）。
+ *
+ * ⚠️ 拔掉 pi 之后，技能**只以「系统提示词里的技能段」的形式**进模型上下文
+ *    ⇒ 这里用真目录 ⇒ 断言才验得到「技能按智能体配置来」。
+ */
+const pmSkillsDir = makeSkillsDir("pm-skill");
+
+/** 造一个技能目录（放一个技能）。 */
+function makeSkillsDir(name: string): string {
+	const dir = mkdtempSync(join(tmpdir(), "agent-skills-"));
+	mkdirSync(join(dir, name), { recursive: true });
+	writeFileSync(
+		join(dir, name, "SKILL.md"),
+		`---\nname: ${name}\ndescription: ${name} 的说明。\n---\n\n# ${name}\n`,
+		"utf8",
+	);
+	return dir;
+}
+
+/** 业务命令的名字（**去掉技能工具** `load_skill` — 它不是业务命令）。 */
+function businessToolsOf(options: CreateDshSessionOptions | undefined): string[] {
+	return (options?.tools ?? [])
+		.map((tool) => tool.name)
+		.filter((name) => name !== "load_skill");
+}
+
 /** PM 助手的配置（等价于仓里的 `agents/pm/agent.yaml`）。 */
 function pmConfig(): AgentConfig {
 	return {
@@ -68,7 +95,7 @@ function pmConfig(): AgentConfig {
 		description: "项目管理助手",
 		model: "minimax-cn/MiniMax-M3.1-Flash",
 		systemPrompt: "你是 PM 助手",
-		skills: ["/srv/ai/.pi/skills"],
+		skills: [pmSkillsDir],
 		mcpServers: [{ name: "aiadmin", type: "http", exposure: "direct" }],
 		tools: ["create_task"],
 		dir: "/srv/ai/agents/pm",
@@ -160,9 +187,9 @@ function fakeStore(): {
 /** 造一个运行时（记下每次建 pi 会话拿到的参数）。 */
 function makeRuntime(store: ConversationStore): {
 	runtime: AgentRuntime;
-	sessionOptions: PiSessionOptions[];
+	sessionOptions: CreateDshSessionOptions[];
 } {
-	const sessionOptions: PiSessionOptions[] = [];
+	const sessionOptions: CreateDshSessionOptions[] = [];
 	const runtime = new AgentRuntime({
 		store,
 		agents: fakeAgents(),
@@ -171,7 +198,7 @@ function makeRuntime(store: ConversationStore): {
 		audit: {
 			write: async () => {},
 		},
-		createSession: async (options: PiSessionOptions) => {
+		createDshSession: async (options: CreateDshSessionOptions) => {
 			sessionOptions.push(options);
 			return {
 				prompt: async (): Promise<void> => {},
@@ -234,20 +261,22 @@ describe("运行时 · 按智能体配置装配会话", () => {
 		);
 
 		// ① 提示词各是各的
-		expect(pmOptions?.systemPrompt).toBe("你是 PM 助手");
+		expect(pmOptions?.systemPrompt).toContain("你是 PM 助手");
 		expect(qaOptions?.systemPrompt).toBe("你是通用问答助手");
 
 		// ② **工具白名单**：PM 有 create_task，问答一个都没有
-		expect(pmOptions?.tools.map((tool) => tool.name)).toEqual(["create_task"]);
+		// ⚠️ **业务命令**只有它自己那一个（`load_skill` 是技能工具，另算）。
+		expect(businessToolsOf(pmOptions)).toEqual(["create_task"]);
 		expect(qaOptions?.tools).toEqual([]);
 
 		// ③ MCP：PM 接（地址取全局默认），问答不接
 		expect(pmOptions?.mcpServers?.[0]?.url).toBe("http://aiadmin.test/mcp");
 		expect(qaOptions?.mcpServers).toEqual([]);
 
-		// ④ 技能目录：PM 有，问答没有
-		expect(pmOptions?.skillsDirs).toEqual(["/srv/ai/.pi/skills"]);
-		expect(qaOptions?.skillsDirs).toEqual([]);
+		// ④ 技能：PM 的技能进提示词，问答没有（**不跨智能体串味**）
+		expect(pmOptions?.systemPrompt).toContain("<available_skills>");
+		expect(pmOptions?.systemPrompt).toContain("pm-skill");
+		expect(qaOptions?.systemPrompt).not.toContain("<available_skills>");
 
 		// ⑤ 模型：配置里写死的那个（不是全局默认）
 		expect(pmOptions?.model).toBe("minimax-cn/MiniMax-M3.1-Flash");
@@ -274,7 +303,7 @@ describe("运行时 · 按智能体配置装配会话", () => {
 
 		await talk(runtime, legacy.conversationId, "cmd-1");
 		await waitFor(() => sessionOptions.length >= 1);
-		expect(sessionOptions[0]?.systemPrompt).toBe("你是 PM 助手");
+		expect(sessionOptions[0]?.systemPrompt).toContain("你是 PM 助手");
 	});
 
 	it("不认识的智能体 ⇒ 直接报错（不建会话）", async () => {
@@ -321,7 +350,7 @@ describe("运行时 · 按智能体配置装配会话", () => {
 		await talk(runtime, conversation.conversationId, "cmd-1");
 		await waitFor(() => sessionOptions.length >= 1);
 
-		expect(sessionOptions[0]?.systemPrompt).toBe("你是 PM 助手");
+		expect(sessionOptions[0]?.systemPrompt).toContain("你是 PM 助手");
 	});
 });
 
@@ -365,14 +394,14 @@ describe("运行时 · 插件按智能体（阶段 4 的接线）", () => {
 			},
 		];
 		const { store } = fakeStore();
-		const sessionOptions: PiSessionOptions[] = [];
+		const sessionOptions: CreateDshSessionOptions[] = [];
 		const runtime = new AgentRuntime({
 			store,
 			agents: providers[0]!,
 			plugins: registry,
 			mcpUrl: null,
 			audit: { write: async () => {} },
-			createSession: async (options: PiSessionOptions) => {
+			createDshSession: async (options: CreateDshSessionOptions) => {
 				sessionOptions.push(options);
 				return {
 					prompt: async (): Promise<void> => {},
@@ -393,8 +422,8 @@ describe("运行时 · 插件按智能体（阶段 4 的接线）", () => {
 		const alphaOptions = sessionOptions.find((o) => o.conversationId === alpha.conversationId);
 		const betaOptions = sessionOptions.find((o) => o.conversationId === beta.conversationId);
 		// ⚠️ 各自的插件给各自的命令（**不串**）
-		expect(alphaOptions?.tools.map((tool) => tool.name)).toEqual(["cmd_alpha"]);
-		expect(betaOptions?.tools.map((tool) => tool.name)).toEqual(["cmd_beta"]);
+		expect(businessToolsOf(alphaOptions)).toEqual(["cmd_alpha"]);
+		expect(businessToolsOf(betaOptions)).toEqual(["cmd_beta"]);
 	});
 
 	it("配置里写了没注册的插件 ⇒ **启动即失败**（不静默降级）", () => {
@@ -496,16 +525,16 @@ describe("运行时 · MCP 服务器（0 / 1 / N 个）", () => {
 	/** 造一个运行时（用指定的智能体来源）。 */
 	function makeRuntime(agents: AgentProvider): {
 		runtime: AgentRuntime;
-		sessionOptions: PiSessionOptions[];
+		sessionOptions: CreateDshSessionOptions[];
 	} {
 		const { store } = fakeStore();
-		const sessionOptions: PiSessionOptions[] = [];
+		const sessionOptions: CreateDshSessionOptions[] = [];
 		const runtime = new AgentRuntime({
 			store,
 			agents,
 			mcpUrl: null,
 			audit: { write: async () => {} },
-			createSession: async (options: PiSessionOptions) => {
+			createDshSession: async (options: CreateDshSessionOptions) => {
 				sessionOptions.push(options);
 				return {
 					prompt: async (): Promise<void> => {},

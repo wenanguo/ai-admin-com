@@ -15,7 +15,7 @@
  * 1. **校验**：issue 必须带 `ready` 标签，且**依赖已全部落地**（复用 `lib/deps.cjs` 的同一套判断）
  * 2. **认领**：撤 `ready`、打 `in-progress`（与开发 agent 手工领活时的动作一致）
  * 3. **隔离**：用 `worktree.cjs add` 开一个**独立工作区**（一个 agent 一个工作区）
- * 4. **起子会话**：`pi -p ... --append-system-prompt .pi/prompts/dev.md`（**后台**，日志落盘）
+ * 4. **起子会话**：`dsh --profile dispatch "<任务>"`（**后台**，日志落盘）
  * 5. **记状态**：`��.scratch/dispatch/<号>.json`（pid / 日志 / 工作区 / PR 号）
  *
  * ## 它不做什么
@@ -38,16 +38,17 @@
  * node scripts/agent/dispatch.cjs --issue 101 --worktree <路径> --branch <分支>
  * ```
  */
-const { execFileSync, spawn } = require('node:child_process');
+const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const { parseDependencies, isSettled } = require('./lib/deps.cjs');
+const { dispatchConfig, startDispatchSession } = require('./lib/dsh-dispatch.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const STATE_DIR = path.join(REPO_ROOT, '.scratch', 'dispatch');
-const SESSION_DIR = path.join(STATE_DIR, 'sessions');
-const DEFAULT_MODEL = process.env.DISPATCH_MODEL || 'minimax-cn/MiniMax-M3.1-Flash';
+// ⚠️ **模型 id 是「我们自己的 provider」那边的 id**（不是 pi 的 `provider/model`）。
+const DEFAULT_MODEL = process.env.DISPATCH_MODEL || 'MiniMax-M3.1-Flash';
 
 /** 跑一条命令（拿文本输出）。 */
 function run(cmd, args, options = {}) {
@@ -86,7 +87,6 @@ const reuseBranch = opt('--branch');
 const note = opt('--note');
 
 fs.mkdirSync(STATE_DIR, { recursive: true });
-fs.mkdirSync(SESSION_DIR, { recursive: true });
 
 // ── 状态文件的读写 ────────────────────────────────────────────
 function statePath(n) {
@@ -180,7 +180,7 @@ if (has('--status')) {
       console.log('   ── 日志尾部 ──');
       console.log(lines.slice(-12).map((l) => '   ' + l).join('\n'));
     }
-    // ⚠️ **pi 的 print 模式只在「会话结束时」才输出** ⇒ 中途日志是空的
+    // ⚠️ **dsh 的 headless 模式只在「任务结束时」才输出** ⇒ 中途日志是空的
     //    ⇒ **中途看进度只能看 git**（工作区改动 + 最近提交）。
     if (st.worktree && fs.existsSync(st.worktree)) {
       try {
@@ -309,20 +309,11 @@ const message =
   `\n完成前请：更新 docs/notes/、在 issue 上留一条评论（做了什么 / 怎么验 / PR 号）。` +
   (note ? `\n\n【本次的具体指令】\n${note}` : '');
 
-const piArgs = [
-  '-p',
-  message,
-  '--append-system-prompt',
-  path.join(REPO_ROOT, '.pi', 'prompts', 'dev.md'),
-  '--model',
-  model,
-  '--session-dir',
-  path.join(SESSION_DIR, String(n)),
-  '--approve',
-];
+// ⚠️ **任务消息**（**唯一**发给模型的那句话）—— dsh 的 headless 模式把它当任务。
+const task = message;
 
 console.log(`\n📤 派活：issue #${n} ${issue.title}`);
-console.log(`   模型：${model}`);
+console.log(`   模型：${dispatchConfig(REPO_ROOT).provider}/${model}`);
 console.log(`   工作区：${worktreePath}（分支 ${branch}）`);
 console.log(`   日志：${logPath}`);
 console.log(`   合并：${noMerge ? '❌ 不合并（等人拍板）' : '✅ CI 绿则合'}`);
@@ -354,30 +345,23 @@ if (reuseWorktree) {
   run('node', [path.join('scripts', 'agent', 'worktree.cjs'), 'add', worktreeName], { inherit: true });
 }
 
-// ③ 后台起子会话
+// ③ 后台起子会话（**dsh** ⇒ issue #123：派活不再依赖 pi）
 // ⚠️ **不要用 `shell: true`**：Windows 的 cmd.exe 会重新解析参数
 //    （中文/括号/星号会被拆坏 ⇒ 表现为「进程活着但日志空白」）。
-//    ⇒ 直接 spawn **node + pi-launcher.js**（`~/.pi/agent/bin/pi` 那个 sh 脚本最终也是 exec 它）
-//    ⇒ 无 shell、无引号问题。
-const PI_LAUNCHER = path.join(
-  process.env.USERPROFILE || process.env.HOME || '',
-  '.pi', 'agent', 'bin', 'pi-launcher.js',
-);
-if (!fs.existsSync(PI_LAUNCHER)) {
-  console.error(`✗ 找不到 pi 的启动器：${PI_LAUNCHER}`);
-  console.error('   ⇒ 用 PI_LAUNCHER 环境变量指定它。');
+//    ⇒ 直接 spawn **node + dsh 的入口**（无 shell、无引号问题）。
+//    ⇒ profile（provider / 系统提示词 / 权限）由 `lib/dsh-dispatch.cjs` 负责。
+let child;
+try {
+  child = startDispatchSession({
+    repoRoot: REPO_ROOT,
+    worktreePath,
+    message: task,
+    logPath,
+  });
+} catch (error) {
+  console.error(`✗ 起 dsh 子会话失败：${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 }
-
-const out = fs.openSync(logPath, 'a');
-const child = spawn('node', [PI_LAUNCHER, ...piArgs], {
-  cwd: worktreePath,
-  detached: true,
-  stdio: ['ignore', out, out],
-  env: { ...process.env },
-});
-child.unref();
-fs.closeSync(out);
 
 const state = {
   issue: n,
