@@ -80,6 +80,9 @@ jobs:
       # （backend/ai/src/core/adapter/dsh/** + backend/ai/dsh-plugin/**）
       # ⇒ dsh 升级的影响面 = 适配层目录。
       - run: node ../../scripts/check-dsh-boundary.cjs
+      # dsh 边界的**负例**（issue #123 收尾）：守卫的「放行」不许被改松
+      # （dsh 运行时只许在 devDependencies；别的 dsh 包不许进清单）。
+      - run: node ../../scripts/e2e/dsh-boundary.static.cjs
       # dsh 底座摸底（issue #119）：版本锁 / 尖峰脚手架 / spec 的**静态**断言
       # ⇒ 不需要装 dsh、不需要模型凭据 ⇒ 任何 runner 都能跑。
       - run: node ../../scripts/e2e/dsh-spike.static.cjs
