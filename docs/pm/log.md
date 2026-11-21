@@ -835,3 +835,15 @@
   - ⇒ **不是任务描述的问题**（任务书 +「先落骨架」「别通读仓库」纪律都加了，Flash 仍然只读）
   - ⇒ 派活缺省模型已换（PR #148）+ `docs/notes/2026-11-20-派活模型-M3不是Flash.md`
 - **#124 仍是 OPEN**（阶段一不关闭）⇒ 下一步：**人工验 dsh 的真实 UI**（admin 看得到 / 普通用户 403 / 不配就无路由）。
+
+### 2026-11-21 · #124 阶段二：把「人工验 dsh 的真实 UI」变成**入库的运行时验收**（PR #150）
+
+- **动机**：阶段一（PR #147）已合并，但「管理面在浏览器里到底长什么样」还是**人工验** ⇒ 不可复现、不可回归。
+- **做法**：`scripts/e2e/dsh-admin-runtime.cjs`（入口）+ `backend/ai/scripts/e2e/dsh-admin-runtime.ts`（走 tsx ⇒ 能 import 我们的 TS 反代）
+  ⇒ **真起 dsh web**（官方 `web` profile · 独立 DSH_HOME）+ **真挂我们的反代** + 断言六件事。
+- **断言**（本地与 **CI 的 Linux runner 都全过** ✓）：
+  ① 转发成功（`/dsh-admin/` 拿到 dsh 的 SPA HTML · 200）② **Host 被保留**（dsh 看到的 authority 不是 127.0.0.1 ⇒ 栅栏才放行）
+  ③ **set-cookie 的 Path 改写成 `/dsh-admin/`** ④ **fail closed**（没判定器 ⇒ 503）⑤ 判定器 false ⇒ 403 ⑥ 判定器 true ⇒ 200
+- **附带发现**：SPA 的 `base` 是**相对的**（`./`）⇒ iframe 里的资源会走 `/dsh-admin/` ⇒ **不会白屏**。
+- **能进 CI 的原因**：不连数据库、不连 AiAdmin（判定器是假的）· **不需要模型凭据** · 不需要 pnpm。
+- **#124 仍是 OPEN**（阶段二不关闭）⇒ 剩最后一件：**在真实浏览器里看那个 iframe**（需要真 AiAdmin 后端 + admin token ⇒ 本机 mock 顶不了 ⇒ **要人做**）。
