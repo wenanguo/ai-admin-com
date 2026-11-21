@@ -813,3 +813,25 @@
     ⚠️ **顺手修掉我自己引入的漏洞**：原先把 dependencies 与 devDependencies **合并**判 ⇒ 同名两处互相豁免；
   - 新增 **负例测试**（`scripts/e2e/dsh-boundary.static.cjs`，进 CI）⇒ 把「放行」不许被改松。
 - **里程碑意义**：**PM 自己的开发流程现在也跑在 DeepSeek Harness 上**（子会话 = \`dsh --profile dispatch\`）。
+
+### 2026-11-20/21 · #124 口径变更（管理面改用「嵌 dsh 的 UI」）+ 阶段一合并（PR #147）
+
+- **口径变更（用户拍板）**：原计划「我们自己造智能体市场 / 技能管理 / MCP 管理」
+  ⇒ 实测 **dsh 全都自带**（web profile 里 **56 个 client-ui**：插件市场 / 技能 / MCP 管理 / 凭据）
+  ⇒ 用户拍板 **①整页嵌 ②加 http-proxy-middleware ③改写 #124 正文（同号）**
+  ⇒ **#124 正文与标题已改写**（仍是 G4 最后一条）。
+- **阶段一已合并（PR #147 · +2607 行）**：
+  - `core/adapter/dsh-admin/proxy.ts`（反代：剥前缀 / 保留 Host / cookie Path / WS / 免登录注入 cookie / **进代理前判 admin**）
+  - `core/adapter/dsh-admin/instance.ts`（dsh web 实例：spawn / 启动 token / 崩溃重启）
+  - `frontend/src/pages/ai/admin/index.tsx`（iframe 页）· 路由 `/ai/admin`（**只有 admin 看得见**）
+  - `scripts/e2e/dsh-admin.static.cjs`（**9 个既有端点逐条比对未改** + **没有自造管理面路由**）
+  - ⚠️ **默认完全不影响现网**：`DSH_ADMIN_ENABLED` 缺省 `0` ⇒ 不配就没有这条路由、也不起 dsh web。
+- **🔴 PM 审阅审出一个权限提升洞（已修）**：
+  - 原判定 = **解未验签的 JWT 载荷**看 `access === 'admin'`（⚠️ 那是 **mock** 的字段名）⇒ 伪造载荷就能拿到 dsh 完整管理 UI（插件市场/终端/文件）
+  - 修后 = **问 AiAdmin**（`/system/user/current/info`）判 **`is_superuser === true`**（只认 `true`）；**默认 503 fail closed**；判定器**走插件注册表**（内核↔插件那条缝）⇒ 内核仍无业务词；补单测「**伪造载荷 ⇒ 403**」⇒ `src` 里已搜不到任何 JWT 解码。
+- **🔴 另一个真发现：派活「只读不写」的根因是模型**
+  - `MiniMax-M3.1-Flash`：连派三轮，每轮 40~60 分钟、100+ 次工具调用、**零文件写入** ⇒ 全作废
+  - `MiniMax-M3`（全量）：**7 分钟开写**、40 分钟交 **3 个提交 + PR #147**
+  - ⇒ **不是任务描述的问题**（任务书 +「先落骨架」「别通读仓库」纪律都加了，Flash 仍然只读）
+  - ⇒ 派活缺省模型已换（PR #148）+ `docs/notes/2026-11-20-派活模型-M3不是Flash.md`
+- **#124 仍是 OPEN**（阶段一不关闭）⇒ 下一步：**人工验 dsh 的真实 UI**（admin 看得到 / 普通用户 403 / 不配就无路由）。
