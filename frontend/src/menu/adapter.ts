@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { AI_ADMIN_PAGE_PATH } from '../pages/ai/admin/paths';
 
 /** 后端菜单节点(后端 backend/app/api/v1/module_system/menu/schema.py 的 MenuOutSchema) */
 export interface BackendMenu {
@@ -66,6 +67,41 @@ export interface RouteLike {
  * ⚠️ 它指向 `/app/home` —— 那条路由挂的是**看板页**（用演示数据，不发请求）。
  */
 export const HOME_MENU_PATH = '/app/home';
+
+/**
+ * AI 管理面的路径（**与页面/路由同一个常量** ⇒ 改一处就够）。
+ *
+ * ⚠️ 这是**前端自有**的菜单项（后端下发的菜单里没有它 ⇒ 见
+ *    `buildAiAdminMenuItem` 的说明）。
+ */
+export const AI_ADMIN_MENU_PATH = AI_ADMIN_PAGE_PATH;
+
+/**
+ * 造一个前端自有的「AI 管理」菜单项（**只有 admin 看得见**）。
+ *
+ * ## 为什么需要它
+ *
+ * 侧边栏的菜单是**后端下发**的（`platform_menu`）⇒ 而「AI 管理」这条
+ * **后端还没有**（AiAdmin 是另一个仓 ⇒ 改它要单独提 PR）。
+ *
+ * ⇒ 与「首页」一样，这条菜单项**由前端自己加**（`src/app.tsx` 的
+ * `menuDataRender` 里按 `canAdmin` 加）。
+ *
+ * ⚠️ 只有 admin 加 ⇒ 普通用户的侧边栏里**看不到**这个入口。
+ *
+ * @param routeIcons 前端路由派生的图标（按 path 查）
+ * @returns 菜单项；没有图标时 `icon` 为 undefined
+ */
+export function buildAiAdminMenuItem(
+  routeIcons?: Map<string, ReactNode>,
+): MenuItem {
+  return {
+    path: AI_ADMIN_MENU_PATH,
+    name: 'AI 管理',
+    icon: routeIcons?.get(AI_ADMIN_MENU_PATH),
+    locale: false,
+  };
+}
 
 /**
  * 造一个前端自有的「首页」菜单项。

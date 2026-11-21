@@ -62,6 +62,7 @@ export {
 export { pluginRegistry, PluginRegistry, type AiPlugin } from "./plugins.ts";
 export {
 	CachedCurrentUserResolver,
+	type AdminJudge,
 	type CurrentUser,
 	type CurrentUserResolver,
 } from "./session/identity.ts";

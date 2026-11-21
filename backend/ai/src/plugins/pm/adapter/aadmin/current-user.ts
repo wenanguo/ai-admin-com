@@ -41,6 +41,13 @@ function toCurrentUser(payload: unknown): CurrentUser {
 	if (typeof name === "string") {
 		user.name = name;
 	}
+	// ⚠️ **超级管理员位**（权威系统给的 ⇒ 不是解 token 载荷来的）。
+	//    后端字段名是 `is_superuser`（也认 `isSuperuser`）⇒ **只有 true 才算**。
+	//    ⚠️ **没有这个字段 ⇒ 不是管理员**（fail closed：「判不出来」=「不是」）。
+	const superuser = record["is_superuser"] ?? record["isSuperuser"];
+	if (superuser === true) {
+		user.isSuperuser = true;
+	}
 	return user;
 }
 

@@ -29,6 +29,16 @@ export interface CurrentUser {
 	username?: string;
 	/** 姓名。 */
 	name?: string;
+	/**
+	 * 是不是**超级管理员**（**权威系统说了算** ⇒ 没有这个字段就当「不是」）。
+	 *
+	 * ⚠️ **它不是「解 token 载荷」来的** —— 载荷没验签 ⇒ 谁都能伪造。
+	 *    ⇒ 它必须是**问权威系统**得到的（插件侧把后端字段映射过来）。
+	 *
+	 * ⚠️ **没有这个字段 ⇒ 不是管理员**（fail closed）——
+	 *    「判不出来」和「不是」在授权上是一回事。
+	 */
+	isSuperuser?: boolean;
 }
 
 /**
@@ -44,6 +54,22 @@ export interface CurrentUserResolver {
 	 */
 	resolve(token: string): Promise<CurrentUser>;
 }
+
+/**
+ * admin 判定器（**问权威系统**：这个 token 是不是超级管理员）。
+ *
+ * ## ⚠️ 为什么是「问」而不是「解载荷」
+ *
+ * token 的**载荷没验签** ⇒ 任何人都能伪造 `{"access":"admin"}`
+ * ⇒ 用载荷判权限 = **权限提升**（能装插件 / 能开终端 ⇒ 等于拿到装包权）。
+ * ⇒ 判定器只信**权威系统的回答**（插件侧去问 AiAdmin）。
+ *
+ * ## 口径
+ *
+ * - **判不出来 = 不是 admin**（fail closed）；
+ * - 判定器**报错**（权威系统挂了 / token 过期）⇒ 由调用方决定怎么拒（**一律拒**）。
+ */
+export type AdminJudge = (token: string) => Promise<boolean>;
 
 /** 缓存存活时间（毫秒）。 */
 const DEFAULT_TTL_MS = 5 * 60 * 1000;

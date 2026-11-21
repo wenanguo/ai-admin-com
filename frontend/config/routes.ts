@@ -11,6 +11,7 @@
  * @doc https://umijs.org/docs/guides/routes
  */
 import { AI_WORKSPACE_PAGE_PATH } from '../src/components/ai-workspace/paths';
+import { AI_ADMIN_PAGE_PATH } from '../src/pages/ai/admin/paths';
 
 export default [
   {
@@ -290,6 +291,19 @@ export default [
         name: 'aiWorkspace',
         icon: 'robot',
         component: './ai/workspace',
+      },
+      {
+        /*
+          AI 管理面（issue #124）= **整页嵌 dsh 自带的 Web UI**。
+
+          ⚠️ 只有 admin 看得见 ⇒ `access: 'canAdmin'`（umi 的 access 插件拦）
+            ⇒ 即便手工敲地址，后端反代也会 403（两道闸门）。
+        */
+        path: AI_ADMIN_PAGE_PATH,
+        name: 'aiAdmin',
+        icon: 'crown',
+        access: 'canAdmin',
+        component: './ai/admin',
       },
     ],
   },

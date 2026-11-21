@@ -37,6 +37,10 @@ import { eventsRouter } from "./routes/events.ts";
 import { HEALTH_CACHE_TTL_MS, createHealthRouter } from "./routes/health.ts";
 import { probeDatabase, probeModel } from "./routes/health-probes.ts";
 import { pendingRouter } from "./routes/pending.ts";
+import {
+	DSH_ADMIN_MOUNT_PATH,
+	type DshAdminProxyHandler,
+} from "./adapter/dsh-admin/proxy.ts";
 import type { AiPlugin } from "./plugins.ts";
 
 export { MISSING_TOKEN_MESSAGE };
@@ -69,6 +73,12 @@ export interface CoreAppOptions {
 	 * ⚠️ 回调在**内核的 404 / 错误处理之前**执行 ⇒ 挂上去的端点才够得着。
 	 */
 	configure?: (app: Express) => void;
+	/**
+	 * AI 管理面（**dsh 自带的 Web UI** 的反代）。
+	 *
+	 * ⚠️ **不给就不挂** ⇒ 缺省没有 `/dsh-admin` 路由（管理面是**可选能力**）。
+	 */
+	dshAdmin?: DshAdminProxyHandler;
 }
 
 /**
@@ -165,6 +175,11 @@ export function createCoreApp(options: CoreAppOptions = {}): Express {
 	);
 	app.use("/api/pending", pendingRouter);
 	app.use("/api/audit", auditRouter);
+	// ⚠️ **AI 管理面**（dsh 自带的 Web UI 的反代）⇒ 给了才挂（缺省没有这条路由）
+	//    `app.use('/dsh-admin', proxy)` ⇒ **Express 自己剥前缀** ⇒ 代理里不用改路径
+	if (options.dshAdmin !== undefined) {
+		app.use(DSH_ADMIN_MOUNT_PATH, options.dshAdmin);
+	}
 	// ⚠️ **外部系统自己的端点**（业务接口）⇒ 在 404 之前挂
 	options.configure?.(app);
 	app.use(notFoundHandler);

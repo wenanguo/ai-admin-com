@@ -16,6 +16,7 @@
 | `ai-container.static.cjs` | **静态断言**AI 服务镜像的配置（Dockerfile / .dockerignore / 健康检查路由 / SSE 头）⇒ **不需要 docker** |
 | `ai-container.cjs` | **真起容器**验收 AI 服务镜像（构建 → 镜像里没凭据/没 devDeps → 技能就位 → `/health` 200 → 业务路由挂载）⇒ 需要 docker |
 | `reuse-core-example.cjs` | **真起 compose**验收「通用内核可复用」（示例系统 + 示例自己的空库 ⇒ 智能体清单能列 → 身份自己认 → 会话建得出 → **示例命令真能调**）⇒ 需要 docker |
+| `dsh-admin.static.cjs` | **静态断言**AI 管理面（issue #124）：既有 9 个端点一字未改 · 没有自造的管理面路由 · 4 个环境变量齐 · **admin 判定不许解 JWT 载荷** ⇒ **不需要 docker** |
 
 ## 用法
 
@@ -161,6 +162,27 @@ node scripts/e2e/deploy.cjs            # 或：npm run e2e:deploy
 | `WEB_PORT` / `AI_PORT` | `18080` / `13100` | 验收占用的端口（不抢 8080/3100） |
 | `E2E_AIADMIN_URL` | 用夹具里的桩 | 指向**真实** AiAdmin 后端时用（那时的 `/api/` 会回 401，也算「通」） |
 | `SKIP_BUILD` | — | `=1` 时跳过构建（用已有镜像） |
+
+## AI 管理面验收（issue #124）
+
+```bash
+# 静态断言（不需要 docker，任何机器都能跑）
+node scripts/e2e/dsh-admin.static.cjs
+# 或
+npm run e2e:dsh-admin:static
+```
+
+它钉四件事：① **既有 9 个端点一字未改**（`core/routes/contract.ts` 逐条比对基线）；
+② **没有自造的管理面路由**（dsh-admin 适配层里不许注册路由；核心里不许出现
+`mcp-servers` / `plugin-market` 这类 CRUD ⇒ 防「重复造轮子又长回来」）；
+③ **4 个环境变量**（`DSH_ADMIN_ENABLED` / `DSH_ADMIN_PORT` / `DSH_ADMIN_HOME` /
+`DSH_ADMIN_TRUSTED_HOST`）都有实现与文档；
+④ ⚠️ **admin 判定不许解 JWT 载荷**（载荷没验签 ⇒ 伪造 `{"access":"admin"}` 就能
+拿到 dsh 的完整管理 UI ⇒ **权限提升**）⇒ 反代里不许有解载荷的代码、不许有兜底判定、
+没注入判定器就得**拒绝**（fail closed）、且入口侧**真的**把判定器注进去了。
+
+⚠️ 它**管不了**「dsh 的 UI 在 iframe 里长什么样」⇒ 那一条**只能人工验**
+（见 PR #147 的正文）。
 
 ## 环境变量
 

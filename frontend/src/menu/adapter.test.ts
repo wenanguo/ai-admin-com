@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  AI_ADMIN_MENU_PATH,
   type BackendMenu,
+  buildAiAdminMenuItem,
   buildHomeMenuItem,
   buildMenuItems,
   collectPaths,
@@ -463,5 +465,29 @@ describe('前端自有的「首页」菜单项', () => {
     // 路由表里没有 ⇒ 就没有图标(而不是报错)
     expect(buildHomeMenuItem(new Map()).icon).toBeUndefined();
     expect(buildHomeMenuItem().icon).toBeUndefined();
+  });
+});
+
+/**
+ * 前端自有的「AI 管理」菜单项（issue #124）。
+ *
+ * ⚠️ 后端下发的菜单里**没有**它（AiAdmin 是另一个仓）⇒ 前端自己加
+ *    ⇒ 与「首页」同一套路。
+ */
+describe('前端自有的「AI 管理」菜单项', () => {
+  it('指向 /ai/admin，标题是「AI 管理」', () => {
+    const item = buildAiAdminMenuItem();
+
+    expect(item.path).toBe(AI_ADMIN_MENU_PATH);
+    expect(AI_ADMIN_MENU_PATH).toBe('/ai/admin');
+    expect(item.name).toBe('AI 管理');
+    expect(item.locale).toBe(false);
+  });
+
+  it('图标取自前端路由表（按 path 查）', () => {
+    const icons = new Map([['/ai/admin', 'CrownOutlined']]);
+
+    expect(buildAiAdminMenuItem(icons).icon).toBe('CrownOutlined');
+    expect(buildAiAdminMenuItem(new Map()).icon).toBeUndefined();
   });
 });

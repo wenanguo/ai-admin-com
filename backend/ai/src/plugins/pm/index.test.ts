@@ -103,3 +103,32 @@ describe("PM 插件 · 身份查询", () => {
 		expect(user?.id).toBe(7);
 	});
 });
+
+describe("PM 插件 · admin 判定", () => {
+	it("⚠️ **admin 判定 = 问权威系统**（不是解 token 载荷）", async () => {
+		const plugin = createPmPlugin({
+			createDataSource: fakeDataSource([]),
+			// 权威系统说：这个人**不是**超级管理员
+			currentUser: { resolve: async () => ({ id: 8 }) },
+		});
+		expect(plugin.adminJudge).toBeDefined();
+		// ⚠️ **载荷里写着 admin 也判不出来**（判定器只看权威系统的回答）
+		expect(await plugin.adminJudge?.("anything")).toBe(false);
+	});
+
+	it("权威系统说 `isSuperuser: true` ⇒ 是 admin", async () => {
+		const plugin = createPmPlugin({
+			createDataSource: fakeDataSource([]),
+			currentUser: { resolve: async () => ({ id: 9, isSuperuser: true }) },
+		});
+		expect(await plugin.adminJudge?.("token")).toBe(true);
+	});
+
+	it("可以注入假的 admin 判定器（单测不打 AiAdmin）", async () => {
+		const plugin = createPmPlugin({
+			createDataSource: fakeDataSource([]),
+			adminJudge: async () => true,
+		});
+		expect(await plugin.adminJudge?.("token")).toBe(true);
+	});
+});

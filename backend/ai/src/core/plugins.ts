@@ -24,7 +24,7 @@
 
 import type { ContextProvider } from "./context/anchor.ts";
 import type { DependencyCheck } from "./routes/health.ts";
-import type { CurrentUserResolver } from "./session/identity.ts";
+import type { AdminJudge, CurrentUserResolver } from "./session/identity.ts";
 import type { CommandDefinition } from "./tools/types.ts";
 
 /**
@@ -41,6 +41,13 @@ export interface AiPlugin {
 	commands?: readonly CommandDefinition[];
 	/** 这个插件怎么回答「当前用户是谁」（没有 ⇒ 内核不提供身份查询）。 */
 	currentUser?: CurrentUserResolver;
+	/**
+	 * 这个插件怎么回答「这个 token 是不是管理员」（**问权威系统**）。
+	 *
+	 * ⚠️ **不提供 ⇒ 内核一律拒绝**（fail closed）——
+	 *    绝不允许回退到「解 token 载荷」（载荷没验签 ⇒ 伪造即提权）。
+	 */
+	adminJudge?: AdminJudge;
 	/**
 	 * 这个插件的**健康检查探针**（探「上游」能不能连上）。
 	 *
@@ -99,6 +106,15 @@ export class PluginRegistry {
 	/** 第一个能回答「当前用户是谁」的插件的解析器（没有 ⇒ undefined）。 */
 	currentUserResolver(): CurrentUserResolver | undefined {
 		return this.list().find((plugin) => plugin.currentUser !== undefined)?.currentUser;
+	}
+
+	/**
+	 * 第一个能回答「这个 token 是不是管理员」的插件的判定器（没有 ⇒ undefined）。
+	 *
+	 * ⚠️ **没有 ⇒ 上层一律拒绝**（fail closed；**绝不**回退到解 token 载荷）。
+	 */
+	adminJudge(): AdminJudge | undefined {
+		return this.list().find((plugin) => plugin.adminJudge !== undefined)?.adminJudge;
 	}
 
 	/** 第一个能提供「讨论上下文」的插件的提供器（没有 ⇒ undefined）。 */
