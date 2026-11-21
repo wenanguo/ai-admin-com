@@ -17,6 +17,7 @@
 | `ai-container.cjs` | **真起容器**验收 AI 服务镜像（构建 → 镜像里没凭据/没 devDeps → 技能就位 → `/health` 200 → 业务路由挂载）⇒ 需要 docker |
 | `reuse-core-example.cjs` | **真起 compose**验收「通用内核可复用」（示例系统 + 示例自己的空库 ⇒ 智能体清单能列 → 身份自己认 → 会话建得出 → **示例命令真能调**）⇒ 需要 docker |
 | `dsh-admin.static.cjs` | **静态断言**AI 管理面（issue #124）：既有 9 个端点一字未改 · 没有自造的管理面路由 · 4 个环境变量齐 · **admin 判定不许解 JWT 载荷** ⇒ **不需要 docker** |
+| `dsh-admin-runtime.cjs` | **运行时验收**AI 管理面（issue #124 阶段二）：真起 dsh web + 真挂反代 ⇒ 转发成功 · **Host 保留** · cookie Path 改写 · **fail closed** · 403 · 200 ⇒ **不需要模型凭据 / 不需要 pnpm / 不连数据库** |
 
 ## 用法
 

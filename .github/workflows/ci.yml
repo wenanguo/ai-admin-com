@@ -92,6 +92,10 @@ jobs:
       # dsh 技能 / MCP / 插件（issue #122）：三层在 dsh 上的形状
       # ⇒ 静态断言（不需要 pnpm、不需要模型凭据）。
       - run: node ../../scripts/e2e/dsh-skills-mcp-plugins.static.cjs
+      # #124 管理面的**运行时**验收（阶段二）：真起 dsh web + 真挂反代
+      # ⇒ 断言转发成功 / Host 保留 / cookie Path 改写 / fail closed / 403 / 200
+      # ⚠️ **不需要模型凭据、不需要 pnpm、不连数据库** ⇒ 任何 runner 都能跑。
+      - run: node ../../scripts/e2e/dsh-admin-runtime.cjs
 
   lint:
     runs-on: ubuntu-latest
