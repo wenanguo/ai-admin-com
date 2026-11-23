@@ -79,7 +79,7 @@ interface DshAdminWiring {
 }
 
 /**
- * 造 AI 管理面的接线（**缺省关** ⇒ `DSH_ADMIN_ENABLED` 不是 1 就返回 `undefined`）。
+ * 造 AI 管理面的接线（**缺省关** ⇒ `AI_DSH_ADMIN_ENABLED` 不是 1 就返回 `undefined`）。
  */
 function createDshAdmin(): DshAdminWiring | undefined {
 	const config = dshAdminConfig();
