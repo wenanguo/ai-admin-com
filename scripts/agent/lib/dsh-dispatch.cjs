@@ -40,10 +40,28 @@
  */
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
 
 /** 我们插件的包名（**装进 dsh profile 的那个名字**）。 */
 const DSH_PLUGIN_PACKAGE = '@ai-admin/dsh-plugin';
+
+/**
+ * 插件状态的**文件名**（放在 profile 目录里 ⇒ 跟着 profile 一起持久化）。
+ *
+ * ⚠️ **与服务侧同一份**（`backend/ai/src/core/adapter/dsh/profile.ts` 的同名常量）
+ *    ⇒ 两边看到的是同一个 profile ⇒ 状态文件互相认。
+ */
+const PLUGIN_STATE_FILE = '.ai-admin-plugin.json';
+
+/** 算指纹时**不看**的目录（依赖 / 版本库 ⇒ 与「插件源码变没变」无关）。 */
+const FINGERPRINT_IGNORED_DIRS = new Set([
+  'node_modules',
+  '.git',
+  '.pnpm-store',
+  '.turbo',
+  '.cache',
+]);
 
 /** profile 里要用的 bundle（**dsh 自带** ⇒ 从 dsh 安装里解析）。 */
 const PROFILE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'];
@@ -268,10 +286,120 @@ function profilePatch(config) {
 }
 
 /**
- * 保证派活的 profile 存在且装了我们的插件（**幂等**）。
+ * 插件的**内容指纹**（sha256，十六进制）。
+ *
+ * ## 算什么
+ *
+ * 插件目录里**每个文件**的（相对路径 + 内容哈希）⇒ 排序后拼起来再哈希。
+ *
+ * ## ⚠️ **必须与服务侧算出同一个值**
+ *
+ * 服务侧那份在 `backend/ai/src/core/adapter/dsh/profile.ts`（同名函数）
+ * ⇒ 两边的测试都**钉住同一个 fixture 值** ⇒ 算法漂了就有人看见。
+ *
+ * @param {string} pluginPath 插件目录。
+ * @returns {string} 指纹（十六进制）。
+ */
+function pluginFingerprint(pluginPath) {
+  const hash = crypto.createHash('sha256');
+  for (const file of pluginFiles(pluginPath)) {
+    hash.update(file.relativePath);
+    hash.update('\n');
+    hash.update(
+      crypto.createHash('sha256').update(fs.readFileSync(file.absolutePath)).digest('hex'),
+    );
+    hash.update('\n');
+  }
+  return hash.digest('hex');
+}
+
+/**
+ * 插件目录里的文件（**按相对路径排序** ⇒ 指纹与遍历顺序无关）。
+ *
+ * @param {string} pluginPath 插件目录。
+ * @returns {{relativePath: string, absolutePath: string}[]} 文件清单。
+ */
+function pluginFiles(pluginPath) {
+  const out = [];
+  const walk = (dir) => {
+    const entries = fs
+      .readdirSync(dir, { withFileTypes: true })
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (FINGERPRINT_IGNORED_DIRS.has(entry.name)) {
+          continue;
+        }
+        walk(path.join(dir, entry.name));
+        continue;
+      }
+      if (!entry.isFile()) {
+        continue;
+      }
+      const absolutePath = path.join(dir, entry.name);
+      out.push({
+        relativePath: path.relative(pluginPath, absolutePath).split(path.sep).join('/'),
+        absolutePath,
+      });
+    }
+  };
+  walk(pluginPath);
+  out.sort((a, b) =>
+    a.relativePath < b.relativePath ? -1 : a.relativePath > b.relativePath ? 1 : 0,
+  );
+  return out;
+}
+
+/**
+ * 读插件的安装状态（**没有 / 坏了 ⇒ undefined** ⇒ 视为「要重装」）。
+ *
+ * @param {string} profileDir profile 目录。
+ * @returns {{fingerprint: string, spec: string, installedAt: string}|undefined} 状态。
+ */
+function readPluginState(profileDir) {
+  const file = path.join(profileDir, PLUGIN_STATE_FILE);
+  if (!fs.existsSync(file)) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (typeof parsed?.fingerprint !== 'string' || typeof parsed?.spec !== 'string') {
+      return undefined;
+    }
+    return {
+      fingerprint: parsed.fingerprint,
+      spec: parsed.spec,
+      installedAt: typeof parsed.installedAt === 'string' ? parsed.installedAt : '',
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 写插件的安装状态（**装完才写** ⇒ 写坏了就当没装过 ⇒ 下次重装）。
+ *
+ * @param {string} profileDir profile 目录。
+ * @param {{fingerprint: string, spec: string, installedAt: string}} state 状态。
+ */
+function writePluginState(profileDir, state) {
+  fs.writeFileSync(
+    path.join(profileDir, PLUGIN_STATE_FILE),
+    `${JSON.stringify(state, null, 2)}\n`,
+    'utf8',
+  );
+}
+
+/**
+ * 保证派活的 profile 存在且装了我们的插件（**幂等 + 插件一改就重装**）。
  *
  * ⚠️ **要 pnpm**（dsh 生态自己的包管理器）⇒ 没有就报错说清怎么办
  *    （**不静默降级** —— 少了插件 ⇒ 没有 provider ⇒ 派不了活）。
+ *
+ * ⚠️ **判据 = 内容指纹**（issue #158）：`pnpm add file:` 是把插件**拷贝**进 profile 的
+ *    ⇒ 路径永远不变 ⇒ **拷贝永远不刷新** ⇒ 改了插件等于没改
+ *    （实测：把 `DSH_AI_*` 改名成 `AI_DSH_*` ⇒ dsh 报 `NO_ADAPTER` ⇒ 派活瘫）。
+ *    ⇒ 现在按**内容**判：指纹变了就重装；没变就**跳过**（pnpm 装东西要联网、要时间）。
  *
  * @param {object} config 派活配置。
  * @param {object} [options] 选项。
@@ -300,7 +428,20 @@ function ensureDispatchProfile(config, options = {}) {
   //    ⇒ 插件在 dsh 进程里能 import 到 @deepseek-ai/*。
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   const wanted = `file:${config.pluginPath.replace(/\\/g, '/')}`;
-  if (manifest.dependencies?.[DSH_PLUGIN_PACKAGE] === wanted) {
+  const fingerprint = pluginFingerprint(config.pluginPath);
+  const state = readPluginState(profileDir);
+  const installedCopy = path.join(
+    profileDir,
+    'node_modules',
+    ...DSH_PLUGIN_PACKAGE.split('/'),
+  );
+  const upToDate =
+    state !== undefined &&
+    state.fingerprint === fingerprint &&
+    state.spec === wanted &&
+    manifest.dependencies?.[DSH_PLUGIN_PACKAGE] !== undefined &&
+    fs.existsSync(installedCopy);
+  if (upToDate) {
     return profileDir;
   }
   if (options.dryRun === true) {
@@ -318,6 +459,11 @@ function ensureDispatchProfile(config, options = {}) {
       }`,
     );
   }
+  writePluginState(profileDir, {
+    fingerprint,
+    spec: wanted,
+    installedAt: new Date().toISOString(),
+  });
   return profileDir;
 }
 
@@ -403,12 +549,14 @@ function startDispatchSession(input) {
 
 module.exports = {
   DSH_PLUGIN_PACKAGE,
+  PLUGIN_STATE_FILE,
   PROFILE_BUNDLES,
   buildChildEnv,
   buildSystemPrompt,
   dispatchConfig,
   ensureDispatchProfile,
   loadRepoEnvFile,
+  pluginFingerprint,
   profileManifest,
   profilePatch,
   resolveApiKey,
