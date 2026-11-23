@@ -6,7 +6,7 @@
  *   1. `docker build -f backend/ai/Dockerfile -t ai-admin-ai .` 能成功
  *   2. 镜像里**没有凭据**（`.ai/auth.json` 不在镜像层里）
  *   3. 镜像里**没有 devDependencies**（typescript / prisma CLI 都不在）
- *   4. 技能在 `/app/.pi/skills`（**cwd 相对** ⇒ `load_skill` 读得到）
+ *   4. 技能在 `/app/.pi/skills`（**相对智能体配置目录** ⇒ dsh 的技能 provider 读得到）
  *   5. 容器起来后 `GET /health` ⇒ **200** + JSON（含 `status`）
  *   6. **依赖不可用时 `/health` 仍是 200**（数据库/AiAdmin 都指向黑洞地址）
  *   7. 业务路由照常挂载：`/api/agent`、`/api/pending`、`/api/audit`（无 token ⇒ 401）
@@ -129,7 +129,7 @@ async function main() {
 
   const skills = inContainer('ls /app/.pi/skills');
   check(
-    '技能在 /app/.pi/skills（cwd 相对 ⇒ load_skill 读得到）',
+    '技能在 /app/.pi/skills（智能体配置里的相对路径 ⇒ dsh 的技能 provider 读得到）',
     ['create-task', 'list-tasks', 'update-task'].every((name) => skills.stdout.includes(name)),
     skills.stdout || skills.stderr,
   );
