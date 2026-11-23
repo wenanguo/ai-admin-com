@@ -188,7 +188,7 @@ const SUBMIT_TIMEOUT_MS = 10_000;
 /**
  * 等「提交按钮已经落在弹窗底部的操作区里」。
  *
- * ⚠️ **为什么必须等**（issue #154 的真因）：
+ * ⚠️ **为什么必须等**（issue #154 的真因之一）：
  * ProComponents 的 `ModalForm` 挂载时会把提交按钮**先 inline 渲染在表单旁边**，
  * 等 footer 的 ref 挂上后再 `forceUpdate`、用 portal **搬进 footer**
  * ⇒ 中间 **DOM 节点会被换掉一次**
@@ -196,17 +196,20 @@ const SUBMIT_TIMEOUT_MS = 10_000;
  * 的 `contentRender`：没有 `footerRef.current` 时直接渲染 `submitterDom`，
  * 有了就 `createPortal(submitterDom, footerRef.current)`）。
  *
- * 点得太早 ⇒ 点中那个「马上要被替换」的节点 ⇒ 点击丢失 ⇒ 提交没发生
- * ⇒ 用例在 CI 上**随机**翻车（本地几乎不复现，CI 上约 1/5）。
+ * ⇒ 等这一层，保证「点到的那个节点**就是最终那个**」。
  *
  * ⚠️ 等的是**状态**（按钮的最终位置），不是时间 ⇒ **不是 sleep，也不是放宽超时**。
+ * ⚠️ `timeout` 是「状态等待的**上限**」：状态在 ~1ms 内就达成（实测），
+ *    给 10s 只是为了 CI 慢时不误判（跟 `SUBMIT_TIMEOUT_MS` 同一个约定）。
  */
 async function waitForSubmitButtonInFooter() {
   await expect
-    .poll(() =>
-      [...document.querySelectorAll('.ant-modal-footer button')].some((button) =>
-        /确\s*认/.test(button.textContent ?? ''),
-      ),
+    .poll(
+      () =>
+        [...document.querySelectorAll('.ant-modal-footer button')].some(
+          (button) => /确\s*认/.test(button.textContent ?? ''),
+        ),
+      { timeout: SUBMIT_TIMEOUT_MS },
     )
     .toBe(true);
 }
@@ -307,6 +310,12 @@ describe('角色授权弹窗的预填', () => {
     //    「中间没有异步窗口」从此不是「碰巧没赶上」,而是**物理上不可能有**:
     //    菜单树 / 部门树的数据永远不来 ⇒ 提交的菜单只能来自 record 的**同步预填**。
     //    (有异步预填的实现 ⇒ 这里提交的是空菜单 ⇒ 用例红)
+    //
+    //    ⚠️ 顺带把**另一个**不稳定源掐掉了:菜单树数据一到,弹窗内容变高,
+    //    底部的「确定」按钮会**移位**(实测 top 442 → 498),
+    //    而点击过程中按钮还在动 ⇒ Playwright 的 click 只能等它「稳定」
+    //    (antd Modal 有入场动画,按钮的盒子在打开后还要动 ~300ms)
+    //    ⇒ CI 上要么 click 永不返回,要么点了没提交(issue #154)。
     mocks.getCurrentUser.mockReturnValue(new Promise(() => {}));
     mocks.getDeptTree.mockReturnValue(new Promise(() => {}));
 
@@ -317,8 +326,7 @@ describe('角色授权弹窗的预填', () => {
     // ⚠️ **等提交按钮已经在弹窗 footer 里**（真因见 `waitForSubmitButtonInFooter` 的注释）：
     //    ProComponents 的 `ModalForm` 挂载时会先把按钮 inline 渲染在表单旁边,
     //    随后 portal 搬进 footer ⇒ **DOM 节点会被换掉一次**。
-    //    点得太早 ⇒ 点中那个「马上要被替换」的节点 ⇒ 点击丢失 ⇒ 提交没发生
-    //    ⇒ 这条用例在 CI 上随机翻车(issue #154)。
+    //    ⇒ 等这一层，保证点到的那个节点**就是最终那个**。
     await waitForSubmitButtonInFooter();
 
     await getByRole('button', { name: /确\s*认/ }).click();
