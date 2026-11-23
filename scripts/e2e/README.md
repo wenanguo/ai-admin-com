@@ -18,6 +18,7 @@
 | `reuse-core-example.cjs` | **真起 compose**验收「通用内核可复用」（示例系统 + 示例自己的空库 ⇒ 智能体清单能列 → 身份自己认 → 会话建得出 → **示例命令真能调**）⇒ 需要 docker |
 | `dsh-admin.static.cjs` | **静态断言**AI 管理面（issue #124）：既有 9 个端点一字未改 · 没有自造的管理面路由 · 4 个环境变量齐 · **admin 判定不许解 JWT 载荷** ⇒ **不需要 docker** |
 | `dsh-admin-runtime.cjs` | **运行时验收**AI 管理面（issue #124 阶段二）：真起 dsh web + 真挂反代 ⇒ 转发成功 · **Host 保留** · cookie Path 改写 · **fail closed** · 403 · 200 ⇒ **不需要模型凭据 / 不需要 pnpm / 不连数据库** |
+| `dsh-profile-refresh.cjs` | **运行时验收**dsh profile 的插件刷新（issue #158）：**改一次插件内容 ⇒ profile 里的拷贝跟着变** + 内容没变就不重装 ⇒ **不需要 pnpm / 不联网 / 不需要模型凭据** |
 
 ## 用法
 
@@ -184,6 +185,19 @@ npm run e2e:dsh-admin:static
 
 ⚠️ 它**管不了**「dsh 的 UI 在 iframe 里长什么样」⇒ 那一条**只能人工验**
 （见 PR #147 的正文）。
+
+## dsh profile 插件刷新验收（issue #158）
+
+```bash
+node scripts/e2e/dsh-profile-refresh.cjs        # 或：npm run e2e:dsh:profile-refresh
+```
+
+⚠️ **不需要模型凭据、不连数据库、不联网**（用「假 pnpm」⇒ 不装真依赖）。
+它钉住这条**很容易退回去**的行为：**改一次插件内容 ⇒ profile 里的拷贝跟着变**
+（旧判据是「依赖路径一样就跳过」⇒ 拷进去的永远是旧的 ⇒ 派活直接报 `NO_ADAPTER`）。
+
+机器上有 pnpm 时，它还会**顺手用真 pnpm** 再验一遍
+（证明「pnpm 会把 `file:` 目录重新打包」⇒ 重装拿到的就是新内容）。
 
 ## 环境变量
 
