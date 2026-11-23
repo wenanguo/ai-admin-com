@@ -185,6 +185,32 @@ function payloadOf(mock: { mock: { calls: unknown[][] } }) {
  */
 const SUBMIT_TIMEOUT_MS = 10_000;
 
+/**
+ * 等「提交按钮已经落在弹窗底部的操作区里」。
+ *
+ * ⚠️ **为什么必须等**（issue #154 的真因）：
+ * ProComponents 的 `ModalForm` 挂载时会把提交按钮**先 inline 渲染在表单旁边**，
+ * 等 footer 的 ref 挂上后再 `forceUpdate`、用 portal **搬进 footer**
+ * ⇒ 中间 **DOM 节点会被换掉一次**
+ * （见 `@ant-design/pro-components` → `form/layouts/_shared/useOverlayForm`
+ * 的 `contentRender`：没有 `footerRef.current` 时直接渲染 `submitterDom`，
+ * 有了就 `createPortal(submitterDom, footerRef.current)`）。
+ *
+ * 点得太早 ⇒ 点中那个「马上要被替换」的节点 ⇒ 点击丢失 ⇒ 提交没发生
+ * ⇒ 用例在 CI 上**随机**翻车（本地几乎不复现，CI 上约 1/5）。
+ *
+ * ⚠️ 等的是**状态**（按钮的最终位置），不是时间 ⇒ **不是 sleep，也不是放宽超时**。
+ */
+async function waitForSubmitButtonInFooter() {
+  await expect
+    .poll(() =>
+      [...document.querySelectorAll('.ant-modal-footer button')].some((button) =>
+        /确\s*认/.test(button.textContent ?? ''),
+      ),
+    )
+    .toBe(true);
+}
+
 describe('角色授权弹窗的预填', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -277,13 +303,24 @@ describe('角色授权弹窗的预填', () => {
   });
 
   it('打开后**立刻**提交,提交的也是角色现有的菜单(中间没有异步窗口)', async () => {
+    // ⚠️ **把两个异步依赖吊住**(永不 resolve)——
+    //    「中间没有异步窗口」从此不是「碰巧没赶上」,而是**物理上不可能有**:
+    //    菜单树 / 部门树的数据永远不来 ⇒ 提交的菜单只能来自 record 的**同步预填**。
+    //    (有异步预填的实现 ⇒ 这里提交的是空菜单 ⇒ 用例红)
+    mocks.getCurrentUser.mockReturnValue(new Promise(() => {}));
+    mocks.getDeptTree.mockReturnValue(new Promise(() => {}));
+
     const { getByRole } = await render(
       <RolePermissionModal open record={record} onOpenChange={() => {}} />,
     );
 
-    // 不等菜单树、不等任何请求 —— 预填是**同步**的:
-    // 表单从第一帧就持有角色的菜单,确定按钮从第一帧就是可用的。
-    // (有异步预填的实现会在这里要么点不动、要么提交空菜单)
+    // ⚠️ **等提交按钮已经在弹窗 footer 里**（真因见 `waitForSubmitButtonInFooter` 的注释）：
+    //    ProComponents 的 `ModalForm` 挂载时会先把按钮 inline 渲染在表单旁边,
+    //    随后 portal 搬进 footer ⇒ **DOM 节点会被换掉一次**。
+    //    点得太早 ⇒ 点中那个「马上要被替换」的节点 ⇒ 点击丢失 ⇒ 提交没发生
+    //    ⇒ 这条用例在 CI 上随机翻车(issue #154)。
+    await waitForSubmitButtonInFooter();
+
     await getByRole('button', { name: /确\s*认/ }).click();
 
     await vi.waitFor(
@@ -296,6 +333,22 @@ describe('角色授权弹窗的预填', () => {
     const payload = payloadOf(mocks.setRolePermission);
     expect([...payload.menu_ids].sort((a, b) => a - b)).toEqual([2, 3]);
     expect(payload.role_ids).toEqual([7]);
+  });
+
+  it('确定按钮最终落在弹窗底部的操作区里(挂载时会被搬一次)', async () => {
+    await render(
+      <RolePermissionModal open record={record} onOpenChange={() => {}} />,
+    );
+
+    // 提交按钮最终在 footer 里（挂载时它会被 portal 搬一次 ⇒ 节点会换）
+    await waitForSubmitButtonInFooter();
+
+    // 搬干净了：整个弹窗里**只有一个**「确认」按钮，且它在 footer 里
+    const confirms = [...document.querySelectorAll('button')].filter((button) =>
+      /确\s*认/.test(button.textContent ?? ''),
+    );
+    expect(confirms).toHaveLength(1);
+    expect(confirms[0].closest('.ant-modal-footer')).toBeTruthy();
   });
 
   it('关掉再打开,表单里还是角色的菜单(不会把菜单权限清空)', async () => {
