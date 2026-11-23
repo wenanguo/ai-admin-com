@@ -302,4 +302,10 @@ describe("插件的内容指纹", () => {
 		writeFileSync(join(dir, "node_modules", "left-pad", "index.js"), "x");
 		expect(pluginFingerprint(dir)).toBe(before);
 	});
+
+	it("插件目录不在 ⇒ **说清怎么办**（别让 ENOENT 飘出去）", () => {
+		expect(() => pluginFingerprint(join(workDir, "nope"))).toThrow(
+			/找不到我们的插件目录/,
+		);
+	});
 });

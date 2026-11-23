@@ -124,6 +124,9 @@ const bootstraps = new Map<string, Promise<void>>();
  * @returns 指纹（十六进制）。
  */
 export function pluginFingerprint(pluginPath: string): string {
+	if (!existsSync(pluginPath)) {
+		throw new Error(`找不到我们的插件目录：${pluginPath}`);
+	}
 	const hash = createHash("sha256");
 	for (const file of pluginFiles(pluginPath)) {
 		hash.update(file.relativePath);

@@ -346,3 +346,10 @@ test('pluginFingerprint：固定 fixture ⇒ 固定的值（**与服务侧算出
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('pluginFingerprint：插件目录不在 ⇒ **说清怎么办**（别让 ENOENT 飘出去）', () => {
+  assert.throws(
+    () => pluginFingerprint(path.join(os.tmpdir(), 'nope-not-here')),
+    /找不到我们的插件目录/,
+  );
+});
