@@ -23,7 +23,7 @@ import { appendFileSync } from 'node:fs'
 
 /** 调试日志（**只写到环境变量指的那个文件** ⇒ 不污染 stderr）。 */
 function debug(line) {
-	const target = process.env.DSH_AI_DEBUG_LOG
+	const target = process.env.AI_DSH_DEBUG_LOG
 	if (target === undefined || target.length === 0) return
 	try {
 		appendFileSync(target, `${line}\n`)
@@ -103,7 +103,7 @@ export function registerTools(ctx) {
 
 /** 读工具目录（环境变量里的 base64 JSON）。 */
 export function readCatalog() {
-	const raw = process.env.DSH_AI_TOOLS
+	const raw = process.env.AI_DSH_TOOLS
 	if (raw === undefined || raw.length === 0) {
 		return []
 	}
@@ -122,11 +122,11 @@ export function readCatalog() {
  * @param {object} args 参数。
  */
 export async function callBridge(tool, args) {
-	const url = process.env.DSH_AI_BRIDGE_URL
-	const secret = process.env.DSH_AI_BRIDGE_SECRET
-	const conversationId = process.env.DSH_AI_CONVERSATION_ID
+	const url = process.env.AI_DSH_BRIDGE_URL
+	const secret = process.env.AI_DSH_BRIDGE_SECRET
+	const conversationId = process.env.AI_DSH_CONVERSATION_ID
 	if (url === undefined || secret === undefined) {
-		return { ok: false, summary: '命令桥没有配置好（DSH_AI_BRIDGE_URL / DSH_AI_BRIDGE_SECRET）' }
+		return { ok: false, summary: '命令桥没有配置好（AI_DSH_BRIDGE_URL / AI_DSH_BRIDGE_SECRET）' }
 	}
 	try {
 		const response = await fetch(url, {

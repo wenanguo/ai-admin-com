@@ -10,16 +10,29 @@
  *
  * | 变量 | 缺省 | 干什么 |
  * | ---- | ---- | ------ |
- * | `AI_RUNNER` | `pi` | 选 runner（`pi` / `dsh`） |
- * | `DSH_PROFILE` | `sdk` | dsh 的具名 profile |
- * | `DSH_HOME` | `<cwd>/.dsh-home` | dsh 的 home（profile / 日志 / 会话） |
- * | `DSH_PROVIDER` | `deepseek-direct` | **我们自己的** provider 路由名 |
- * | `DSH_MODEL` | `deepseek-chat` | 模型 id |
- * | `DSH_BASE_URL` | `https://api.deepseek.com/v1` | OpenAI 兼容的根地址 |
- * | `DSH_API_KEY_ENV` | `DEEPSEEK_API_KEY` | key 放在哪个环境变量里 |
- * | `DSH_CONTEXT_WINDOW` | `131072` | 上下文窗口（token） |
- * | `DSH_MAX_TOKENS` | `8192` | 单次输出上限 |
- * | `DSH_BRIDGE_PORT` | 与服务同端口 | 命令桥的端口 |
+ * | `AI_DSH_PROFILE` | `sdk` | dsh 的具名 profile |
+ * | `AI_DSH_HOME` | `<cwd>/.dsh-home` | dsh 的 home（profile / 日志 / 会话） |
+ * | `AI_DSH_BIN` | SDK 自带的运行时 | dsh 可执行文件 |
+ * | `AI_DSH_PROVIDER` | `deepseek-direct` | **我们自己的** provider 路由名 |
+ * | `AI_DSH_MODEL` | `deepseek-chat` | 模型 id |
+ * | `AI_DSH_BASE_URL` | `https://api.deepseek.com/v1` | OpenAI 兼容的根地址 |
+ * | `AI_DSH_API_KEY_ENV` | `DEEPSEEK_API_KEY` | key 放在哪个环境变量里 |
+ * | `AI_DSH_CONTEXT_WINDOW` | `131072` | 上下文窗口（token） |
+ * | `AI_DSH_MAX_TOKENS` | `8192` | 单次输出上限 |
+ * | `AI_DSH_BRIDGE_URL` | 与服务同端口 | 命令桥的地址 |
+ *
+ * ## ⚠️ 为什么**我们自己的**变量不能叫 `DSH_*`（issue #124 阶段三的**真 bug**）
+ *
+ * dsh 的 app-boot 里 `BOOTSTRAP_PREFIXES = ['DSH_', 'XDG_', 'DYLD_', 'BASH_FUNC_']`
+ * ⇒ **任何 `.env` 文件里写 `DSH_*`，dsh 都会拒绝启动**：
+ * `dsh: …/.env sets "DSH_BASE_URL", which only the launching environment may set`。
+ * 而 dsh **会读它启动目录的 `.env`**（`backend/ai/.env` 正是那个位置）
+ * ⇒ 我们的 `.env.example` 教用户写 `DSH_BASE_URL` ⇒ **照着配就炸**。
+ *
+ * ⇒ 口径（本文件 + `.env.example` + 插件一起遵守）：
+ * ① **用户可配的**变量一律叫 `AI_DSH_*`（不撞 dsh 的保留前缀）；
+ * ② **传给 dsh 子进程**的变量（`DSH_HOME` 等 dsh 自己认的名字、插件读的 `AI_DSH_*`）
+ *    只出现在**进程环境**里 —— 那里 dsh 是允许的（它禁的是 `.env` **文件**）。
  */
 
 import { randomBytes } from "node:crypto";
@@ -78,18 +91,18 @@ export interface DshRunnerConfig {
 export function dshRunnerConfig(source: NodeJS.ProcessEnv = process.env): DshRunnerConfig {
 	const port = source.PORT ?? "3100";
 	return {
-		profile: source.DSH_PROFILE ?? "sdk",
-		dshHome: source.DSH_HOME ?? join(process.cwd(), ".dsh-home"),
+		profile: source.AI_DSH_PROFILE ?? "sdk",
+		dshHome: source.AI_DSH_HOME ?? join(process.cwd(), ".dsh-home"),
 		// ⚠️ SDK 自带的运行时（与 SDK 同版本）—— 用 `require.resolve` 找它。
-		dshBin: source.DSH_BIN ?? resolveDshBin(),
+		dshBin: source.AI_DSH_BIN ?? resolveDshBin(),
 		patches: [PROFILE_PATCH],
-		provider: source.DSH_PROVIDER ?? "deepseek-direct",
-		model: source.DSH_MODEL ?? "deepseek-chat",
-		baseURL: source.DSH_BASE_URL ?? "https://api.deepseek.com/v1",
-		apiKeyEnv: source.DSH_API_KEY_ENV ?? "DEEPSEEK_API_KEY",
-		contextWindow: numberOf(source.DSH_CONTEXT_WINDOW, 131072),
-		maxTokens: numberOf(source.DSH_MAX_TOKENS, 8192),
-		bridgeUrl: source.DSH_BRIDGE_URL ?? `http://127.0.0.1:${port}/internal/dsh/commands`,
+		provider: source.AI_DSH_PROVIDER ?? "deepseek-direct",
+		model: source.AI_DSH_MODEL ?? "deepseek-chat",
+		baseURL: source.AI_DSH_BASE_URL ?? "https://api.deepseek.com/v1",
+		apiKeyEnv: source.AI_DSH_API_KEY_ENV ?? "DEEPSEEK_API_KEY",
+		contextWindow: numberOf(source.AI_DSH_CONTEXT_WINDOW, 131072),
+		maxTokens: numberOf(source.AI_DSH_MAX_TOKENS, 8192),
+		bridgeUrl: source.AI_DSH_BRIDGE_URL ?? `http://127.0.0.1:${port}/internal/dsh/commands`,
 	};
 }
 
@@ -192,18 +205,18 @@ export function buildChildEnv(input: {
 	return {
 		...source,
 		DSH_HOME: config.dshHome,
-		DSH_AI_PROVIDER: config.provider,
-		DSH_AI_MODEL: options.model ?? config.model,
-		DSH_AI_BASE_URL: config.baseURL,
-		DSH_AI_API_KEY: apiKey,
-		DSH_AI_CONTEXT_WINDOW: String(config.contextWindow),
-		DSH_AI_MAX_TOKENS: String(config.maxTokens),
-		DSH_AI_SYSTEM_PROMPT: encode(options.systemPrompt),
-		DSH_AI_TOOLS: encode(JSON.stringify(catalog)),
-		DSH_AI_MCP_SERVERS: encode(JSON.stringify(mcpConfigs)),
-		DSH_AI_BRIDGE_URL: config.bridgeUrl,
-		DSH_AI_BRIDGE_SECRET: bridgeSecret(),
-		DSH_AI_CONVERSATION_ID: options.conversationId,
+		AI_DSH_PROVIDER: config.provider,
+		AI_DSH_MODEL: options.model ?? config.model,
+		AI_DSH_BASE_URL: config.baseURL,
+		AI_DSH_API_KEY: apiKey,
+		AI_DSH_CONTEXT_WINDOW: String(config.contextWindow),
+		AI_DSH_MAX_TOKENS: String(config.maxTokens),
+		AI_DSH_SYSTEM_PROMPT: encode(options.systemPrompt),
+		AI_DSH_TOOLS: encode(JSON.stringify(catalog)),
+		AI_DSH_MCP_SERVERS: encode(JSON.stringify(mcpConfigs)),
+		AI_DSH_BRIDGE_URL: config.bridgeUrl,
+		AI_DSH_BRIDGE_SECRET: bridgeSecret(),
+		AI_DSH_CONVERSATION_ID: options.conversationId,
 	};
 }
 

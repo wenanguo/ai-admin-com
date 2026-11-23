@@ -52,7 +52,7 @@ describe("dsh runner · MCP 服务器", () => {
 		provider: "deepseek-direct",
 		model: "deepseek-chat",
 		baseURL: "http://127.0.0.1:1/v1",
-		apiKeyEnv: "DSH_AI_API_KEY",
+		apiKeyEnv: "AI_DSH_API_KEY",
 		contextWindow: 1024,
 		maxTokens: 256,
 		bridgeUrl: "http://127.0.0.1:1/internal/dsh/commands",
@@ -79,7 +79,7 @@ describe("dsh runner · MCP 服务器", () => {
 			apiKey: "fake",
 		});
 		const servers = JSON.parse(
-			Buffer.from(env.DSH_AI_MCP_SERVERS ?? "", "base64").toString("utf8"),
+			Buffer.from(env.AI_DSH_MCP_SERVERS ?? "", "base64").toString("utf8"),
 		) as Array<Record<string, unknown>>;
 		expect(servers).toHaveLength(1);
 		expect(servers[0]?.["serverName"]).toBe("aiadmin");
@@ -107,7 +107,7 @@ describe("dsh runner · MCP 服务器", () => {
 			apiKey: "fake",
 		});
 		const servers = JSON.parse(
-			Buffer.from(env.DSH_AI_MCP_SERVERS ?? "", "base64").toString("utf8"),
+			Buffer.from(env.AI_DSH_MCP_SERVERS ?? "", "base64").toString("utf8"),
 		) as unknown[];
 		expect(servers).toEqual([]);
 	});
