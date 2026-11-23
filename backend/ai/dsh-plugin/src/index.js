@@ -73,10 +73,10 @@ export async function apply(ctx) {
  * ⚠️ **路由名来自环境变量** ⇒ 换厂商只改配置，不改代码。
  */
 function registerProvider(ctx) {
-	const route = process.env.DSH_AI_PROVIDER
-	const baseURL = process.env.DSH_AI_BASE_URL
-	const apiKey = process.env.DSH_AI_API_KEY
-	const model = process.env.DSH_AI_MODEL
+	const route = process.env.AI_DSH_PROVIDER
+	const baseURL = process.env.AI_DSH_BASE_URL
+	const apiKey = process.env.AI_DSH_API_KEY
+	const model = process.env.AI_DSH_MODEL
 	if (route === undefined || baseURL === undefined || apiKey === undefined) {
 		// ⚠️ 没配 ⇒ 不注册（dsh 会报「找不到路由」⇒ 错误信息更直白）
 		return
@@ -86,8 +86,8 @@ function registerProvider(ctx) {
 		baseURL,
 		apiKey,
 		model: model ?? 'deepseek-chat',
-		contextWindow: numberEnv('DSH_AI_CONTEXT_WINDOW', 131072),
-		maxTokens: numberEnv('DSH_AI_MAX_TOKENS', 8192),
+		contextWindow: numberEnv('AI_DSH_CONTEXT_WINDOW', 131072),
+		maxTokens: numberEnv('AI_DSH_MAX_TOKENS', 8192),
 	})
 	// ⚠️ **注册到 root 的 llm 服务上**。
 	//
@@ -105,7 +105,7 @@ function registerProvider(ctx) {
  * ⚠️ **技能照旧进模型上下文** —— 这是「技能语义保住」的落点。
  */
 function registerSystemPrompt(ctx) {
-	const encoded = process.env.DSH_AI_SYSTEM_PROMPT
+	const encoded = process.env.AI_DSH_SYSTEM_PROMPT
 	if (encoded === undefined || encoded.length === 0) {
 		return
 	}
