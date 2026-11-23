@@ -88,8 +88,8 @@ COPY --from=builder /app/dist ./dist
 # ③ prisma 生成的客户端（**npm ci 会清空 node_modules ⇒ 必须从构建阶段拷**）
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
-# ④ 技能（**cwd 相对** ⇒ 必须和 WORKDIR 保持同一个相对位置）
-#    ⚠️ `load_skill` / `/api/agent/skills` 都按 `join(process.cwd(), ".pi", "skills")` 找
+# ④ 技能（**相对智能体配置目录** ⇒ 必须和 WORKDIR 保持同一个相对位置）
+#    ⚠️ 智能体配置里写的是 `../../.pi/skills`（相对 `agents/<id>/agent.yaml`）
 #    ⇒ WORKDIR=/app ⇒ 技能必须在 /app/.pi/skills ✔
 COPY backend/ai/.pi ./.pi
 

@@ -179,9 +179,9 @@ docker compose -f docker/docker-compose.yaml logs --tail 100 web ai
    本仓 nginx 模板里有 `proxy_buffering off` + `proxy_read_timeout 3600s`；
    AI 服务自己也发 `X-Accel-Buffering: no`（双保险）。
 
-3. **AI 服务的技能路径是 **cwd 相对****
-   ⇒ `load_skill` / `/api/agent/skills` 按 `join(process.cwd(), ".pi", "skills")` 找
-   ⇒ 换 `WORKDIR` 就找不到技能 ⇒ 镜像里 `WORKDIR=/app` 且技能必须在 `/app/.pi/skills` ✓。
+3. **AI 服务的技能路径是 **相对智能体配置目录****
+   ⇒ 智能体配置里写 `skills: [../../.pi/skills]` ⇒ 换 `WORKDIR` 就找不到技能
+   ⇒ 镜像里 `WORKDIR=/app` 且技能必须在 `/app/.pi/skills` ✓。
 
 4. **`/ai-api/` 前缀不能省**
    ⇒ AI 服务的路径也是 `/api/agent/...`，而 nginx 的 location 是**前缀匹配**

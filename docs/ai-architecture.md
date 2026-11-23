@@ -411,7 +411,7 @@ src/pages/ai/workspace/    ← 全宽页
 | `tools/list` | ✅ 5 个工具（见下） |
 | 真实 HTTP 上的 JWT 透传 | ✅ `Authorization: Bearer <调用方 token>` |
 | 真实调用 `list_tasks` | ✅ 返回真实数据（total 90） |
-| 走本服务的完整对话 | ✅ 模型先 `load_skill(list-tasks)` → 再 `mcp__aiadmin__list_tasks` → 回答 |
+| 走本服务的完整对话 | ✅ 模型先 `skill(list-tasks)` → 再 `mcp__aiadmin__list_tasks` → 回答 |
 | **真的建出任务** | ✅ 用户说「在项目 6 建一个任务…」→ 模型调 `create_task` → 后端 `创建任务成功` → 落库核对 `id=117` |
 
 **建任务那次，模型自己传的参数**（没人告诉它）：
