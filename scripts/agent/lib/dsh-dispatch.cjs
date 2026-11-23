@@ -200,7 +200,7 @@ function dispatchConfig(repoRoot, env = process.env) {
 /**
  * 取模型 key（**只在内存里** ⇒ 不落盘、不进日志）。
  *
- * ⚠️ 顺序：指定的环境变量（`DISPATCH_API_KEY`）⇒ `DSH_AI_API_KEY` ⇒ `DEEPSEEK_API_KEY`
+ * ⚠️ 顺序：指定的环境变量（`DISPATCH_API_KEY`）⇒ `AI_DSH_API_KEY` ⇒ `DEEPSEEK_API_KEY`
  *    （后两个来自 `backend/ai/.env` ⇒ **服务与派活共用一把 key**）。
  *
  * ⚠️ **不再回退到 pi 的 `auth.json`**（issue #123 的收尾）：
@@ -222,7 +222,7 @@ function resolveApiKey(config, env = process.env) {
   if (routeKey !== undefined && routeKey.length > 0) {
     return routeKey;
   }
-  const shared = env.DSH_AI_API_KEY;
+  const shared = env.AI_DSH_API_KEY;
   if (shared !== undefined && shared.length > 0) {
     return shared;
   }
@@ -337,19 +337,19 @@ function buildChildEnv(config, input, env = process.env) {
     // ⚠️ **权限模式**：派活的子代理是**受信**的（在自己的工作区里干活）
     //    ⇒ 没有人在旁边点「同意」⇒ 不能停在「等人批准」上。
     DSH_PERMISSION_MODE: 'danger-full-access',
-    DSH_AI_PROVIDER: config.provider,
-    DSH_AI_MODEL: config.model,
-    DSH_AI_BASE_URL: config.baseURL,
-    DSH_AI_API_KEY: input.apiKey,
+    AI_DSH_PROVIDER: config.provider,
+    AI_DSH_MODEL: config.model,
+    AI_DSH_BASE_URL: config.baseURL,
+    AI_DSH_API_KEY: input.apiKey,
     // ⚠️ **输出上限**（issue #123 收尾实测出来的坑）：
     //    dsh 的缺省是 **8192** ⇒ 一条长任务消息正好被截断
     //    （实测：#124 的子会话探索到第 67 步，最后那条消息被 8192 截掉 ⇒ **整个会话作废**）。
     //    ⇒ 派活给到 32768（长任务要有地方写）。
-    DSH_AI_MAX_TOKENS: String(config.maxTokens),
+    AI_DSH_MAX_TOKENS: String(config.maxTokens),
     // ⚠️ **上下文窗口**（探索型任务会读很多文件 ⇒ 给足）。
-    DSH_AI_CONTEXT_WINDOW: String(config.contextWindow),
+    AI_DSH_CONTEXT_WINDOW: String(config.contextWindow),
     // ⚠️ **系统提示词 = 我们的开发流程**（base64 ⇒ 多行文本不进环境变量的坑）。
-    DSH_AI_SYSTEM_PROMPT: Buffer.from(input.systemPrompt, 'utf8').toString('base64'),
+    AI_DSH_SYSTEM_PROMPT: Buffer.from(input.systemPrompt, 'utf8').toString('base64'),
   };
 }
 

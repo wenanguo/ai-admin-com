@@ -28,6 +28,8 @@
     "e2e:ai-agent": "node scripts/e2e/ai-agent-picker.cjs",
     "e2e:dsh:static": "node scripts/e2e/dsh-spike.static.cjs",
     "e2e:dsh": "node scripts/e2e/dsh-runner.cjs",
+    "e2e:dsh:official": "node scripts/e2e/dsh-official-route.cjs",
+    "e2e:dsh:env-names:static": "node scripts/e2e/dsh-env-names.static.cjs",
     "e2e:dsh-admin:static": "node scripts/e2e/dsh-admin.static.cjs",
     "check:dsh-boundary": "node scripts/check-dsh-boundary.cjs",
     "e2e:node-version:static": "node scripts/e2e/node-version.static.cjs",

@@ -115,22 +115,22 @@ test('buildChildEnv：系统提示词是 base64 的**开发流程** + 权限是�
   const config = dispatchConfig(REPO_ROOT, {});
   const env = buildChildEnv(config, { systemPrompt: '你是开发 agent', apiKey: 'k' }, {});
   assert.strictEqual(
-    Buffer.from(env.DSH_AI_SYSTEM_PROMPT, 'base64').toString('utf8'),
+    Buffer.from(env.AI_DSH_SYSTEM_PROMPT, 'base64').toString('utf8'),
     '你是开发 agent',
   );
   // ⚠️ 派活的子代理**没人点同意** ⇒ 不能停在等人批准上
   assert.strictEqual(env.DSH_PERMISSION_MODE, 'danger-full-access');
-  assert.strictEqual(env.DSH_AI_PROVIDER, 'deepseek-direct');
-  assert.strictEqual(env.DSH_AI_API_KEY, 'k');
+  assert.strictEqual(env.AI_DSH_PROVIDER, 'deepseek-direct');
+  assert.strictEqual(env.AI_DSH_API_KEY, 'k');
   assert.strictEqual(env.DSH_HOME, config.dshHome);
 });
 
-test('buildChildEnv：凭据**只**进 DSH_AI_API_KEY（不许漏到别的变量里）', () => {
+test('buildChildEnv：凭据**只**进 AI_DSH_API_KEY（不许漏到别的变量里）', () => {
   const config = dispatchConfig(REPO_ROOT, {});
   const env = buildChildEnv(config, { systemPrompt: 'p', apiKey: 'secret-key' }, {});
-  assert.strictEqual(env.DSH_AI_API_KEY, 'secret-key');
+  assert.strictEqual(env.AI_DSH_API_KEY, 'secret-key');
   const leaks = Object.entries(env).filter(
-    ([name, value]) => name !== 'DSH_AI_API_KEY' && String(value).includes('secret-key'),
+    ([name, value]) => name !== 'AI_DSH_API_KEY' && String(value).includes('secret-key'),
   );
   assert.deepStrictEqual(leaks, []);
 });

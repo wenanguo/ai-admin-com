@@ -58,10 +58,10 @@ const BASELINE_ENDPOINTS = [
 
 /** 4 个环境变量（缺省值都要有 ⇒ 文档里也要写）。 */
 const REQUIRED_ENV_VARS = [
-	"DSH_ADMIN_ENABLED",
-	"DSH_ADMIN_PORT",
-	"DSH_ADMIN_HOME",
-	"DSH_ADMIN_TRUSTED_HOST",
+	"AI_DSH_ADMIN_ENABLED",
+	"AI_DSH_ADMIN_PORT",
+	"AI_DSH_ADMIN_HOME",
+	"AI_DSH_ADMIN_TRUSTED_HOST",
 ];
 
 /** 不许出现的「自造管理面」路径片段。 */
