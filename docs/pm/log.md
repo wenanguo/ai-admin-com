@@ -871,3 +871,16 @@
     ⇒ 挂 milestone #12（G4）
   - **#154 flaky**：修 `PermissionModal.test.tsx` 的随机失败（CI 约 1/5 概率红）
     ⇒ 属**前端技术债** ⇒ 新开 milestone **#13「v1.0 · 技术债与稳定性」**
+
+### 2026-11-21/23 · #124 阶段三合并（改名 + D3 入库）⇒ **#124 关单**；#153 减法 / #154 flaky 已开单
+
+- **阶段三（PR #156）**：
+  - 🔴 **用户可配变量去掉 `DSH_` 前缀**：dsh 保留整个 `DSH_` 前缀（`BOOTSTRAP_PREFIXES`）
+    ⇒ **任何 `.env` 里写 `DSH_*` ⇒ dsh 拒绝启动** ⇒ 而 `.env.example` 恰恰教人这么写 ⇒ 改名 `AI_DSH_*` + **静态守卫**（带负例）。
+  - **D3 验收脚本入库**（`scripts/e2e/dsh-official-route.cjs`）：没有 key ⇒ 跳过；**402 insufficient_balance ⇒ 也跳过**
+    （判定口径单独成模块 `lib/balance.ts` + 9 条单测；**别的错误照旧失败**）。
+  - 🟡 CI 抓到一个**平台相关**的测试 bug（写死了 Windows 路径分隔符 ⇒ Linux 上红）⇒ 修测试（代码是对的）。
+- **⚠️ 官方账户余额用完了**（402）⇒ 派活**自动切回** `minimax / MiniMax-M3`（不是 Flash）⇒ 开发流程不受影响。
+  ⇒ 充值后可切回官方路由（`backend/ai/.env` 里删掉 `DISPATCH_PROVIDER=minimax` 即可自动切）。
+- **#124 已关单**（三阶段全合）⇒ 剩**一件要人做**：在真实浏览器里看那个 iframe（需真 AiAdmin + admin token ⇒ 本机 mock 顶不了）。
+- **已开两条新单（用户批「全部做」）**：**#153 减法**（技能与 MCP 管理退给 dsh · 挂 G4）· **#154 flaky**（挂新 milestone #13「v1.0 · 技术债与稳定性」）。
