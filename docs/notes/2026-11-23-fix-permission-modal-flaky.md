@@ -11,7 +11,9 @@
 
 ## 状态
 
-**已完成**（PR 已提，未合并 —— 等人拍板）。
+**已完成** —— PR **#160**（https://github.com/wenanguo/ai-admin-com/pull/160 ），
+**未合并**（按约定等 PM / 人拍板）。
+issue #154 上已留评论（做了什么 / 怎么验 / PR 号）。
 
 ## 真因（已实测定位，不是猜的）
 
@@ -98,7 +100,16 @@ node scripts/repeat-vitest.mjs src/pages/module_system/role/PermissionModal.test
 node scripts/repeat-vitest.mjs 20
 ```
 
-⚠️ **验收请用 ②**：单文件跑**本来就不红**（红的前提是「浏览器被抢」）。
+**实测结果**：
+
+| 跑法 | 结果 |
+| ---- | ---- |
+| **整仓连跑 20 次**（`node scripts/repeat-vitest.mjs 20`） | **20/20 全绿**（每轮 74 个测试文件 / 634 条用例，单轮 25–59s） |
+| **单文件连跑 20 次** | **20/20 全绿**（每轮 11 条用例，单轮 8–10s） |
+
+⚠️ **复现提示**：原 bug **单跑该文件几乎不复现**（本地 0/45），
+**整仓一起跑必现**（浏览器被别的测试文件抢走 ⇒ 机器慢 ⇒ 窗口不够）⇒
+**验收请用整仓模式**，别只跑单文件。
 
 ⚠️ 脚本会把「**一个测试文件都没跑到**」判成失败 ——
 vitest 匹配不到文件时会打印 `No test files found, exiting with code 0` 并**退出 0**
