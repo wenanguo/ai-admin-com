@@ -19,6 +19,7 @@
  * | 7 | **插件注册表机制**还在：`core/**` 不 import `plugins/**`；`src/plugins.ts` 是唯一注册处 |
  * | 8 | 业务插件（`src/plugins/pm/**`）**逻辑没重写**（只挂载方式变了） |
  * | 9 | **版本锁**里锁着 `dsh-mcp-client` / `dsh-mcp-manager`（精确版本） |
+ * | 10 | **冷启动**：握手超时 ≥ 120 秒（**第一次跑就要绿**）· 会话层传得下去 · 验收脚本自己也给足 |
  *
  * 用法：`node scripts/e2e/dsh-skills-mcp-plugins.static.cjs`（在仓根跑）。
  */
@@ -328,6 +329,41 @@ check(
 	"peer 依赖也显式锁了（pnpm 装得上）",
 	typeof lock?.peerDependenciesInstalledExplicitly?.["@deepseek-ai/dsh-mcp-client"] ===
 		"string",
+);
+
+/* ------------------------------------------------------------------ *
+ * ⑩ 冷启动：握手超时（**别让「第一次跑」就红**）
+ * ------------------------------------------------------------------ */
+
+console.log("⑩ 冷启动（**握手超时**：dsh 挂插件树实测 ≈ 15 秒 ⇒ 30 秒会红）");
+const clientSource = read(path.join(aiRoot, "src", "core", "adapter", "dsh", "client.ts")) ?? "";
+const defaultTimeout = /DEFAULT_INITIALIZE_TIMEOUT_MS\s*=\s*([\d_]+)/.exec(clientSource);
+const defaultTimeoutMs = defaultTimeout === null ? 0 : Number(defaultTimeout[1].replaceAll("_", ""));
+check(
+	"握手超时有个**具名缺省**（不许是散落的魔法数）",
+	defaultTimeout !== null,
+	clientSource.includes("initializeTimeoutMs") ? "" : "client.ts 里没有 initializeTimeoutMs",
+);
+check(
+	"缺省握手超时 **≥ 120 秒**（实测起一次 dsh 运行时 ≈ 15 秒 ⇒ 30 秒会红）",
+	defaultTimeoutMs >= 120_000,
+	`现在是 ${defaultTimeoutMs} ms`,
+);
+const sessionSource = read(path.join(aiRoot, "src", "core", "adapter", "dsh", "session.ts")) ?? "";
+check(
+	"会话层把握手超时**传下去**（可按会话调）",
+	sessionSource.includes("initializeTimeoutMs") && sessionSource.includes("initializeTimeoutMs:"),
+);
+const runtimeE2eSource = read(path.join(aiRoot, "scripts", "e2e", "dsh-skills-mcp-plugins.ts")) ?? "";
+const e2eTimeout = /(?:^|\s)INITIALIZE_TIMEOUT_MS\s*=\s*([\d_]+)/.exec(runtimeE2eSource);
+check(
+	"运行时验收脚本**自己也给足**（冷 CI runner 更慢 ⇒ 第一次跑也要绿）",
+	e2eTimeout !== null && Number(e2eTimeout[1].replaceAll("_", "")) >= 120_000,
+	e2eTimeout === null ? "脚本里没写死" : `${Number(e2eTimeout[1].replaceAll("_", ""))} ms`,
+);
+check(
+	"运行时验收脚本**显式传**了这个超时（不然用的是缺省）",
+	runtimeE2eSource.includes("initializeTimeoutMs: INITIALIZE_TIMEOUT_MS"),
 );
 
 /* ------------------------------------------------------------------ *

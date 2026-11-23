@@ -45,10 +45,41 @@ export interface DshClientOptions {
 	env: NodeJS.ProcessEnv;
 	/** 要不要开审批缝（`approval/request` ⇒ 我们的闸门）。 */
 	approvalRequests?: boolean;
+	/**
+	 * 握手的超时（毫秒；不给 ⇒ {@link DEFAULT_INITIALIZE_TIMEOUT_MS}）。
+	 *
+	 * ⚠️ **冷启动要放宽**：profile 是冷的 ⇒ dsh 运行时要先把它装好才应答握手
+	 *    ⇒ **第一次**会慢（CI 里 pnpm 的 store 也是冷的 ⇒ 更慢）
+	 *    ⇒ 撞上限 ⇒ 报 `initialize timed out after …ms waiting for dsh profile "sdk"`。
+	 * ⇒ 「先装好 profile 再握手」的那一侧（预热）由**调用方**负责
+	 *    （见 `backend/ai/scripts/e2e/dsh-skills-mcp-plugins.ts` 的冷启动预热）。
+	 */
+	initializeTimeoutMs?: number | undefined;
 }
 
 /** 事件订阅者。 */
 export type DshEventHandler = (event: DshSessionEvent) => void;
+
+/**
+ * 握手的**缺省超时**（毫秒）。
+ *
+ * ⚠️ **为什么是 120 秒**（issue #153 收尾 · 实测出来的）：
+ *
+ *    dsh 的 SDK 自己的缺省是 **10 秒** ⇒ 我们先放宽到 30 秒 ⇒ **还是会红**：
+ *    握手要等 dsh 运行时**把自己的插件树挂起来**才应答 ⇒
+ *    **实测（Windows · 本机）**：profile 装好后**每一次**起运行时都要 **≈ 15 秒**
+ *    （不是只有第一次 ⇒ 那是 dsh 挂插件树的固有成本，不是装依赖）。
+ *    ⇒ 慢机器 / 冷 CI runner 上**轻松超过 30 秒** ⇒
+ *    `initialize timed out after 30000ms waiting for dsh profile "sdk"`
+ *    ⇒ **会话直接起不来**（用户看到的就是「派活没反应」）。
+ *
+ *    ⇒ 缺省放宽到 **120 秒**（4 倍于 SDK 自己的 10 秒）：
+ *    握手是**一次性**的成本（之后每轮对话都不受影响）⇒ 给足比「起不来」划算。
+ *
+ * ⚠️ **上限不是「随便给」**：dsh 真的坏了（永远不应答）⇒ 起会话要等这么久才报错
+ *    ⇒ 需要更短就显式传 `initializeTimeoutMs`（验收脚本就传了自己的值）。
+ */
+export const DEFAULT_INITIALIZE_TIMEOUT_MS = 120_000;
 
 /** 审批应答者。 */
 export type DshApprovalHandler = (
@@ -78,7 +109,7 @@ export class DshClient {
 			dshBin: options.dshBin,
 			patches: options.patches === undefined ? undefined : [...options.patches],
 			env: options.env,
-			initializeTimeoutMs: 30_000,
+			initializeTimeoutMs: options.initializeTimeoutMs ?? DEFAULT_INITIALIZE_TIMEOUT_MS,
 		});
 	}
 

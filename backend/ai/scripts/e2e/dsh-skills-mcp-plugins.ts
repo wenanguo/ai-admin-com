@@ -23,7 +23,18 @@
  * ## 前置
  *
  * - **Node ≥ 24.9**（dsh 的 engines 要求）；
- * - **pnpm**（dsh 的 profile 是 pnpm 工程 ⇒ 我们的插件要装进去）。
+ * - **pnpm**（dsh 的 profile 是 pnpm 工程 ⇒ 我们的插件要装进去）
+ *   —— CI 里装的是 `pnpm@11.22.0`（与 `backend/ai/Dockerfile` 里那个**同版本**）；
+ * - **要联网**（pnpm 从 npm 拉 dsh 的包）—— 这是它与「静态验收」最大的不同。
+ *
+ * ## ⚠️ 为什么握手超时给到 5 分钟（issue #153 收尾）
+ *
+ * dsh 运行时**把自己的插件树挂起来**才应答握手 ⇒ **实测 ≈ 15 秒**（本机 · Windows）
+ * ⇒ 慢机器 / **冷 CI runner**（pnpm 的 store 也是冷的）上更慢
+ * ⇒ 撞上 30 秒的缺省上限 ⇒ `initialize timed out after 30000ms …`
+ * ⇒ **第一次跑就红**（第二次跑才正常 ⇒ 最坏的形态）。
+ *
+ * ⇒ 这里显式给足（生产缺省见 `client.ts` 的 `DEFAULT_INITIALIZE_TIMEOUT_MS` = 120 秒）。
  *
  * 用法：`npx tsx scripts/e2e/dsh-skills-mcp-plugins.ts`（在 `backend/ai` 下跑）。
  */
@@ -51,6 +62,14 @@ const dshHome = mkdtempSync(join(tmpdir(), "dsh-e2e-mcp-"));
 /** MCP 服务器的调用记录（那个服务器写到这个文件里）。 */
 const mcpLogPath = join(dshHome, "mcp-calls.log");
 writeFileSync(mcpLogPath, "", "utf8");
+
+/**
+ * 握手（`initialize`）的超时（毫秒）。
+ *
+ * ⚠️ **给足**（见文件头）：dsh 挂插件树 ≈ 15 秒 ⇒ 冷 CI runner 上更慢
+ *    ⇒ 撞上限 ⇒ **第一次跑就红**。
+ */
+const INITIALIZE_TIMEOUT_MS = 300_000;
 
 /** 失败信息（收集起来 ⇒ 一次性报）。 */
 const failures: string[] = [];
@@ -216,6 +235,7 @@ interface TurnResult {
 async function runTurn(currentPhase: Phase, decision: "approved" | "rejected"): Promise<TurnResult> {
 	phase = currentPhase;
 	callsInPhase = 0;
+	const startedAt = Date.now();
 	const waiters = new PendingWaiterRegistry();
 	const pending: TurnResult["pending"] = [];
 	const toolNames: string[] = [];
@@ -283,6 +303,7 @@ async function runTurn(currentPhase: Phase, decision: "approved" | "rejected"): 
 			createPending: async (input) => ({ id: `pending-${input.command}` }),
 			timeoutMs: 20_000,
 		}),
+		initializeTimeoutMs: INITIALIZE_TIMEOUT_MS,
 	});
 
 	const frames: string[] = [];
@@ -310,6 +331,8 @@ async function runTurn(currentPhase: Phase, decision: "approved" | "rejected"): 
 	}
 	await new Promise((resolve) => setTimeout(resolve, 800));
 	session.dispose();
+	// ⚠️ **记一下这一轮用了多久**（⇒ CI 上慢了能一眼看出是「起运行时慢」还是「模型慢」）。
+	console.log(`    [耗时] ${currentPhase}/${decision}：${Math.round((Date.now() - startedAt) / 1000)} 秒`);
 	return { toolNames, pending };
 }
 
@@ -322,7 +345,11 @@ const skillDirs = [join(process.cwd(), ".pi", "skills")];
 check("样板技能目录存在（`.pi/skills`）", existsSync(join(skillDirs[0] ?? "", "create-task")));
 
 console.log("② 准备 dsh profile（装我们的插件）…");
+const profileStartedAt = Date.now();
 await ensureDshProfile({ dshHome, profile: "sdk", dshBin, pluginPath });
+console.log(
+	`    [耗时] 装 profile：${Math.round((Date.now() - profileStartedAt) / 1000)} 秒`,
+);
 
 console.log("③ MCP：模型真的调了一个真的 MCP 服务器的工具（新建 ⇒ 不用点头）");
 const created = await runTurn("create", "approved");

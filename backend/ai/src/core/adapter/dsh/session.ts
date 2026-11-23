@@ -58,6 +58,13 @@ export interface DshSessionOptions {
 	bridgeSecret?: string | undefined;
 	/** 留痕层（**dsh 事件 / 闸门决策 ⇒ 事件日志 + 审计**；不给 ⇒ 不留痕）。 */
 	tracer?: DshTracer | undefined;
+	/**
+	 * 握手的超时（毫秒；不给 ⇒ 缺省 30 秒）。
+	 *
+	 * ⚠️ **冷启动**：profile 是冷的 ⇒ dsh 要先把它装好才应答 ⇒ 第一次会慢
+	 *    ⇒ 撞上限 ⇒ 会话直接起不来（见 `client.ts` 的同名字段）。
+	 */
+	initializeTimeoutMs?: number | undefined;
 }
 
 /** 命令桥的执行结果。 */
@@ -179,6 +186,7 @@ export class DshSession implements AgentSessionLike {
 			cwd: this.#options.cwd,
 			env: this.#options.env,
 			approvalRequests: true,
+			initializeTimeoutMs: this.#options.initializeTimeoutMs,
 		});
 		await client.start();
 		client.onEvent((event) => this.#handleEvent(event));
