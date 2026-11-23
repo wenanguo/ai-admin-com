@@ -31,6 +31,7 @@
     "e2e:dsh:official": "node scripts/e2e/dsh-official-route.cjs",
     "e2e:dsh:env-names:static": "node scripts/e2e/dsh-env-names.static.cjs",
     "e2e:dsh:profile-refresh": "node scripts/e2e/dsh-profile-refresh.cjs",
+    "e2e:dsh:skills-mcp:runtime": "node scripts/e2e/dsh-skills-mcp-plugins.runtime.cjs",
     "e2e:dsh-admin:static": "node scripts/e2e/dsh-admin.static.cjs",
     "check:dsh-boundary": "node scripts/check-dsh-boundary.cjs",
     "e2e:node-version:static": "node scripts/e2e/node-version.static.cjs",

@@ -19,6 +19,8 @@
 | `dsh-admin.static.cjs` | **静态断言**AI 管理面（issue #124）：既有 9 个端点一字未改 · 没有自造的管理面路由 · 4 个环境变量齐 · **admin 判定不许解 JWT 载荷** ⇒ **不需要 docker** |
 | `dsh-admin-runtime.cjs` | **运行时验收**AI 管理面（issue #124 阶段二）：真起 dsh web + 真挂反代 ⇒ 转发成功 · **Host 保留** · cookie Path 改写 · **fail closed** · 403 · 200 ⇒ **不需要模型凭据 / 不需要 pnpm / 不连数据库** |
 | `dsh-profile-refresh.cjs` | **运行时验收**dsh profile 的插件刷新（issue #158）：**改一次插件内容 ⇒ profile 里的拷贝跟着变** + 内容没变就不重装 ⇒ **不需要 pnpm / 不联网 / 不需要模型凭据** |
+| `dsh-skills-mcp-plugins.static.cjs` | **静态断言**技能 / MCP / 插件三层（issue #122 · #153）：**减法**清单（不许把我们自研的技能加载器长回来）⇒ **不需要 pnpm / 不联网 / 不需要模型凭据** |
+| `dsh-skills-mcp-plugins.runtime.cjs` | **运行时验收**技能 / MCP / 插件三层（issue #122 · #153）：**真起 dsh 运行时** ⇒ 技能目录**进了模型上下文** + `skill` 工具在 + **MCP 的写操作被闸门拦下**（拒绝 ⇒ 服务端一次都没被叫）+ 批准 ⇒ 真执行 ⇒ **不需要模型凭据 / 不连数据库**，但**要 pnpm、要联网** |
 
 ## 用法
 
