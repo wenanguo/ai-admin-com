@@ -12,19 +12,19 @@ import { readMcpServers, registerGate } from './mcp.js'
 
 /** 把配置写进环境变量（base64 的 JSON）。 */
 function withServers(servers, run) {
-	const previous = process.env.DSH_AI_MCP_SERVERS
+	const previous = process.env.AI_DSH_MCP_SERVERS
 	if (servers === undefined) {
-		delete process.env.DSH_AI_MCP_SERVERS
+		delete process.env.AI_DSH_MCP_SERVERS
 	} else {
-		process.env.DSH_AI_MCP_SERVERS = Buffer.from(JSON.stringify(servers), 'utf8').toString('base64')
+		process.env.AI_DSH_MCP_SERVERS = Buffer.from(JSON.stringify(servers), 'utf8').toString('base64')
 	}
 	try {
 		return run()
 	} finally {
 		if (previous === undefined) {
-			delete process.env.DSH_AI_MCP_SERVERS
+			delete process.env.AI_DSH_MCP_SERVERS
 		} else {
-			process.env.DSH_AI_MCP_SERVERS = previous
+			process.env.AI_DSH_MCP_SERVERS = previous
 		}
 	}
 }
@@ -57,15 +57,15 @@ describe('MCP 服务器清单（环境变量）', () => {
 	})
 
 	it('坏了的载荷 ⇒ 空列表（不许炸）', () => {
-		const previous = process.env.DSH_AI_MCP_SERVERS
-		process.env.DSH_AI_MCP_SERVERS = '不是 base64 的 JSON'
+		const previous = process.env.AI_DSH_MCP_SERVERS
+		process.env.AI_DSH_MCP_SERVERS = '不是 base64 的 JSON'
 		try {
 			expect(readMcpServers()).toEqual([])
 		} finally {
 			if (previous === undefined) {
-				delete process.env.DSH_AI_MCP_SERVERS
+				delete process.env.AI_DSH_MCP_SERVERS
 			} else {
-				process.env.DSH_AI_MCP_SERVERS = previous
+				process.env.AI_DSH_MCP_SERVERS = previous
 			}
 		}
 	})

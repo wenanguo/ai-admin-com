@@ -42,10 +42,17 @@ npm start                 # node --env-file=.env dist/main.js
 | `AIADMIN_BASE_URL` | AiAdmin 后端地址，base 里已含 `/api/v1` | 是 |
 | `DATABASE_URL` | AiAdmin 的 MySQL 连接串（`ai_*` 元数据表与业务表**同库**） | 是 |
 | `ALLOWED_ORIGINS` | 允许跨域的前端源，逗号分隔（回具体的源，不用 `*`） | 是 |
-| `DSH_ADMIN_ENABLED` | **AI 管理面总开关**（issue #124：嵌 dsh 自带的 Web UI）⇒ **缺省关** | 否 |
-| `DSH_ADMIN_PORT` | dsh web 监听的端口（**只绑 loopback**，缺省 8399） | 否 |
-| `DSH_ADMIN_HOME` | dsh 的 home（**独立目录**，缺省 `<DSH_HOME>/dsh-admin`）⇒ 容器里要挂卷 | 否 |
-| `DSH_ADMIN_TRUSTED_HOST` | dsh `--trusted-host` 的值 ⇒ **必须等于浏览器看到的 host[:port]**（不对就每个 API 都 403） | 否 |
+| `AI_DSH_ADMIN_ENABLED` | **AI 管理面总开关**（issue #124：嵌 dsh 自带的 Web UI）⇒ **缺省关** | 否 |
+| `AI_DSH_ADMIN_PORT` | dsh web 监听的端口（**只绑 loopback**，缺省 8399） | 否 |
+| `AI_DSH_ADMIN_HOME` | dsh 的 home（**独立目录**，缺省 `<AI_DSH_HOME>/dsh-admin`）⇒ 容器里要挂卷 | 否 |
+| `AI_DSH_ADMIN_TRUSTED_HOST` | dsh `--trusted-host` 的值 ⇒ **必须等于浏览器看到的 host[:port]**（不对就每个 API 都 403） | 否 |
+| `AI_DSH_*` | dsh runner 的路由 / 模型 / 地址 / home 等（缺省就行，一般不用配） | 否 |
+
+- ⚠️ **`.env` 里一律不许写 `DSH_` 开头的键**（我们的一律叫 `AI_DSH_*`）：
+  dsh 的 app-boot 有 `BOOTSTRAP_PREFIXES = DSH_ / XDG_ / DYLD_ / BASH_FUNC_`，
+  而 dsh 会读**启动目录**的 `.env`（`backend/ai/.env` 就是那个位置）
+  ⇒ 写了 `DSH_*` dsh 就**拒绝启动**（`which only the launching environment may set`）。
+  守卫：`node scripts/e2e/dsh-env-names.static.cjs`。
 
 - `.env` **不入库**（里面有模型 key 与数据库口令），仓库里只有 `.env.example`。
 - `src/core/env/env.ts` 用 zod 校验，**缺哪个变量就在启动时报哪个**（不等到第一个请求打进来才炸）。

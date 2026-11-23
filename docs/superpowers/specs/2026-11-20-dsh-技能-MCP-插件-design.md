@@ -108,7 +108,7 @@
 | `exposure: hidden` | **不挂这台**（模型看不到） |
 | 调用方的 token | `headers: { Authorization: "Bearer …" }` |
 
-⚠️ **token 只活在子进程的环境变量里**（`DSH_AI_MCP_SERVERS` = base64 的 JSON）⇒ **不落盘、不进日志**。
+⚠️ **token 只活在子进程的环境变量里**（`AI_DSH_MCP_SERVERS` = base64 的 JSON）⇒ **不落盘、不进日志**。
 
 ### 3.3 工具名归一化（spec §5.3）
 
