@@ -847,3 +847,27 @@
 - **附带发现**：SPA 的 `base` 是**相对的**（`./`）⇒ iframe 里的资源会走 `/dsh-admin/` ⇒ **不会白屏**。
 - **能进 CI 的原因**：不连数据库、不连 AiAdmin（判定器是假的）· **不需要模型凭据** · 不需要 pnpm。
 - **#124 仍是 OPEN**（阶段二不关闭）⇒ 剩最后一件：**在真实浏览器里看那个 iframe**（需要真 AiAdmin 后端 + admin token ⇒ 本机 mock 顶不了 ⇒ **要人做**）。
+
+### 2026-11-21 · **D3 达成**（官方 DeepSeek key 实测通过）+ 抓到 `DSH_` 保留前缀的真 bug + 开两条新单
+
+- **🔑 用户给了官方 DeepSeek key** ⇒ 写进 `backend/ai/.env`（gitignored ⇒ 不进仓库）
+  ⇒ **D3 达成**（spec 里钉死的那条：「必须用官方 DeepSeek key 实测，不可用兼容网关冒充」）：
+  - 官方路由真被调用（`api.deepseek.com/v1`）· 模型回话 · **工具调用翻译正确**
+    （官方 API 的 tool_calls 是**逐字符**来的 ⇒ 我们的自写 provider 拼对了）
+    · 命令桥真被叫 · **对外 SSE 契约不变**（事件序列仍是我们的词汇）。
+  - ⇒ 派活也随之**自动切到官方路由**（`deepseek-direct` / `deepseek-chat`）
+    ⇒ **PM 的开发流程现在 = DeepSeek 模型 + DeepSeek 自己的 harness + 我们的闸门/审计/契约**。
+- **🔴 抓到真 bug（我自己的锅）**：**dsh 保留整个 `DSH_` 前缀**
+  （`dsh-app-boot` 的 `BOOTSTRAP_PREFIXES = DSH_/XDG_/DYLD_/BASH_FUNC_`）
+  ⇒ **任何 `.env` 文件里写 `DSH_*` 都会让 dsh 拒绝启动**
+  ⇒ 而 `backend/ai/.env.example` 恰恰教用户这么写 ⇒ **照着配就会炸** ⇒ 已开单修（#124 阶段三在跑）。
+- **另一个值钱发现**：工具参数有**两个形状** ⇒ 写错会被 dsh **静默丢掉**（模型看不见那个工具）：
+  - ✅ dsh 的 DSL：`{ tz: { type: "string", required: true } }`
+  - ❌ JSON Schema：`{ type: "object", properties: { … } }`
+  ⇒ 「假模型 e2e」一直测不出来（它的工具恰好是对的形状）⇒ **官方实测的价值就在这**。
+- **开了两条新单（用户批「全部做」）**：
+  - **#153 减法**：技能与 MCP 管理**退给 dsh**（删我们自研的 `core/skills/` 895 行 + MCP 管理部分）
+    ⇒ 但**闸门/审计/权限/上下文锚点/对外 9 端点/每用户 MCP token 不退**（那些 dsh 不管）
+    ⇒ 挂 milestone #12（G4）
+  - **#154 flaky**：修 `PermissionModal.test.tsx` 的随机失败（CI 约 1/5 概率红）
+    ⇒ 属**前端技术债** ⇒ 新开 milestone **#13「v1.0 · 技术债与稳定性」**
