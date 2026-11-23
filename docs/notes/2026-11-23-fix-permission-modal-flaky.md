@@ -95,10 +95,14 @@ cd frontend
 node scripts/repeat-vitest.mjs src/pages/module_system/role/PermissionModal.test.tsx 20
 
 # ② 整仓连跑 20 次（⚠️ 这才是真正能复现原 bug 的跑法 —— 别只跑单文件）
-node scripts/repeat-vitest.mjs  # 传空文件名会跑整仓
+node scripts/repeat-vitest.mjs 20
 ```
 
 ⚠️ **验收请用 ②**：单文件跑**本来就不红**（红的前提是「浏览器被抢」）。
+
+⚠️ 脚本会把「**一个测试文件都没跑到**」判成失败 ——
+vitest 匹配不到文件时会打印 `No test files found, exiting with code 0` 并**退出 0**
+⇒ 不拦的话会把「啥都没跑」报成「全绿」。
 
 ## 同类排查（issue #154 的第 4 条）
 
@@ -132,6 +136,7 @@ node scripts/repeat-vitest.mjs  # 传空文件名会跑整仓
 | 把两个异步依赖**吊住** | 让「中间没有异步窗口」从概率事件变成**事实** ⇒ 用例更强、更抗环境抖动 | 「立刻提交」这条用例名不副实 |
 | 复现脚本**入库**（`frontend/scripts/repeat-vitest.mjs`） | PM 要自己复跑验收 ⇒ 得有一条现成的命令 | 每次验收都要手搓命令 |
 | 用「整仓一起跑」当复现手段 | flake 的前提是**机器慢**；单跑永远不红 ⇒ 证明不了 | 以为修好了 ⇒ CI 还是随机红 |
+| 脚本把「**一个测试文件都没跑到**」判成失败 | vitest 匹配不到文件时**退出 0** ⇒ 不拦就会把「啥都没跑」报成「全绿」 | 验收时拿到假绿 |
 
 ## 产出
 
