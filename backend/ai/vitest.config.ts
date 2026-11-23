@@ -6,6 +6,9 @@ export default defineConfig({
 		include: [
 			"src/**/*.test.ts",
 			"examples/**/*.test.ts",
+			// ⚠️ **验收脚本的测试**（issue #124 阶段三 · D3 收尾）：
+			//    「账户没余额 ⇒ 跳过」的口径要**可测**（不联网也能测）。
+			"scripts/**/*.test.ts",
 			// ⚠️ **dsh 侧插件的测试**（issue #120）：那个包是**纯 JS**
 			//    （跑在 dsh 运行时进程里 ⇒ 不走 TS 编译）⇒ 单独一个 include。
 			"dsh-plugin/**/*.test.js",

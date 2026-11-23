@@ -27,6 +27,14 @@
  *
  * CI 里没有 `DEEPSEEK_API_KEY` ⇒ 打印「跳过」并退出 0 ⇒ **CI 安全**。
  *
+ * ## 账户**没余额** ⇒ 也**跳过**（exit 0）
+ *
+ * 官方账户欠费时官方回 **HTTP 402 `insufficient_balance`** ⇒ **那不是我们的 bug**
+ * ⇒ 打印「跳过（账户没余额）」并退出 0 ⇒ **CI 与本地都不该因此变红**。
+ *
+ * ⚠️ **别的错误照旧失败**（401 key 失效 / 429 限流 / 500 服务端故障 …… 必须红）
+ *    ⇒ 判定口径在 `lib/balance.ts`（**有单测**）⇒ 别在这里另写一套。
+ *
  * ## 前置
  *
  * - Node ≥ 24.9（dsh 的 engines 要求）；
@@ -47,6 +55,7 @@ import { ensureDshProfile } from "../../src/core/adapter/dsh/profile.ts";
 import { PendingWaiterRegistry } from "../../src/core/gate/pending-waiters.ts";
 import type { AgentEvent, AgentEventType } from "../../src/core/session/agent-event.ts";
 import type { CommandTool } from "../../src/core/tools/types.ts";
+import { looksLikeNoBalance, probeOfficialRoute } from "./lib/balance.ts";
 
 const requireFromHere = createRequire(import.meta.url);
 
@@ -116,6 +125,31 @@ if (apiKey.length === 0) {
 	console.log("⚠️ 没有 DEEPSEEK_API_KEY（环境变量与 backend/ai/.env 都没有）⇒ 跳过 D3 验收");
 	console.log("   （这是**有意为之**：CI 里没有 key ⇒ 跳过并 exit 0）");
 	process.exit(0);
+}
+
+/* ------------------------------------------------------------------ *
+ * 余额探测（**账户没余额 ⇒ 跳过**；那不是我们的 bug）
+ * ------------------------------------------------------------------ */
+
+/**
+ * 打印「跳过（账户没余额）」并退出 0。
+ *
+ * ⚠️ **只给「官方回 402 / insufficient_balance」用** ⇒ 别的错误不许走这里。
+ */
+function skipNoBalance(detail: string): never {
+	console.log(`⚠️ ${detail} ⇒ 跳过 D3 验收`);
+	console.log("   （这是**有意为之**：官方账户没余额不是我们的 bug ⇒ 跳过并 exit 0）");
+	process.exit(0);
+}
+
+// ⚠️ **先探一次**：官方账户没余额时，dsh 那一侧只会「没消息」⇒
+//    干等到超时也看不出是余额问题 ⇒ 探针能**当场**判定（省 120s，也更准）。
+const balance = await probeOfficialRoute({ baseUrl: BASE_URL, apiKey, model: MODEL });
+if (balance === "no-balance") {
+	skipNoBalance("官方账户没余额（HTTP 402 / insufficient_balance）");
+}
+if (balance === "unknown") {
+	console.log("⚠️ 余额探测**看不出来**（网络不通 / 别的状态码）⇒ 继续跑（让真错误暴露）");
 }
 
 /* ------------------------------------------------------------------ *
@@ -263,13 +297,36 @@ session.subscribe((event: AgentEvent) => {
 });
 
 // ⚠️ **必须明说「先调工具」**（否则模型可能直接凭记忆回答 ⇒ ③ 验不到）。
-await session.prompt(
-	"**必须先调用 get_time 工具**（不要凭记忆回答时间），拿到结果后用一句话总结。",
-);
+try {
+	await session.prompt(
+		"**必须先调用 get_time 工具**（不要凭记忆回答时间），拿到结果后用一句话总结。",
+	);
+} catch (error) {
+	// ⚠️ dsh 的 `session/prompt` 是**排队**语义（不等这一轮跑完）⇒ 正常不抛；
+	//    万一抛了 ⇒ 先看是不是「账户没余额」（⇒ 跳过），不是就照旧失败。
+	const message = error instanceof Error ? error.message : String(error);
+	if (looksLikeNoBalance(message)) {
+		skipNoBalance(`官方账户没余额（${message.slice(0, 200)}）`);
+	}
+	session.dispose();
+	bridgeServer.close();
+	console.error(`\n❌ D3 跑挂了：${message}`);
+	process.exit(1);
+}
 
 const deadline = Date.now() + 120_000;
+/** 这一轮「结束但没有正文」的时刻（⇒ 别再干等）。 */
+let settledAt: number | undefined;
 while (Date.now() < deadline) {
 	if (frames.includes("agent_settled") && frames.includes("message_end")) {
+		break;
+	}
+	// ⚠️ **这一轮结束了却没有正文** ⇒ 再宽限 3s ⇒ 还是没有 ⇒ 别干等到超时
+	//    （模型请求多半失败了 ⇒ 早失败早看到错误）。
+	if (frames.includes("agent_settled")) {
+		settledAt ??= Date.now();
+	}
+	if (settledAt !== undefined && Date.now() - settledAt > 3_000) {
 		break;
 	}
 	await new Promise((resolve) => setTimeout(resolve, 300));
@@ -318,6 +375,12 @@ check("⑥ 会话闲置了（agent_settled）", frames.includes("agent_settled")
 console.log(`\n事件序列：${sequence}`);
 
 if (failures.length > 0) {
+	// ⚠️ **最后再探一次余额**：万一账户在跑的过程中欠费了 ⇒ 那是「没余额」⇒ 跳过
+	//    （**不是我们的 bug** ⇒ 不该把验收判成红）。
+	const after = await probeOfficialRoute({ baseUrl: BASE_URL, apiKey, model: MODEL });
+	if (after === "no-balance") {
+		skipNoBalance("官方账户在验收过程中没余额了（HTTP 402 / insufficient_balance）");
+	}
 	console.error(`\n❌ D3 失败 ${failures.length} 条：`);
 	for (const failure of failures) {
 		console.error(`   - ${failure}`);
