@@ -163,12 +163,12 @@ async function runTurn(
 		env: {
 			...process.env,
 			DSH_HOME: dshHome,
-			DSH_AI_PROVIDER: "deepseek-direct",
-			DSH_AI_MODEL: "deepseek-chat",
-			DSH_AI_BASE_URL: baseURL,
-			DSH_AI_API_KEY: "fake-key",
-			DSH_AI_SYSTEM_PROMPT: Buffer.from("你是验收用的助手", "utf8").toString("base64"),
-			DSH_AI_TOOLS: Buffer.from(
+			AI_DSH_PROVIDER: "deepseek-direct",
+			AI_DSH_MODEL: "deepseek-chat",
+			AI_DSH_BASE_URL: baseURL,
+			AI_DSH_API_KEY: "fake-key",
+			AI_DSH_SYSTEM_PROMPT: Buffer.from("你是验收用的助手", "utf8").toString("base64"),
+			AI_DSH_TOOLS: Buffer.from(
 				JSON.stringify([
 					{
 						name: "update_task",
@@ -180,10 +180,10 @@ async function runTurn(
 				]),
 				"utf8",
 			).toString("base64"),
-			DSH_AI_BRIDGE_URL: "http://127.0.0.1:1/internal/dsh/commands",
-			DSH_AI_BRIDGE_SECRET: "e2e",
-			DSH_AI_CONVERSATION_ID: `conv-${decision}`,
-			DSH_AI_DEBUG_LOG: join(dshHome, "plugin-debug.log"),
+			AI_DSH_BRIDGE_URL: "http://127.0.0.1:1/internal/dsh/commands",
+			AI_DSH_BRIDGE_SECRET: "e2e",
+			AI_DSH_CONVERSATION_ID: `conv-${decision}`,
+			AI_DSH_DEBUG_LOG: join(dshHome, "plugin-debug.log"),
 		},
 		gate: () => ({
 			conversationId: `conv-${decision}`,

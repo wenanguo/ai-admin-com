@@ -8,7 +8,7 @@
  *
  * ## 配置从哪来
  *
- * ⚠️ **全部走环境变量**（`DSH_AI_MCP_SERVERS`：base64 的 JSON 数组）⇒
+ * ⚠️ **全部走环境变量**（`AI_DSH_MCP_SERVERS`：base64 的 JSON 数组）⇒
  *    **凭据不落盘**（token 只活在子进程内存里）。
  *    ⇒ 配置由**我们的服务**在起运行时之前算好（见 `core/adapter/dsh/runner.ts`）。
  *
@@ -28,7 +28,7 @@ import { Config, apply } from '@deepseek-ai/dsh-mcp-client'
  * @returns 数组（**没有就是空** ⇒ 不挂 MCP）。
  */
 export function readMcpServers() {
-	const raw = process.env.DSH_AI_MCP_SERVERS
+	const raw = process.env.AI_DSH_MCP_SERVERS
 	if (raw === undefined || raw.length === 0) {
 		return []
 	}
