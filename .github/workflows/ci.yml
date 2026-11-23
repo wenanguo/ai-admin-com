@@ -96,6 +96,10 @@ jobs:
       #   dsh 的 app-boot 拒收**任何 .env 文件**里的 `DSH_*`（BOOTSTRAP_PREFIXES）
       #   ⇒ 入库的 .env 模板里**不许**出现 `DSH_` 开头的键（否则照着配就炸）。
       - run: node ../../scripts/e2e/dsh-env-names.static.cjs
+      # issue #158：profile 里那份插件拷贝**要跟着插件变**
+      #   （旧判据「路径一样就跳过」⇒ 改了插件等于没改 ⇒ 派活报 NO_ADAPTER）
+      # ⇒ 验收脚本用「假 pnpm」⇒ **不需要 pnpm、不联网、不需要模型凭据**。
+      - run: node ../../scripts/e2e/dsh-profile-refresh.cjs
       # #124 管理面的**运行时**验收（阶段二）：真起 dsh web + 真挂反代
       # ⇒ 断言转发成功 / Host 保留 / cookie Path 改写 / fail closed / 403 / 200
       # ⚠️ **不需要模型凭据、不需要 pnpm、不连数据库** ⇒ 任何 runner 都能跑。
