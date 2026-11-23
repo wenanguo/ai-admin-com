@@ -884,3 +884,13 @@
   ⇒ 充值后可切回官方路由（`backend/ai/.env` 里删掉 `DISPATCH_PROVIDER=minimax` 即可自动切）。
 - **#124 已关单**（三阶段全合）⇒ 剩**一件要人做**：在真实浏览器里看那个 iframe（需真 AiAdmin + admin token ⇒ 本机 mock 顶不了）。
 - **已开两条新单（用户批「全部做」）**：**#153 减法**（技能与 MCP 管理退给 dsh · 挂 G4）· **#154 flaky**（挂新 milestone #13「v1.0 · 技术债与稳定性」）。
+
+### 2026-11-23 · 又抓到**一个生产级 bug**：dsh profile 里插件**拷贝永不刷新**（#158）
+
+- **现象**：派活时 dsh 直接报 `dsh: NO_ADAPTER: no adapter registered for provider "minimax"` ⇒ 子会话啥也没干。
+- **根因**：profile 里装的是我们插件的**一份拷贝**（`pnpm add file:` ⇒ pnpm 拷进去）
+  ⇒ 而 `ensureDshProfile` 里写着「**依赖已是这个路径 ⇒ 跳过**」⇒ ⇒ **profile 永远拿旧拷贝**。
+  ⇒ 我们把 `DSH_AI_*` 改名成 `AI_DSH_*` 之后，旧拷贝读不到新变量名 ⇒ provider 没注册 ⇒ 派活瘫。
+- **生产更严重**：容器里 profile 在卷上 ⇒ **镜像升级后插件永远不更新** ⇒ 改了插件等于没改。
+- ⇒ 手动绕过（今天用的）：删掉 `.scratch/dispatch/dsh-home/profiles/<profile>` 再派活。
+- ⇒ **#158 已开单**（小：一个文件 + 一个测试；用户批「建」）⇒ 排在 #153 减法之前。
