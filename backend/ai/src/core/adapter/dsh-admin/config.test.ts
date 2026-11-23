@@ -7,6 +7,7 @@
  * ⇒ 这里把口径钉住：**只读 `AI_DSH_ADMIN_*`**，旧的 `DSH_ADMIN_*` 一律不认。
  */
 
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { dshAdminConfig } from "./config.ts";
 
@@ -15,7 +16,10 @@ describe("dsh 管理面的配置", () => {
 		const config = dshAdminConfig({ AI_DSH_HOME: "C:/tmp/dsh-home", PORT: "3100" });
 		expect(config.enabled).toBe(false);
 		expect(config.port).toBe(8399);
-		expect(config.home).toBe("C:\\tmp\\dsh-home\\dsh-admin");
+		// ⚠️ **期望值用 `join` 算出来**（平台原生的分隔符）——**别写死 `C:\...`**。
+		//    写死 ⇒ Linux 上 CI 红（`expected 'C:/tmp/dsh-home/dsh-admin'
+		//    to be 'C:\tmp\dsh-home\dsh-admin'`）⇒ 代码（`join`）是对的，测试错了。
+		expect(config.home).toBe(join("C:/tmp/dsh-home", "dsh-admin"));
 		expect(config.trustedHost).toBe("127.0.0.1:3100");
 	});
 
