@@ -10,9 +10,10 @@
  *
  * ```bash
  * node scripts/repeat-vitest.mjs src/pages/module_system/role/PermissionModal.test.tsx 20
+ * node scripts/repeat-vitest.mjs            # 不给文件名 ⇒ 连跑整仓
  * ```
  *
- * - 第一个参数：vitest 的测试文件路径（相对 `frontend/`）
+ * - 第一个参数：vitest 的测试文件路径（相对 `frontend/`）；**不给 ⇒ 跑整仓**
  * - 第二个参数：连跑次数（默认 20）
  * - 额外参数：原样透传给 vitest（例如 `--coverage`）
  *
@@ -21,6 +22,9 @@
  *
  * ⚠️ **这不是 sleep**：脚本只是把同一条命令重复执行；
  *    每次跑的都是真测试（断言没变）。
+ *
+ * ⚠️ **有些 flaky 只在「整仓一起跑」时才红**（浏览器被别的测试文件抢走 ⇒
+ *    机器慢 ⇒ 窗口不够）⇒ 验收随机红请用**整仓**模式，别只跑单文件。
  */
 
 import { spawnSync } from 'node:child_process';
@@ -28,9 +32,10 @@ import process from 'node:process';
 
 const [, , file, countArg, ...rest] = process.argv;
 
-if (!file) {
+if (!file && countArg && Number.isNaN(Number.parseInt(countArg, 10))) {
   console.error(
-    '用法：node scripts/repeat-vitest.mjs <测试文件> [次数] [透传给 vitest 的参数…]',
+    '用法：node scripts/repeat-vitest.mjs [测试文件] [次数] [透传给 vitest 的参数…]\n' +
+      '      不给测试文件 ⇒ 跑整仓。',
   );
   process.exit(2);
 }
@@ -42,6 +47,7 @@ if (!Number.isInteger(times) || times < 1) {
 }
 
 const vitestBin = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+const target = file ? [file] : [];
 
 let failed = 0;
 
@@ -49,7 +55,7 @@ for (let i = 1; i <= times; i++) {
   const started = Date.now();
   const result = spawnSync(
     vitestBin,
-    ['vitest', 'run', file, ...rest],
+    ['vitest', 'run', ...target, ...rest],
     { stdio: 'inherit', shell: process.platform === 'win32' },
   );
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
