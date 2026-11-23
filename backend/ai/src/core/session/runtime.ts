@@ -48,8 +48,6 @@ import {
 	type CreateDshSessionOptions,
 } from "../adapter/dsh/runner.ts";
 import { DshTracer } from "../adapter/dsh/persistence.ts";
-import { buildDshSystemPrompt } from "../adapter/dsh/system-prompt.ts";
-import { createLoadSkillTool } from "../skills/skill-tools.ts";
 import { agentsRoot } from "../config/loader.ts";
 import {
 	agentIdOfConversation,
@@ -795,7 +793,7 @@ ${message}`;
 	/**
 	 * 造一个 **dsh 会话**（双跑的另一半）。
 	 *
-	 * ⚠️ **对外契约一模一样**：提示词、技能段、工具白名单、闸门口径
+	 * ⚠️ **对外契约一模一样**：提示词、工具白名单、闸门口径
 	 *    都与智能体配置同源 ⇒ 前端零改动。
 	 *
 	 * @param channel 会话通道。
@@ -810,13 +808,12 @@ ${message}`;
 		mcpServers: readonly McpServerSpec[],
 		userId?: string,
 	): Promise<AgentSessionLike> {
-		// ⚠️ **技能段照旧进模型上下文**（同一套技能表 ⇒ 语义保住）
-		const { systemPrompt, skills } = await buildDshSystemPrompt(
-			agent.systemPrompt,
-			agent.skills,
-		);
-		// ⚠️ **没有技能时就不注册 `load_skill`**（别给模型一个必然失败的工具）
-		const allTools = skills.length > 0 ? [...tools, createLoadSkillTool(skills)] : tools;
+		// ⚠️ **技能不再我们自己拼**（issue #153：技能退给 dsh）
+		//    ⇒ 系统提示词就是智能体配置里那份；
+		//    ⇒ 技能目录**交给 dsh 的技能 provider**（它按目录发现技能、给模型目录）
+		//    ⇒ 技能正文照样按需进模型上下文（dsh 的 `skill` 工具）。
+		//    ⇒ 我们的工具表**只有业务命令**（技能工具是 dsh 的，不归我们）。
+		const allTools = tools;
 		// ⚠️ **会话 ↔ dsh session 的映射**（`ai_conversation.dsh_session_id`）
 		//    今天 dsh 的 session id 就是我们指定的会话 id ⇒ 等值映射；
 		//    列先留好 ⇒ dsh 哪天自己分配 id 时直接用。
@@ -840,12 +837,15 @@ ${message}`;
 		return this.#createDshSession({
 			conversationId: channel.conversationId,
 			tools: allTools,
-			systemPrompt,
+			// ⚠️ **系统提示词就是智能体配置里那份**（技能段由 dsh 自己给）
+			systemPrompt: agent.systemPrompt,
 			// ⚠️ **模型来自配置**（没写 ⇒ 用全局默认）
 			model: agent.model ?? this.#model,
 			mcpPrefixes: channel.mcpPrefixes,
-			// ⚠️ **MCP 服务器**（同一份配置 ⇒ 语义不变；只是换成 dsh 的形状）
+			// ⚠️ **MCP 服务器**（同一份配置 ⇒ 语义不变；只是换成 dsh 管理面的形状）
 			mcpServers,
+			// ⚠️ **技能目录**（issue #153：技能退给 dsh ⇒ 我们只给目录，不自己扫）
+			skillDirs: agent.skills,
 			tracer,
 			// ⚠️ **闸门**：修改已有数据要等人点头（**唯一一套**口径 ⇒ `core/gate/decision.ts`）
 			gate: () => ({

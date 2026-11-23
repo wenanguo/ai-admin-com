@@ -54,21 +54,25 @@
     "@deepseek-ai/dsh-scope": "0.2.2-rc.5"
   },
   "peerDependenciesInstalledExplicitly": {
-    "_comment": "issue #120：我们的 dsh 侧插件（backend/ai/dsh-plugin）要把 dsh-llm / dsh-tools 的 **peer 依赖**显式装进 profile（否则 pnpm 装不上 ⇒ 插件静默不加载）。issue #122：加 dsh-mcp-client（它的 peer 也要显式装）。",
+    "_comment": "issue #120：我们的 dsh 侧插件（backend/ai/dsh-plugin）要把 dsh-llm / dsh-tools 的 **peer 依赖**显式装进 profile（否则 pnpm 装不上 ⇒ 插件静默不加载）。issue #122：加 dsh-mcp-client（它的 peer 也要显式装）。issue #153：加 dsh-mcp-manager（MCP 管理面）+ 它要的 peer（dsh-util-values / dsh-typert-protocol / cordis-plugin-loader）。",
     "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/cordis-plugin-loader": "1.1.0",
     "@deepseek-ai/dsh-agent": "0.2.2-rc.5",
     "@deepseek-ai/dsh-attachment": "0.2.2-rc.5",
     "@deepseek-ai/dsh-brand": "0.2.2-rc.5",
     "@deepseek-ai/dsh-error": "0.2.2-rc.5",
     "@deepseek-ai/dsh-llm": "0.2.2-rc.5",
     "@deepseek-ai/dsh-mcp-client": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-mcp-manager": "0.2.2-rc.5",
     "@deepseek-ai/dsh-scope": "0.2.2-rc.5",
     "@deepseek-ai/dsh-session": "0.2.2-rc.5",
     "@deepseek-ai/dsh-subprocess": "0.2.2-rc.5",
     "@deepseek-ai/dsh-system-prompt": "0.2.2-rc.5",
     "@deepseek-ai/dsh-timeout": "0.2.2-rc.5",
     "@deepseek-ai/dsh-tools": "0.2.2-rc.5",
-    "@deepseek-ai/dsh-user-approval": "0.2.2-rc.5"
+    "@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-user-approval": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-util-values": "0.2.2-rc.5"
   },
   "knownGaps": {
     "@deepseek-ai/dsh-session-persistence-sqlite": "没有 0.2.2-rc.5（仍是 0.0.1-rc.1 线）⇒ 本轮存储只走 JSONL"

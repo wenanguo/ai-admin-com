@@ -13,23 +13,28 @@
 	"comment": [
 		"⚠️ 这个包**跑在 dsh 运行时进程里**（不是我们的 Node 服务）⇒ 它只能用 dsh 的 API。",
 		"⚠️ **不许依赖 pi-ai**（issue #120 的 D5=A）⇒ provider 是我们自己写的（OpenAI 兼容协议）。",
-		"⚠️ **MCP 用 dsh 自带的客户端**（@deepseek-ai/dsh-mcp-client）⇒ 标准协议，不自己写。",
+		"⚠️ **MCP 的管理面用 dsh 自带的**（@deepseek-ai/dsh-mcp-manager，issue #153）⇒ 装 / 卸 / 列 / 探活都不自己造。",
+		"⚠️ **技能不再自己扫**（issue #153）⇒ 用 dsh 自带的技能子系统（sdk profile 里已挂好）⇒ 本包不依赖技能包。",
 		"⚠️ 版本**精确锁死**（与 backend/ai/spike/dsh/dsh-versions.lock.json 同一发布线 0.2.2-rc.5）。"
 	],
 	"dependencies": {
 		"@deepseek-ai/cordis": "4.1.0",
+		"@deepseek-ai/cordis-plugin-loader": "1.1.0",
 		"@deepseek-ai/dsh-agent": "0.2.2-rc.5",
 		"@deepseek-ai/dsh-attachment": "0.2.2-rc.5",
 		"@deepseek-ai/dsh-brand": "0.2.2-rc.5",
 		"@deepseek-ai/dsh-error": "0.2.2-rc.5",
 		"@deepseek-ai/dsh-llm": "0.2.2-rc.5",
 		"@deepseek-ai/dsh-mcp-client": "0.2.2-rc.5",
+		"@deepseek-ai/dsh-mcp-manager": "0.2.2-rc.5",
 		"@deepseek-ai/dsh-scope": "0.2.2-rc.5",
 		"@deepseek-ai/dsh-session": "0.2.2-rc.5",
 		"@deepseek-ai/dsh-subprocess": "0.2.2-rc.5",
 		"@deepseek-ai/dsh-system-prompt": "0.2.2-rc.5",
 		"@deepseek-ai/dsh-timeout": "0.2.2-rc.5",
 		"@deepseek-ai/dsh-tools": "0.2.2-rc.5",
-		"@deepseek-ai/dsh-user-approval": "0.2.2-rc.5"
+		"@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.5",
+		"@deepseek-ai/dsh-user-approval": "0.2.2-rc.5",
+		"@deepseek-ai/dsh-util-values": "0.2.2-rc.5"
 	}
 }

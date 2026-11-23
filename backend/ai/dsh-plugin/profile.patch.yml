@@ -17,3 +17,27 @@
 #    依赖树里也**没有 pi-ai**（见 `backend/ai/package.json` 的 `overrides`）。
 - id: llm-pi-ai
   disabled: true
+
+# ⚠️ **技能目录按会话给**（issue #153：技能退给 dsh）。
+#
+#    dsh 自带的技能子系统（`dsh-skill` + `dsh-skill-filesystem` + `dsh-tool-skill`）
+#    **本来就挂在 sdk profile 里** ⇒ 我们**不再自己扫技能**
+#    （`core/skills/skill-loader.ts` 那套已删）⇒ 技能发现、目录、正文加载
+#    全部是 dsh 的事。
+#
+#    ⚠️ **默认根一律不扫**（`includeDefaultRoots: false`）：
+#    dsh 的默认根 = `<项目根>/.dsh/skills` + `<项目根>/.agents/skills`
+#    + `<dsh home>/skills` + `<用户家目录>/.agents/skills`
+#    ⇒ 会把**仓库自己的开发技能**（`.agents/skills/antd` 等）与
+#    **开发者私人技能**混进业务会话 ⇒ 必须关掉。
+#    ⇒ 技能目录**只认智能体配置里列的那几个**（`agent.yaml` 的 `skills`）
+#    ⇒ **不跨智能体串味**（与 `docs/notes/2026-11-16-skills-per-agent.md` 同口径）。
+#
+#    ⚠️ **目录从环境变量来**（`AI_DSH_SKILL_DIRS`：base64 的 JSON 数组）
+#    ⇒ 每个 dsh 子进程（= 一个会话）一份 ⇒ 由 `core/adapter/dsh/runner.ts` 算好。
+#    ⇒ 插件的 `!!js` 表达式在 **dsh 进程里**求值 ⇒ 拿得到那个环境变量。
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+  config:
+    includeDefaultRoots: false
+    customSkillDirs: !!js "process.env.AI_DSH_SKILL_DIRS ? JSON.parse(Buffer.from(process.env.AI_DSH_SKILL_DIRS, 'base64').toString('utf8')) : []"

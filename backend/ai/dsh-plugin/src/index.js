@@ -5,10 +5,11 @@
  *
  * ① **注册我们自己的 provider**（`dsh-llm` 的缝 ⇒ **不依赖 pi-ai**）：
  *    一个 OpenAI 兼容的适配器 ⇒ DeepSeek 官方与 MiniMax 都走它（换 baseURL + key）。
- * ② **把系统提示词（含技能段）交给 dsh**：注册成一个 prompt section
- *    ⇒ 技能照旧进模型上下文（**语义保住**）。
+ * ② **把系统提示词交给 dsh**：注册成一个 prompt section
+ *    ⇒ ⚠️ **技能段不再由我们拼**（issue #153：技能退给 dsh ⇒ 技能目录由
+ *    dsh 的 `dsh-tool-skill` 作为**用户消息**给模型 ⇒ 这里只给智能体自己的提示词）。
  * ③ **把我们的命令挂进 dsh 的工具表**（命令本体仍在我们的进程里 ⇒ 走命令桥）。
- * ④ **把 MCP 服务器挂进 dsh 的工具表**（用 dsh 自带的 `dsh-mcp-client`）
+ * ④ **把 MCP 服务器挂进 dsh 的工具表**（用 dsh 自带的**管理面** `dsh-mcp-manager`）
  *    ⇒ 并给 MCP 的写操作补上**闸门**（修改已有数据要人点头）。
  *
  * ## 配置全走环境变量
@@ -100,9 +101,10 @@ function registerProvider(ctx) {
 }
 
 /**
- * 把我们的系统提示词（含技能段）注册成一个 prompt section。
+ * 把我们的系统提示词注册成一个 prompt section。
  *
- * ⚠️ **技能照旧进模型上下文** —— 这是「技能语义保住」的落点。
+ * ⚠️ **只有智能体自己的提示词**（issue #153：技能段退给 dsh
+ *    ⇒ 技能目录由 `dsh-tool-skill` 单独给模型 ⇒ 这里不拼技能）。
  */
 function registerSystemPrompt(ctx) {
 	const encoded = process.env.AI_DSH_SYSTEM_PROMPT

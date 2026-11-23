@@ -120,7 +120,7 @@ describe("dsh runner · MCP 服务器", () => {
 		bridgeUrl: "http://127.0.0.1:1/internal/dsh/commands",
 	};
 
-	it("MCP 服务器 ⇒ 翻译成 dsh 的客户端配置（**token 只在环境变量里**）", () => {
+	it("MCP 服务器 ⇒ 翻译成 dsh 管理面的登记（**token 只在环境变量里**）", () => {
 		const env = buildChildEnv({
 			options: {
 				conversationId: "conv-1",
@@ -142,11 +142,39 @@ describe("dsh runner · MCP 服务器", () => {
 		});
 		const servers = JSON.parse(
 			Buffer.from(env.AI_DSH_MCP_SERVERS ?? "", "base64").toString("utf8"),
-		) as Array<Record<string, unknown>>;
+		) as Array<{ name?: string; entry?: Record<string, unknown> }>;
 		expect(servers).toHaveLength(1);
-		expect(servers[0]?.["serverName"]).toBe("aiadmin");
-		expect(servers[0]?.["transport"]).toBe("streamable-http");
-		expect(servers[0]?.["headers"]).toEqual({ Authorization: "Bearer jwt" });
+		// ⚠️ **名字是键**（也是工具名的前缀 `mcp__<name>__`）。
+		expect(servers[0]?.name).toBe("aiadmin");
+		expect(servers[0]?.entry?.["transport"]).toBe("streamable-http");
+		expect(servers[0]?.entry?.["url"]).toBe("https://a.test/mcp");
+		expect(servers[0]?.entry?.["headers"]).toEqual({ Authorization: "Bearer jwt" });
+	});
+
+	it("技能目录 ⇒ 交给 dsh（**环境变量；每个会话一份**）", () => {
+		const env = buildChildEnv({
+			options: {
+				conversationId: "conv-1",
+				tools: [],
+				systemPrompt: "你是助手。",
+				skillDirs: ["C:/srv/ai/.pi/skills"],
+				gate: () => ({
+					conversationId: "conv-1",
+					userId: "1",
+					onPending: () => undefined,
+					waiters: new PendingWaiterRegistry(),
+					createPending: async () => ({ id: "p-1" }),
+					timeoutMs: 1000,
+				}),
+			},
+			config,
+			source: {},
+			apiKey: "fake",
+		});
+		const dirs = JSON.parse(
+			Buffer.from(env.AI_DSH_SKILL_DIRS ?? "", "base64").toString("utf8"),
+		) as string[];
+		expect(dirs).toEqual(["C:/srv/ai/.pi/skills"]);
 	});
 
 	it("没配 MCP ⇒ 空清单（**不是异常**）", () => {
