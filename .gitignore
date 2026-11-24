@@ -67,3 +67,7 @@ docker/.last-deploy
 # ⚠️ pnpm-lock.yaml 不入库：dsh 的包全是**精确版本**（版本锁在 spike/dsh/dsh-versions.lock.json），
 #    入库会给这个「文档型 PR」加 700KB 噪声；本地跑 `pnpm install` 会重新生成。
 **/spike/dsh/pnpm-lock.yaml
+
+# ⚠️ dsh 的 **home 目录**（本地状态：配置 / 凭据 / 会话 / profile 拷贝）
+#    ⇒ **不入库**（里面有 `.credentials.yaml` ⇒ 凭据）
+**/.dsh-home/
