@@ -115,7 +115,11 @@ const model = createServer((req, res) => {
 				],
 			});
 		} else {
-			send({ choices: [{ delta: { content: "任务建好了" } }] });
+			// ⚠️ **分三块发**（issue #168 的验收：「**流式拼接** + 工具调用」）
+			//    ⇒ 断言「拼起来的正文 == 整句话」⇒ 真的流式了，不是只拿最后一块。
+			for (const piece of ["任务", "建好", "了"]) {
+				send({ choices: [{ delta: { content: piece } }] });
+			}
 			send({ choices: [{ delta: {}, finish_reason: "stop" }] });
 		}
 		res.end();
@@ -169,10 +173,19 @@ const tool: CommandTool = {
  */
 async function runTurn(
 	decision: "approved" | "rejected",
-): Promise<{ frames: string[]; pending: { id: string; command: string; args: Record<string, unknown> }[] }> {
+): Promise<{
+	frames: string[];
+	deltas: string[];
+	finalText: string;
+	pending: { id: string; command: string; args: Record<string, unknown> }[];
+}> {
 	const waiters = new PendingWaiterRegistry();
 	const pending: { id: string; command: string; args: Record<string, unknown> }[] = [];
 	const frames: string[] = [];
+	/** 流式片段（⇒ 断言「拼起来了」）。 */
+	const deltas: string[] = [];
+	/** 助手消息的完整正文（⇒ 与片段拼起来的结果比对）。 */
+	let finalText = "";
 	let pendingCounter = 0;
 
 	const session = new DshSession({
@@ -234,6 +247,17 @@ async function runTurn(
 
 	session.subscribe((event) => {
 		frames.push(event.type);
+		// ⚠️ **流式片段**（issue #168：验收「流式拼接」）。
+		//    增量挂在 `message_update` 事件里（`assistantMessageEvent` 才是 `text_delta`）。
+		if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
+			deltas.push(event.assistantMessageEvent.delta);
+		}
+		if (event.type === "message_end") {
+			const parts = event.message.content as { type?: string; text?: string }[];
+			finalText = Array.isArray(parts)
+				? parts.map((part) => part.text ?? "").join("")
+				: "";
+		}
 	});
 	await session.prompt("帮我建一条任务");
 	// ⚠️ 等这一轮跑完（模型两轮：调工具 ⇒ 回话）。
@@ -246,7 +270,7 @@ async function runTurn(
 	}
 	await new Promise((resolve) => setTimeout(resolve, 500));
 	session.dispose();
-	return { frames, pending };
+	return { frames, deltas, finalText, pending };
 }
 
 /* ------------------------------------------------------------------ *
@@ -263,6 +287,17 @@ check("模型看见了我们的工具", seenTools.some((names) => names.includes
 check("出现了工具开始事件", approved.frames.includes("tool_execution_start"));
 check("出现了助手消息结束事件", approved.frames.includes("message_end"));
 check("出现了会话闲置事件", approved.frames.includes("agent_settled"));
+// ⚠️ issue #168 的验收：**流式拼接** ⇒ 片段是多块来的，且拼起来 == 整句话。
+check(
+	"流式：正文是**多块**来的",
+	approved.deltas.length >= 2,
+	`deltas=${approved.deltas.length}（${approved.deltas.join("|")}）`,
+);
+check(
+	"流式拼接：片段拼起来 == 助手消息的正文",
+	approved.deltas.join("") === approved.finalText && approved.finalText.includes("任务建好了"),
+	`拼起来=${approved.deltas.join("")} / 正文=${approved.finalText}`,
+);
 check("挂起了待确认（闸门问了我们）", approved.pending.length === 1, `pending=${approved.pending.length}`);
 check("待确认的命令名是我们自己的命令", approved.pending[0]?.command === "update_task");
 check("待确认带上了参数", approved.pending[0]?.args?.["title"] === "写文档");
