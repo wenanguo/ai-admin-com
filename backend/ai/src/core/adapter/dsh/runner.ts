@@ -13,13 +13,18 @@
  * | `AI_DSH_PROFILE` | `sdk` | dsh 的具名 profile |
  * | `AI_DSH_HOME` | `<cwd>/.dsh-home` | dsh 的 home（profile / 日志 / 会话） |
  * | `AI_DSH_BIN` | SDK 自带的运行时 | dsh 可执行文件 |
- * | `AI_DSH_PROVIDER` | `deepseek-direct` | **我们自己的** provider 路由名 |
+ * | `AI_DSH_PROVIDER` | `deepseek-direct` | 模型路由名（**dsh 自带的 pi-ai 适配器**上的路由） |
  * | `AI_DSH_MODEL` | `deepseek-chat` | 模型 id |
  * | `AI_DSH_BASE_URL` | `https://api.deepseek.com/v1` | OpenAI 兼容的根地址 |
- * | `AI_DSH_API_KEY_ENV` | `DEEPSEEK_API_KEY` | key 放在哪个环境变量里 |
+ * | `AI_DSH_API_KEY_ENV` | `DEEPSEEK_API_KEY` | key 放在哪个环境变量里（**只写名字** ⇒ 密钥不落盘） |
  * | `AI_DSH_CONTEXT_WINDOW` | `131072` | 上下文窗口（token） |
  * | `AI_DSH_MAX_TOKENS` | `8192` | 单次输出上限 |
  * | `AI_DSH_BRIDGE_URL` | 与服务同端口 | 命令桥的地址 |
+ *
+ * ## ⚠️ provider **不再由我们自研**（issue #168 · D5=B）
+ *
+ * 路由由**我们生成一段 profile 补丁**喂给 dsh 自带的 `@deepseek-ai/dsh-llm-pi-ai`
+ * （见 `profile.ts` 的 `writePiAiProviderPatch`）⇒ **密钥只写变量名**（不落盘）。
  *
  * ## ⚠️ 为什么**我们自己的**变量不能叫 `DSH_*`（issue #124 阶段三的**真 bug**）
  *
@@ -42,7 +47,7 @@ import { fileURLToPath } from "node:url";
 import { DshSession } from "./session.ts";
 import type { DshTracer } from "./persistence.ts";
 import { buildToolCatalog } from "./tools.ts";
-import { ensureDshProfile } from "./profile.ts";
+import { ensureDshProfile, writePiAiProviderPatch } from "./profile.ts";
 import type { DshGateContext } from "./approvals.ts";
 import type { AgentSessionLike } from "../../session/session-registry.ts";
 import type { CommandTool } from "../../tools/types.ts";
@@ -67,7 +72,7 @@ export interface DshRunnerConfig {
 	dshBin: string;
 	/** profile 补丁（把我们的插件插进 profile）。 */
 	patches: string[];
-	/** provider 路由名（**我们自己的**）。 */
+	/** provider 路由名（**dsh 自带的 pi-ai 适配器**上的路由）。 */
 	provider: string;
 	/** 模型 id。 */
 	model: string;
@@ -161,13 +166,25 @@ export async function createDshSession(
 			`没有 ${config.apiKeyEnv} ⇒ dsh runner 起不来（那个环境变量里放模型服务的 key）`,
 		);
 	}
-	// ⚠️ **profile 必须先准备好**（我们的插件要装进去 ⇒ 工具与 provider 才在）。
+	// ⚠️ **profile 必须先准备好**（我们的插件要装进去 ⇒ 工具才在）。
 	//    （每个进程只做一次 ⇒ 这里 await 的是那个缓存的 promise。）
 	await ensureDshProfile({
 		dshHome: config.dshHome,
 		profile: config.profile,
 		dshBin: config.dshBin,
 		pluginPath: PLUGIN_DIR,
+	});
+
+	// ⚠️ **模型路由**：provider 归位给 **dsh 自带的 pi-ai 适配器**（issue #168）
+	//    ⇒ 我们只**生成一段补丁**（路由 / baseURL / 模型 / key 的**变量名**）。
+	//    ⇒ **凭据不落盘**（补丁里只有变量名 ⇒ 密钥只在子进程的环境变量里）。
+	const providerPatch = writePiAiProviderPatch(join(config.dshHome, "ai-admin"), {
+		route: config.provider,
+		baseURL: config.baseURL,
+		apiKeyEnv: config.apiKeyEnv,
+		model: options.model ?? config.model,
+		contextWindow: config.contextWindow,
+		maxTokens: config.maxTokens,
 	});
 
 	const childEnv = buildChildEnv({ options, config, source, apiKey });
@@ -181,7 +198,7 @@ export async function createDshSession(
 		cwd: options.cwd ?? process.cwd(),
 		dshHome: config.dshHome,
 		profile: config.profile,
-		patches: config.patches,
+		patches: [...config.patches, providerPatch],
 		dshBin: config.dshBin,
 		env: childEnv,
 		gate: options.gate,
@@ -213,10 +230,13 @@ export function buildChildEnv(input: {
 	return {
 		...source,
 		DSH_HOME: config.dshHome,
+		// ⚠️ **key 落在「它自己的名字」那个变量里**（issue #168）：
+		//    dsh 自带的 pi-ai 适配器按补丁里的 `apiKeyEnv` **去环境变量里取 key**
+		//    ⇒ 子进程里必须有一个**同名**的变量 ⇒ 密钥仍然**只在内存里**（不落盘）。
+		[config.apiKeyEnv]: apiKey,
 		AI_DSH_PROVIDER: config.provider,
 		AI_DSH_MODEL: options.model ?? config.model,
 		AI_DSH_BASE_URL: config.baseURL,
-		AI_DSH_API_KEY: apiKey,
 		AI_DSH_CONTEXT_WINDOW: String(config.contextWindow),
 		AI_DSH_MAX_TOKENS: String(config.maxTokens),
 		AI_DSH_SYSTEM_PROMPT: encode(options.systemPrompt),

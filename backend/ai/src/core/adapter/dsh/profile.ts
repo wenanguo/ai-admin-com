@@ -31,11 +31,33 @@
  *
  * ⚠️ **要 pnpm**（dsh 生态自己的包管理器）⇒ 生产镜像里要有它；
  *    没有就报错并说清怎么办（**不静默降级** —— 少了插件 ⇒ 工具与 provider 都不在）。
+ *
+ * ## 模型路由：**dsh 自带的 pi-ai 适配器**（issue #168 · D5=B）
+ *
+ * provider **不再由我们自研**（`dsh-plugin/src/provider.js` 已删）⇒
+ * 改用 dsh 自带的 `@deepseek-ai/dsh-llm-pi-ai` ⇒ **路由由我们生成一段补丁喂给它**：
+ *
+ * ```yaml
+ * - id: llm-pi-ai
+ *   config:
+ *     providers:
+ *       minimax:
+ *         api: openai-completions
+ *         baseURL: https://api.minimaxi.com/v1
+ *         apiKeyEnv: MINIMAX_CN_API_KEY      # ⚠️ **只写变量名** ⇒ 密钥不落盘
+ *         models:
+ *           - id: MiniMax-M3.1-Flash
+ *             contextWindow: 131072
+ *             maxTokens: 8192
+ * ```
+ *
+ * ⚠️ **凭据只写环境变量名**（沿用 `AI_DSH_API_KEY_ENV` 的口径）⇒
+ *    补丁里**没有密钥** ⇒ 密钥只在 dsh 子进程的**环境变量**里。
  */
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 
 /** 我们插件的包名（**装进 profile 的那个名字**）。 */
@@ -329,4 +351,95 @@ function installPlugin(profileDir: string, wanted: string): void {
 			}`,
 		);
 	}
+}
+
+/* ------------------------------------------------------------------ *
+ * 模型路由（issue #168 · D5=B）：**dsh 自带的 pi-ai 适配器**
+ * ------------------------------------------------------------------ */
+
+/** dsh 的 profile 里 **pi-ai 适配器**那一段的 id（dsh-base 自带的那个）。 */
+export const PI_AI_PLUGIN_ID = "llm-pi-ai";
+
+/**
+ * 一条模型路由（**凭据只写环境变量名** ⇒ 密钥不落盘）。
+ *
+ * ⚠️ **路由名就是 dsh 的 provider 名**（`providers` 的键 ⇒ agent 装配时用它选模型）。
+ */
+export interface PiAiProviderRoute {
+	/** 路由名（providers 的键 ⇒ dsh 的 provider 名）。 */
+	route: string;
+	/** OpenAI 兼容的根地址（到 `/v1` 为止）。 */
+	baseURL: string;
+	/** key 放在哪个环境变量里（**只写名字** ⇒ 密钥不落盘）。 */
+	apiKeyEnv: string;
+	/** 模型 id。 */
+	model: string;
+	/** 上下文窗口（token）。 */
+	contextWindow: number;
+	/** 单次输出上限（token）。 */
+	maxTokens: number;
+}
+
+/**
+ * 生成 pi-ai 路由的 **profile 补丁**（YAML 文本）。
+ *
+ * ⚠️ **凭据只写环境变量名**（`apiKeyEnv`）⇒ 补丁里没有密钥 ⇒ 密钥不落盘。
+ * ⚠️ **协议固定 `openai-completions`**（DeepSeek 官方 / MiniMax / Kimi 都是 OpenAI 兼容的）。
+ *
+ * @param route 路由配置。
+ * @returns 补丁文本（YAML）。
+ */
+export function buildPiAiProviderPatch(route: PiAiProviderRoute): string {
+	return [
+		"# ⚠️ **自动生成**（core/adapter/dsh/profile.ts）⇒ 别手改（下次启动会被覆盖）。",
+		"# ⚠️ **凭据只写环境变量名** ⇒ 密钥不落盘（密钥只在 dsh 子进程的环境变量里）。",
+		`- id: ${PI_AI_PLUGIN_ID}`,
+		"  config:",
+		"    providers:",
+		`      ${yamlScalar(route.route)}:`,
+		`        displayName: ${yamlScalar(route.route)}`,
+		"        api: openai-completions",
+		`        baseURL: ${yamlScalar(route.baseURL)}`,
+		`        apiKeyEnv: ${yamlScalar(route.apiKeyEnv)}`,
+		"        models:",
+		`          - id: ${yamlScalar(route.model)}`,
+		`            contextWindow: ${route.contextWindow}`,
+		`            maxTokens: ${route.maxTokens}`,
+		"",
+	].join("\n");
+}
+
+/**
+ * 把路由补丁**写进目录**（返回补丁文件的路径）。
+ *
+ * ⚠️ **文件名按内容定**（内容的指纹）⇒ 同一份配置写同一个文件（幂等），
+ *    换模型 / 换厂商 ⇒ 另一个文件（**不覆盖别人的** ⇒ 并发会话互不干扰）。
+ *
+ * @param dir 目录（**不存在就建**）。
+ * @param route 路由配置。
+ * @returns 补丁文件路径。
+ */
+export function writePiAiProviderPatch(dir: string, route: PiAiProviderRoute): string {
+	mkdirSync(dir, { recursive: true });
+	const file = join(dir, `provider-${routeFingerprint(route)}.patch.yml`);
+	writeFileSync(file, buildPiAiProviderPatch(route), "utf8");
+	return file;
+}
+
+/** 路由配置的**内容指纹**（十六进制前 16 位 ⇒ 文件名）。 */
+function routeFingerprint(route: PiAiProviderRoute): string {
+	return createHash("sha256")
+		.update(JSON.stringify(route))
+		.digest("hex")
+		.slice(0, 16);
+}
+
+/**
+ * YAML 的**双引号标量**（⇒ 值里的 `:` / `#` / 引号都不会被当成语法）。
+ *
+ * @param value 字符串。
+ * @returns YAML 标量。
+ */
+function yamlScalar(value: string): string {
+	return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }

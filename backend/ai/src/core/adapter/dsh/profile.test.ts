@@ -28,7 +28,12 @@ import {
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ensureDshProfile, pluginFingerprint } from "./profile.ts";
+import {
+	buildPiAiProviderPatch,
+	ensureDshProfile,
+	pluginFingerprint,
+	writePiAiProviderPatch,
+} from "./profile.ts";
 
 /**
  * 固定 fixture 的指纹。
@@ -307,5 +312,59 @@ describe("插件的内容指纹", () => {
 		expect(() => pluginFingerprint(join(workDir, "nope"))).toThrow(
 			/找不到我们的插件目录/,
 		);
+	});
+});
+
+describe("模型路由补丁（issue #168 · D5=B）", () => {
+	it("补丁喂的是 **dsh 自带的适配器**（`llm-pi-ai` 那一段）", () => {
+		const patch = buildPiAiProviderPatch({
+			route: "minimax",
+			baseURL: "https://api.minimaxi.com/v1",
+			apiKeyEnv: "MINIMAX_CN_API_KEY",
+			model: "MiniMax-M3.1-Flash",
+			contextWindow: 131072,
+			maxTokens: 8192,
+		});
+		expect(patch).toContain("- id: llm-pi-ai");
+		expect(patch).toContain('"minimax":');
+		expect(patch).toContain("api: openai-completions");
+		expect(patch).toContain('baseURL: "https://api.minimaxi.com/v1"');
+		expect(patch).toContain('apiKeyEnv: "MINIMAX_CN_API_KEY"');
+		expect(patch).toContain('id: "MiniMax-M3.1-Flash"');
+		expect(patch).toContain("contextWindow: 131072");
+		expect(patch).toContain("maxTokens: 8192");
+	});
+
+	it("**凭据只写变量名** ⇒ 补丁里没有密钥（issue #168 的硬要求）", () => {
+		const patch = buildPiAiProviderPatch({
+			route: "minimax",
+			baseURL: "https://api.minimaxi.com/v1",
+			apiKeyEnv: "MINIMAX_CN_API_KEY",
+			model: "MiniMax-M3.1-Flash",
+			contextWindow: 131072,
+			maxTokens: 8192,
+		});
+		// ⚠️ 补丁**落盘** ⇒ 里面绝不能有 key 本身。
+		expect(patch).not.toMatch(/sk-[A-Za-z0-9]/);
+		expect(patch).toContain("MINIMAX_CN_API_KEY");
+	});
+
+	it("写盘 ⇒ **文件名按内容定**（同样的配置写同一个文件 ⇒ 幂等）", () => {
+		const dir = join(workDir, "routes");
+		const route = {
+			route: "minimax",
+			baseURL: "https://api.minimaxi.com/v1",
+			apiKeyEnv: "MINIMAX_CN_API_KEY",
+			model: "MiniMax-M3.1-Flash",
+			contextWindow: 131072,
+			maxTokens: 8192,
+		};
+		const first = writePiAiProviderPatch(dir, route);
+		const second = writePiAiProviderPatch(dir, route);
+		expect(first).toBe(second);
+		expect(readFileSync(first, "utf8")).toContain("llm-pi-ai");
+		// ⚠️ 换模型 ⇒ 另一个文件（**不覆盖别人的** ⇒ 并发会话互不干扰）。
+		const other = writePiAiProviderPatch(dir, { ...route, model: "MiniMax-M3" });
+		expect(other).not.toBe(first);
 	});
 });

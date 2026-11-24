@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 验收脚本 —— **「pi 拔干净了 + 派活不再靠 pi」**（issue #123）。
+ * 验收脚本 —— **「pi 拔干净了 + 派活不再靠 pi + provider 归位给 dsh」**（issue #123 · #168）。
  *
  * ## 为什么要有它
  *
@@ -9,11 +9,15 @@
  * - 有人把 `pi-launcher.js` 加回派活器；
  * - 有人 import 了 pi 的类型（⇒ 编译期才发现 ⇒ 太晚）。
  *
- * ⇒ 这条脚本把三件事**钉成可执行的断言**（任何机器 / CI 都能跑，**零依赖**）：
+ * ⇒ 这条脚本把几件事**钉成可执行的断言**（任何机器 / CI 都能跑，**零依赖**）：
  *
  * 1. **依赖树里没有 pi**（`backend/ai/package.json` 没有 `@earendil-works/pi-*`）；
  * 2. **源码里没有 pi**（`grep -rn "@earendil-works/pi" backend/ai/src` ⇒ 0 命中）；
  * 3. **派活器不再 spawn pi**（`scripts/agent/dispatch.cjs` 里没有 `pi-launcher`）。
+ * 4. **provider 不再自研**（issue #168 · D5=B ⇒ `dsh-plugin/src/provider.js` 不得复活）。
+ *
+ * ⚠️ **只管「直接依赖 / 直接 import」**（issue #168）：pi-ai 作为 **dsh 自带适配器的
+ *    传递依赖**在依赖树里是**预期的**（那才叫「provider 归位给 dsh」）。
  *
  * ## 用法
  *
@@ -116,15 +120,24 @@ if (!fs.existsSync(dshDispatchPath)) {
   }
 }
 
-/* ⑤ 我们自己的 provider（**不依赖 pi-ai**）。 */
+/* ⑤ **provider 不再自研**（issue #168 · D5=B）⇒ 归位给 dsh 自带的适配器。 */
 
 const providerPath = path.join(aiRoot, 'dsh-plugin', 'src', 'provider.js');
-const providerSource = read(providerPath);
-if (/from\s+['"]@deepseek-ai\/dsh-llm-pi-ai['"]/.test(providerSource)) {
-  report(path.relative(repoRoot, providerPath), 'provider 用了 pi-ai 的适配器（D5=A 不许）');
+if (fs.existsSync(providerPath)) {
+  report(
+    path.relative(repoRoot, providerPath),
+    '自研 provider 复活了（provider 归位给 dsh 自带的 @deepseek-ai/dsh-llm-pi-ai）',
+  );
 }
-if (!providerSource.includes('@deepseek-ai/dsh-llm')) {
-  report(path.relative(repoRoot, providerPath), 'provider 不是建在 dsh-llm 的缝上');
+const pluginDir = path.join(aiRoot, 'dsh-plugin');
+for (const file of filesOf(pluginDir, ['.js', '.mjs', '.cjs'])) {
+  const source = fs.readFileSync(file, 'utf8');
+  if (/extends\s+LlmAdapter/.test(source) || /\bregisterAdapter\s*\(/.test(source)) {
+    report(
+      path.relative(repoRoot, file),
+      'dsh 侧插件里出现了自研 provider 的形状（extends LlmAdapter / registerAdapter）',
+    );
+  }
 }
 
 /* ⑥ 本仓自己的 `.pi/` 开发资产**保留**（提示词与技能）。 */
@@ -152,7 +165,7 @@ if (fs.existsSync(skillsDir)) {
 /* -------------------------------------------------------------- 打印 */
 
 if (violations.length === 0) {
-  console.log('✅ pi 拔干净了（依赖 / 源码 / 派活器 / provider / 开发资产）');
+  console.log('✅ pi 拔干净了（依赖 / 源码 / 派活器 / provider 归位 / 开发资产）');
   process.exit(0);
 }
 

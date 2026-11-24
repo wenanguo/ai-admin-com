@@ -1,9 +1,9 @@
 /**
- * 端到端验收（issue #120）：**dsh runner 下的会话与闸门**。
+ * 端到端验收（issue #120 · issue #168）：**dsh runner 下的会话与闸门**。
  *
  * ## 它证明什么
  *
- * 1. **会话**：我们的自写 provider（dsh-llm seam，**不依赖 pi-ai**）能真的被 dsh 调用，
+ * 1. **会话**：**dsh 自带的 pi-ai 适配器**（provider 归位给它，issue #168）能真的被 dsh 调用，
  *    dsh 的事件能翻译成**我们的事件词汇**（对外契约不变）；
  * 2. **闸门**：`approval/request` **走到我们的进程** ⇒ 等人点头 ⇒
  *    - 批准 ⇒ 工具**真的执行**（走命令桥）；
@@ -12,7 +12,12 @@
  * ## 为什么不需要模型凭据
  *
  * ⚠️ 脚本自己起一个**假模型服务**（OpenAI 兼容的 SSE）⇒
- *    测的是「**我们的 provider 与闸门接线**」⇒ **不花钱、不外网**。
+ *    测的是「**路由与闸门接线**」⇒ **不花钱、不外网**。
+ *
+ * ## 路由（issue #168）
+ *
+ * ⚠️ **路由由我们生成一段补丁**喂给 dsh 自带的适配器（`llm-pi-ai` 那一段）
+ *    ⇒ 补丁里**只有环境变量名**（`MINIMAX_CN_API_KEY`）⇒ **密钥不落盘**。
  *
  * ## 前置
  *
@@ -28,7 +33,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 import { DshSession } from "../../src/core/adapter/dsh/session.ts";
-import { ensureDshProfile } from "../../src/core/adapter/dsh/profile.ts";
+import { ensureDshProfile, writePiAiProviderPatch } from "../../src/core/adapter/dsh/profile.ts";
 import { PendingWaiterRegistry } from "../../src/core/gate/pending-waiters.ts";
 import type { CommandTool } from "../../src/core/tools/types.ts";
 import { Type } from "typebox";
@@ -37,6 +42,13 @@ const requireFromHere = createRequire(import.meta.url);
 const dshBin = requireFromHere.resolve("@deepseek-ai/dsh/lib/bin.js");
 const pluginPath = join(process.cwd(), "dsh-plugin");
 const dshHome = mkdtempSync(join(tmpdir(), "dsh-e2e-"));
+
+/** 路由名（= dsh 的 provider 名 ⇒ **模型选择器里显示的就是它**）。 */
+const ROUTE = "minimax";
+/** 模型 id。 */
+const MODEL = "MiniMax-M3.1-Flash";
+/** key 放在哪个环境变量里（⚠️ **只写名字** ⇒ 密钥不落盘）。 */
+const API_KEY_ENV = "MINIMAX_CN_API_KEY";
 
 /** 失败信息（收集起来 ⇒ 一次性报）。 */
 const failures: string[] = [];
@@ -113,6 +125,20 @@ await new Promise<void>((resolve) => model.listen(0, resolve));
 const modelPort = (model.address() as { port: number }).port;
 const baseURL = `http://127.0.0.1:${modelPort}/v1`;
 
+/**
+ * **路由补丁**（issue #168）：喂给 dsh 自带的 `llm-pi-ai` 适配器。
+ *
+ * ⚠️ **补丁里只有环境变量名** ⇒ 密钥不落盘（密钥在子进程的环境变量里）。
+ */
+const providerPatch = writePiAiProviderPatch(join(dshHome, "ai-admin"), {
+	route: ROUTE,
+	baseURL,
+	apiKeyEnv: API_KEY_ENV,
+	model: MODEL,
+	contextWindow: 131072,
+	maxTokens: 8192,
+});
+
 /* ------------------------------------------------------------------ *
  * 我们这边的假命令桥（工具真正执行的地方）
  * ------------------------------------------------------------------ */
@@ -153,20 +179,22 @@ async function runTurn(
 		conversationId: `conv-${decision}`,
 		tools: [tool],
 		systemPrompt: "你是验收用的助手",
-		provider: "deepseek-direct",
-		model: "deepseek-chat",
+		provider: ROUTE,
+		model: MODEL,
 		cwd: process.cwd(),
 		dshHome,
 		profile: "sdk",
-		patches: [join(pluginPath, "profile.patch.yml")],
+		patches: [join(pluginPath, "profile.patch.yml"), providerPatch],
 		dshBin,
 		env: {
 			...process.env,
 			DSH_HOME: dshHome,
-			AI_DSH_PROVIDER: "deepseek-direct",
-			AI_DSH_MODEL: "deepseek-chat",
+			// ⚠️ **key 落在「它自己的名字」那个变量里**（issue #168）
+			//    ⇒ dsh 自带的适配器按补丁里的 `apiKeyEnv` 去环境变量里取。
+			[API_KEY_ENV]: "fake-key",
+			AI_DSH_PROVIDER: ROUTE,
+			AI_DSH_MODEL: MODEL,
 			AI_DSH_BASE_URL: baseURL,
-			AI_DSH_API_KEY: "fake-key",
 			AI_DSH_SYSTEM_PROMPT: Buffer.from("你是验收用的助手", "utf8").toString("base64"),
 			AI_DSH_TOOLS: Buffer.from(
 				JSON.stringify([

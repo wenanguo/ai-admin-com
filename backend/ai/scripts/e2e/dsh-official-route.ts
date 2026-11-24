@@ -51,7 +51,7 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import { Type } from "typebox";
 import { DshSession } from "../../src/core/adapter/dsh/session.ts";
-import { ensureDshProfile } from "../../src/core/adapter/dsh/profile.ts";
+import { ensureDshProfile, writePiAiProviderPatch } from "../../src/core/adapter/dsh/profile.ts";
 import { PendingWaiterRegistry } from "../../src/core/gate/pending-waiters.ts";
 import type { AgentEvent, AgentEventType } from "../../src/core/session/agent-event.ts";
 import type { CommandTool } from "../../src/core/tools/types.ts";
@@ -61,12 +61,14 @@ const requireFromHere = createRequire(import.meta.url);
 
 /** dsh 的 profile 名（与服务的缺省一致）。 */
 const PROFILE = "sdk";
-/** 我们 provider 的路由名。 */
+/** 模型路由名（= dsh 的 provider 名）。 */
 const PROVIDER = "deepseek-direct";
 /** 模型 id（官方）。 */
 const MODEL = process.env.AI_DSH_MODEL ?? "deepseek-chat";
 /** 官方路由（**不是兼容网关**）。 */
 const BASE_URL = process.env.AI_DSH_BASE_URL ?? "https://api.deepseek.com/v1";
+/** key 放在哪个环境变量里（⚠️ **只写名字** ⇒ 密钥不落盘）。 */
+const API_KEY_ENV = process.env.AI_DSH_API_KEY_ENV ?? "DEEPSEEK_API_KEY";
 
 /** 我们自己的事件词汇（`agent-event.ts` 的联合类型）—— ④ 就钉这个。 */
 const EVENT_VOCABULARY = new Set<AgentEventType>([
@@ -102,14 +104,14 @@ function check(label: string, ok: boolean, detail?: string): void {
  * ⚠️ **不打印 key**（一律只说「有没有」）。
  */
 function resolveKey(): string {
-	const fromEnv = process.env.DEEPSEEK_API_KEY;
+	const fromEnv = process.env[API_KEY_ENV];
 	if (fromEnv !== undefined && fromEnv.trim().length > 0) {
 		return fromEnv.trim();
 	}
 	try {
 		const text = readFileSync(join(process.cwd(), ".env"), "utf8");
 		for (const line of text.split(/\r?\n/)) {
-			const match = /^\s*DEEPSEEK_API_KEY\s*=\s*(.*)$/.exec(line);
+			const match = new RegExp(`^\\s*${API_KEY_ENV}\\s*=\\s*(.*)$`).exec(line);
 			if (match?.[1] !== undefined) {
 				return match[1].trim().replace(/^["']|["']$/g, "");
 			}
@@ -122,7 +124,7 @@ function resolveKey(): string {
 
 const apiKey = resolveKey();
 if (apiKey.length === 0) {
-	console.log("⚠️ 没有 DEEPSEEK_API_KEY（环境变量与 backend/ai/.env 都没有）⇒ 跳过 D3 验收");
+	console.log(`⚠️ 没有 ${API_KEY_ENV}（环境变量与 backend/ai/.env 都没有）⇒ 跳过 D3 验收`);
 	console.log("   （这是**有意为之**：CI 里没有 key ⇒ 跳过并 exit 0）");
 	process.exit(0);
 }
@@ -230,6 +232,20 @@ const conversationId = `conv-d3-${Date.now().toString(36)}`;
 console.log(`① 准备 dsh profile（装我们的插件）… dshHome=${dshHome}`);
 await ensureDshProfile({ dshHome, profile: PROFILE, dshBin, pluginPath });
 
+/**
+ * **路由补丁**（issue #168）：喂给 dsh 自带的 `llm-pi-ai` 适配器。
+ *
+ * ⚠️ **补丁里只有环境变量名** ⇒ 密钥不落盘（密钥在子进程的环境变量里）。
+ */
+const providerPatch = writePiAiProviderPatch(join(dshHome, "ai-admin"), {
+	route: PROVIDER,
+	baseURL: BASE_URL,
+	apiKeyEnv: API_KEY_ENV,
+	model: MODEL,
+	contextWindow: 131072,
+	maxTokens: 8192,
+});
+
 console.log(`② 起会话 ⇒ 打官方路由（${BASE_URL} · ${MODEL}）…`);
 const waiters = new PendingWaiterRegistry();
 const frames: AgentEventType[] = [];
@@ -246,17 +262,19 @@ const session = new DshSession({
 	cwd: process.cwd(),
 	dshHome,
 	profile: PROFILE,
-	patches: [join(pluginPath, "profile.patch.yml")],
+	patches: [join(pluginPath, "profile.patch.yml"), providerPatch],
 	dshBin,
 	env: {
 		...process.env,
 		// ⚠️ **dsh 自己认的名字**照原名进**子进程环境**（进程环境是合法的，只有 `.env` 文件被禁）
 		DSH_HOME: dshHome,
+		// ⚠️ **key 落在「它自己的名字」那个变量里**（issue #168）
+		//    ⇒ dsh 自带的适配器按补丁里的 `apiKeyEnv` 去环境变量里取。
+		[API_KEY_ENV]: apiKey,
 		// ⚠️ 我们插件读的一律 `AI_DSH_*`（见 `core/adapter/dsh/runner.ts` 文件头）
 		AI_DSH_PROVIDER: PROVIDER,
 		AI_DSH_MODEL: MODEL,
 		AI_DSH_BASE_URL: BASE_URL,
-		AI_DSH_API_KEY: apiKey,
 		AI_DSH_SYSTEM_PROMPT: Buffer.from("你是验收用的助手，只用一两句话回答。", "utf8").toString(
 			"base64",
 		),
