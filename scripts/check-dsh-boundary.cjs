@@ -10,10 +10,12 @@
  * - **目录边界**：dsh 的包只许出现在适配层（服务侧 `core/adapter/dsh/**` + dsh 侧插件包 `dsh-plugin/**`）；
  * - **类型边界**：dsh 的类型名（`LlmAdapter` / `HarnessClient` / `defineTool` ……）
  *   不许出现在适配层**以外**的服务代码里；
- * - **依赖边界**：dsh 侧不许出现 pi-ai（issue #120 的 D5=A 决定：
- *   **绝对不许用 `@deepseek-ai/dsh-llm-pi-ai`**，它建在 pi 的 `pi-ai` 上 ⇒ 自己的 provider 走 `dsh-llm` seam）；
- * - **pi 禁令**（issue #123）：**服务里一处 pi 都不许有**
- *   （依赖清单 / 源码 import ⇒ `@earendil-works/pi-*` 全不许）。
+ * - **不许自研 provider**（issue #168 · D5=B）：模型 provider **归位给 dsh 自带的**
+ *   `@deepseek-ai/dsh-llm-pi-ai` ⇒ **我们不再自己写适配器**
+ *   ⇒ `dsh-plugin/src/provider.js` **不得复活**（那是重复实现）；
+ * - **pi 禁令**（issue #123 的口径，issue #168 微调）：**我们的代码不许直接依赖 pi**
+ *   （源码 import / 直接依赖清单）⇒ ⚠️ **传递依赖里的 pi-ai 是允许的**
+ *   （D5=B ⇒ dsh 自带的适配器建在 pi-ai 上 ⇒ 它**必须**在依赖树里）。
  *
  * ## 四档检查
  *
@@ -21,8 +23,8 @@
  * | -- | ------ | ------ |
  * | **一** | dsh 的包只许在适配层 | 解析 import 说明符 ⇒ 算出落点 |
  * | **二** | dsh 的类型名不外泄 | 扫标识符（剥掉注释与字符串字面量） |
- * | **三** | dsh 侧不许有 pi-ai | 扫依赖清单 + 源码 |
- * | **四** | **服务里不许有 pi**（拔干净了） | 扫依赖清单 + 源码 import |
+ * | **三** | **不许自研 provider** | 文件不许复活 + 源码不许出现适配器的形状 |
+ * | **四** | **我们的代码不许直接依赖 pi** | 扫依赖清单 + 源码 import |
  *
  * ## 用法
  *
@@ -31,7 +33,7 @@
  * node scripts/check-dsh-boundary.cjs --root <目录> # 查别的目录（测试用）
  * ```
  *
- * 退出码：0 = 三档都干净；1 = 有违规（打印每一条）。
+ * 退出码：0 = 四档都干净；1 = 有违规（打印每一条）。
  */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -122,24 +124,40 @@ const ALLOWED_SERVICE_DSH_PACKAGES = ["@deepseek-ai/dsh-sdk-client"];
 const ALLOWED_SERVICE_DSH_DEV_PACKAGES = ["@deepseek-ai/dsh"];
 
 /**
- * **pi-ai 禁令**（D5=A）。
+ * **不许自研 provider**（issue #168 · D5=B）。
  *
- * ⚠️ `@deepseek-ai/dsh-llm-pi-ai` 是 dsh 官方的「pi-ai 支撑的 provider 适配器」
- *    ⇒ 它把 pi-ai 拖进来 ⇒ **本仓不许用**（自己写 provider，走 `dsh-llm` seam）。
+ * ⚠️ provider 归位给 **dsh 自带的** `@deepseek-ai/dsh-llm-pi-ai`
+ *    ⇒ 我们**不再自己写**适配器（`dsh-plugin/src/provider.js` 已删 ⇒ 重复实现消失）
+ *    ⇒ 这两个文件**不得复活**。
  */
-const FORBIDDEN_DSH_PACKAGES = ["@deepseek-ai/dsh-llm-pi-ai"];
-
-/** dsh 侧（插件包）不许出现的 pi 包（pi-ai 及其同门）。 */
-const FORBIDDEN_PI_PACKAGES = [
-	"@earendil-works/pi-ai",
-	"@earendil-works/pi-coding-agent",
-	"@deepseek-ai/dsh-llm-pi-ai",
+const FORBIDDEN_PROVIDER_FILES = [
+	"dsh-plugin/src/provider.js",
+	"dsh-plugin/src/provider.test.js",
 ];
 
 /**
- * **服务里不许出现的 pi 包**（issue #123：拔干净了）。
+ * **自研 provider 的形状**（源码里不许出现）。
+ *
+ * ⚠️ `LlmAdapter` 是 dsh 的 LLM 适配器基类 ⇒ `extends LlmAdapter` = 自研 provider；
+ *    `registerAdapter` 是**注册路由**的动作 ⇒ 出现在我们的代码里 = 自研 provider 复活。
+ */
+const FORBIDDEN_PROVIDER_PATTERNS = [/extends\s+LlmAdapter/, /\bregisterAdapter\s*\(/];
+
+/**
+ * **dsh 侧插件包不许直接依赖** `@deepseek-ai/dsh-llm`。
+ *
+ * ⚠️ 那个包是**自研 provider 的入口**（`LlmAdapter` 在那里）
+ *    ⇒ 路由归位给 dsh 自带的适配器之后 ⇒ **我们不需要它了**。
+ */
+const FORBIDDEN_PLUGIN_DSH_PACKAGES = ["@deepseek-ai/dsh-llm"];
+
+/**
+ * **服务里不许直接依赖的 pi 包**（issue #123 的口径）。
  *
  * ⚠️ **前缀匹配** ⇒ `@earendil-works/pi-*` 一律不许（`pi-ai` / `pi-coding-agent` / `pi-mcp`……）。
+ *
+ * ⚠️ **只管「直接依赖 / 直接 import」**（issue #168 · D5=B）：
+ *    pi-ai 作为 **dsh 自带适配器的传递依赖**在依赖树里是**预期的**（那才叫「归位」）。
  */
 const FORBIDDEN_PI_PREFIX = "@earendil-works/pi";
 
@@ -304,36 +322,30 @@ for (const file of filesOf(srcDir, [".ts"])) {
 }
 
 /* ------------------------------------------------------------------ *
- * 第三档：pi-ai 禁令（D5=A）
+ * 第三档：**不许自研 provider**（issue #168 · D5=B）
  * ------------------------------------------------------------------ */
 
-for (const file of filesOf(root, [".ts", ".js", ".mjs", ".cjs", ".json"])) {
-	const relative = relOf(file);
+// ① 自研 provider 的文件**不得复活**
+for (const forbidden of FORBIDDEN_PROVIDER_FILES) {
+	const file = path.join(root, forbidden);
+	if (fs.existsSync(file)) {
+		report(file, "自研 provider", `「${forbidden}」复活了（provider 归位给 dsh 自带的适配器）`);
+	}
+}
+
+// ② 源码里不许出现自研 provider 的形状
+for (const file of filesOf(root, [".ts", ".tsx", ".js", ".mjs", ".cjs"])) {
 	const source = fs.readFileSync(file, "utf8");
-	// ⚠️ **源码只看代码**（剥掉注释与字符串）⇒ 文档里提一句「不许用 xxx」不算违规。
-	// ⚠️ **lock 文件不看**（它是生成物 ⇒ 会把 dsh 运行时的**传递依赖**也列出来）。
-	const isSource = !file.endsWith(".json");
-	const haystack = isSource ? codeOnly(source) : source;
-	if (file.endsWith("package-lock.json")) {
-		continue;
-	}
-	// ⚠️ **清单文件另说**（下面那段按依赖表查 ⇒ 更准）
-	//    ⇒ 这里只看「清单里有没有提到它」（`overrides` 里提到是**故意的** ⇒ 放过）。
-	if (file.endsWith("package.json")) {
-		continue;
-	}
-	// ⚠️ **空壳目录放过**（`stubs/dsh-llm-pi-ai/` ⇒ 它**必须**叫那个名字才能顶替它）
-	if (relative.startsWith("stubs/")) {
-		continue;
-	}
-	for (const forbidden of FORBIDDEN_DSH_PACKAGES) {
-		if (haystack.includes(forbidden)) {
-			report(file, "pi-ai 禁令", `出现了「${forbidden}」（D5=A：自己写 provider，不许用它）`);
+	// ⚠️ **只看代码**（剥掉注释与字符串）⇒ 文档里提一句「LlmAdapter」不算违规。
+	const code = codeOnly(source);
+	for (const pattern of FORBIDDEN_PROVIDER_PATTERNS) {
+		if (pattern.test(code)) {
+			report(file, "自研 provider", `出现了自研 provider 的形状（${pattern.source}）`);
 		}
 	}
 }
 
-// dsh 侧插件包的依赖里不许有 pi 系
+// ③ dsh 侧插件包不许直接依赖 dsh-llm（自研 provider 的入口）
 for (const manifestName of ["dsh-plugin/package.json", "package.json"]) {
 	const manifestPath = path.join(root, manifestName);
 	if (!fs.existsSync(manifestPath)) {
@@ -346,8 +358,8 @@ for (const manifestName of ["dsh-plugin/package.json", "package.json"]) {
 	};
 	for (const [name] of Object.entries(deps)) {
 		const isDshSide = manifestName.startsWith("dsh-plugin/");
-		if (isDshSide && FORBIDDEN_PI_PACKAGES.includes(name)) {
-			report(manifestPath, "pi-ai 禁令", `dsh 侧的依赖里有「${name}」`);
+		if (isDshSide && FORBIDDEN_PLUGIN_DSH_PACKAGES.includes(name)) {
+			report(manifestPath, "自研 provider", `dsh 侧的依赖里有「${name}」（provider 归位了 ⇒ 不需要它）`);
 		}
 		if (name.startsWith(DSH_PACKAGE_PREFIX) && !isDshSide) {
 			// ⚠️ **只许** ALLOWED_SERVICE_DSH_PACKAGES（依赖里不许有 dsh 运行时）
@@ -359,9 +371,6 @@ for (const manifestName of ["dsh-plugin/package.json", "package.json"]) {
 	// devDependencies **单独判**（⚠️ 不要跟 dependencies 合并 ⇒ 同名两处会互相豁免）
 	for (const [name] of Object.entries(manifest.devDependencies ?? {})) {
 		const isDshSide = manifestName.startsWith("dsh-plugin/");
-		if (isDshSide && FORBIDDEN_PI_PACKAGES.includes(name)) {
-			report(manifestPath, "pi-ai 禁令", `dsh 侧的依赖里有「${name}」`);
-		}
 		if (name.startsWith(DSH_PACKAGE_PREFIX) && !isDshSide) {
 			const isAllowed =
 				ALLOWED_SERVICE_DSH_PACKAGES.includes(name) ||
@@ -374,7 +383,7 @@ for (const manifestName of ["dsh-plugin/package.json", "package.json"]) {
 }
 
 /* ------------------------------------------------------------------ *
- * 第四档：pi 禁令（issue #123：拔干净了）
+ * 第四档：pi 禁令（issue #123 的口径 · issue #168 微调）
  * ------------------------------------------------------------------ */
 
 for (const file of filesOf(root, [".ts", ".tsx", ".js", ".mjs", ".cjs"])) {
@@ -384,11 +393,13 @@ for (const file of filesOf(root, [".ts", ".tsx", ".js", ".mjs", ".cjs"])) {
 	const pattern = /(?:from|import|require)\s*\(?\s*["'](@earendil-works\/pi[^"']*)["']/g;
 	let match;
 	while ((match = pattern.exec(source)) !== null) {
-		report(file, "pi 禁令", `import 了 pi 的包「${match[1]}」（服务里一处 pi 都不许有）`);
+		report(file, "pi 禁令", `import 了 pi 的包「${match[1]}」（我们的代码不许直接依赖 pi）`);
 	}
 }
 
 // 依赖清单里也不许有 pi（**直接依赖** ⇒ 一律不许）
+// ⚠️ **只管直接依赖**（issue #168 · D5=B）：pi-ai 作为 **dsh 自带适配器的传递依赖**
+//    在依赖树里是**预期的**（那才叫「provider 归位给 dsh」）。
 for (const manifestName of ["dsh-plugin/package.json", "package.json"]) {
 	const manifestPath = path.join(root, manifestName);
 	if (!fs.existsSync(manifestPath)) {
@@ -412,7 +423,7 @@ for (const manifestName of ["dsh-plugin/package.json", "package.json"]) {
  * ------------------------------------------------------------------ */
 
 if (violations.length === 0) {
-	console.log("✅ dsh 边界干净（目录 / 类型 / pi-ai / pi 四档）");
+	console.log("✅ dsh 边界干净（目录 / 类型 / 自研 provider / pi 四档）");
 	process.exit(0);
 }
 

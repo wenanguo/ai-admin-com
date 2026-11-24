@@ -3,7 +3,7 @@
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",
-	"description": "issue #120/#122：我们的 dsh 插件 —— 自写 provider（dsh-llm seam，不依赖 pi-ai）+ 我们的命令桥 + MCP 挂载与闸门",
+	"description": "issue #120/#122/#168：我们的 dsh 插件 —— 我们的命令桥 + MCP 挂载与闸门（provider 归位给 dsh 自带的适配器）",
 	"main": "src/index.js",
 	"dsh": {
 		"bundle": {
@@ -12,7 +12,7 @@
 	},
 	"comment": [
 		"⚠️ 这个包**跑在 dsh 运行时进程里**（不是我们的 Node 服务）⇒ 它只能用 dsh 的 API。",
-		"⚠️ **不许依赖 pi-ai**（issue #120 的 D5=A）⇒ provider 是我们自己写的（OpenAI 兼容协议）。",
+		"⚠️ **provider 不归我们管**（issue #168 · D5=B）⇒ 路由由**我们生成的 profile 补丁**喂给 dsh 自带的 `@deepseek-ai/dsh-llm-pi-ai` ⇒ 本包**不碰模型协议**。",
 		"⚠️ **MCP 的管理面用 dsh 自带的**（@deepseek-ai/dsh-mcp-manager，issue #153）⇒ 装 / 卸 / 列 / 探活都不自己造。",
 		"⚠️ **`dsh-mcp-client` 还得留着**（它是管理面的 **peer 依赖** ⇒ 装管理面就得装它）⇒ 但我们自己**不再 import 它**。",
 		"⚠️ **技能不再自己扫**（issue #153）⇒ 用 dsh 自带的技能子系统（sdk profile 里已挂好）⇒ 本包不依赖技能包。",
@@ -25,7 +25,6 @@
 		"@deepseek-ai/dsh-attachment": "0.2.2-rc.5",
 		"@deepseek-ai/dsh-brand": "0.2.2-rc.5",
 		"@deepseek-ai/dsh-error": "0.2.2-rc.5",
-		"@deepseek-ai/dsh-llm": "0.2.2-rc.5",
 		"@deepseek-ai/dsh-mcp-client": "0.2.2-rc.5",
 		"@deepseek-ai/dsh-mcp-manager": "0.2.2-rc.5",
 		"@deepseek-ai/dsh-scope": "0.2.2-rc.5",

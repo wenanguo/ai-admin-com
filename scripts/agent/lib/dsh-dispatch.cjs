@@ -264,7 +264,12 @@ function profileManifest(profileName) {
 }
 
 /**
- * profile 的补丁层（**我们的**）：插我们的插件 + 指定模型路由。
+ * profile 的补丁层（**我们的**）：插我们的插件 + **声明模型路由**。
+ *
+ * ⚠️ **provider 归位给 dsh 自带的适配器**（issue #168 · D5=B）：
+ *    路由写在 `llm-pi-ai` 那一段的 `providers` 里 ⇒ dsh 自带的
+ *    `@deepseek-ai/dsh-llm-pi-ai` 认它 ⇒ **我们不再自研 provider**。
+ * ⚠️ **凭据只写环境变量名**（`apiKeyEnv`）⇒ **密钥不落盘**（只在子进程的环境变量里）。
  *
  * @param {object} config 派活配置。
  */
@@ -273,16 +278,38 @@ function profilePatch(config) {
     '- insert:',
     '    - id: ai-admin',
     `      name: '${DSH_PLUGIN_PACKAGE}'`,
-    // ⚠️ **把 dsh 自带的「pi-ai 支撑的 provider 适配器」关掉**
-    //    （我们走自己的 provider ⇒ 那个适配器**用不到** ⇒ 关掉更干净）。
+    // ⚠️ **模型路由**（dsh 自带的 pi-ai 适配器 ⇒ 路由名 = provider 名）。
     '- id: llm-pi-ai',
-    '  disabled: true',
+    '  config:',
+    '    providers:',
+    `      ${yamlScalar(config.provider)}:`,
+    `        displayName: ${yamlScalar(config.provider)}`,
+    '        api: openai-completions',
+    `        baseURL: ${yamlScalar(config.baseURL)}`,
+    `        apiKeyEnv: ${yamlScalar(config.apiKeyEnv)}`,
+    '        models:',
+    `          - id: ${yamlScalar(config.model)}`,
+    `            contextWindow: ${config.contextWindow}`,
+    `            maxTokens: ${config.maxTokens}`,
+    // ⚠️ **不声明思考档位** ⇒ 与旧的自研适配器一致：**不发**思考参数
+    //    （思考预算会**挤占** `max_tokens` ⇒ 答案被截断的风险）。
+    '            reasoningEfforts: false',
     '- id: agent-default-model',
     '  config:',
     `    provider: ${config.provider}`,
     `    model: ${config.model}`,
     '',
   ].join('\n');
+}
+
+/**
+ * YAML 的**双引号标量**（⇒ 值里的 `:` / `#` / 引号都不会被当成语法）。
+ *
+ * @param {string} value 字符串。
+ * @returns YAML 标量。
+ */
+function yamlScalar(value) {
+  return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 /**
@@ -486,10 +513,13 @@ function buildChildEnv(config, input, env = process.env) {
     // ⚠️ **权限模式**：派活的子代理是**受信**的（在自己的工作区里干活）
     //    ⇒ 没有人在旁边点「同意」⇒ 不能停在「等人批准」上。
     DSH_PERMISSION_MODE: 'danger-full-access',
+    // ⚠️ **key 落在「它自己的名字」那个变量里**（issue #168）：
+    //    dsh 自带的 pi-ai 适配器按补丁里的 `apiKeyEnv` **去环境变量里取 key**
+    //    ⇒ 子进程里必须有一个**同名**的变量 ⇒ 密钥仍然**只在内存里**（不落盘）。
+    [config.apiKeyEnv]: input.apiKey,
     AI_DSH_PROVIDER: config.provider,
     AI_DSH_MODEL: config.model,
     AI_DSH_BASE_URL: config.baseURL,
-    AI_DSH_API_KEY: input.apiKey,
     // ⚠️ **输出上限**（issue #123 收尾实测出来的坑）：
     //    dsh 的缺省是 **8192** ⇒ 一条长任务消息正好被截断
     //    （实测：#124 的子会话探索到第 67 步，最后那条消息被 8192 截掉 ⇒ **整个会话作废**）。

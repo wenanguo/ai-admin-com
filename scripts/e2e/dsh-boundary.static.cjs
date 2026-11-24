@@ -11,7 +11,8 @@
  * ⇒ 这里用**负例**把边界钉死：
  *   ① dsh 运行时进 **`dependencies`** ⇒ 必须被拦；
  *   ② **别的** dsh 包进 `devDependencies` ⇒ 必须被拦；
- *   ③ 干净的清单 ⇒ 必须通过。
+ *   ③ 干净的清单 ⇒ 必须通过；
+ *   ④ **自研 provider 复活**（issue #168 · D5=B）⇒ 必须被拦。
  *
  * 做法：把 `backend/ai/package.json` 复制到临时目录、原地改坏、跑守卫、还原。
  * ⚠️ **不碰真文件**：全程在 **临时目录的副本**上做（守卫脚本接受根目录参数）。
@@ -41,8 +42,13 @@ function runGuard(root) {
 /**
  * 造一个「最小可跑」的仓根副本：只要守卫脚本会看的那几个文件。
  * ⚠️ 守卫会扫全仓 ⇒ 这里只复制它需要的部分（清单 + 适配层目录），避免太慢。
+ *
+ * @param {Function} mutate 改清单（测试用）。
+ * @param {object} [options] 选项。
+ * @param {string} [options.providerFile] 造一个「自研 provider」文件（相对 backend/ai）。
+ * @returns 守卫的 root 参数（backend/ai 那一层）。
  */
-function makeFixture(mutate) {
+function makeFixture(mutate, options = {}) {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-boundary-"));
 	const manifestPath = path.join(root, "backend", "ai", "package.json");
 	fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
@@ -51,6 +57,15 @@ function makeFixture(mutate) {
 	);
 	mutate(manifest);
 	fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, "\t")}\n`);
+	if (typeof options.providerFile === "string") {
+		const file = path.join(root, "backend", "ai", options.providerFile);
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+		fs.writeFileSync(
+			file,
+			"import { LlmAdapter } from '@deepseek-ai/dsh-llm'\nexport class X extends LlmAdapter {}\n",
+			"utf8",
+		);
+	}
 	// ⚠️ 守卫的 root 指向 **backend/ai 那一层**（它的默认值就是这里）
 	return path.join(root, "backend", "ai");
 }
@@ -101,6 +116,15 @@ console.log("④ dsh 运行时在 devDependencies ⇒ 放行（派活链路需�
 	});
 	const { code, output } = runGuard(root);
 	check("放行（退出码 0）", code === 0, output.slice(0, 300));
+	fs.rmSync(root, { recursive: true, force: true });
+}
+
+console.log("⑤ **自研 provider 复活** ⇒ 必须被拦（issue #168 · D5=B）");
+{
+	const root = makeFixture(() => {}, { providerFile: "dsh-plugin/src/provider.js" });
+	const { code, output } = runGuard(root);
+	check("被拦下（退出码非 0）", code !== 0, `退出码=${code}`);
+	check("报的是「自研 provider」", output.includes("自研 provider"), output.slice(0, 300));
 	fs.rmSync(root, { recursive: true, force: true });
 }
 

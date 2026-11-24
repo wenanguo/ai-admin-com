@@ -54,7 +54,9 @@ husky / lint-staged / commitlint 都用 `frontend/node_modules/.bin/` 里的二�
 - **TypeScript strict** · **Node ≥ 24.9**（`node -v` 要 ≥ v24.9.0 · 起因：`@deepseek-ai/dsh` 的 engines 要求）· **`package-lock.json`** (not yarn/pnpm)
 - **`.umi` dir is auto-generated** — delete `src/.umi` and restart if dev server acts up
 - **技能（`backend/ai/.pi/skills/**`）是提示词** ⇒ 它进模型上下文 ⇒ 走 git 评审，别写凭据
-- ⚠️ **服务里不许有 pi**（issue #123）⇒ 依赖清单 / 源码都不许出现 `@earendil-works/pi-*`
+- ⚠️ **我们的代码不许直接依赖 pi**（issue #123 · issue #168）⇒ 依赖清单 / 源码都不许出现 `@earendil-works/pi-*`
+  ⇒ ⚠️ **传递依赖里的 `pi-ai` 是预期的**（issue #168：provider 归位给 dsh 自带的 `@deepseek-ai/dsh-llm-pi-ai` ⇒ 它建在 pi-ai 上）
+  ⇒ ⚠️ **也不许自研 provider**（`dsh-plugin/src/provider.js` 不得复活 ⇒ 路由由我们生成补丁喂给 dsh 自带的适配器）
   ⇒ 守卫：`node scripts/check-dsh-boundary.cjs` 与 `node scripts/e2e/dispatch-dsh.static.cjs`
 
 ## Architecture Essentials

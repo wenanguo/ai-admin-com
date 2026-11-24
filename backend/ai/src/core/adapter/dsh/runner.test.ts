@@ -93,7 +93,9 @@ describe("dsh runner 的配置", () => {
 		expect(env.DSH_HOME).toBe("C:/tmp/dsh-home");
 		// ⚠️ 我们插件读的一律是 AI_DSH_*（与 dsh 的命名空间分开）
 		expect(env.AI_DSH_PROVIDER).toBe("deepseek-direct");
-		expect(env.AI_DSH_API_KEY).toBe("fake");
+		// ⚠️ issue #168：key 落在「**它自己的名字**」那个变量里
+		//    ⇒ dsh 自带的适配器按补丁里的 `apiKeyEnv` 去环境变量里取。
+		expect(env.DEEPSEEK_API_KEY).toBe("fake");
 		const ourKeys = Object.keys(env).filter((name) => name.startsWith("DSH_"));
 		expect(ourKeys).toEqual(["DSH_HOME"]);
 	});
@@ -101,6 +103,45 @@ describe("dsh runner 的配置", () => {
 	it("命令桥的密钥：**进程内稳定**（起 dsh 与挂路由用的是同一个）", () => {
 		expect(bridgeSecret()).toBe(bridgeSecret());
 		expect(bridgeSecret()).toMatch(/^[0-9a-f]{48}$/);
+	});
+
+	it("凭据**只**进 apiKeyEnv 那个变量（issue #168：dsh 自带的适配器按名字取）", () => {
+		const env = buildChildEnv({
+			options: {
+				conversationId: "conv-env",
+				tools: [],
+				systemPrompt: "你是助手。",
+				gate: () => ({
+					conversationId: "conv-env",
+					userId: "1",
+					onPending: () => undefined,
+					waiters: new PendingWaiterRegistry(),
+					createPending: async () => ({ id: "p-1" }),
+					timeoutMs: 1000,
+				}),
+			},
+			config: {
+				profile: "sdk",
+				dshHome: "C:/tmp/dsh-home",
+				dshBin: "C:/tmp/dsh",
+				patches: [],
+				provider: "minimax",
+				model: "MiniMax-M3.1-Flash",
+				baseURL: "http://127.0.0.1:1/v1",
+				apiKeyEnv: "MINIMAX_CN_API_KEY",
+				contextWindow: 1024,
+				maxTokens: 256,
+				bridgeUrl: "http://127.0.0.1:1/internal/dsh/commands",
+			},
+			source: {},
+			apiKey: "secret-key",
+		});
+		expect(env.MINIMAX_CN_API_KEY).toBe("secret-key");
+		// ⚠️ **不许漏到别的变量里**（也不许留在 AI_DSH_API_KEY 这种没人认的名字里）。
+		const leaks = Object.entries(env).filter(
+			([name, value]) => name !== "MINIMAX_CN_API_KEY" && String(value).includes("secret-key"),
+		);
+		expect(leaks).toEqual([]);
 	});
 });
 

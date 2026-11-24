@@ -105,12 +105,21 @@ test('profileManifest：bundle 里有 dsh-base 与 headless（**一次性任务�
   assert.strictEqual(manifest.name, 'dsh-profile-dispatch');
 });
 
-test('profilePatch：插我们的插件 + 指定模型路由（**provider 名要对得上**）', () => {
+test('profilePatch：插我们的插件 + **声明模型路由**（provider 归位给 dsh 自带的适配器）', () => {
   const config = dispatchConfig(REPO_ROOT, { DISPATCH_PROVIDER: 'minimax' });
   const patch = profilePatch(config);
   assert.ok(patch.includes("name: '@ai-admin/dsh-plugin'"));
   assert.ok(patch.includes('provider: minimax'));
   assert.ok(patch.includes('model: MiniMax-M3'));
+  // ⚠️ issue #168：路由写在 **dsh 自带的 pi-ai 适配器**那一段里（不是自己写 provider）。
+  assert.ok(patch.includes('- id: llm-pi-ai'));
+  assert.ok(patch.includes('api: openai-completions'));
+  assert.ok(patch.includes('baseURL: "https://api.minimaxi.com/v1"'));
+  // ⚠️ **凭据只写变量名** ⇒ 补丁里没有密钥。
+  assert.ok(patch.includes('apiKeyEnv: "DISPATCH_API_KEY"'));
+  assert.ok(!patch.includes('secret'));
+  // ⚠️ **不声明思考档位** ⇒ 与旧的自研适配器一致（不发思考参数 ⇒ 不挤占 max_tokens）。
+  assert.ok(patch.includes('reasoningEfforts: false'));
 });
 
 test('buildChildEnv：系统提示词是 base64 的**开发流程** + 权限是「不等人」', () => {
@@ -123,16 +132,17 @@ test('buildChildEnv：系统提示词是 base64 的**开发流程** + 权限是�
   // ⚠️ 派活的子代理**没人点同意** ⇒ 不能停在等人批准上
   assert.strictEqual(env.DSH_PERMISSION_MODE, 'danger-full-access');
   assert.strictEqual(env.AI_DSH_PROVIDER, 'deepseek-direct');
-  assert.strictEqual(env.AI_DSH_API_KEY, 'k');
   assert.strictEqual(env.DSH_HOME, config.dshHome);
 });
 
-test('buildChildEnv：凭据**只**进 AI_DSH_API_KEY（不许漏到别的变量里）', () => {
+test('buildChildEnv：凭据**只**进 apiKeyEnv 那个变量（不许漏到别的变量里）', () => {
   const config = dispatchConfig(REPO_ROOT, {});
   const env = buildChildEnv(config, { systemPrompt: 'p', apiKey: 'secret-key' }, {});
-  assert.strictEqual(env.AI_DSH_API_KEY, 'secret-key');
+  // ⚠️ issue #168：dsh 自带的适配器按补丁里的 `apiKeyEnv` 去环境变量里取 key
+  //    ⇒ 密钥必须落在**那个名字**的变量里（且只有那儿）。
+  assert.strictEqual(env[config.apiKeyEnv], 'secret-key');
   const leaks = Object.entries(env).filter(
-    ([name, value]) => name !== 'AI_DSH_API_KEY' && String(value).includes('secret-key'),
+    ([name, value]) => name !== config.apiKeyEnv && String(value).includes('secret-key'),
   );
   assert.deepStrictEqual(leaks, []);
 });

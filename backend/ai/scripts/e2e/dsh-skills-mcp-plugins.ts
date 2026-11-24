@@ -36,7 +36,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 import { DshSession } from "../../src/core/adapter/dsh/session.ts";
-import { ensureDshProfile } from "../../src/core/adapter/dsh/profile.ts";
+import { ensureDshProfile, writePiAiProviderPatch } from "../../src/core/adapter/dsh/profile.ts";
 import { buildDshMcpServerRegistrations } from "../../src/core/mcp/mcp.ts";
 import { stripMcpToolPrefix } from "../../src/core/mcp/tool-names.ts";
 import { AgentEventMapper } from "../../src/core/session/event-mapper.ts";
@@ -48,6 +48,13 @@ const requireFromHere = createRequire(import.meta.url);
 const dshBin = requireFromHere.resolve("@deepseek-ai/dsh/lib/bin.js");
 const pluginPath = join(process.cwd(), "dsh-plugin");
 const dshHome = mkdtempSync(join(tmpdir(), "dsh-e2e-mcp-"));
+
+/** 路由名（= dsh 的 provider 名）。 */
+const ROUTE = "minimax";
+/** 模型 id。 */
+const MODEL = "MiniMax-M3.1-Flash";
+/** key 放在哪个环境变量里（⚠️ **只写名字** ⇒ 密钥不落盘）。 */
+const API_KEY_ENV = "MINIMAX_CN_API_KEY";
 /** MCP 服务器的调用记录（那个服务器写到这个文件里）。 */
 const mcpLogPath = join(dshHome, "mcp-calls.log");
 writeFileSync(mcpLogPath, "", "utf8");
@@ -135,6 +142,20 @@ const model = createServer((req, res) => {
 await new Promise<void>((resolve) => model.listen(0, resolve));
 const modelPort = (model.address() as { port: number }).port;
 const baseURL = `http://127.0.0.1:${modelPort}/v1`;
+
+/**
+ * **路由补丁**（issue #168）：喂给 dsh 自带的 `llm-pi-ai` 适配器。
+ *
+ * ⚠️ **补丁里只有环境变量名** ⇒ 密钥不落盘（密钥在子进程的环境变量里）。
+ */
+const providerPatch = writePiAiProviderPatch(join(dshHome, "ai-admin"), {
+	route: ROUTE,
+	baseURL,
+	apiKeyEnv: API_KEY_ENV,
+	model: MODEL,
+	contextWindow: 131072,
+	maxTokens: 8192,
+});
 
 /* ------------------------------------------------------------------ *
  * 我们的命令（**业务插件给的那一条** ⇒ 插件层的「挂上去」）
@@ -229,20 +250,22 @@ async function runTurn(currentPhase: Phase, decision: "approved" | "rejected"): 
 		conversationId: `conv-${currentPhase}-${decision}`,
 		tools: [localTool],
 		systemPrompt: "你是验收用的助手",
-		provider: "deepseek-direct",
-		model: "deepseek-chat",
+		provider: ROUTE,
+		model: MODEL,
 		cwd: process.cwd(),
 		dshHome,
 		profile: "sdk",
-		patches: [join(pluginPath, "profile.patch.yml")],
+		patches: [join(pluginPath, "profile.patch.yml"), providerPatch],
 		dshBin,
 		env: {
 			...process.env,
 			DSH_HOME: dshHome,
-			AI_DSH_PROVIDER: "deepseek-direct",
-			AI_DSH_MODEL: "deepseek-chat",
+			// ⚠️ **key 落在「它自己的名字」那个变量里**（issue #168）
+			//    ⇒ dsh 自带的适配器按补丁里的 `apiKeyEnv` 去环境变量里取。
+			[API_KEY_ENV]: "fake-key",
+			AI_DSH_PROVIDER: ROUTE,
+			AI_DSH_MODEL: MODEL,
 			AI_DSH_BASE_URL: baseURL,
-			AI_DSH_API_KEY: "fake-key",
 			AI_DSH_SYSTEM_PROMPT: Buffer.from("你是验收用的助手", "utf8").toString("base64"),
 			AI_DSH_TOOLS: Buffer.from(
 				JSON.stringify([
