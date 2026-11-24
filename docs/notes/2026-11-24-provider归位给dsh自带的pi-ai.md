@@ -33,6 +33,7 @@
 | **守卫第三档：从「不许用 pi-ai」改成「不许自研 provider」** | D5=B 之后 pi-ai **必须**在树里 ⇒ 原来的守卫会**天天报错** ⇒ 守的东西换掉：**「`dsh-plugin/src/provider.js` 不得复活」**（+ 源码里不许出现 `extends LlmAdapter` / `registerAdapter(`） | 守卫名存实亡 ⇒ 下次有人又写一套 provider |
 | **第四档 pi 禁令收窄为「我们的代码不许**直接**依赖 pi」** | pi-ai 是 dsh 自带适配器的**传递依赖** ⇒ 「树里不许有 pi」不成立 ⇒ 但「我们自己 import pi」仍然要禁 | 要么天天误报，要么把真禁令也放掉 |
 | **服务侧与派活侧各留一份「生成路由」的实现**（.ts / .cjs） | 本仓的派活脚本是**独立的 .cjs**（不进 backend/ai 的 TS 构建）⇒ 短期两份；将来可让派活侧读服务侧产物 | 两份漂移 ⇒ 派活能跑、服务不能跑（反之亦然）⇒ **#169 收口** |
+| **模型条目里显式写 `reasoningEfforts: false`** | pi-ai 会从**目录**继承 `reasoning: true`（MiniMax-M3.1-Flash 是思考模型）⇒ ① 思考预算会**挤占** `max_tokens`（答案被截断）② 可能发出 OpenAI 兼容网关不认的参数 ⇒ **旧的适配器**是不发思考参数的 ⇒ 显式关掉才是「归位」不是「改行为」 | 继承目录的思考能力 ⇒ 输出上限被悄悄吃掉 ⇒ 线上大面积截断（**很难查**：不报错，只是答不全） |
 
 ## 怎么验
 
@@ -61,5 +62,7 @@ node scripts/e2e/dsh-skills-mcp-plugins.runtime.cjs
 - ⚠️ **patch 是「按 id 覆盖 config」**（不是深合并）⇒ 我们那段 `llm-pi-ai` 的 config 是**整块替换** ⇒ 补丁里要写全（`providers` 整个）。
 - ⚠️ **补丁里别写 `name`**：写了且与 dsh-base 那行不一致 ⇒ 整段补丁**被跳过**（只留一行警告）⇒ 路由静默不生效。
 - ⚠️ **路由名命中 pi-ai 的目录**（如 `minimax`）时，目录里的模型会**补全**我们没写的字段（`name` / `cost` / `reasoning`）⇒ 但 `api` / `baseURL` / `contextWindow` / `maxTokens` 以**我们写的**为准（`resolveRouteModels`）。
+  ⇒ **`reasoning` 也归目录**（`entry.reasoningEfforts` 不写 ⇒ `base.reasoning`）⇒ 想跟旧行为一样就**显式写 `reasoningEfforts: false`**。
+- ⚠️ **路由名不必在目录里**（例如 `deepseek-direct`）：模型条目自己够用（`name` 退化成 id、`input` 退化成 `defaultInput`）⇒ 只是**没有 cost 计价**。
 - ⚠️ **`AI_DSH_API_KEY` 这个名字彻底没人认了**（旧文档里还有）⇒ 将来清文档时一起改。
 - ⚠️ `scripts/agent/merge-pr.test.cjs` 的 `branchCheckedOutInWorktree` 在 **Windows 本地**必失败（`git worktree remove` 收到 8.3 短路径）⇒ **改动前就失败**（`main` 上复现过）⇒ 与本条无关；CI（ubuntu）过。
