@@ -49,6 +49,7 @@
  *           - id: MiniMax-M3.1-Flash
  *             contextWindow: 131072
  *             maxTokens: 8192
+ *             reasoningEfforts: false         # ⚠️ 与旧适配器一致：**不发**思考参数
  * ```
  *
  * ⚠️ **凭据只写环境变量名**（沿用 `AI_DSH_API_KEY_ENV` 的口径）⇒
@@ -405,6 +406,10 @@ export function buildPiAiProviderPatch(route: PiAiProviderRoute): string {
 		`          - id: ${yamlScalar(route.model)}`,
 		`            contextWindow: ${route.contextWindow}`,
 		`            maxTokens: ${route.maxTokens}`,
+		// ⚠️ **不声明思考档位**（`reasoningEfforts: false`）⇒ 与**旧的适配器**一模一样：
+		//    只发普通的 OpenAI 请求（**不发** `reasoning_effort` / 思考预算）
+		//    ⇒ 输出上限全给答案（思考预算会**挤占** `max_tokens`）。
+		"            reasoningEfforts: false",
 		"",
 	].join("\n");
 }

@@ -118,6 +118,8 @@ test('profilePatch：插我们的插件 + **声明模型路由**（provider 归�
   // ⚠️ **凭据只写变量名** ⇒ 补丁里没有密钥。
   assert.ok(patch.includes('apiKeyEnv: "DISPATCH_API_KEY"'));
   assert.ok(!patch.includes('secret'));
+  // ⚠️ **不声明思考档位** ⇒ 与旧的自研适配器一致（不发思考参数 ⇒ 不挤占 max_tokens）。
+  assert.ok(patch.includes('reasoningEfforts: false'));
 });
 
 test('buildChildEnv：系统提示词是 base64 的**开发流程** + 权限是「不等人」', () => {

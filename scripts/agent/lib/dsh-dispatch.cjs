@@ -291,6 +291,9 @@ function profilePatch(config) {
     `          - id: ${yamlScalar(config.model)}`,
     `            contextWindow: ${config.contextWindow}`,
     `            maxTokens: ${config.maxTokens}`,
+    // ⚠️ **不声明思考档位** ⇒ 与旧的自研适配器一致：**不发**思考参数
+    //    （思考预算会**挤占** `max_tokens` ⇒ 答案被截断的风险）。
+    '            reasoningEfforts: false',
     '- id: agent-default-model',
     '  config:',
     `    provider: ${config.provider}`,

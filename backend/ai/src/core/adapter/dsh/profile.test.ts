@@ -333,6 +333,8 @@ describe("模型路由补丁（issue #168 · D5=B）", () => {
 		expect(patch).toContain('id: "MiniMax-M3.1-Flash"');
 		expect(patch).toContain("contextWindow: 131072");
 		expect(patch).toContain("maxTokens: 8192");
+		// ⚠️ **不声明思考档位** ⇒ 与旧的自研适配器一致（**不发**思考参数）。
+		expect(patch).toContain("reasoningEfforts: false");
 	});
 
 	it("**凭据只写变量名** ⇒ 补丁里没有密钥（issue #168 的硬要求）", () => {
