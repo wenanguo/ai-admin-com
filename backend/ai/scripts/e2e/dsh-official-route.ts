@@ -25,6 +25,10 @@
  *
  * ## 没有 key ⇒ **跳过**（exit 0）
  *
+ * ⚠️ **路由 / 模型 / 地址 / key 的变量名全部走环境变量**（issue #168）：
+ *    `AI_DSH_PROVIDER`（默认 `deepseek-direct`）· `AI_DSH_MODEL` · `AI_DSH_BASE_URL` ·
+ *    `AI_DSH_API_KEY_ENV` ⇒ 同一个脚本既能验官方 DeepSeek，也能验 `minimax` 路由。
+ *
  * CI 里没有 `DEEPSEEK_API_KEY` ⇒ 打印「跳过」并退出 0 ⇒ **CI 安全**。
  *
  * ## 账户**没余额** ⇒ 也**跳过**（exit 0）
@@ -61,8 +65,8 @@ const requireFromHere = createRequire(import.meta.url);
 
 /** dsh 的 profile 名（与服务的缺省一致）。 */
 const PROFILE = "sdk";
-/** 模型路由名（= dsh 的 provider 名）。 */
-const PROVIDER = "deepseek-direct";
+/** 模型路由名（= dsh 的 provider 名）。⚠️ **可用环境变量换**（⇒ 同一个脚本也能验 minimax 路由）。 */
+const PROVIDER = process.env.AI_DSH_PROVIDER ?? "deepseek-direct";
 /** 模型 id（官方）。 */
 const MODEL = process.env.AI_DSH_MODEL ?? "deepseek-chat";
 /** 官方路由（**不是兼容网关**）。 */
