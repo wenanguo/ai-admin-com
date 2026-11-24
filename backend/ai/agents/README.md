@@ -57,14 +57,17 @@ skills:
 ⚠️ **技能是按智能体的**：只有**配置里列的目录**里的技能算数
 ⇒ 智能体 A 看不到智能体 B 的技能（模型也拿不到）。
 
-⚠️ pi 默认还会扫 `<cwd>/.pi/skills` 与用户家目录 `~/.agents/skills/`
-⇒ 本服务**一律不加载**它们（除非你在这里列出来）⇒ 既不串味，
-也不会出现「项目目录那份抢了同名、配置里那份反而没了」。
+⚠️ **技能发现走 dsh 的技能子系统**（`dsh-skill` + `dsh-skill-filesystem` + `dsh-tool-skill`）
+⇒ 我们**只给目录**，不自己造技能扫描器（issue #153）。
 
-⚠️ **技能发现仍然走 pi 的 loader**（`loadSkills`）⇒ 不自己造技能扫描器。
+⚠️ dsh 默认还会扫 `<项目根>/.agents/skills` 与用户家目录 `~/.agents/skills/`
+⇒ 本服务**一律不扫它们**（`includeDefaultRoots: false`）⇒ 既不串味，
+也不会出现「项目目录那份抢了同名、配置里那份反而没了」。
 
 ⚠️ 技能清单接口 `GET /api/agent/skills` **按智能体**返回：
 `?agentId=xxx` ⇒ 那个智能体的技能；不给 ⇒ 默认智能体。
+⚠️ 清单是**我们自己读文件**的（dsh 的登记表在运行时进程里 ⇒ HTTP 层问不到）
+⇒ 发现规则**与 dsh 对齐**（只一层 · 名字 kebab-case · `name` + `description` 必填）。
 
 ## 会话 ↔ 智能体的绑定
 

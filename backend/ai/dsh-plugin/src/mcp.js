@@ -1,16 +1,26 @@
 /**
- * MCP —— 把「我们的 MCP 服务器」挂进 dsh 的工具表。
+ * MCP —— 把「我们的 MCP 服务器」挂进 dsh 的工具表（**管理面退给 dsh**，issue #153）。
  *
- * ## 为什么用 dsh 自带的客户端
+ * ## 为什么改用 dsh 的管理面
  *
- * MCP 是**标准协议** ⇒ dsh 自带 `@deepseek-ai/dsh-mcp-client`（尖峰实测能挂
- * 标准 MCP server 并被模型调用）⇒ **不自己写协议**（少一处升级风险）。
+ * 以前我们自己调 `@deepseek-ai/dsh-mcp-client` 的 `apply()` ⇒ 那只是「挂上去」。
+ * 现在交给 **dsh 自带的管理面** `@deepseek-ai/dsh-mcp-manager`：
+ * 服务器的**装 / 卸 / 列 / 探活 / 重连**都是它的活
+ * （`register` / `list` / `watch` / `restart` / `probe`）⇒ **我们不造第二套**。
  *
- * ## 配置从哪来
+ * ## 凭据仍然归我们
  *
- * ⚠️ **全部走环境变量**（`AI_DSH_MCP_SERVERS`：base64 的 JSON 数组）⇒
- *    **凭据不落盘**（token 只活在子进程内存里）。
- *    ⇒ 配置由**我们的服务**在起运行时之前算好（见 `core/adapter/dsh/runner.ts`）。
+ * ⚠️ **AiAdmin 的 MCP 要带调用方的 JWT**（后端靠它做权限码校验）
+ * ⇒ token 只有我们知道 ⇒ **「按用户构造配置」那段仍在我们这边**
+ *    （`core/mcp/mcp.ts`）⇒ 这里只负责把算好的配置**注册**进管理面。
+ * ⇒ token 依然只活在**子进程的环境变量**里（**不落盘**）。
+ *
+ * ## 为什么管理面挂在**我们这个作用域**里
+ *
+ * ⚠️ dsh 的工具表是**按作用域**的：agent 有自己那一份
+ *    ⇒ 工具注册在 root 作用域 ⇒ agent **看不见**（会变成 "unknown tool"）
+ *    ⇒ 管理面必须挂在**我们插件的作用域**里（与 agent 同层）
+ *    ⇒ 它挂出来的 MCP 工具才落进 agent 那份工具表。
  *
  * ## 工具名
  *
@@ -19,8 +29,14 @@
  * ⇒ **给人看的名字**由我们的适配层归一化（`core/mcp/tool-names.ts`）。
  */
 
-/** dsh 的 MCP 客户端（**配置 schema + 挂载入口**）。 */
-import { Config, apply } from '@deepseek-ai/dsh-mcp-client'
+/** dsh 的 MCP 管理面（**装 / 卸 / 列 / 探活都是它的活**）。 */
+import McpServerManager from '@deepseek-ai/dsh-mcp-manager'
+
+/** 一次工具调用的默认超时（毫秒）—— 与我们的 `core/mcp/mcp.ts` 同值。 */
+const DEFAULT_TOOL_CALL_TIMEOUT_MS = 60_000
+
+/** 启动一台 MCP 服务器的预算（毫秒）。 */
+const DEFAULT_STARTUP_TIMEOUT_MS = 15_000
 
 /**
  * 读 MCP 服务器清单（环境变量里的 base64 JSON）。
@@ -41,33 +57,83 @@ export function readMcpServers() {
 }
 
 /**
- * 把 MCP 服务器挂上去（**每个实例一个连接**）。
+ * 把 MCP 服务器注册进 dsh 的管理面（**每个实例一个连接**）。
  *
  * ⚠️ **一台挂不上不许连累别的**（挂不上 ⇒ 那台没有 MCP 工具，别的照常）。
- * ⚠️ `failOnStartupError: false` ⇒ 连不上**不炸**（重连策略自己处理）⇒
- *    后端 MCP 临时不可用时，AI 还能用我们自己的命令。
+ * ⚠️ 管理面是**异步挂**的 ⇒ 这里**等它挂上**再返回
+ *    （模型第一轮就要看得见那批工具 ⇒ 早一步晚一步会变成「模型没工具可用」）。
  *
  * @param {object} ctx cordis 上下文。
- * @returns {Promise<number>} 挂上几台。
+ * @returns {Promise<number>} 注册上几台。
  */
 export async function registerMcpServers(ctx) {
 	const servers = readMcpServers()
+	if (servers.length === 0) {
+		return 0
+	}
+	let manager
+	try {
+		// ⚠️ **挂在我们这个作用域**（与 agent 同层 ⇒ 工具落进 agent 那份工具表）。
+		await ctx.plugin(McpServerManager)
+		manager = ctx.get('mcpManager')
+	} catch (error) {
+		console.error('[ai-admin] MCP 管理面挂不上：', error)
+		return 0
+	}
+	if (manager === undefined) {
+		console.error('[ai-admin] MCP 管理面拿不到（mcpManager 服务没起来）')
+		return 0
+	}
 	let registered = 0
 	for (const server of servers) {
 		try {
-			// ⚠️ **过一遍 dsh 自己的 schema** ⇒ 默认值补齐（超时 / 重连策略……）。
-			const config = Config({
-				...server,
-				failOnStartupError: false,
-				startupTimeoutMs: 15_000,
+			// ⚠️ **名字就是工具名的前缀**（`mcp__<name>__<tool>`）⇒ 不能重名。
+			// ⚠️ **超时必须有**（dsh 的条目要求写明）⇒ 缺了就补默认值。
+			manager.register(server.name, {
+				toolCallTimeoutMs: DEFAULT_TOOL_CALL_TIMEOUT_MS,
+				startupTimeoutMs: DEFAULT_STARTUP_TIMEOUT_MS,
+				...server.entry,
 			})
-			await apply(ctx, config)
 			registered += 1
 		} catch (error) {
-			console.error('[ai-admin] MCP 服务器挂不上：', server?.serverName ?? '?', error)
+			console.error('[ai-admin] MCP 服务器注册不上：', server?.name ?? '?', error)
+		}
+	}
+	// ⚠️ **等它挂上**（管理面挂好了，模型才看得见那批工具）。
+	for (const server of servers) {
+		const state = await waitForServer(manager, server.name, server.entry?.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT_MS)
+		if (state !== 'connected') {
+			console.error(`[ai-admin] MCP 服务器没连上：${server?.name ?? '?'}（${state}）`)
 		}
 	}
 	return registered
+}
+
+/**
+ * 等一台服务器挂完（**挂不上也要返回** ⇒ 别把启动卡死）。
+ *
+ * @param {object} manager dsh 的 MCP 管理面。
+ * @param {string} name 服务器名。
+ * @param {number} timeoutMs 预算（毫秒）。
+ * @returns {Promise<string>} 最后的状态（`connected` = 好了）。
+ */
+async function waitForServer(manager, name, timeoutMs) {
+	const deadline = Date.now() + timeoutMs
+	while (Date.now() < deadline) {
+		const view = manager.list().find((item) => item.name === name)
+		const state = view?.status?.state
+		// ⚠️ `connecting` 之后还有 `connected` / `failed` / `closed` ⇒ 都不是「还在连」。
+		if (state !== undefined && state !== 'connecting') {
+			return state
+		}
+		await sleep(100)
+	}
+	return 'timeout'
+}
+
+/** 等一小会儿（毫秒）。 */
+function sleep(ms) {
+	return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /**

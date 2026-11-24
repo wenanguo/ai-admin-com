@@ -105,6 +105,44 @@ jobs:
       # ⚠️ **不需要模型凭据、不需要 pnpm、不连数据库** ⇒ 任何 runner 都能跑。
       - run: node ../../scripts/e2e/dsh-admin-runtime.cjs
 
+  # ⚠️ **减法的行为保证**（issue #153 收尾）：**技能 / MCP / 插件三层的运行时验收**。
+  #
+  #   为什么单独一个 job（不塞进上面的 ai-service）：
+  #   ① 它**要 pnpm**（dsh 的 profile 是个独立的 pnpm 工程 ⇒ 我们的插件要装进去）
+  #      ⇒ 而上面那个 job 刻意**不装 pnpm**（它要的是「任何 runner 都能跑」）；
+  #   ② 它**慢**（第一次要装 profile 的依赖）⇒ 别拖慢单测那条线；
+  #   ③ 它**红的时候要看得懂**（「行为保证没了」≠「单测挂了」）。
+  #
+  #   它钉住：技能目录**进了模型上下文**（用户消息）+ `skill` 工具在
+  #          + MCP 的写操作**被闸门拦下**（拒绝 ⇒ 服务端一次都没被叫）
+  #          + 批准 ⇒ MCP 服务器**真的**收到写调用 + 工具名归一化。
+  #
+  # ⚠️ **不需要模型凭据、不连数据库**（脚本自带假模型服务）⇒ 花钱的是 0。
+  # ⚠️ **要联网**（pnpm 从 npm 拉 dsh 的包）—— 这是它与「静态验收」最大的不同。
+  ai-dsh-runtime:
+    name: AI 运行时验收（技能 / MCP 闸门 · 真起 dsh）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend/ai
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/ai/package-lock.json
+      # ⚠️ **钉住 npm 版本**（= 本仓 lock 的生成版本）⇒ 装出的树与 lock、与镜像完全一致。
+      - run: npm install -g npm@10.9.9
+      - run: npm ci
+      # ⚠️ **pnpm 的版本要与镜像里那个一致**（`backend/ai/Dockerfile` ⇒ `pnpm@11.22.0`）
+      #    ⇒ 不然「本地能装、CI 装不上」⇒ 验收变成薛定谔的。
+      - run: npm install -g pnpm@11.22.0 && pnpm -v
+      # ⚠️ **第一次跑是冷的**（pnpm 的 store 也是冷的 ⇒ 要下载 dsh 的一堆包）
+      #    ⇒ 脚本自己会**先预热**（宽裕的 initialize 超时）⇒ 第一次也是绿的。
+      - run: node ../../scripts/e2e/dsh-skills-mcp-plugins.runtime.cjs
+
   lint:
     runs-on: ubuntu-latest
     steps:

@@ -9,7 +9,7 @@
 | ---- | ---- | -------- |
 | `config/` | **智能体配置**（装载 / 校验 / 注册表） | `loader.ts`（读 `agents/<id>/agent.yaml`）· `schema.ts`（形状）· `catalog.ts`（清单） |
 | `session/` | **会话**（会话与命令 / 事件流 / 历史） | `runtime.ts`（编排）· `agent-event.ts`（**我们自己的事件词汇**）· `event-mapper.ts`（事件 → SSE）· `session-registry.ts`（通道）· `identity.ts`（当前用户的**形状与契约**） |
-| `skills/` | **技能**（提示词段 / `load_skill` / 清单） | `skills.ts` · `skill-tools.ts` · `skill-catalog.ts` |
+| `skills/` | **技能**（**清单**；发现与加载**退给 dsh**） | `skill-catalog.ts`（**按 dsh 的规则**读 frontmatter ⇒ 界面看到的 = 模型看到的） |
 | `mcp/` | **MCP**（多服务器；工具的来源） | `mcp.ts`（配置形状 + dsh 的翻译）· `tool-names.ts`（工具名归一化） |
 | `tools/` | **命令工具的机制**（目录从插件来） | `index.ts`（`buildCommandTools` / `isDestructiveCommand`）· `types.ts` |
 | `context/` | **上下文锚点**（讨论上下文的通用机制） | `anchor.ts`（锚点 + **按白名单收窄写操作**） |

@@ -80,11 +80,9 @@ function makeSkillsDir(name: string): string {
 	return dir;
 }
 
-/** 业务命令的名字（**去掉技能工具** `load_skill` — 它不是业务命令）。 */
+/** 业务命令的名字（**技能工具归 dsh** ⇒ 这里只有业务命令）。 */
 function businessToolsOf(options: CreateDshSessionOptions | undefined): string[] {
-	return (options?.tools ?? [])
-		.map((tool) => tool.name)
-		.filter((name) => name !== "load_skill");
+	return (options?.tools ?? []).map((tool) => tool.name);
 }
 
 /** PM 助手的配置（等价于仓里的 `agents/pm/agent.yaml`）。 */
@@ -265,7 +263,7 @@ describe("运行时 · 按智能体配置装配会话", () => {
 		expect(qaOptions?.systemPrompt).toBe("你是通用问答助手");
 
 		// ② **工具白名单**：PM 有 create_task，问答一个都没有
-		// ⚠️ **业务命令**只有它自己那一个（`load_skill` 是技能工具，另算）。
+		// ⚠️ **业务命令**只有它自己那一个（技能工具是 dsh 的 `skill`，不归我们）。
 		expect(businessToolsOf(pmOptions)).toEqual(["create_task"]);
 		expect(qaOptions?.tools).toEqual([]);
 
@@ -273,10 +271,11 @@ describe("运行时 · 按智能体配置装配会话", () => {
 		expect(pmOptions?.mcpServers?.[0]?.url).toBe("http://aiadmin.test/mcp");
 		expect(qaOptions?.mcpServers).toEqual([]);
 
-		// ④ 技能：PM 的技能进提示词，问答没有（**不跨智能体串味**）
-		expect(pmOptions?.systemPrompt).toContain("<available_skills>");
-		expect(pmOptions?.systemPrompt).toContain("pm-skill");
-		expect(qaOptions?.systemPrompt).not.toContain("<available_skills>");
+		// ④ 技能：**目录交给 dsh**（PM 有，问答没有 ⇒ **不跨智能体串味**）
+		//    ⚠️ **不再进系统提示词**（技能目录由 dsh 自己在会话里给）。
+		expect(pmOptions?.skillDirs?.length).toBe(1);
+		expect(qaOptions?.skillDirs).toEqual([]);
+		expect(pmOptions?.systemPrompt).not.toContain("<available_skills>");
 
 		// ⑤ 模型：配置里写死的那个（不是全局默认）
 		expect(pmOptions?.model).toBe("minimax-cn/MiniMax-M3.1-Flash");

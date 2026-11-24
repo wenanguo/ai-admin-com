@@ -411,7 +411,7 @@ src/core/                         ★ **内核**（只懂通用概念；**不 im
   ├─ plugins.ts                   ★ 插件契约与注册表（内核与插件之间唯一的接头）
   ├─ context/anchor.ts            讨论上下文的**通用机制**（锚点 + 按白名单收窄写操作）
   ├─ session/                     会话（runtime 会话与命令 / session-registry 通道与订阅 / startup-lock 同会话串行 / event-mapper 事件映射 / frame-buffer 回放窗口 / pi-session SDK 接线 / **session-entries 历史→pi entries** / identity 当前用户）
-  ├─ skills/                      技能（skills 提示词段 / skill-tools 装载工具 / skill-catalog 清单）
+  ├─ skills/                      技能（**skill-catalog 清单**；发现与加载**退给 dsh** ⇒ 我们只给目录）
   ├─ mcp/                         MCP（mcp 服务器配置 / mcp.fake 假传输层）
   ├─ gate/                        闸门（gate 改数据要人点头 / pending-waiters 等答复 / pending-query 读侧 / pending-write 写侧）
   ├─ audit/                       审计（audit 写侧 / audit-redact 脱敏 / audit-query 读侧）
@@ -519,15 +519,17 @@ description: 在 AiAdmin 的项目下新建一条任务。用户说「建个任�
   什么时候该问用户」。
 - **不要写死工具名**（工具名会随后端 MCP 接入而变）⇒ 写「你工具里那个…的工具」，
   并补一句「工具里没有它 ⇒ 直接说这个能力还没接上，不要瞎编工具名」。
-- 附属文件（参考资料等）可以放在技能目录里，模型用 `load_skill` 读。
+- 附属文件（参考资料等）可以放在技能目录里 —— ⚠️ **dsh 的 `skill` 工具只回正文**
+  （附属文件得模型自己用别的办法读 ⇒ 正文里别依赖它们）。
 
 ### 生效方式与边界
 
 | 事项 | 现状 |
 | ---- | ---- |
-| 生效 | **重启服务**（pi 的 `/reload` 只在交互式会话里可用） |
-| 技能来源 | **只有该智能体配置里列的目录**（`agents/<id>/agent.yaml` 的 `skills`）—— 用户家目录的 `~/.agents/skills`、项目默认的 `.pi/skills` **一律不加载**（除非配置里列了它）⇒ 智能体之间不串味 |
-| 模型能读什么 | **只有技能目录内的文件**（pi 的 `read`/`bash` 工具是关着的） |
+| 生效 | **重启服务**（dsh 的技能 provider 是**每个会话**建一次 ⇒ 改完技能重开会话即可） |
+| 技能来源 | **只有该智能体配置里列的目录**（`agents/<id>/agent.yaml` 的 `skills`）—— 用户家目录的 `~/.agents/skills`、项目默认的 `.agents/skills` **一律不扫**（`includeDefaultRoots: false`）⇒ 智能体之间不串味 |
+| 谁来发现 | **dsh 的技能子系统**（`dsh-skill-filesystem` 扫目录 · `dsh-tool-skill` 给模型目录与 `skill` 工具）⇒ **我们只给目录**（issue #153） |
+| 模型能读什么 | **技能正文**（dsh 的 `skill` 工具回正文；`read`/`bash` 工具是关着的） |
 | 三个样板 | `create-task` / `list-tasks` / `update-task`（**都已按真实 MCP 工具写准**，2026-11-07 真实后端跑通）—— 放在 `.pi/skills/`，**由 PM 助手那份配置领用**（别的智能体看不到） |
 
 ### 验收记录（2026-11-07，真实后端）
@@ -536,7 +538,7 @@ description: 在 AiAdmin 的项目下新建一条任务。用户说「建个任�
 
 ```
 用户：在项目 6 建一个任务，标题写「【AI 验收】冒烟测试」，类型 feature，优先级 p2
-  ↓ 模型先 load_skill(create-task) → 再调 mcp__aiadmin__create_task
+  ↓ 模型先 skill(create-task) → 再调 mcp__aiadmin__create_task
   ↓ 参数：{"project_id":6,"title":"【AI 验收】冒烟测试","type_code":"feature","status_code":"todo","priority_code":"p2"}
   ↓ 后端：创建任务成功 ⇒ 落库核对 id=117
 助手：任务已创建：ID 117，「【AI 验收】冒烟测试」，项目 6，类型 feature，优先级 p2，状态 todo。

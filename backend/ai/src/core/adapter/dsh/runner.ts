@@ -46,7 +46,7 @@ import { ensureDshProfile } from "./profile.ts";
 import type { DshGateContext } from "./approvals.ts";
 import type { AgentSessionLike } from "../../session/session-registry.ts";
 import type { CommandTool } from "../../tools/types.ts";
-import { buildDshMcpClientConfigs, type McpServerSpec } from "../../mcp/mcp.ts";
+import { buildDshMcpServerRegistrations, type McpServerSpec } from "../../mcp/mcp.ts";
 
 /** ESM 里的 `require.resolve`（用来找 SDK 自带的 dsh 运行时）。 */
 const requireFromHere = createRequire(import.meta.url);
@@ -127,6 +127,14 @@ export interface CreateDshSessionOptions {
 	 *    ⇒ **凭据不落盘**。
 	 */
 	mcpServers?: readonly McpServerSpec[];
+	/**
+	 * 技能目录（**绝对路径**；来自智能体配置的 `skills`）。
+	 *
+	 * ⚠️ **技能发现退给 dsh**（issue #153）⇒ 我们**不再自己扫**
+	 *    ⇒ 这里只把目录**交给它**（环境变量 ⇒ dsh 的技能 provider 按它扫）
+	 *    ⇒ **只认配置里列的目录** ⇒ 不跨智能体串味。
+	 */
+	skillDirs?: readonly string[];
 	/** 闸门上下文（**每次调用时取** ⇒ 锚点变了也能用）。 */
 	gate: () => Omit<DshGateContext, "argsOf">;
 	/** 留痕层（**不给 ⇒ 不留痕**）。 */
@@ -199,9 +207,9 @@ export function buildChildEnv(input: {
 }): NodeJS.ProcessEnv {
 	const { options, config, source, apiKey } = input;
 	const catalog = buildToolCatalog(options.tools, options.mcpPrefixes ?? []);
-	// ⚠️ **MCP 服务器**（dsh 形状）⇒ 交给 dsh 侧插件挂上去。
+	// ⚠️ **MCP 服务器**（dsh 管理面的形状）⇒ 交给 dsh 侧插件注册进去。
 	//    ⚠️ **token 只在子进程的环境变量里**（绝不落盘、绝不进日志）。
-	const mcpConfigs = buildDshMcpClientConfigs(options.mcpServers ?? []);
+	const mcpRegistrations = buildDshMcpServerRegistrations(options.mcpServers ?? []);
 	return {
 		...source,
 		DSH_HOME: config.dshHome,
@@ -213,7 +221,10 @@ export function buildChildEnv(input: {
 		AI_DSH_MAX_TOKENS: String(config.maxTokens),
 		AI_DSH_SYSTEM_PROMPT: encode(options.systemPrompt),
 		AI_DSH_TOOLS: encode(JSON.stringify(catalog)),
-		AI_DSH_MCP_SERVERS: encode(JSON.stringify(mcpConfigs)),
+		AI_DSH_MCP_SERVERS: encode(JSON.stringify(mcpRegistrations)),
+		// ⚠️ **技能目录**（issue #153：技能退给 dsh）⇒ dsh 的技能 provider 按它扫
+		//    ⇒ **不扫默认根**（项目 / 用户家目录）⇒ 不串味。
+		AI_DSH_SKILL_DIRS: encode(JSON.stringify(options.skillDirs ?? [])),
 		AI_DSH_BRIDGE_URL: config.bridgeUrl,
 		AI_DSH_BRIDGE_SECRET: bridgeSecret(),
 		AI_DSH_CONVERSATION_ID: options.conversationId,

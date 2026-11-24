@@ -1,12 +1,13 @@
 /**
- * 端到端验收（issue #122）：**技能 / MCP / 插件三层在 dsh 上的形状**。
+ * 端到端验收（issue #122 · #153）：**技能 / MCP / 插件三层在 dsh 上的形状**。
  *
  * ## 它证明什么
  *
- * 1. **技能**：我们的 loader（`core/skills/skill-loader.ts`）发现的技能
- *    **照旧进模型上下文**（系统提示词里有 `<available_skills>` 段）；
- * 2. **MCP**：dsh 自带的 `@deepseek-ai/dsh-mcp-client` **挂上一个真的 MCP 服务器**
- *    ⇒ **模型真的调了它的工具**（服务端收到了 `tools/call`）；
+ * 1. **技能**：**dsh 的技能子系统**发现的技能**进了模型上下文**
+ *    （`dsh-tool-skill` 把技能目录作为**用户消息**发进去
+ *    ⇒ **不再是我们自己拼的系统提示词段**）+ **`skill` 工具在**模型工具表里；
+ * 2. **MCP**：**dsh 自带的 MCP 管理面**（`@deepseek-ai/dsh-mcp-manager`）
+ *    挂上一个真的 MCP 服务器 ⇒ **模型真的调了它的工具**（服务端收到了 `tools/call`）；
  * 3. **工具名归一化**：模型侧叫 `mcp__aiadmin__create_task` ⇒
  *    **给人看的名字**是 `create_task`（spec §5.3）；
  * 4. **闸门**：MCP 的**写**操作也要人点头（`update_task` ⇒ 挂起待确认 ⇒
@@ -17,7 +18,7 @@
  * ## 为什么不需要模型凭据
  *
  * ⚠️ 脚本自己起一个**假模型服务**（OpenAI 兼容的 SSE）⇒
- *    测的是「**MCP 挂载 / 闸门 / 技能段 / 工具名**」⇒ **不花钱、不外网**。
+ *    测的是「**MCP 挂载 / 闸门 / 技能目录 / 工具名**」⇒ **不花钱、不外网**。
  *
  * ## 前置
  *
@@ -36,12 +37,10 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import { DshSession } from "../../src/core/adapter/dsh/session.ts";
 import { ensureDshProfile } from "../../src/core/adapter/dsh/profile.ts";
-import { buildDshMcpClientConfigs } from "../../src/core/mcp/mcp.ts";
+import { buildDshMcpServerRegistrations } from "../../src/core/mcp/mcp.ts";
 import { stripMcpToolPrefix } from "../../src/core/mcp/tool-names.ts";
 import { AgentEventMapper } from "../../src/core/session/event-mapper.ts";
 import { PendingWaiterRegistry } from "../../src/core/gate/pending-waiters.ts";
-import { loadSkills } from "../../src/core/skills/skill-loader.ts";
-import { buildSystemPrompt } from "../../src/core/skills/skills.ts";
 import type { CommandTool } from "../../src/core/tools/types.ts";
 import { Type } from "typebox";
 
@@ -74,8 +73,10 @@ let phase: Phase = "create";
 let callsInPhase = 0;
 /** 模型看到的工具名（⇒ 断言模型真的看见了 MCP 的工具）。 */
 const seenTools: string[] = [];
-/** 模型看到的系统提示词（⇒ 断言技能段进了模型上下文）。 */
+/** 模型看到的系统提示词（⇒ 断言我们的提示词照旧在）。 */
 const seenSystem: string[] = [];
+/** 模型看到的**全部消息正文**（⇒ 断言技能目录进了模型上下文）。 */
+const seenMessages: string[] = [];
 
 const model = createServer((req, res) => {
 	let body = "";
@@ -91,7 +92,11 @@ const model = createServer((req, res) => {
 			};
 			seenTools.push((parsed.tools ?? []).map((tool) => tool.function?.name ?? "").join(","));
 			for (const message of parsed.messages ?? []) {
-				if (message.role === "system" && typeof message.content === "string") {
+				if (typeof message.content !== "string") {
+					continue;
+				}
+				seenMessages.push(message.content);
+				if (message.role === "system") {
 					seenSystem.push(message.content);
 				}
 			}
@@ -155,22 +160,27 @@ const localTool: CommandTool = {
  * ------------------------------------------------------------------ */
 
 /**
- * dsh 侧的 MCP 配置。
+ * dsh 侧的 MCP 登记（**管理面的形状**：`{name, entry}`）。
  *
- * ⚠️ **stdio**（本地起一个子进程）⇒ 简单；
- *    生产走 **streamable-http**（同一个客户端，配置由 `buildDshMcpClientConfigs` 给）。
- * ⚠️ **服务器名来自我们的 builder**（⇒ 工具名前缀 `mcp__aiadmin__` 是我们的规则）。
+ * ⚠️ **名字与超时来自我们的 builder**（⇒ 工具名前缀 `mcp__aiadmin__` 是我们的规则）。
+ * ⚠️ **传输换成 stdio**（本地起一个子进程 ⇒ 简单）；
+ *    生产走 **streamable-http**（`buildDshMcpServerRegistrations` 给的就是那个形状）。
+ *    ⚠️ dsh 的条目**不许混传输字段**（stdio 的条目里不能有 `url`）⇒ 这里换掉。
  */
-function mcpConfigForE2E(): Record<string, unknown> {
-	const [httpConfig] = buildDshMcpClientConfigs([
+function mcpRegistrationForE2E(): { name: string; entry: Record<string, unknown> } {
+	const [registration] = buildDshMcpServerRegistrations([
 		{ name: "aiadmin", url: "http://127.0.0.1:1/mcp", token: "e2e-token" },
 	]);
 	return {
-		transport: "stdio",
-		serverName: httpConfig?.serverName ?? "aiadmin",
-		command: process.execPath,
-		args: [join(process.cwd(), "scripts", "e2e", "fixtures", "mcp-server.mjs")],
-		env: { DSH_E2E_MCP_LOG: mcpLogPath },
+		name: registration?.name ?? "aiadmin",
+		entry: {
+			transport: "stdio",
+			command: process.execPath,
+			args: [join(process.cwd(), "scripts", "e2e", "fixtures", "mcp-server.mjs")],
+			env: { DSH_E2E_MCP_LOG: mcpLogPath },
+			toolCallTimeoutMs: registration?.entry.toolCallTimeoutMs,
+			startupTimeoutMs: registration?.entry.startupTimeoutMs,
+		},
 	};
 }
 
@@ -245,9 +255,15 @@ async function runTurn(currentPhase: Phase, decision: "approved" | "rejected"): 
 				]),
 				"utf8",
 			).toString("base64"),
-			AI_DSH_MCP_SERVERS: Buffer.from(JSON.stringify([mcpConfigForE2E()]), "utf8").toString(
-				"base64",
-			),
+			AI_DSH_MCP_SERVERS: Buffer.from(
+				JSON.stringify([mcpRegistrationForE2E()]),
+				"utf8",
+			).toString("base64"),
+			// ⚠️ **技能目录**（issue #153：技能退给 dsh ⇒ 我们只给目录）
+			AI_DSH_SKILL_DIRS: Buffer.from(
+				JSON.stringify([join(process.cwd(), ".pi", "skills")]),
+				"utf8",
+			).toString("base64"),
 			AI_DSH_BRIDGE_URL: "http://127.0.0.1:1/internal/dsh/commands",
 			AI_DSH_BRIDGE_SECRET: "e2e",
 			AI_DSH_CONVERSATION_ID: `conv-${currentPhase}-${decision}`,
@@ -301,14 +317,9 @@ async function runTurn(currentPhase: Phase, decision: "approved" | "rejected"): 
  * 跑起来
  * ------------------------------------------------------------------ */
 
-console.log("① 技能段：我们自己的 loader 发现的技能 ⇒ 进了系统提示词");
-const skills = await loadSkills([join(process.cwd(), ".pi", "skills")]);
-const systemPrompt = buildSystemPrompt("你是验收用的助手", skills.skills);
-check("我们的 loader 发现了三个样板技能", skills.skills.length === 3, `找到 ${skills.skills.length} 个`);
-check(
-	"提示词里有 <available_skills> 段（技能照旧进模型上下文）",
-	systemPrompt.includes("<available_skills>") && systemPrompt.includes("<name>create-task</name>"),
-);
+console.log("① 技能：dsh 的技能子系统 ⇒ 目录进了模型上下文 + `skill` 工具在");
+const skillDirs = [join(process.cwd(), ".pi", "skills")];
+check("样板技能目录存在（`.pi/skills`）", existsSync(join(skillDirs[0] ?? "", "create-task")));
 
 console.log("② 准备 dsh profile（装我们的插件）…");
 await ensureDshProfile({ dshHome, profile: "sdk", dshBin, pluginPath });
@@ -336,7 +347,25 @@ check(
 );
 check("新建**不用**点头（口径：新增放行）", created.pending.length === 0);
 
-console.log("④ MCP 的写操作也要点头（修改 ⇒ 挂起待确认 ⇒ 拒绝 ⇒ 服务端没被叫）");
+console.log("④ 技能：dsh 的技能目录进了模型上下文（**不再是我们的系统提示词段**）");
+check(
+	"模型看见了 `skill` 工具（dsh 的技能入口）",
+	seenTools.some((names) => names.split(",").includes("skill")),
+	`模型看到的工具：${seenTools[0] ?? "（没有）"}`,
+);
+check(
+	"技能目录进了模型上下文（`<available_skills>` 段在**消息**里）",
+	seenMessages.some(
+		(text) => text.includes("<available_skills>") && text.includes("create-task"),
+	),
+	`模型看到的消息：${JSON.stringify(seenMessages.slice(0, 2))}`,
+);
+check(
+	"系统提示词**没有**我们自己拼的技能段了（那部分退给 dsh）",
+	!seenSystem.some((text) => text.includes("<available_skills>")),
+);
+
+console.log("⑤ MCP 的写操作也要点头（修改 ⇒ 挂起待确认 ⇒ 拒绝 ⇒ 服务端没被叫）");
 const beforeReject = mcpCalls().length;
 const rejected = await runTurn("update", "rejected");
 check("挂起了待确认（闸门问了我们）", rejected.pending.length === 1, `pending=${rejected.pending.length}`);
@@ -351,7 +380,7 @@ check(
 	`调用次数 ${beforeReject} → ${mcpCalls().length}`,
 );
 
-console.log("⑤ 批准 ⇒ 真的执行了");
+console.log("⑥ 批准 ⇒ 真的执行了");
 const beforeApprove = mcpCalls().length;
 const approved = await runTurn("update", "approved");
 check("同样挂起了待确认", approved.pending.length === 1, `pending=${approved.pending.length}`);
