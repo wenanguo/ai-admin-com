@@ -52,7 +52,13 @@ const {
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const STATE_DIR = path.join(REPO_ROOT, '.scratch', 'dispatch');
 // ⚠️ **模型 id 是「我们自己的 provider」那边的 id**（不是 pi 的 `provider/model`）。
-const DEFAULT_MODEL = process.env.DISPATCH_MODEL || 'MiniMax-M3.1-Flash';
+//
+// ⚠️ **别在这儿取缺省模型**（2026-11-24 修）：这个模块顶层跑的时候
+//    `backend/ai/.env` **还没读**（`loadRepoEnvFile` 在下面几百行处才跑）
+//    ⇒ `process.env.DISPATCH_MODEL` 那时是空的 ⇒ 缺省会退成
+//    `MiniMax-M3.1-Flash`（**实测只读不写** ⇒ 派活会白跑一轮）
+//    ⇒ 而真正派活时读的是 `.env`（`MiniMax-M3`）⇒ **打印与实际不一致** ⇒ 误判。
+//    ⇒ 缺省模型**只有一个事实源**：`dispatchConfig()`（它内部读 `.env`）。
 
 /** 跑一条命令（拿文本输出）。 */
 function run(cmd, args, options = {}) {
@@ -81,7 +87,7 @@ const has = (name) => args.includes(name);
 const issueNumber = opt('--issue');
 const dryRun = has('--dry-run');
 const noMerge = has('--no-merge');
-const model = opt('--model', DEFAULT_MODEL);
+const model = opt('--model');
 const statusTarget = opt('--status');
 const collectTarget = opt('--collect');
 /** 派到**已有工作区/分支**（接着上一个子会话干）。 */
@@ -322,7 +328,11 @@ const message =
 const task = message;
 
 console.log(`\n📤 派活：issue #${n} ${issue.title}`);
-console.log(`   模型：${dispatchConfig(REPO_ROOT).provider}/${model}`);
+// ⚠️ **模型只有一个事实源**：`dispatchConfig()`（它读 `backend/ai/.env`）
+//    ⇒ 打印的模型 = 真正会用的模型（`--model` 可覆盖）。
+const dispatchCfg = dispatchConfig(REPO_ROOT);
+const effectiveModel = model ?? dispatchCfg.model;
+console.log(`   模型：${dispatchCfg.provider}/${effectiveModel}`);
 console.log(`   工作区：${worktreePath}（分支 ${branch}）`);
 console.log(`   日志：${logPath}`);
 console.log(`   合并：${noMerge ? '❌ 不合并（等人拍板）' : '✅ CI 绿则合'}`);
@@ -380,7 +390,7 @@ const state = {
   branch,
   worktree: worktreePath,
   log: logPath,
-  model,
+  model: effectiveModel,
   noMerge,
   startedAt: new Date().toISOString(),
 };
