@@ -958,3 +958,21 @@
 - **清单与依据**：`docs/pm/drafts/2026-11-24-AI减法-只留DSH.md`（逐文件 · 行数 · 验收）·
   `docs/notes/2026-11-24-dsh模型UI与pi-ai.md`（实测记录）。
 - **不动**：对外 9 端点契约 · 前端 · 闸门口径 · 审计语义 · 每用户 token · 产品事实存储。
+
+### 2026-11-24 · **#168 完成**（PR #172 已合并）⇒ provider 归位给 dsh 自带的适配器
+
+- **做成了什么**：删掉自研的 `dsh-plugin/src/provider.js`（325 行）+ 测试（136 行）+ 空壳包
+  ⇒ 路由改由**我们生成一段 profile 补丁**喂给 dsh 自带的 `llm-pi-ai` 适配器
+  ⇒ **凭据只写环境变量名**（`apiKeyEnv`）⇒ 密钥仍不落盘。
+- **PM 独立验收**（不采信子代理自述）：
+  ✅ 边界守卫四档新口径 · ✅ `tsc` exit 0 · ✅ 单测（2 个失败是**本机 spawn 资源耗尽**，单跑 12/12 全过）
+  ✅ dsh-runner e2e 9/9 · ✅ **真 MiniMax 走 dsh 自带适配器 6/6 断言**
+  ⇒ **事件序列不变**：`tool_execution_start · tool_execution_end · message_start · message_update · message_end · agent_settled`
+  ⇒ ⇒ **对外 SSE 契约没破**。
+- **顺带抓到一个真 bug 并修掉（PR #171）**：`scripts/agent/dispatch.cjs` 的缺省模型在**读 `.env` 之前**
+  就在模块顶层求值 ⇒ 打印 `MiniMax-M3.1-Flash`（**只读不写**）而实际用 `MiniMax-M3`
+  ⇒ **打印 ≠ 实际** ⇒ 照着排查会白排查半小时 ⇒ 改成「只有一个事实源」（`dispatchConfig()`）。
+- **⚠️ 遗留缺口（不阻塞）**：仓库自己的管理面实例（`/dsh-admin` ⇒ `--profile web`）
+  **不写我们的路由补丁** ⇒ ⇒ 那个 Web UI 里不会自动出现 MiniMax
+  ⇒ 但 pi-ai 已装上 ⇒ **「添加模型提供商」按钮不再是灰的** ⇒ 人在 UI 里点两下就能自己加 ⇒
+  ⇒ 另有一个**独立可用**的实例在 `http://127.0.0.1:8402/`（自带 pi-ai ⇒ MiniMax 已可用）。
