@@ -108,13 +108,13 @@ const { session } = await createAgentSession({
 | 东西 | 说明 |
 | ---- | ---- |
 | SSE 订阅者集合 | 每个连上来的客户端一个 |
-| 回放窗口 | `FrameBuffer`（内存，16 MB 上限） |
+| 回放窗口 | `ReplayWindow`（内存，16 MB 上限；在 `session-registry.ts` 里） |
 | 调用方 token | **只在内存**，绝不落盘、绝不进日志 |
-| pi 会话 | **懒创建**：第一次有命令时才建 |
+| dsh 会话 | **懒创建**：第一次有命令时才建 |
 
 通道数上限 64（超了关最久没用的），空闲 TTL 30 分钟。
 
-### 2.4 回放窗口（`src/core/session/frame-buffer.ts`）
+### 2.4 回放窗口（`src/core/session/session-registry.ts` 的 `ReplayWindow`）
 
 - 字节上限默认 **16 MB**；超限时**优先丢「可重建」的帧**（`text_delta` —— 文本增量可以从快照重建），
   **保留结构帧**（`tool_call` / `tool_result` / `agent_settled` —— 这些是「发生了什么」的事实，丢了就真丢了）
@@ -496,7 +496,7 @@ src/pages/ai/workspace/    ← 全宽页
 | 事件流一直 401 | token 过期，没走静默刷新 | `sse.ts` 的 `refreshSession()` |
 | 命令卡片重建后消失 | 快照里没有工具调用历史 | `mergeCommandSources()` |
 | 请求打到 `/api/v1/ai-api/...` | `baseURL` 没置空 | `client.ts` 的 `aiRequest()` |
-| 待确认列表永远是空的 | 服务端当前无破坏性命令 ⇒ 无待确认项 | `src/core/tools/index.ts` 的 `destructive` |
+| 待确认列表永远是空的 | 服务端当前无破坏性命令 ⇒ 无待确认项 | `src/core/gate/gate.ts` 的闸门口径 |
 | AI 服务返 500「服务内部错误：凭证已失效」 | 跨 chunk 的 `instanceof` 失效（应为 401） | 服务端 `src/core/http/errors.ts` 的结构化判定 |
 
 ---
@@ -510,18 +510,18 @@ src/pages/ai/workspace/    ← 全宽页
 | 命令执行 / 去重 / 状态读取 | `backend/ai/src/core/session/runtime.ts` |
 | 事件收敛 | `backend/ai/src/core/session/event-mapper.ts` |
 | 事件定义（7 种） | `backend/ai/src/core/session/events.ts` |
-| 回放窗口（16 MB） | `backend/ai/src/core/session/frame-buffer.ts` |
+| 回放窗口（16 MB） | `backend/ai/src/core/session/session-registry.ts`（`ReplayWindow`） |
 | 会话通道 / token / pi 会话生命周期 | `backend/ai/src/core/session/session-registry.ts` |
 | 消息落库 | `backend/ai/src/core/store/store.ts` |
 | SSE 帧写出 / 心跳 | `backend/ai/src/core/http/sse.ts` |
 | 事件流端点（回放 + 增量 + 去重） | `backend/ai/src/core/routes/events.ts` |
-| 命令目录 | `backend/ai/src/plugins/pm/index.ts`（**业务命令归插件**；内核机制在 `src/core/tools/index.ts`） |
+| 命令目录 | `backend/ai/src/plugins/pm/index.ts`（**业务命令归插件**；内核只认 **MCP 工具形状** `src/core/mcp/tool.ts`） |
 | **插件契约 + 注册表** | `backend/ai/src/core/plugins.ts`（**内核与插件之间唯一的接头**） |
 | **内核公开入口** | `backend/ai/src/core/index.ts`（外部只从这里 import；说明见 `backend/ai/src/core/README.md`） |
 | 插件注册（入口侧） | `backend/ai/src/plugins.ts`（**唯一 import 插件的地方**） |
 | 智能体用哪个插件 | `backend/ai/agents/<id>/agent.yaml` 的 `plugin:` 字段 |
 | **MCP 服务器（工具来源）** | `backend/ai/src/core/mcp/mcp.ts` |
-| **技能（提示词）** | `backend/ai/.pi/skills/` · `backend/ai/src/core/skills/skills.ts` |
+| **技能（提示词）** | `backend/ai/.pi/skills/` · 清单读取在 `backend/ai/src/core/adapter/dsh/skills.ts`（**技能的发现规则归 dsh**） |
 | **待确认闸门（改数据要人点头）** | `backend/ai/src/core/gate/gate.ts` · `backend/ai/src/core/routes/pending.ts` |
 | 适配层（鉴权 / 映射 / 错误归一 / 幂等） | `backend/ai/src/plugins/pm/adapter/datasource.ts` |
 | 审计写入 | `backend/ai/src/core/audit/audit.ts` |

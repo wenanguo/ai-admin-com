@@ -410,7 +410,7 @@ src/core/                         ★ **内核**（只懂通用概念；**不 im
   ├─ config/                      智能体配置（装载 / 校验 / 注册表）
   ├─ plugins.ts                   ★ 插件契约与注册表（内核与插件之间唯一的接头）
   ├─ context/anchor.ts            讨论上下文的**通用机制**（锚点 + 按白名单收窄写操作）
-  ├─ session/                     会话（runtime 会话与命令 / session-registry 通道与订阅 / startup-lock 同会话串行 / event-mapper 事件映射 / frame-buffer 回放窗口 / pi-session SDK 接线 / **session-entries 历史→pi entries** / identity 当前用户）
+  ├─ session/                     会话（runtime 会话与命令 / session-registry 通道与订阅 + **回放窗口** / startup-lock 同会话串行 / event-mapper 事件映射 / **agent-event 事件词汇** / identity 当前用户）
   ├─ mcp/                         MCP（mcp 服务器配置 / mcp.fake 假传输层 / **tool MCP 工具形状**）
   ├─ gate/                        闸门（gate 改数据要人点头 / pending-waiters 等答复 / pending-query 读侧 / pending-write 写侧）
   ├─ audit/                       审计（audit 写侧 / audit-redact 脱敏 / audit-query 读侧）

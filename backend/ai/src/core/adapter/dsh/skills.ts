@@ -146,21 +146,13 @@ interface Frontmatter {
  * @param raw 文件全文。
  */
 function parseFrontmatter(raw: string): Frontmatter | undefined {
-	const firstLineEnd = raw.indexOf("\n");
-	if (firstLineEnd < 0) {
-		return undefined;
-	}
-	if (raw.slice(0, firstLineEnd).replace(/\r$/, "") !== "---") {
-		return undefined;
-	}
-	const start = firstLineEnd + 1;
-	const closing = findClosingFrontmatter(raw, start);
-	if (closing === undefined) {
+	const matched = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw);
+	if (matched === null) {
 		return undefined;
 	}
 	let parsed: unknown;
 	try {
-		parsed = parseYaml(raw.slice(start, closing.start));
+		parsed = parseYaml(matched[1] ?? "");
 	} catch {
 		// ⚠️ **YAML 坏了 ⇒ 这个技能不算数**（不是异常）。
 		return undefined;
@@ -170,32 +162,6 @@ function parseFrontmatter(raw: string): Frontmatter | undefined {
 	}
 	const data = parsed as Record<string, unknown>;
 	return { name: stringField(data, "name"), description: stringField(data, "description") };
-}
-
-/**
- * 找收尾的 `---`（**必须独占一行**）。
- *
- * @param raw 文件全文。
- * @param start 从哪儿开始找。
- * @returns 收尾那行的起点；没有 ⇒ `undefined`。
- */
-function findClosingFrontmatter(
-	raw: string,
-	start: number,
-): { start: number } | undefined {
-	let lineStart = start;
-	while (lineStart <= raw.length) {
-		const nextNewline = raw.indexOf("\n", lineStart);
-		const lineEnd = nextNewline < 0 ? raw.length : nextNewline;
-		if (raw.slice(lineStart, lineEnd).replace(/\r$/, "") === "---") {
-			return { start: lineStart };
-		}
-		if (nextNewline < 0) {
-			return undefined;
-		}
-		lineStart = nextNewline + 1;
-	}
-	return undefined;
 }
 
 /** frontmatter 的字符串字段（**空字符串当作没写** ⇒ 与 dsh 一致）。 */

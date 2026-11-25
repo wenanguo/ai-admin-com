@@ -16,10 +16,15 @@
 
 import { Router } from "express";
 import { agentRuntime } from "../session/runtime.ts";
-import type { StreamFrame } from "../session/frame-buffer.ts";
 import { buildCorsHeaders, originOf } from "../http/cors.ts";
 import { allowedOrigins } from "../http/respond.ts";
-import { frameToSse, sseComment, sseFrame, SSE_HEADERS } from "../http/sse.ts";
+import {
+	frameToSse,
+	sseComment,
+	sseFrame,
+	SSE_HEADERS,
+	type StreamFrame,
+} from "../http/sse.ts";
 import { requireToken, sendError } from "./support.ts";
 
 /** 心跳间隔（毫秒）。 */

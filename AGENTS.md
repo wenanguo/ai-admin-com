@@ -85,11 +85,11 @@ husky / lint-staged / commitlint 都用 `frontend/node_modules/.bin/` 里的二�
 
 **内核**（`src/core/`，**不 import 插件** ⇒ `node scripts/check-core-purity.cjs` 有检查）：
 `session/`（`runtime.ts` 会话/命令/事件流 · `agent-event.ts` **我们自己的事件词汇** ·
-`event-mapper.ts` 事件 → SSE 事件 · `frame-buffer.ts` 回放窗口 · `session-registry.ts` 通道）·
-`adapter/dsh/`（**执行层**：dsh 运行时子进程 + 事件翻译 + 闸门接线）·
+`event-mapper.ts` 事件 → SSE 事件 · `session-registry.ts` 通道 + 回放窗口 `ReplayWindow`）·
+`adapter/dsh/`（**执行层**：dsh 运行时子进程 + 事件翻译 + 闸门接线 + **技能清单** `skills.ts`）·
 `gate/gate.ts` + `gate/decision.ts`（改数据要人点头；**口径只有一份**）·
-`mcp/mcp.ts`（AiAdmin MCP 服务器，带用户 JWT）·
-`skills/`（**技能清单**；发现与加载**退给 dsh** ⇒ 我们只给目录）· `context/anchor.ts`（讨论上下文的通用机制）· `plugins.ts`（插件契约 + 注册表）
+`mcp/mcp.ts`（AiAdmin MCP 服务器，带用户 JWT）· `mcp/tool.ts`（**MCP 工具形状**：内核只认这一种工具）·
+`context/anchor.ts`（讨论上下文的通用机制）· `plugins.ts`（插件契约 + 注册表）
 
 **业务插件**（`src/plugins/pm/`）：PM 的适配层 / 命令目录 / 讨论上下文 ⇒ **业务概念都归它**；
 入口 `src/plugins.ts` 是**唯一 import 插件的地方**。
