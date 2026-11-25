@@ -3,10 +3,10 @@
  *
  * ## 两件事
  *
- * ① **schema 转换**：我们的工具参数是 **typebox**（`core/tools/types.ts`），
+ * ① **schema 转换**：我们的工具参数是 **JSON Schema**（MCP 的形状），
  *    dsh 要的是**它自己的 JSON-Schema 风格 DSL**
  *    （`{ 项目名: { type: 'string', required: true, description } }`）
- *    ⇒ 这里做一层转换（≈ 80 行；typebox 的 schema 树 → dsh 的值 schema）。
+ *    ⇒ 这里做一层转换（JSON Schema 的树 → dsh 的值 schema）。
  *
  * ② **工具名归一化**：dsh 会把 MCP 工具限定成 `mcp__<server>__<tool>`
  *    ⇒ 前端的命令卡片直接显示工具名 ⇒ 不归一化就是**产品可见的变化**
@@ -19,9 +19,8 @@
  * 由适配层在起运行时之前塞进环境变量（见 `runner.ts`）。
  */
 
-import type { CommandTool } from "../../tools/types.ts";
+import type { JsonSchema, McpToolDefinition } from "../../mcp/tool.ts";
 import { requiresConfirmation } from "../../gate/gate.ts";
-import { asRecord, asString } from "./protocol.ts";
 import { bareToolName } from "../../mcp/tool-names.ts";
 
 /** dsh 的**值 schema**（我们自己声明的形状 ⇒ 不 import dsh 的类型）。 */
@@ -87,21 +86,16 @@ export function normalizeToolName(name: string, prefixes: readonly string[]): st
 }
 
 /**
- * typebox 的 schema → dsh 的参数 schema。
+ * JSON Schema → dsh 的参数 schema。
  *
  * ⚠️ **不认识的一律降级成 `json`**（不认识的类型不许悄悄丢掉约束
  *    ⇒ 模型看到「随便给个 JSON」比看到错的约束安全）。
  *
- * @param schema typebox 的 schema（结构上是 JSON Schema）。
+ * @param schema JSON Schema（**对象根**）。
  */
-export function toDshParameters(schema: unknown): DshParameterSpec {
-	const node = asRecord(schema);
-	const properties = asRecord(node?.["properties"]) ?? {};
-	const required = new Set(
-		Array.isArray(node?.["required"])
-			? node["required"].filter((item): item is string => typeof item === "string")
-			: [],
-	);
+export function toDshParameters(schema: JsonSchema): DshParameterSpec {
+	const properties = schema.properties ?? {};
+	const required = new Set(schema.required ?? []);
 	const out: DshParameterSpec = {};
 	for (const [name, property] of Object.entries(properties)) {
 		const value = toDshValueSchema(property);
@@ -111,13 +105,11 @@ export function toDshParameters(schema: unknown): DshParameterSpec {
 }
 
 /** 一个 JSON Schema 节点 → dsh 的值 schema。 */
-function toDshValueSchema(node: unknown): DshValueSchema {
-	const record = asRecord(node) ?? {};
-	const description = asString(record["description"]);
-	const type = asString(record["type"]);
-	switch (type) {
+function toDshValueSchema(node: JsonSchema): DshValueSchema {
+	const description = node.description;
+	switch (node.type) {
 		case "string": {
-			const values = record["enum"];
+			const values = node.enum;
 			const enumValues = Array.isArray(values)
 				? values.filter((item): item is string => typeof item === "string")
 				: undefined;
@@ -136,7 +128,7 @@ function toDshValueSchema(node: unknown): DshValueSchema {
 		case "null":
 			return description === undefined ? { type: "null" } : { type: "null", description };
 		case "array": {
-			const items = record["items"];
+			const items = node.items;
 			return {
 				type: "array",
 				...(description === undefined ? {} : { description }),
@@ -147,9 +139,9 @@ function toDshValueSchema(node: unknown): DshValueSchema {
 			return {
 				type: "object",
 				...(description === undefined ? {} : { description }),
-				properties: toDshParameters(record),
+				properties: toDshParameters(node),
 				// ⚠️ dsh 的对象 schema **必须**显式写开闭（不许默认）
-				additionalProperties: record["additionalProperties"] === true,
+				additionalProperties: node.additionalProperties === true,
 			};
 		}
 		default:
@@ -160,11 +152,11 @@ function toDshValueSchema(node: unknown): DshValueSchema {
 /**
  * 造工具目录（发给 dsh 侧插件）。
  *
- * @param tools 我们的命令工具（**已按智能体配置的白名单过滤**）。
+ * @param tools 我们的命令（**MCP 工具形状**；已按智能体配置的白名单过滤）。
  * @param prefixes 已知的 MCP 服务器前缀（用来归一化工具名）。
  */
 export function buildToolCatalog(
-	tools: readonly CommandTool[],
+	tools: readonly McpToolDefinition[],
 	prefixes: readonly string[] = [],
 ): DshToolSpec[] {
 	return tools.map((tool) => {
@@ -172,58 +164,16 @@ export function buildToolCatalog(
 		return {
 			name,
 			description: tool.description,
-			parameters: toDshParameters(tool.parameters),
-			modelParameters: toJsonSchema(tool.parameters),
+			parameters: toDshParameters(tool.inputSchema),
+			// ⚠️ **模型侧看的那份** = 我们的 `inputSchema`（本来就是 JSON Schema）
+			//    ⇒ 只补一条默认：**不许**多传没声明的字段。
+			modelParameters: {
+				type: "object",
+				additionalProperties: false,
+				...tool.inputSchema,
+			},
 			// ⚠️ **口径在我们这边算**（`update_` / `patch_` 要点头）⇒ dsh 只负责「问」。
 			confirm: requiresConfirmation(name),
 		};
 	});
-}
-
-/**
- * typebox 的 schema → **JSON Schema**（**模型侧**要的那份）。
- *
- * ⚠️ dsh 的**模型侧**工具声明是 JSON Schema；工具表那边是它自己的 DSL
- *    ⇒ 两份都要（`toDshParameters` 给工具表，这份给模型）。
- */
-export function toJsonSchema(schema: unknown): Record<string, unknown> {
-	const node = asRecord(schema);
-	const properties = asRecord(node?.["properties"]) ?? {};
-	const required = Array.isArray(node?.["required"])
-		? node["required"].filter((item): item is string => typeof item === "string")
-		: [];
-	return {
-		type: "object",
-		properties: Object.fromEntries(
-			Object.entries(properties).map(([name, property]) => [name, jsonNodeOf(property)]),
-		),
-		...(required.length > 0 ? { required } : {}),
-		additionalProperties: false,
-	};
-}
-
-/** 一个 JSON Schema 节点（**原样带走** ⇒ 不丢约束）。 */
-function jsonNodeOf(node: unknown): unknown {
-	const record = asRecord(node);
-	if (record === undefined) {
-		return {};
-	}
-	const out: Record<string, unknown> = {};
-	for (const [key, value] of Object.entries(record)) {
-		if (key === "properties") {
-			out["properties"] = Object.fromEntries(
-				Object.entries(asRecord(value) ?? {}).map(([name, property]) => [
-					name,
-					jsonNodeOf(property),
-				]),
-			);
-			continue;
-		}
-		if (key === "items") {
-			out["items"] = jsonNodeOf(value);
-			continue;
-		}
-		out[key] = value;
-	}
-	return out;
 }

@@ -9,8 +9,8 @@
  * ## 为什么命令目录在插件里
  *
  * 「任务 / 项目 / 里程碑」是**业务概念** ⇒ 内核（`core/**`）不许出现它们。
- * 内核的命令机制（`core/tools/index.ts`）只认 `CommandDefinition` 这个形状 ⇒
- * 插件把命令登记好，注册表送进来，内核照单注册给模型。
+ * 内核只认**一种形状**（`core/mcp/tool.ts` 的 MCP 工具）⇒ 插件把命令登记好，
+ * 注册表送进来，内核照单注册给模型。
  *
  * ## 依赖方向
  *
@@ -24,7 +24,7 @@ import {
 	type AdminJudge,
 	type CurrentUserResolver,
 } from "../../core/session/identity.ts";
-import type { CommandDefinition } from "../../core/tools/types.ts";
+import type { McpToolDefinition } from "../../core/mcp/tool.ts";
 import { AadminClient } from "./adapter/aadmin/client.ts";
 import { AadminCurrentUserResolver } from "./adapter/aadmin/current-user.ts";
 import { createAdminJudge } from "./adapter/aadmin/admin-judge.ts";
@@ -35,7 +35,6 @@ import { pmEnv } from "./env.ts";
 import { probeAiAdmin } from "./health.ts";
 import {
 	createCreateTaskTool,
-	CREATE_TASK_TOOL_NAME,
 	type TaskCreator,
 } from "./tools/create-task.ts";
 
@@ -53,31 +52,19 @@ export interface PmPluginOptions {
 }
 
 /**
- * PM 的命令目录。
+ * PM 的命令目录（**MCP 工具形状** —— issue #169 · S3）。
  *
  * ⚠️ 破坏性**不在这儿写** —— 它由**工具自己的 annotations** 决定
  *    （`destructiveHint: false`：新建是可补偿的 ⇒ 非破坏性 ⇒ 不需要待确认）。
+ *
+ * ⚠️ **工具定义是纯静态的**（token / 审计 / 闸门在**调用时**给）
+ *    ⇒ 一份定义可以复用到所有会话。
  */
 export function createPmCommands(
 	options: PmPluginOptions = {},
-): readonly CommandDefinition[] {
+): readonly McpToolDefinition[] {
 	const createDataSource = options.createDataSource ?? defaultDataSourceFactory();
-	return [
-		{
-			name: CREATE_TASK_TOOL_NAME,
-			label: "创建任务",
-			build: (context) =>
-				createCreateTaskTool({
-					currentToken: context.currentToken,
-					createDataSource,
-					// ⚠️ 内核只说「当前用户 id」；「报告人」是业务语义 ⇒ 插件自己翻译。
-					resolveReporterId: context.currentUserId,
-					audit: context.audit,
-					model: context.model,
-					gate: context.gate,
-				}),
-		},
-	];
+	return [createCreateTaskTool({ createDataSource })];
 }
 
 /** 造 PM 插件（**注册表里现在只有它**）。 */

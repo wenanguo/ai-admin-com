@@ -4,7 +4,7 @@
  * ## 钉住的两条
  *
  * 1. **公开入口是唯一的** ⇒ `core/index.ts` 导出对外的那一套（改它 = 改对外契约）；
- * 2. **依赖不外泄** ⇒ 内核只依赖**通用件**（express / prisma / zod / typebox / yaml /
+ * 2. **依赖不外泄** ⇒ 内核只依赖**通用件**（express / prisma / zod / yaml /
  *    node 内置）⇒ **不依赖任何业务系统** ⇒ 换个系统只要带自己的插件。
  *
  * ⚠️ 这两条都是**可执行**的断言（不是靠人盯）。
@@ -46,7 +46,6 @@ const ALLOWED_DEPENDENCIES = [
 	//    也是**通用件**（不是业务系统）⇒ 只允许出现在**适配层**
 	//    （`core/adapter/dsh-admin/**`）。
 	"http-proxy-middleware",
-	"typebox",
 	"vitest",
 	"yaml",
 	"zod",
@@ -80,9 +79,9 @@ describe("内核的公开表面", () => {
 		expect(typeof core.createCoreApp).toBe("function");
 		expect(typeof core.createCoreHealthRouter).toBe("function");
 		expect(typeof core.assertCoreReady).toBe("function");
-		// 上下文锚点 / 命令工具
+		// 上下文锚点 / 命令工具（**MCP 工具形状**）
 		expect(typeof core.narrowWriteArgs).toBe("function");
-		expect(typeof core.buildCommandTools).toBe("function");
+		expect(core.ALLOW_ALL_GATE).toBeDefined();
 		// 身份契约
 		expect(typeof core.CachedCurrentUserResolver).toBe("function");
 	});

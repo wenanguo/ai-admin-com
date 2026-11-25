@@ -41,8 +41,7 @@ import { buildDshMcpServerRegistrations } from "../../src/core/mcp/mcp.ts";
 import { stripMcpToolPrefix } from "../../src/core/mcp/tool-names.ts";
 import { AgentEventMapper } from "../../src/core/session/event-mapper.ts";
 import { PendingWaiterRegistry } from "../../src/core/gate/pending-waiters.ts";
-import type { CommandTool } from "../../src/core/tools/types.ts";
-import { Type } from "typebox";
+import type { McpToolDefinition } from "../../src/core/mcp/tool.ts";
 
 const requireFromHere = createRequire(import.meta.url);
 const dshBin = requireFromHere.resolve("@deepseek-ai/dsh/lib/bin.js");
@@ -164,11 +163,15 @@ const providerPatch = writePiAiProviderPatch(join(dshHome, "ai-admin"), {
 /** 我们的命令被调用了几次（⇒ 断言命令桥那条路还通）。 */
 let localToolCalls = 0;
 
-const localTool: CommandTool = {
+const localTool: McpToolDefinition = {
 	name: "create_task",
 	label: "建任务",
 	description: "我们自己的命令（业务插件给的）",
-	parameters: Type.Object({ title: Type.String({ description: "标题" }) }),
+	inputSchema: {
+		type: "object",
+		properties: { title: { type: "string", description: "标题" } },
+		required: ["title"],
+	},
 	annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
 	execute: async () => {
 		localToolCalls += 1;
@@ -249,6 +252,11 @@ async function runTurn(currentPhase: Phase, decision: "approved" | "rejected"): 
 	const session = new DshSession({
 		conversationId: `conv-${currentPhase}-${decision}`,
 		tools: [localTool],
+		toolContext: {
+			currentToken: () => "e2e-token",
+			currentUserId: async () => 1,
+			audit: { write: async () => undefined },
+		},
 		systemPrompt: "你是验收用的助手",
 		provider: ROUTE,
 		model: MODEL,

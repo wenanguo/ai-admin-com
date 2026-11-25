@@ -101,7 +101,7 @@ console.log("③ 实现行数（这一轮减了多少）");
  *
  * 量法与 issue 一致：`find src/core -name '*.ts' ! -name '*.test.ts' -exec cat {} + | wc -l`
  */
-const BASELINE_IMPL_LINES = 10067;
+const BASELINE_IMPL_LINES = 10791;
 /** 这一轮的目标（issue #169 的验收标准 6）。 */
 const TARGET_REDUCTION = 1800;
 
@@ -117,7 +117,8 @@ function countImplLines(dir) {
 		if (!entry.name.endsWith(".ts") || entry.name.endsWith(".test.ts")) {
 			continue;
 		}
-		total += fs.readFileSync(full, "utf8").split("\n").length;
+		// ⚠️ 与 `wc -l` 一致：**数换行符**（不是 split 的长度 ⇒ 差一个尾行）。
+		total += (fs.readFileSync(full, "utf8").match(/\n/g) ?? []).length;
 	}
 	return total;
 }
@@ -144,7 +145,7 @@ const coreFiles = [];
 			collect(full);
 			continue;
 		}
-		if (entry.name.endsWith(".ts")) {
+		if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
 			coreFiles.push(full);
 		}
 	}

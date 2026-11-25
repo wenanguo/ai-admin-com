@@ -35,8 +35,7 @@ import { createRequire } from "node:module";
 import { DshSession } from "../../src/core/adapter/dsh/session.ts";
 import { ensureDshProfile, writePiAiProviderPatch } from "../../src/core/adapter/dsh/profile.ts";
 import { PendingWaiterRegistry } from "../../src/core/gate/pending-waiters.ts";
-import type { CommandTool } from "../../src/core/tools/types.ts";
-import { Type } from "typebox";
+import type { McpToolDefinition } from "../../src/core/mcp/tool.ts";
 
 const requireFromHere = createRequire(import.meta.url);
 const dshBin = requireFromHere.resolve("@deepseek-ai/dsh/lib/bin.js");
@@ -150,11 +149,15 @@ const providerPatch = writePiAiProviderPatch(join(dshHome, "ai-admin"), {
 /** 桥被叫了几次（⇒ 断言「拒绝 ⇒ 没执行」）。 */
 let bridgeCalls = 0;
 
-const tool: CommandTool = {
+const tool: McpToolDefinition = {
 	name: "update_task",
 	label: "建任务",
 	description: "建一条任务（验收用）",
-	parameters: Type.Object({ title: Type.String({ description: "标题" }) }),
+	inputSchema: {
+		type: "object",
+		properties: { title: { type: "string", description: "标题" } },
+		required: ["title"],
+	},
 	annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
 	execute: async () => {
 		bridgeCalls += 1;
@@ -191,6 +194,11 @@ async function runTurn(
 	const session = new DshSession({
 		conversationId: `conv-${decision}`,
 		tools: [tool],
+		toolContext: {
+			currentToken: () => "e2e-token",
+			currentUserId: async () => 1,
+			audit: { write: async () => undefined },
+		},
 		systemPrompt: "你是验收用的助手",
 		provider: ROUTE,
 		model: MODEL,

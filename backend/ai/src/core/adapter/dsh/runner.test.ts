@@ -7,6 +7,16 @@
 import { describe, expect, it } from "vitest";
 import { bridgeSecret, buildChildEnv, dshRunnerConfig } from "./runner.ts";
 import { PendingWaiterRegistry } from "../../gate/pending-waiters.ts";
+import type { McpToolContext } from "../../mcp/tool.ts";
+
+/** 工具执行时的上下文（**测试用假的** ⇒ 不打任何外部系统）。 */
+function fakeToolContext(): McpToolContext {
+	return {
+		currentToken: () => "test-token",
+		currentUserId: async () => 1,
+		audit: { write: async () => undefined },
+	};
+}
 
 describe("dsh runner 的配置", () => {
 	it("缺省值（**官方 DeepSeek 路由 + 官方 key 的环境变量**）", () => {
@@ -63,6 +73,7 @@ describe("dsh runner 的配置", () => {
 			options: {
 				conversationId: "conv-env",
 				tools: [],
+				toolContext: fakeToolContext(),
 				systemPrompt: "你是助手。",
 				gate: () => ({
 					conversationId: "conv-env",
@@ -110,6 +121,7 @@ describe("dsh runner 的配置", () => {
 			options: {
 				conversationId: "conv-env",
 				tools: [],
+				toolContext: fakeToolContext(),
 				systemPrompt: "你是助手。",
 				gate: () => ({
 					conversationId: "conv-env",
@@ -166,6 +178,7 @@ describe("dsh runner · MCP 服务器", () => {
 			options: {
 				conversationId: "conv-1",
 				tools: [],
+				toolContext: fakeToolContext(),
 				systemPrompt: "你是助手。",
 				mcpServers: [{ name: "aiadmin", url: "https://a.test/mcp", token: "jwt" }],
 				gate: () => ({
@@ -197,6 +210,7 @@ describe("dsh runner · MCP 服务器", () => {
 			options: {
 				conversationId: "conv-1",
 				tools: [],
+				toolContext: fakeToolContext(),
 				systemPrompt: "你是助手。",
 				skillDirs: ["C:/srv/ai/.pi/skills"],
 				gate: () => ({
@@ -223,6 +237,7 @@ describe("dsh runner · MCP 服务器", () => {
 			options: {
 				conversationId: "conv-1",
 				tools: [],
+				toolContext: fakeToolContext(),
 				systemPrompt: "你是助手。",
 				gate: () => ({
 					conversationId: "conv-1",

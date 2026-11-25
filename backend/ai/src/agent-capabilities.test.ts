@@ -19,22 +19,11 @@ import { describe, expect, it } from "vitest";
 import { listAgentSummaries } from "./core/config/catalog.ts";
 import { loadAgentConfigs } from "./core/config/loader.ts";
 import { pluginRegistry } from "./core/plugins.ts";
-import { buildCommandTools } from "./core/tools/index.ts";
-import type { CommandContext } from "./core/tools/types.ts";
 // ⚠️ **import 即注册**（模块副作用）⇒ 注册表里才有 PM 插件
 import "./plugins.ts";
 
 /** 仓里的智能体配置目录（**cwd 相对** ⇒ 测试要在这个包里跑）。 */
 const AGENTS_DIR = "agents";
-
-/** 造工具时的上下文（只有通用能力 ⇒ 不用真打 AiAdmin）。 */
-function context(): CommandContext {
-	return {
-		currentToken: () => "token",
-		currentUserId: async () => 1,
-		audit: { write: async () => undefined },
-	};
-}
 
 /**
  * 这个智能体**实际能用的命令**（工具名）。
@@ -51,10 +40,9 @@ function commandNames(agentId: string): string[] {
 		config.plugin === undefined
 			? pluginRegistry.defaultPlugin()
 			: pluginRegistry.get(config.plugin);
-	const tools = buildCommandTools(plugin?.commands ?? [], context(), {
-		only: config.tools,
-	});
-	return tools.map((tool) => tool.name);
+	return (plugin?.commands ?? [])
+		.filter((command) => config.tools.includes(command.name))
+		.map((command) => command.name);
 }
 
 describe("两个智能体的能力差异", () => {

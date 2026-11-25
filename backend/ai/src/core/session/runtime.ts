@@ -29,8 +29,6 @@ import { AuditTrail } from "../audit/audit-trail.ts";
 import { redactAuditArgs } from "../audit/audit-redact.ts";
 import { env } from "../env/env.ts";
 import { buildFrame } from "../http/sse.ts";
-import { buildCommandTools } from "../tools/index.ts";
-import type { CommandTool } from "../tools/types.ts";
 import { pluginRegistry, type AiPlugin, type PluginRegistry } from "../plugins.ts";
 import type { CurrentUser } from "./identity.ts";
 import { SSE_EVENTS, type SseEventName, type SsePayload } from "./events.ts";
@@ -41,6 +39,7 @@ import { DEFAULT_GATE_TIMEOUT_MS } from "../gate/gate.ts";
 import { createPendingAction } from "../gate/pending-write.ts";
 import type { McpServerSpec } from "../mcp/mcp.ts";
 import { mcpToolPrefix, stripMcpToolPrefix } from "../mcp/tool-names.ts";
+import type { McpToolContext, McpToolDefinition } from "../mcp/tool.ts";
 import { listSkillSummaries, type SkillSummary } from "../skills/skill-catalog.ts";
 import { pendingWaiters } from "../gate/pending-waiters.ts";
 import {
@@ -765,24 +764,33 @@ ${message}`;
 		const plugin = this.#pluginOf(agent);
 		// ⚠️ **写规则也来自同一个插件**（与锚点一致 ⇒ 收窄的是同一套语义）
 		channel.writeRules = plugin?.context?.writeRules ?? [];
-		const tools = buildCommandTools(
-			// ⚠️ **命令目录来自插件**（内核不带业务命令）
-			plugin?.commands ?? [],
-			{
-				currentToken: () => channel.token,
-				currentUserId: async (token: string) => (await this.#resolveUser(token)).id,
-				audit: this.#audit,
-				model: this.#model,
-			},
-			// ⚠️ **工具白名单**：配置里没列的工具**不注册**（模型看不到）
-			{ only: agent.tools },
+		// ⚠️ **命令目录来自插件**（内核不带业务命令）⇒ **MCP 工具形状**
+		//    （issue #169 · S3：内核不再自造一套「命令工具」机制）。
+		// ⚠️ **工具白名单**：配置里没列的工具**不注册**（模型看不到）。
+		const tools = (plugin?.commands ?? []).filter((command) =>
+			agent.tools.includes(command.name),
 		);
+		// ⚠️ **上下文在调用时给**（token / 审计 / 闸门 ⇒ 每个会话一份）
+		//    ⇒ 工具定义本身是**纯静态**的（一份定义复用到所有会话）。
+		const toolContext: McpToolContext = {
+			currentToken: () => channel.token,
+			currentUserId: async (token: string) => (await this.#resolveUser(token)).id,
+			audit: this.#audit,
+			model: this.#model,
+		};
 		// ⚠️ **MCP 服务器来自配置**（可以 0 / 1 / N 个；名字决定工具名前缀）。
 		const mcpServers = this.#mcpServersOf(agent, channel.token ?? "");
 		// ⚠️ **记住这些前缀**（事件里要靠它认出「这是哪台服务器的 MCP 工具」）
 		channel.mcpPrefixes = this.#mcpPrefixesOf(agent);
 		// ⚠️ **只有一个执行层**（issue #123 拔掉 pi）⇒ 会话一律走 dsh 适配层。
-		const session = await this.#buildDshSession(channel, agent, tools, mcpServers, userId);
+		const session = await this.#buildDshSession(
+			channel,
+			agent,
+			tools,
+			toolContext,
+			mcpServers,
+			userId,
+		);
 		channel.session = session;
 		channel.unsubscribe = session.subscribe((event) => {
 			this.#handleEvent(channel, event);
@@ -798,13 +806,15 @@ ${message}`;
 	 *
 	 * @param channel 会话通道。
 	 * @param agent 这个会话的智能体（提示词 / 模型 / 技能都按它来）。
-	 * @param tools 业务命令工具（**已按白名单过滤**）。
+	 * @param tools 业务命令（**MCP 工具形状**；已按白名单过滤）。
+	 * @param toolContext 工具执行时的上下文（token / 审计 / 闸门）。
 	 * @param userId 当前用户 id（闸门要记「谁干的」）。
 	 */
 	async #buildDshSession(
 		channel: ConversationChannel,
 		agent: AgentConfig,
-		tools: readonly CommandTool[],
+		tools: readonly McpToolDefinition[],
+		toolContext: McpToolContext,
 		mcpServers: readonly McpServerSpec[],
 		userId?: string,
 	): Promise<AgentSessionLike> {
@@ -837,6 +847,7 @@ ${message}`;
 		return this.#createDshSession({
 			conversationId: channel.conversationId,
 			tools: allTools,
+			toolContext,
 			// ⚠️ **系统提示词就是智能体配置里那份**（技能段由 dsh 自己给）
 			systemPrompt: agent.systemPrompt,
 			// ⚠️ **模型来自配置**（没写 ⇒ 用全局默认）

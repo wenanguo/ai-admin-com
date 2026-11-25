@@ -5,7 +5,7 @@
  *
  * 它只**新建**（`destructiveHint: false`）：建错了可以再改，也可以删掉
  * ⇒ 属于**可补偿**的操作，不需要先问用户「要不要真的建？」
- * （待确认队列属于完整版的 Task 7；这里的闸门形状先留好，见 `types.ts`）。
+ * （待确认队列属于完整版的 Task 7；这里的闸门形状先留好，见 `core/gate/gate.ts`）。
  *
  * ## 参数名用统一领域名
  *
@@ -15,13 +15,17 @@
  * 统一名 → 适配层入参的映射**只在这个文件里发生**。
  */
 
-import { Type, type Static } from "typebox";
-import type { AuditWriter } from "../../../core/audit/audit.ts";
 import { redactAuditArgs } from "../../../core/audit/audit-redact.ts";
 import type { CreateTaskInput } from "../adapter/datasource.ts";
 import type { UnifiedTask } from "../adapter/model.ts";
 import { AdapterErrorException, isAdapterErrorException } from "../../../core/errors.ts";
-import { ALLOW_ALL_GATE, type CommandGate, type CommandTool, type ToolResult } from "../../../core/tools/types.ts";
+import { ALLOW_ALL_GATE } from "../../../core/gate/gate.ts";
+import type {
+	JsonSchema,
+	McpToolDefinition,
+	McpToolContext,
+	ToolResult,
+} from "../../../core/mcp/tool.ts";
 
 /** 工具名（模型用它来调用）。 */
 export const CREATE_TASK_TOOL_NAME = "create_task";
@@ -31,20 +35,16 @@ export interface TaskCreator {
 	createTask(input: CreateTaskInput): Promise<UnifiedTask>;
 }
 
-/** 工具的依赖（由 agent 运行时注入）。 */
+/**
+ * 工具的**业务依赖**（插件自己闭包持有）。
+ *
+ * ⚠️ **只有业务依赖在这儿**（怎么连 AiAdmin）⇒ token / 审计 / 闸门这些
+ *    **通用能力**在**调用时**由内核给（`McpToolContext`）⇒ 一份工具定义
+ *    可以复用到所有会话。
+ */
 export interface CreateTaskToolDeps {
-	/** 取本次调用的**调用方 token**（只在内存里，绝不落盘）。 */
-	currentToken: () => string | undefined;
 	/** 造一个带 token 的数据源（适配层入口）。 */
 	createDataSource: (token: string) => TaskCreator;
-	/** 取当前用户 id（任务要记报告人，后端这列 NOT NULL 且不自动回填）。 */
-	resolveReporterId: (token: string) => Promise<number>;
-	/** 审计去处（**每次写都要留一条 `ai_audit_log`**）。 */
-	audit: AuditWriter;
-	/** 模型标识（写进审计；拿不到就不写）。 */
-	model?: string;
-	/** 命令闸门（默认恒放行）。 */
-	gate?: CommandGate;
 }
 
 /** 工具结果里的结构化详情（也给 SSE 的 `tool_result.details` 用）。 */
@@ -69,50 +69,70 @@ export interface CreateTaskDetails {
 	errorKind?: string;
 }
 
-/** 参数 schema（typebox）。 */
-export const CreateTaskParameters = Type.Object({
-	project_key: Type.String({
-		description:
-			"所属项目的编码，形如 PRJ-2026-Q3-001（也可写 project:45）。必须是一个真实存在的项目；不知道就先问用户。",
-	}),
-	title: Type.String({
-		description: "任务标题：一句话、动宾结构、不超过 60 字。",
-	}),
-	type: Type.Optional(
-		Type.String({
+/**
+ * 参数 schema（**JSON Schema** —— MCP 的形状 ⇒ 直接给 dsh / 模型）。
+ *
+ * ⚠️ **不用 typebox**（issue #169 · S3：内核不再自造一套工具机制）
+ *    ⇒ 参数形状就是**一份 JSON Schema**（依赖更少、形状更通用）。
+ */
+export const CreateTaskInputSchema: JsonSchema = {
+	type: "object",
+	properties: {
+		project_key: {
+			type: "string",
+			description:
+				"所属项目的编码，形如 PRJ-2026-Q3-001（也可写 project:45）。必须是一个真实存在的项目；不知道就先问用户。",
+		},
+		title: {
+			type: "string",
+			description: "任务标题：一句话、动宾结构、不超过 60 字。",
+		},
+		type: {
+			type: "string",
 			description:
 				"任务类型：FEATURE（功能）/ BUG（缺陷）/ OPS（运维）/ RESEARCH（调研）/ SPIKE（探针）；默认 FEATURE。",
-		}),
-	),
-	status: Type.Optional(
-		Type.String({
+		},
+		status: {
+			type: "string",
 			description:
 				"任务状态：BACKLOG / TODO / IN_PROGRESS / REVIEW / DONE / BLOCKED / CANCELLED；默认 BACKLOG（新建的任务从待办开始）。",
-		}),
-	),
-	priority: Type.Optional(
-		Type.String({
+		},
+		priority: {
+			type: "string",
 			description: "优先级：P0（最高）/ P1 / P2 / P3；默认 P2。",
-		}),
-	),
-	description: Type.Optional(
-		Type.String({
+		},
+		description: {
+			type: "string",
 			description: "任务描述（Markdown）：背景、范围、验收标准。",
-		}),
-	),
-	start_date: Type.Optional(
-		Type.String({ description: "计划开始日期，格式 YYYY-MM-DD。" }),
-	),
-	due_date: Type.Optional(
-		Type.String({ description: "计划截止日期，格式 YYYY-MM-DD。" }),
-	),
-	estimate_hours: Type.Optional(
-		Type.Number({ description: "预估工时，单位：小时（可以是小数，例如 2.5）。" }),
-	),
-});
+		},
+		start_date: {
+			type: "string",
+			description: "计划开始日期，格式 YYYY-MM-DD。",
+		},
+		due_date: {
+			type: "string",
+			description: "计划截止日期，格式 YYYY-MM-DD。",
+		},
+		estimate_hours: {
+			type: "number",
+			description: "预估工时，单位：小时（可以是小数，例如 2.5）。",
+		},
+	},
+	required: ["project_key", "title"],
+};
 
-/** 参数类型。 */
-export type CreateTaskParams = Static<typeof CreateTaskParameters>;
+/** 参数（**模型给我们的形状**）。 */
+export interface CreateTaskParams {
+	project_key?: string;
+	title?: string;
+	type?: string;
+	status?: string;
+	priority?: string;
+	description?: string;
+	start_date?: string;
+	due_date?: string;
+	estimate_hours?: number;
+}
 
 /**
  * 工具描述 —— **模型全靠这段话决定用不用这个工具**
@@ -161,19 +181,18 @@ function failure(message: string, errorKind?: string): ToolResult<CreateTaskDeta
 }
 
 /**
- * 造 `create_task` 工具。
+ * 造 `create_task` 工具（**MCP 工具形状**）。
  *
- * @param deps 运行时的依赖（token、数据源、当前用户、闸门）。
+ * @param deps 插件的**业务依赖**（怎么连 AiAdmin）。
  */
-export function createCreateTaskTool(deps: CreateTaskToolDeps): CommandTool<
-	typeof CreateTaskParameters,
-	CreateTaskDetails
-> {
+export function createCreateTaskTool(
+	deps: CreateTaskToolDeps,
+): McpToolDefinition<CreateTaskDetails> {
 	return {
 		name: CREATE_TASK_TOOL_NAME,
 		label: "创建任务",
 		description: CREATE_TASK_DESCRIPTION,
-		parameters: CreateTaskParameters,
+		inputSchema: CreateTaskInputSchema,
 		annotations: {
 			// 只新建、不改已有数据 ⇒ 不是只读；但可补偿撤销 ⇒ 不是破坏性操作。
 			readOnlyHint: false,
@@ -181,9 +200,9 @@ export function createCreateTaskTool(deps: CreateTaskToolDeps): CommandTool<
 			// 同一句话建两次会建出两条任务 ⇒ 不幂等。
 			idempotentHint: false,
 		},
-		// 实测签名：execute(toolCallId, params, signal, onUpdate, ctx)
-		execute: async (_toolCallId, params) => {
-			const token = deps.currentToken();
+		execute: async (rawArgs, context: McpToolContext) => {
+			const params = rawArgs as CreateTaskParams;
+			const token = context.currentToken();
 			if (token === undefined || token.length === 0) {
 				return failure("拿不到调用方的登录凭证，没法在 AiAdmin 上建任务");
 			}
@@ -194,7 +213,7 @@ export function createCreateTaskTool(deps: CreateTaskToolDeps): CommandTool<
 				return failure("project_key 与 title 都是必填的，不能为空", "VALIDATION");
 			}
 
-			const gate = deps.gate ?? ALLOW_ALL_GATE;
+			const gate = context.gate ?? ALLOW_ALL_GATE;
 			const args: Record<string, unknown> = { ...params, project_key: projectKey, title };
 			if (gate.requiresConfirmation(CREATE_TASK_TOOL_NAME, args)) {
 				const allowed = await gate.awaitConfirmation(CREATE_TASK_TOOL_NAME, args);
@@ -204,7 +223,7 @@ export function createCreateTaskTool(deps: CreateTaskToolDeps): CommandTool<
 			}
 
 			try {
-				const reporterId = await deps.resolveReporterId(token);
+				const reporterId = await context.currentUserId(token);
 				const datasource = deps.createDataSource(token);
 				const task = await datasource.createTask({
 					project_key: projectKey,
@@ -220,7 +239,7 @@ export function createCreateTaskTool(deps: CreateTaskToolDeps): CommandTool<
 				});
 
 				// ⚠️ 审计：**先记账，再回成功**（记账失败也不能把任务弄丢，见 writeAudit）
-				await writeAudit(deps, task, args, reporterId);
+				await writeAudit(context, task, args, reporterId);
 
 				const summary = `已创建任务 ${task.key}「${task.title}」（项目 ${task.project_key}，类型 ${task.type}，状态 ${task.status}，优先级 ${task.priority}）`;
 				const details: CreateTaskDetails = {
@@ -256,13 +275,13 @@ export function createCreateTaskTool(deps: CreateTaskToolDeps): CommandTool<
  * 所以错误必须**看得见**（console.error），但结果照常算成功。
  */
 async function writeAudit(
-	deps: CreateTaskToolDeps,
+	context: McpToolContext,
 	task: UnifiedTask,
 	args: Record<string, unknown>,
 	reporterId: number,
 ): Promise<void> {
 	try {
-		await deps.audit.write({
+		await context.audit.write({
 			actorType: "AI",
 			command: CREATE_TASK_TOOL_NAME,
 			args: redactAuditArgs(args),
@@ -270,7 +289,7 @@ async function writeAudit(
 			before: task.snapshot?.before ?? null,
 			after: task.snapshot?.after ?? task,
 			userId: String(reporterId),
-			model: deps.model,
+			model: context.model,
 		});
 	} catch (error) {
 		console.error("[audit] 写 ai_audit_log 失败（任务已创建，不要重试）", error);

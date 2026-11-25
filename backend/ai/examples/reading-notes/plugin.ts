@@ -4,7 +4,7 @@
  * ## 这是「换个业务系统照样能用」的证据
  *
  * 整个插件**只从 `core/index.ts`（内核的公开入口）import**：
- * 插件契约（`AiPlugin`）、命令契约（`CommandDefinition` / `CommandTool`）、
+ * 插件契约（`AiPlugin`）、命令契约（**MCP 工具形状**：`McpToolDefinition`）、
  * 身份契约（`CachedCurrentUserResolver`）、错误（`AgentError`）。
  *
  * ⚠️ **不许 import 内核内部路径**（`core/session/...` 之类）⇒
@@ -23,14 +23,13 @@
  * `demo-` 开头的 token ⇒ 读者 1；其它 ⇒ 401。
  */
 
-import { Type, type Static } from "typebox";
 import {
 	AgentError,
 	CachedCurrentUserResolver,
 	type AiPlugin,
-	type CommandContext,
-	type CommandDefinition,
-	type CommandTool,
+	type JsonSchema,
+	type McpToolContext,
+	type McpToolDefinition,
 } from "../../src/core/index.ts";
 import { addNote, listNotes } from "./store.ts";
 
@@ -43,25 +42,32 @@ export const ADD_NOTE_TOOL_NAME = "add_note";
 /** `list_notes` 的工具名。 */
 export const LIST_NOTES_TOOL_NAME = "list_notes";
 
-/** `add_note` 的参数（typebox）。 */
-export const AddNoteParameters = Type.Object({
-	title: Type.String({
-		description: "书名（必填）。例如「活着」。",
-	}),
-	author: Type.Optional(
-		Type.String({
+/** `add_note` 的参数（**JSON Schema** —— MCP 的形状）。 */
+export const AddNoteInputSchema: JsonSchema = {
+	type: "object",
+	properties: {
+		title: {
+			type: "string",
+			description: "书名（必填）。例如「活着」。",
+		},
+		author: {
+			type: "string",
 			description: "作者（可省）。例如「余华」。",
-		}),
-	),
-	thought: Type.Optional(
-		Type.String({
+		},
+		thought: {
+			type: "string",
 			description: "读后感或摘录（可省）。",
-		}),
-	),
-});
+		},
+	},
+	required: ["title"],
+};
 
 /** `add_note` 的参数类型。 */
-export type AddNoteParams = Static<typeof AddNoteParameters>;
+export interface AddNoteParams {
+	title?: string;
+	author?: string;
+	thought?: string;
+}
 
 /** `add_note` 的工具结果细节。 */
 export interface AddNoteDetails {
@@ -119,8 +125,8 @@ export const LIST_NOTES_DESCRIPTION = `列出**已经记下的读书笔记**（�
 【参数】
 - 无。`;
 
-/** `list_notes` 的参数（typebox）。 */
-export const ListNotesParameters = Type.Object({});
+/** `list_notes` 的参数（**JSON Schema**）。 */
+export const ListNotesInputSchema: JsonSchema = { type: "object", properties: {} };
 
 /** 造一个失败结果（细节类型由调用方定）。 */
 function failure<T extends { summary: string; ok: boolean; errorKind?: string }>(
@@ -140,21 +146,20 @@ function failure<T extends { summary: string; ok: boolean; errorKind?: string }>
 }
 
 /** 造 `add_note` 工具。 */
-export function createAddNoteTool(
-	context: CommandContext,
-): CommandTool<typeof AddNoteParameters, AddNoteDetails> {
+export function createAddNoteTool(): McpToolDefinition<AddNoteDetails> {
 	return {
 		name: ADD_NOTE_TOOL_NAME,
 		label: "记一条读书笔记",
 		description: ADD_NOTE_DESCRIPTION,
-		parameters: AddNoteParameters,
+		inputSchema: AddNoteInputSchema,
 		annotations: {
 			// 只新建、不改已有数据 ⇒ 可补偿 ⇒ 不是破坏性操作（不需要先问人）。
 			readOnlyHint: false,
 			destructiveHint: false,
 			idempotentHint: false,
 		},
-		execute: async (_toolCallId, params) => {
+		execute: async (rawArgs, context: McpToolContext) => {
+			const params = rawArgs as AddNoteParams;
 			const token = context.currentToken();
 			if (token === undefined || token.length === 0) {
 				return failure("拿不到调用方的登录凭证，没法记笔记");
@@ -199,14 +204,12 @@ export function createAddNoteTool(
 }
 
 /** 造 `list_notes` 工具。 */
-export function createListNotesTool(
-	_context: CommandContext,
-): CommandTool<typeof ListNotesParameters, ListNotesDetails> {
+export function createListNotesTool(): McpToolDefinition<ListNotesDetails> {
 	return {
 		name: LIST_NOTES_TOOL_NAME,
 		label: "列读书笔记",
 		description: LIST_NOTES_DESCRIPTION,
-		parameters: ListNotesParameters,
+		inputSchema: ListNotesInputSchema,
 		annotations: {
 			readOnlyHint: true,
 			destructiveHint: false,
@@ -228,19 +231,8 @@ export function createListNotesTool(
 }
 
 /** 示例系统的命令目录。 */
-export function createNotesCommands(): readonly CommandDefinition[] {
-	return [
-		{
-			name: ADD_NOTE_TOOL_NAME,
-			label: "记一条读书笔记",
-			build: (context) => createAddNoteTool(context),
-		},
-		{
-			name: LIST_NOTES_TOOL_NAME,
-			label: "列读书笔记",
-			build: (context) => createListNotesTool(context),
-		},
-	];
+export function createNotesCommands(): readonly McpToolDefinition[] {
+	return [createAddNoteTool(), createListNotesTool()];
 }
 
 /**
