@@ -40,7 +40,7 @@ import { createPendingAction } from "../gate/pending-write.ts";
 import type { McpServerSpec } from "../mcp/mcp.ts";
 import { mcpToolPrefix, stripMcpToolPrefix } from "../mcp/tool-names.ts";
 import type { McpToolContext, McpToolDefinition } from "../mcp/tool.ts";
-import { listSkillSummaries, type SkillSummary } from "../skills/skill-catalog.ts";
+import { listSkillSummaries, type SkillSummary } from "../adapter/dsh/skills.ts";
 import { pendingWaiters } from "../gate/pending-waiters.ts";
 import {
 	createDshSession,

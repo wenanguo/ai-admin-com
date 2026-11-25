@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("../session/runtime.ts", async () => {
 	// ⚠️ **真装载器 + 真目录**（只有身份解析是假的）
 	const { loadAgentConfigs } = await import("../config/loader.ts");
-	const { listSkillSummaries } = await import("../skills/skill-catalog.ts");
+	const { listSkillSummaries } = await import("../adapter/dsh/skills.ts");
 	class AgentError extends Error {
 		readonly kind: string;
 		constructor(kind: string, message: string) {

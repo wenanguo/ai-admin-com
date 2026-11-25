@@ -411,8 +411,7 @@ src/core/                         ★ **内核**（只懂通用概念；**不 im
   ├─ plugins.ts                   ★ 插件契约与注册表（内核与插件之间唯一的接头）
   ├─ context/anchor.ts            讨论上下文的**通用机制**（锚点 + 按白名单收窄写操作）
   ├─ session/                     会话（runtime 会话与命令 / session-registry 通道与订阅 / startup-lock 同会话串行 / event-mapper 事件映射 / frame-buffer 回放窗口 / pi-session SDK 接线 / **session-entries 历史→pi entries** / identity 当前用户）
-  ├─ skills/                      技能（**skill-catalog 清单**；发现与加载**退给 dsh** ⇒ 我们只给目录）
-  ├─ mcp/                         MCP（mcp 服务器配置 / mcp.fake 假传输层）
+  ├─ mcp/                         MCP（mcp 服务器配置 / mcp.fake 假传输层 / **tool MCP 工具形状**）
   ├─ gate/                        闸门（gate 改数据要人点头 / pending-waiters 等答复 / pending-query 读侧 / pending-write 写侧）
   ├─ audit/                       审计（audit 写侧 / audit-redact 脱敏 / audit-query 读侧）
   ├─ store/                       存取（store 落库 / db PrismaClient 单例）
@@ -423,14 +422,13 @@ src/core/                         ★ **内核**（只懂通用概念；**不 im
   ├─ errors.ts                    上游错误的**归一形状**（内核认它 ⇒ 插件抛它）
   ├─ index.ts                     ★ **公开入口**（外部只从这里 import；见 core/README.md）
   └─ README.md                    内核说明（能力清单 / 依赖 / 硬规矩）
-  └─ tools/                       命令工具的**机制**（目录从插件来 / 破坏性判定）
 src/plugins/pm/                   ★ **PM 业务插件**（任务 / 项目 / 里程碑 ⇒ 业务概念都归它）
   ├─ adapter/                     适配层（enums 枚举归一 / capabilities 能力位 / keys 统一 key / model 统一模型 / datasource 读写）
   │  └─ aadmin/                   AiAdmin HTTP 客户端（client / errors / types：路径、字段逐字对齐后端）
   ├─ context/pm-context.ts        讨论上下文（解析 / 渲染 / 可写字段白名单 / 写规则）
   ├─ env.ts                       ★ 插件的**环境变量**（AIADMIN_* ⇒ 变量名一个字没改）
   ├─ health.ts                    健康检查的**业务探针**（探上游能不能连上）
-  ├─ tools/                       命令目录（create_task 一个命令 + 闸门形状）
+  ├─ tools/                       命令目录（create_task 一个命令 + 闸门形状 ⇒ **MCP 工具形状**）
   └─ index.ts                     ★ 插件装配（命令目录 + 身份查询 + 讨论上下文 + 告警去处）
 src/plugins.ts                    ★ **入口侧唯一 import 插件的地方**（注册插件进进程级注册表）
 src/server.ts                     ★ Express app 装配（createApp / start / CORS 中间件 / JSON 404 / 错误中间件）

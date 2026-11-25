@@ -1,16 +1,20 @@
 /**
  * 技能清单 —— 「这个智能体现在有哪些技能可用」。
  *
- * ## 为什么还有它（技能都退给 dsh 了，issue #153）
+ * ## 为什么住在**适配层**（issue #169 · S2）
  *
- * ⚠️ **这一小块退不回去**：dsh 的技能登记表住在**运行时进程里**
- *    （每个会话一个 dsh 子进程）⇒ 我们的 HTTP 层**问不到它**
- *    ⇒ `GET /api/agent/skills`（界面给业务同学看「我写的技能生效了」）
- *    只能自己读一遍文件。
+ * ⚠️ **技能是 dsh 的概念**（`SKILL.md` 的格式 / frontmatter / 名字规则**都是 dsh 定的**）
+ *    ⇒ **内核不该知道**它长什么样 ⇒ 这份代码住在 `core/adapter/dsh/**`
+ *    （内核只问「这个智能体有哪些技能」，**不懂怎么读**）。
  *
- * ⇒ 所以这里**只留最小的一份**：**读 frontmatter 的 `name` / `description`**，
- *    **规则与 dsh 的发现规则对齐**（见下）⇒ 界面看到的 = 模型看到的。
- *    ⇒ 正文、加载、工具、目录**全是 dsh 的事**（我们一个字都不管）。
+ * ⚠️ **清单来自 dsh 会看到的那批目录**（智能体配置的 `skills` ⇒ 我们喂给 dsh 的也是它）
+ *    ⇒ 界面看到的 ⊆ 模型能用的。
+ *
+ * ## ⚠️ 还差最后一步（阶段二）
+ *
+ * dsh 的**技能登记表**住在**运行时子进程**里 ⇒ 服务进程**问不到它**
+ * ⇒ 这里只能自己读一遍文件（规则与 dsh 的 `dsh-skill-filesystem` 对齐）。
+ * ⇒ 彻底归位 = 让这个端点**直接问 dsh**（那要在子会话里拉一次目录）⇒ 阶段二。
  *
  * ## 规则（与 dsh 的 `dsh-skill-filesystem` 对齐）
  *
@@ -113,8 +117,7 @@ async function readSummary(file: string): Promise<SkillSummary | undefined> {
 	if (frontmatter === undefined) {
 		return undefined;
 	}
-	const name = frontmatter.name;
-	const description = frontmatter.description;
+	const { name, description } = frontmatter;
 	if (name === undefined || description === undefined) {
 		// ⚠️ **name / description 缺一就不算技能**（与 dsh 一致）。
 		return undefined;
