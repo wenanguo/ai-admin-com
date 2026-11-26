@@ -101,6 +101,7 @@
 | ⚠️ **D8 · issue 说「Postgres」，本仓的数据源是 MySQL `aipm`** | 仓库的 `schema.prisma` datasource 就是 MySQL ⇒ 跟着仓库走（共享库里还有 AiAdmin 的 56 张表） | —— |
 | ⚠️ **D9 · 这一轮顺带把会话 / dsh 子系统的多行 JSDoc 压成单行**（**纯注释，零行为变化**） | 阶段二新增了「幂等事实表 + 事件桥 + 装配层」⇒ 实现行数会涨 ⇒ 而 e2e 的量化目标是「**减法**不许退步」⇒ 靠压注释把总数压回 **10 619**（比阶段一的 10 670 还少 51 行） | 注释变短 ⇒ 但**决定与理由都搬进了本文件**（交接文档才是给人看的地方） |
 | **D10 · 迁移手写、只增不改**（新表 + 唯一索引 + 外键） | 共享库 `aipm` ⇒ **`prisma migrate dev` / `migrate reset` 会把别人的表搞没** ⇒ 只允许 `migrate deploy` | —— |
+| ⚠️ **D11 · CI 的迁移安全阀白名单跟着长**（`scripts/e2e/ai-container.static.cjs`） | 那条安全阀的白名单 = **AI 服务自己拥有的表** ⇒ 新增自有表时白名单跟着长（`ai_session_event` 当初也是这样加进去的）⇒ **「只增不改」的规矩一个字没动**（DROP / TRUNCATE / DELETE / RENAME / MODIFY / CHANGE COLUMN 照样禁） | —— |
 
 ## 怎么验
 
