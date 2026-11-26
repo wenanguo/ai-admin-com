@@ -49,3 +49,38 @@ export function redactAuditArgs(args: unknown): Record<string, unknown> {
 	}
 	return redacted;
 }
+
+/** 写后快照最多留多少字（别把整份响应塞进审计表）。 */
+const MAX_SNAPSHOT_CHARS = 4000;
+
+/**
+ * 工具回执 → 一个**短**的写后快照（别把整份响应塞进审计表）。
+ *
+ * ⚠️ **优先取文本**（模型与人看的都是文本）⇒ 没有文本再退回结构化详情。
+ *
+ * @param result 工具回执（`{ content, details }`）。
+ */
+export function summarizeAuditResult(result: unknown): unknown {
+	if (result === undefined || result === null) {
+		return null;
+	}
+	const record = result as { content?: unknown; details?: unknown };
+	const content = record.content;
+	if (Array.isArray(content)) {
+		const text = content
+			.map((part) =>
+				typeof part === "object" && part !== null
+					? String((part as { text?: unknown }).text ?? "")
+					: String(part),
+			)
+			.join("")
+			.trim();
+		if (text.length > 0) {
+			return text.slice(0, MAX_SNAPSHOT_CHARS);
+		}
+	}
+	if (record.details !== undefined) {
+		return record.details;
+	}
+	return result;
+}

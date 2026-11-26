@@ -56,6 +56,14 @@ export interface Env {
 	databaseUrl: string;
 	/** 允许跨域的前端源（至少一个），回具体的源，不用 `*`。 */
 	ALLOWED_ORIGINS: string[];
+	/**
+	 * 要不要**恢复 dsh 侧的历史**（`session/resume` ⇒ dsh 的会话持久化）。
+	 *
+	 * ⚠️ **默认关**：开了之后，进程重启再聊同一个会话，模型能接着上次的说
+	 *    （**行为变化** ⇒ 由部署决定，不由代码悄悄改）。
+	 * ⚠️ 恢复回来的**只有对话内容**（工具 / MCP / 提示词都是进程级挂上去的）。
+	 */
+	AI_DSH_RESUME: boolean;
 }
 
 /** 把 `"a, b ,c"` 切成 `["a", "b", "c"]`。 */
@@ -97,6 +105,12 @@ const envSchema = z.object({
 		.string()
 		.transform(splitOrigins)
 		.pipe(z.array(z.string()).min(1, "至少要有一个源")),
+	// ⚠️ **默认关**（issue #175 · S4）：恢复 dsh 侧的历史会**改变行为**
+	//    （进程重启后模型接着上次的会话聊）⇒ 由部署显式打开。
+	AI_DSH_RESUME: z
+		.string()
+		.optional()
+		.transform((value) => value === "1" || value === "true"),
 });
 
 /** 环境变量来源。用 `Record` 而不是 `NodeJS.ProcessEnv`：后者被 Next.js 的全局类型加上了必填的 `NODE_ENV`，测试里造假环境变量会碍事。 */

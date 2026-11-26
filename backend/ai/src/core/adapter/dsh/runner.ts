@@ -45,11 +45,11 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DshSession } from "./session.ts";
+import type { AgentSessionLike } from "./session.ts";
 import type { DshTracer } from "./persistence.ts";
 import { buildToolCatalog } from "./tools.ts";
 import { ensureDshProfile, writePiAiProviderPatch } from "./profile.ts";
 import type { DshGateContext } from "./approvals.ts";
-import type { AgentSessionLike } from "../../session/session-registry.ts";
 import type { McpToolContext, McpToolDefinition } from "../../mcp/tool.ts";
 import { buildDshMcpServerRegistrations, type McpServerSpec } from "../../mcp/mcp.ts";
 
@@ -88,11 +88,8 @@ export interface DshRunnerConfig {
 	bridgeUrl: string;
 }
 
-/**
- * 读 dsh runner 的配置。
- *
- * @param source 环境变量来源（测试可注入假值）。
- */
+// 读 dsh runner 的配置。
+// @param source 环境变量来源（测试可注入假值）。
 export function dshRunnerConfig(source: NodeJS.ProcessEnv = process.env): DshRunnerConfig {
 	const port = source.PORT ?? "3100";
 	return {
@@ -127,36 +124,30 @@ export interface CreateDshSessionOptions {
 	cwd?: string | undefined;
 	/** MCP 工具名前缀（用来归一化工具名）。 */
 	mcpPrefixes?: readonly string[];
-	/**
-	 * 要挂的 MCP 服务器（**可以 0 / 1 / N 个**；不给 ⇒ 不挂）。
-	 *
-	 * ⚠️ **每个会话一份**（token 是**当次调用方**的）⇒ 算好了塞进子进程的环境变量
-	 *    ⇒ **凭据不落盘**。
-	 */
+	// 要挂的 MCP 服务器（**可以 0 / 1 / N 个**；不给 ⇒ 不挂）。
+	// ⚠️ **每个会话一份**（token 是**当次调用方**的）⇒ 算好了塞进子进程的环境变量
+	//    ⇒ **凭据不落盘**。
 	mcpServers?: readonly McpServerSpec[];
-	/**
-	 * 技能目录（**绝对路径**；来自智能体配置的 `skills`）。
-	 *
-	 * ⚠️ **技能发现退给 dsh**（issue #153）⇒ 我们**不再自己扫**
-	 *    ⇒ 这里只把目录**交给它**（环境变量 ⇒ dsh 的技能 provider 按它扫）
-	 *    ⇒ **只认配置里列的目录** ⇒ 不跨智能体串味。
-	 */
+	// 技能目录（**绝对路径**；来自智能体配置的 `skills`）。
+	// ⚠️ **技能发现退给 dsh**（issue #153）⇒ 我们**不再自己扫**
+	//    ⇒ 这里只把目录**交给它**（环境变量 ⇒ dsh 的技能 provider 按它扫）
+	//    ⇒ **只认配置里列的目录** ⇒ 不跨智能体串味。
 	skillDirs?: readonly string[];
 	/** 闸门上下文（**每次调用时取** ⇒ 锚点变了也能用）。 */
 	gate: () => Omit<DshGateContext, "argsOf">;
 	/** 留痕层（**不给 ⇒ 不留痕**）。 */
 	tracer?: DshTracer | undefined;
+	// 要不要**恢复 dsh 侧的历史**（`session/resume` ⇒ dsh 的会话持久化）。
+	// ⚠️ **默认不恢复** ⇒ 行为变化由部署决定（`AI_DSH_RESUME=1` 才开）。
+	resume?: boolean | undefined;
 	/** 配置（不给 ⇒ 从环境变量读）。 */
 	config?: DshRunnerConfig | undefined;
 	/** 环境变量来源（不给 ⇒ `process.env`）。 */
 	env?: NodeJS.ProcessEnv | undefined;
 }
 
-/**
- * 造一个 dsh 会话（**懒起进程**：第一次说话时才起 dsh 运行时）。
- *
- * @param options 会话参数。
- */
+// 造一个 dsh 会话（**懒起进程**：第一次说话时才起 dsh 运行时）。
+// @param options 会话参数。
 export async function createDshSession(
 	options: CreateDshSessionOptions,
 ): Promise<AgentSessionLike> {
@@ -208,17 +199,14 @@ export async function createDshSession(
 		bridgeUrl: config.bridgeUrl,
 		bridgeSecret: bridgeSecret(),
 		tracer: options.tracer,
+		resume: options.resume,
 	});
 }
 
-/**
- * 组网的**子进程环境变量**（**凭据只走这里**。
- *
- * ⚠️ **凭据不落盘**（只在子进程的环境变量里）。
- * ⚠️ 多行文本（提示词 / 工具目录 / MCP 清单）⇒ **base64**（免得换行问题）。
- *
- * @param input 会话参数、配置、环境变量来源、模型 key。
- */
+// 组网的**子进程环境变量**（**凭据只走这里**。
+// ⚠️ **凭据不落盘**（只在子进程的环境变量里）。
+// ⚠️ 多行文本（提示词 / 工具目录 / MCP 清单）⇒ **base64**（免得换行问题）。
+// @param input 会话参数、配置、环境变量来源、模型 key。
 export function buildChildEnv(input: {
 	options: CreateDshSessionOptions;
 	config: DshRunnerConfig;
@@ -254,11 +242,8 @@ export function buildChildEnv(input: {
 	};
 }
 
-/**
- * 命令桥的密钥（**进程内随机** ⇒ 不落盘、不进 git）。
- *
- * ⚠️ 每次进程启动都换 ⇒ 旧的 dsh 进程（如果还活着）会失效 ⇒ 那是好事。
- */
+// 命令桥的密钥（**进程内随机** ⇒ 不落盘、不进 git）。
+// ⚠️ 每次进程启动都换 ⇒ 旧的 dsh 进程（如果还活着）会失效 ⇒ 那是好事。
 export function bridgeSecret(): string {
 	const holder = globalThis as unknown as { __dshBridgeSecret?: string };
 	holder.__dshBridgeSecret ??= randomBytes(24).toString("hex");
@@ -279,11 +264,8 @@ function numberOf(raw: string | undefined, fallback: number): number {
 	return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-/**
- * 找 dsh 的可执行文件（**SDK 自带的那份同版本运行时**）。
- *
- * ⚠️ 找不到就报错（**不猜 PATH** ⇒ 免得起错版本）。
- */
+// 找 dsh 的可执行文件（**SDK 自带的那份同版本运行时**）。
+// ⚠️ 找不到就报错（**不猜 PATH** ⇒ 免得起错版本）。
 function resolveDshBin(): string {
 	try {
 		return requireFromHere.resolve("@deepseek-ai/dsh/lib/bin.js");

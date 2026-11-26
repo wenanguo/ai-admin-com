@@ -55,15 +55,12 @@ export type DshApprovalHandler = (
 	request: DshApprovalRequest,
 ) => Promise<DshApprovalOutcome>;
 
-/**
- * dsh 运行时客户端（**一个会话一个** —— 每个会话有自己的运行时进程）。
- *
- * ⚠️ **为什么一个会话一个进程**：
- * - **鉴权**：MCP 与命令桥都按**用户**鉴权 ⇒ 一个进程一个用户 ⇒ 不串味；
- * - **中止**（D2=A）：协议没有 cancel ⇒ 「停止生成」= 停掉**这个**进程 ⇒
- *   不影响别的会话；
- * - **隔离**：dsh 是 RC ⇒ 崩了只崩一个会话。
- */
+// dsh 运行时客户端（**一个会话一个** —— 每个会话有自己的运行时进程）。
+// ⚠️ **为什么一个会话一个进程**：
+// - **鉴权**：MCP 与命令桥都按**用户**鉴权 ⇒ 一个进程一个用户 ⇒ 不串味；
+// - **中止**（D2=A）：协议没有 cancel ⇒ 「停止生成」= 停掉**这个**进程 ⇒
+//   不影响别的会话；
+// - **隔离**：dsh 是 RC ⇒ 崩了只崩一个会话。
 export class DshClient {
 	readonly #client: HarnessClient;
 	readonly #options: DshClientOptions;
@@ -82,11 +79,8 @@ export class DshClient {
 		});
 	}
 
-	/**
-	 * 起运行时并握手（`initialize`）。
-	 *
-	 * ⚠️ **握手失败 ⇒ 进程直接抛错**（不留半死不活的进程）。
-	 */
+	// 起运行时并握手（`initialize`）。
+	// ⚠️ **握手失败 ⇒ 进程直接抛错**（不留半死不活的进程）。
 	async start(): Promise<void> {
 		this.#client.start();
 		this.#client.onRequest(async (method, params) => {
@@ -134,6 +128,12 @@ export class DshClient {
 	/** 发一句话（`session/prompt`）。 */
 	async prompt(sessionId: string, text: string): Promise<void> {
 		await this.#client.prompt(sessionId, [{ type: "text", text }]);
+	}
+
+	// **恢复一个持久化的会话**（`session/resume` ⇒ dsh 的会话持久化）。
+	// ⚠️ **磁盘上没有这个会话 ⇒ 运行时拒绝**（调用方要自己兜住：新建会话很正常）。
+	async resumeSession(sessionId: string): Promise<void> {
+		await this.#client.resumeSession(sessionId);
 	}
 
 	/** 关掉运行时（协议 `shutdown` + 关停阶梯）。 */

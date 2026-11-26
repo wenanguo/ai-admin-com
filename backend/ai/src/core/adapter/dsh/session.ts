@@ -23,8 +23,34 @@ import { decideApproval, type DshGateContext } from "./approvals.ts";
 import type { DshApprovalOutcome, DshSessionEvent } from "./protocol.ts";
 import type { DshTracer } from "./persistence.ts";
 import type { McpToolContext, McpToolDefinition } from "../../mcp/tool.ts";
-import type { AgentSessionLike } from "../../session/session-registry.ts";
 import { narrowWriteArgs, type ContextAnchor, type WriteToolRule } from "../../context/anchor.ts";
+
+// **会话的最小接口** —— 内核只认这一种（真实现是这个文件里的 `DshSession`）。
+// ## 为什么定义在**适配层**
+// 会话是 dsh 的概念（`dsh-session` 的会话服务住在**运行时子进程**里）⇒
+// 「一个会话能做什么」由**适配层**回答 ⇒ 内核只拿这个最小接口。
+// ⚠️ **排队语义是 dsh 的原生能力**（`followUp` / `steer`）：
+//    自己造队列只能做到「等整轮跑完」，做不到「插进去」。
+export interface AgentSessionLike {
+	/** 发起一轮对话。 */
+	prompt(
+		text: string,
+		options?: { expandPromptTemplates?: boolean; streamingBehavior?: "steer" | "followUp" },
+	): Promise<void>;
+	/** 订阅事件；返回退订函数。 */
+	subscribe(listener: (event: AgentEvent) => void): () => void;
+	/** 释放会话。 */
+	dispose(): void;
+	/** 正在流式输出？ */
+	readonly isStreaming: boolean;
+	// 排到当前轮**之后**（不打断）：当前 run 干完活就处理它。
+	// ⚠️ 这是 dsh 的原生排队语义 ⇒ 自己造队列只能做到「等整轮跑完」，做不到「插进去」。
+	followUp?(text: string): Promise<"queued" | "handled">;
+	/** **打断**当前轮：插到当前助手轮次（及其工具调用）之后、下一次模型调用之前。 */
+	steer?(text: string): Promise<"queued" | "handled">;
+	/** 停掉当前正在跑的操作（用户点「停止」）。 */
+	abort?(): Promise<void>;
+}
 
 /** 造 dsh 会话需要的参数。 */
 export interface DshSessionOptions {
@@ -60,6 +86,9 @@ export interface DshSessionOptions {
 	bridgeSecret?: string | undefined;
 	/** 留痕层（**dsh 事件 / 闸门决策 ⇒ 事件日志 + 审计**；不给 ⇒ 不留痕）。 */
 	tracer?: DshTracer | undefined;
+	// 要不要**恢复 dsh 侧的历史**（`session/resume` ⇒ dsh 的会话持久化）。
+	// ⚠️ **默认不恢复**（`resume: true` 才恢复）⇒ 行为不变由部署决定。
+	resume?: boolean | undefined;
 }
 
 /** 命令桥的执行结果。 */
@@ -72,9 +101,7 @@ export interface DshCommandResult {
 	details?: unknown;
 }
 
-/**
- * dsh 会话（实现运行时需要的**最小接口**）。
- */
+/** dsh 会话（实现运行时需要的**最小接口**）。 */
 export class DshSession implements AgentSessionLike {
 	readonly #options: DshSessionOptions;
 	readonly #translator = new DshEventTranslator();
@@ -127,11 +154,8 @@ export class DshSession implements AgentSessionLike {
 		return this.#streaming;
 	}
 
-	/**
-	 * 停掉当前这一轮（D2=A：协议没有 cancel ⇒ **停掉并重建**这个会话的 dsh 进程）。
-	 *
-	 * ⚠️ 重建发生在**下一次说话**时（`ensureClient`）。
-	 */
+	// 停掉当前这一轮（D2=A：协议没有 cancel ⇒ **停掉并重建**这个会话的 dsh 进程）。
+	// ⚠️ 重建发生在**下一次说话**时（`ensureClient`）。
 	async abort(): Promise<void> {
 		const client = this.#client;
 		this.#client = undefined;
@@ -143,12 +167,9 @@ export class DshSession implements AgentSessionLike {
 		}
 	}
 
-	/**
-	 * 执行我们的命令（**命令桥回调**）。
-	 *
-	 * ⚠️ **参数在这里收窄**（讨论上下文的写规则）⇒ dsh 侧模型就算想顺手改别的字段，
-	 *    也写不进去（与 pi 路径同一套 `narrowWriteArgs`）。
-	 */
+	// 执行我们的命令（**命令桥回调**）。
+	// ⚠️ **参数在这里收窄**（讨论上下文的写规则）⇒ dsh 侧模型就算想顺手改别的字段，
+	//    也写不进去（与 pi 路径同一套 `narrowWriteArgs`）。
 	async executeCommand(toolName: string, args: Record<string, unknown>): Promise<DshCommandResult> {
 		const tool = this.#options.tools.find((item) => item.name === toolName);
 		if (tool === undefined) {
@@ -187,7 +208,30 @@ export class DshSession implements AgentSessionLike {
 		client.onApproval((request) => this.#handleApproval(request));
 		this.#client = client;
 		this.#unsubscribe = () => undefined;
+		await this.#resumeSession(client);
 		return client;
+	}
+
+	// **恢复 dsh 侧的历史**（会话生命周期归 dsh ⇒ issue #175 · S4）。
+	// dsh 的 `dsh-session` 把每个会话记成**追加式事件日志**（JSONL ⇒ 落在 `DSH_HOME`）
+	// ⇒ `session/resume` 能把**上次那个会话**的上下文原样恢复回来
+	// ⇒ **进程重启后接着聊**（以前：我们自己的历史只在 `ai_message` 里 ⇒ 模型看不到）。
+	// ⚠️ **恢复不了不算错**（这个会话是新建的 ⇒ 磁盘上没有它的日志）⇒ 静默跳过。
+	// ⚠️ **凭据不会跟着恢复**：MCP / 工具 / 提示词都是**进程级**挂上去的
+	//    （读的是**当前**进程的环境变量）⇒ 恢复回来的只有**对话内容**。
+	async #resumeSession(client: DshClient): Promise<void> {
+		if (this.#options.resume !== true) {
+			return;
+		}
+		try {
+			await client.resumeSession(this.#options.conversationId);
+		} catch (error) {
+			console.log(
+				`[dsh] 会话 ${this.#options.conversationId} 没有可恢复的历史（新建会话）：${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+		}
 	}
 
 	/** dsh 事件 ⇒ 运行时的事件。 */
@@ -224,12 +268,9 @@ export class DshSession implements AgentSessionLike {
 	}
 }
 
-/**
- * 工具结果 → 一句话结论（模型看、界面也看）。
- *
- * ⚠️ 与 pi 路径同一个口径（`event-mapper.ts` 的 `summarizeToolResult`）：
- *    先看 `details.summary`，再看内容里的第一段文本。
- */
+// 工具结果 → 一句话结论（模型看、界面也看）。
+// ⚠️ 与 pi 路径同一个口径（`event-mapper.ts` 的 `summarizeToolResult`）：
+//    先看 `details.summary`，再看内容里的第一段文本。
 function summaryOf(result: unknown, toolName: string): string {
 	const record = result as { content?: unknown; details?: unknown };
 	const details = record?.details as { summary?: unknown } | undefined;
@@ -252,11 +293,8 @@ function summaryOf(result: unknown, toolName: string): string {
 	return `工具 ${toolName} 执行完成`;
 }
 
-/**
- * 收窄参数（**收窄不了就返回 undefined** ⇒ 调用方当「没执行」）。
- *
- * ⚠️ 与 pi 路径同一套规则（`narrowWriteArgs`）⇒ 两个 runner 的口径一致。
- */
+// 收窄参数（**收窄不了就返回 undefined** ⇒ 调用方当「没执行」）。
+// ⚠️ 与 pi 路径同一套规则（`narrowWriteArgs`）⇒ 两个 runner 的口径一致。
 function narrowArgs(
 	toolName: string,
 	args: Record<string, unknown>,
