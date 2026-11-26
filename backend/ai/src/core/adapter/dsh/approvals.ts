@@ -59,11 +59,8 @@ export interface DshGateContext {
 	timeoutMs: number;
 	/** 取这次工具调用的参数（**按 callId 关联 `tool/call` 事件**）。 */
 	argsOf: (callId: string | undefined) => Record<string, unknown> | undefined;
-	/**
-	 * 决策落地了（**人做的决定**）⇒ 回报给留痕层（审计 + 事件日志）。
-	 *
-	 * ⚠️ 不给 ⇒ 不留痕（**留痕失败不许影响放行 / 拒绝**）。
-	 */
+	// 决策落地了（**人做的决定**）⇒ 回报给留痕层（审计 + 事件日志）。
+	// ⚠️ 不给 ⇒ 不留痕（**留痕失败不许影响放行 / 拒绝**）。
 	onDecision?: ((input: {
 		command: string;
 		args: Record<string, unknown>;
@@ -71,12 +68,9 @@ export interface DshGateContext {
 	}) => void) | undefined;
 }
 
-/**
- * 处理一次审批请求 ⇒ 给出结果。
- *
- * @param request dsh 发来的审批请求。
- * @param context 闸门上下文。
- */
+// 处理一次审批请求 ⇒ 给出结果。
+// @param request dsh 发来的审批请求。
+// @param context 闸门上下文。
 export async function decideApproval(
 	request: DshApprovalRequest,
 	context: DshGateContext,

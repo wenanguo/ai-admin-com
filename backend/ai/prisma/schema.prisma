@@ -35,6 +35,7 @@ model AiConversation {
   messages       AiMessage[]
   pendingActions AiPendingAction[]
   sessionEvents  AiSessionEvent[]
+  commandAcks    AiCommandAck[]
 
   @@index([userId, updatedAt])
   @@map("ai_conversation")
@@ -130,6 +131,30 @@ model AiSessionEvent {
 
   @@index([conversationId, seq])
   @@map("ai_session_event")
+}
+
+/// 命令回执（**幂等的事实源**：同一个会话 + 同一个命令 id 只受理一次）。
+///
+/// ## 为什么要有这张表
+///
+/// 以前命令 id 记在**进程内的 Map** ⇒ 进程一重启就忘了 ⇒ 客户端重试会**重跑一遍**
+/// （本仓的命令是**写** ⇒ 重跑就是多建一条任务，而前端只看到「成功」）。
+/// ⇒ 落成**产品事实** ⇒ 跨进程也去重。
+///
+/// ⚠️ **只增不改**（共享库规矩）：只追加 + 读 ⇒ 没有 UPDATE 语义。
+model AiCommandAck {
+  id             String   @id @default(cuid()) @db.VarChar(64)
+  conversationId String   @map("conversation_id") @db.VarChar(64)
+  /// 客户端给的命令 id（`Idempotency-Key`）。
+  commandId      String   @map("command_id") @db.VarChar(128)
+  /// 回执内容（JSON：`{ id, type, success }`）。
+  ack            Json
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, commandId])
+  @@map("ai_command_ack")
 }
 
 /// 外部业务实体的本地引用（只存 id 与标题缓存，不复制业务数据）。

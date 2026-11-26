@@ -199,6 +199,12 @@ describe("迁移脚本", () => {
 		}
 		// 新表在
 		expect(db.has("ai_session_event")).toBe(true);
+		// ⚠️ **命令回执表**（幂等的事实源；issue #175 · S4）
+		expect(db.has("ai_command_ack")).toBe(true);
+		const ack = db.get("ai_command_ack");
+		expect(ack?.columns.has("conversation_id")).toBe(true);
+		expect(ack?.columns.has("command_id")).toBe(true);
+		expect(ack?.columns.has("ack")).toBe(true);
 		const conversation = db.get("ai_conversation");
 		expect(conversation?.columns.has("agent_id")).toBe(true);
 		expect(conversation?.columns.has("dsh_session_id")).toBe(true);
@@ -274,5 +280,8 @@ describe("迁移脚本", () => {
 		expect(schema).toContain('@map("dsh_session_id")');
 		expect(schema).toContain("model AiSessionEvent");
 		expect(schema).toContain('@map("ai_session_event")');
+		// ⚠️ **命令回执表**（幂等的事实源；issue #175 · S4）
+		expect(schema).toContain("model AiCommandAck");
+		expect(schema).toContain('@map("ai_command_ack")');
 	});
 });

@@ -49,12 +49,9 @@ export interface SkillSummary {
 	description: string;
 }
 
-/**
- * 列出若干技能目录里的技能。
- *
- * @param skillDirs 技能目录（**绝对路径**；来自智能体配置的 `skills`）。
- * @returns 目录不存在或没有技能 ⇒ 空列表（**不许炸**：技能是可选的）。
- */
+// 列出若干技能目录里的技能。
+// @param skillDirs 技能目录（**绝对路径**；来自智能体配置的 `skills`）。
+// @returns 目录不存在或没有技能 ⇒ 空列表（**不许炸**：技能是可选的）。
 export async function listSkillSummaries(
 	skillDirs: readonly string[],
 ): Promise<SkillSummary[]> {
@@ -73,11 +70,8 @@ export async function listSkillSummaries(
 	return summaries.sort((left, right) => left.name.localeCompare(right.name));
 }
 
-/**
- * 列一个目录里的技能（**只一层**：`<名字>/SKILL.md` 或 `<名字>.md`）。
- *
- * @param dir 技能目录。
- */
+// 列一个目录里的技能（**只一层**：`<名字>/SKILL.md` 或 `<名字>.md`）。
+// @param dir 技能目录。
 async function listDirectory(dir: string): Promise<SkillSummary[]> {
 	// ⚠️ **目录不存在不是异常**（技能是可选的）。
 	const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
@@ -100,12 +94,9 @@ async function listDirectory(dir: string): Promise<SkillSummary[]> {
 	return summaries;
 }
 
-/**
- * 读一个技能文件的摘要（**只读 frontmatter** ⇒ 不碰正文）。
- *
- * @param file 技能文件（`SKILL.md` 或 `<名字>.md`）。
- * @returns 不是技能 / 写坏了 ⇒ `undefined`（**不抛**）。
- */
+// 读一个技能文件的摘要（**只读 frontmatter** ⇒ 不碰正文）。
+// @param file 技能文件（`SKILL.md` 或 `<名字>.md`）。
+// @returns 不是技能 / 写坏了 ⇒ `undefined`（**不抛**）。
 async function readSummary(file: string): Promise<SkillSummary | undefined> {
 	let raw: string;
 	try {
@@ -137,14 +128,10 @@ interface Frontmatter {
 	description: string | undefined;
 }
 
-/**
- * 解析 frontmatter（**只取 name / description** ⇒ 正文一个字都不读）。
- *
- * ⚠️ 规则与 dsh 的 `dsh-skill-filesystem` 一致：文件必须以 `---` 开头，
- *    有一段独占一行的 `---` 收尾 ⇒ 中间那截按 YAML 解析。
- *
- * @param raw 文件全文。
- */
+// 解析 frontmatter（**只取 name / description** ⇒ 正文一个字都不读）。
+// ⚠️ 规则与 dsh 的 `dsh-skill-filesystem` 一致：文件必须以 `---` 开头，
+//    有一段独占一行的 `---` 收尾 ⇒ 中间那截按 YAML 解析。
+// @param raw 文件全文。
 function parseFrontmatter(raw: string): Frontmatter | undefined {
 	const matched = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw);
 	if (matched === null) {
@@ -173,14 +160,10 @@ function stringField(
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-/**
- * 技能名合不合法（**kebab-case** ⇒ 与 dsh 的 `isSkillName` 一致）。
- *
- * ⚠️ dsh 的规则：`^[a-z0-9]+(?:-[a-z0-9]+)*$`（不许大写、不许下划线、
- *    不许连续连字符、不许以连字符开头/结尾）。
- *
- * @param name 技能名。
- */
+// 技能名合不合法（**kebab-case** ⇒ 与 dsh 的 `isSkillName` 一致）。
+// ⚠️ dsh 的规则：`^[a-z0-9]+(?:-[a-z0-9]+)*$`（不许大写、不许下划线、
+//    不许连续连字符、不许以连字符开头/结尾）。
+// @param name 技能名。
 export function isSkillName(name: string): boolean {
 	return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name);
 }

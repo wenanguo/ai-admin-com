@@ -30,11 +30,8 @@
 
 /** 事件映射器的参数。 */
 export interface AgentEventMapperOptions {
-	/**
-	 * 工具名归一化（**给人看的名字**）。
-	 *
-	 * ⚠️ 不给 ⇒ 原样透出。
-	 */
+	// 工具名归一化（**给人看的名字**）。
+	// ⚠️ 不给 ⇒ 原样透出。
 	normalizeToolName?: ((toolName: string) => string) | undefined;
 }
 
@@ -104,9 +101,7 @@ export function summarizeToolResult(result: unknown, toolName: string): string {
 	return `工具 ${toolName} 执行完成`;
 }
 
-/**
- * 事件映射器（**每个会话一个** —— 它要记住「这一轮助手消息开过头没有」）。
- */
+/** 事件映射器（**每个会话一个** —— 它要记住「这一轮助手消息开过头没有」）。 */
 export class AgentEventMapper {
 	/** 这一轮助手消息是否已经发过 `message_start`。 */
 	#messageStarted = false;
@@ -123,11 +118,8 @@ export class AgentEventMapper {
 		return normalize === undefined ? toolName : normalize(toolName);
 	}
 
-	/**
-	 * 把一个运行时事件映射成若干个 SSE 事件。
-	 *
-	 * @returns 不用外发的事件返回空数组。
-	 */
+	// 把一个运行时事件映射成若干个 SSE 事件。
+	// @returns 不用外发的事件返回空数组。
 	map(conversationId: string, event: AgentEvent): MappedEvent[] {
 		const frames: MappedEvent[] = [];
 		switch (event.type) {

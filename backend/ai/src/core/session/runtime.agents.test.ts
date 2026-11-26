@@ -20,8 +20,21 @@ import { agentIdOfConversation } from "../config/registry.ts";
 import type { CreateDshSessionOptions } from "../adapter/dsh/runner.ts";
 import { AgentError, AgentRuntime } from "./runtime.ts";
 import type { ConversationRecord, ConversationStore, MessageRecord } from "../store/store.ts";
+import type { CommandAck, CommandAckStore } from "../store/command-acks.ts";
 import { PluginRegistry, type AiPlugin } from "../plugins.ts";
 import type { McpToolDefinition } from "../mcp/tool.ts";
+
+/** 假的命令回执去处（**幂等的事实源**；测试不碰数据库）。 */
+function fakeCommandAcks(): CommandAckStore {
+	const rows = new Map<string, CommandAck>();
+	return {
+		recall: async (conversationId: string, commandId: string) =>
+			rows.get(`${conversationId}:${commandId}`),
+		remember: async (conversationId: string, commandId: string, ack: CommandAck) => {
+			rows.set(`${conversationId}:${commandId}`, ack);
+		},
+	};
+}
 
 /**
  * 假插件 —— 提供一个 `create_task` 命令（**本用例不该真的建任务**）。
@@ -191,6 +204,7 @@ function makeRuntime(store: ConversationStore): {
 		audit: {
 			write: async () => {},
 		},
+		commandAcks: fakeCommandAcks(),
 		createDshSession: async (options: CreateDshSessionOptions) => {
 			sessionOptions.push(options);
 			return {
@@ -390,6 +404,7 @@ describe("运行时 · 插件按智能体（阶段 4 的接线）", () => {
 			plugins: registry,
 			mcpUrl: null,
 			audit: { write: async () => {} },
+			commandAcks: fakeCommandAcks(),
 			createDshSession: async (options: CreateDshSessionOptions) => {
 				sessionOptions.push(options);
 				return {
@@ -431,6 +446,7 @@ describe("运行时 · 插件按智能体（阶段 4 的接线）", () => {
 			plugins: registry,
 			mcpUrl: null,
 			audit: { write: async () => {} },
+			commandAcks: fakeCommandAcks(),
 		});
 		// ⚠️ 入口（server.ts 的 createApp）会调它 ⇒ 拼错插件名**服务起不来**
 		expect(() => runtime.validatePlugins()).toThrow(/没注册/);
@@ -469,6 +485,7 @@ describe("运行时 · 技能按智能体", () => {
 			store,
 			agents: providers[0]!,
 			audit: { write: async () => {} },
+			commandAcks: fakeCommandAcks(),
 		});
 
 		// ① PM 助手看得到自己的技能
@@ -523,6 +540,7 @@ describe("运行时 · MCP 服务器（0 / 1 / N 个）", () => {
 			agents,
 			mcpUrl: null,
 			audit: { write: async () => {} },
+			commandAcks: fakeCommandAcks(),
 			createDshSession: async (options: CreateDshSessionOptions) => {
 				sessionOptions.push(options);
 				return {

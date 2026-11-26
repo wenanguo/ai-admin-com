@@ -64,12 +64,9 @@ import { join, relative, sep } from "node:path";
 /** 我们插件的包名（**装进 profile 的那个名字**）。 */
 export const DSH_PLUGIN_PACKAGE = "@ai-admin/dsh-plugin";
 
-/**
- * 插件状态的**文件名**（放在 profile 目录里 ⇒ 跟着 profile 一起持久化）。
- *
- * ⚠️ 生产里 profile 在卷上 ⇒ 这份状态也跟着持久化 ⇒
- *    「镜像里的插件变没变」这件事**跨进程**也判得出来。
- */
+// 插件状态的**文件名**（放在 profile 目录里 ⇒ 跟着 profile 一起持久化）。
+// ⚠️ 生产里 profile 在卷上 ⇒ 这份状态也跟着持久化 ⇒
+//    「镜像里的插件变没变」这件事**跨进程**也判得出来。
 export const PLUGIN_STATE_FILE = ".ai-admin-plugin.json";
 
 /** 算指纹时**不看**的目录（依赖 / 版本库 ⇒ 与「插件源码变没变」无关）。 */
@@ -103,17 +100,13 @@ export interface PluginState {
 	installedAt: string;
 }
 
-/**
- * 保证 profile 存在且装了我们的插件（**插件一改就重装**）。
- *
- * ⚠️ **不做长缓存**：以前是「每个进程只做一次」（怕 `pnpm add` 慢）。
- *    现在**贵的部分只有「重装」**（内容变了才发生）⇒
- *    「检查」只是算个指纹 + 读个状态文件（毫秒级）⇒
- *    ⇒ 每次会话都检查 ⇒ **同一个进程里改了插件，下一个会话就生效**。
- * ⇒ 只保留「**同时进行**的引导合并成一次」（免得并发会话一起装）。
- *
- * @param options 引导参数。
- */
+// 保证 profile 存在且装了我们的插件（**插件一改就重装**）。
+// ⚠️ **不做长缓存**：以前是「每个进程只做一次」（怕 `pnpm add` 慢）。
+//    现在**贵的部分只有「重装」**（内容变了才发生）⇒
+//    「检查」只是算个指纹 + 读个状态文件（毫秒级）⇒
+//    ⇒ 每次会话都检查 ⇒ **同一个进程里改了插件，下一个会话就生效**。
+// ⇒ 只保留「**同时进行**的引导合并成一次」（免得并发会话一起装）。
+// @param options 引导参数。
 export function ensureDshProfile(options: EnsureProfileOptions): Promise<void> {
 	const key = JSON.stringify([options.dshHome, options.profile, options.pluginPath]);
 	const pending = bootstraps.get(key);
@@ -130,22 +123,15 @@ export function ensureDshProfile(options: EnsureProfileOptions): Promise<void> {
 /** **正在进行中**的引导（按参数分组 ⇒ 同一组只装一次）。 */
 const bootstraps = new Map<string, Promise<void>>();
 
-/**
- * 插件的**内容指纹**（sha256，十六进制）。
- *
- * ## 算什么
- *
- * 插件目录里**每个文件**的（相对路径 + 内容哈希）⇒ 排序后拼起来再哈希。
- *
- * ## 为什么这么算
- *
- * - **只看内容** ⇒ 路径没变但内容变了 ⇒ 指纹也变（这正是 issue #158 的坑）；
- * - **相对路径统一用 `/`** ⇒ Windows 与 Linux 算出来一样（跨平台一致）；
- * - **不看 `node_modules`** ⇒ 依赖装没装不该影响「插件源码变没变」。
- *
- * @param pluginPath 插件目录。
- * @returns 指纹（十六进制）。
- */
+// 插件的**内容指纹**（sha256，十六进制）。
+// ## 算什么
+// 插件目录里**每个文件**的（相对路径 + 内容哈希）⇒ 排序后拼起来再哈希。
+// ## 为什么这么算
+// - **只看内容** ⇒ 路径没变但内容变了 ⇒ 指纹也变（这正是 issue #158 的坑）；
+// - **相对路径统一用 `/`** ⇒ Windows 与 Linux 算出来一样（跨平台一致）；
+// - **不看 `node_modules`** ⇒ 依赖装没装不该影响「插件源码变没变」。
+// @param pluginPath 插件目录。
+// @returns 指纹（十六进制）。
 export function pluginFingerprint(pluginPath: string): string {
 	if (!existsSync(pluginPath)) {
 		throw new Error(`找不到我们的插件目录：${pluginPath}`);
@@ -197,11 +183,8 @@ function pluginFiles(pluginPath: string): {
 	return out;
 }
 
-/**
- * 读插件的安装状态（**没有 / 坏了 ⇒ undefined** ⇒ 视为「要重装」）。
- *
- * @param profileDir profile 目录。
- */
+// 读插件的安装状态（**没有 / 坏了 ⇒ undefined** ⇒ 视为「要重装」）。
+// @param profileDir profile 目录。
 export function readPluginState(profileDir: string): PluginState | undefined {
 	const file = join(profileDir, PLUGIN_STATE_FILE);
 	if (!existsSync(file)) {
@@ -222,12 +205,9 @@ export function readPluginState(profileDir: string): PluginState | undefined {
 	}
 }
 
-/**
- * 写插件的安装状态（**装完才写** ⇒ 写坏了就当没装过 ⇒ 下次重装）。
- *
- * @param profileDir profile 目录。
- * @param state 状态。
- */
+// 写插件的安装状态（**装完才写** ⇒ 写坏了就当没装过 ⇒ 下次重装）。
+// @param profileDir profile 目录。
+// @param state 状态。
 export function writePluginState(profileDir: string, state: PluginState): void {
 	writeFileSync(
 		join(profileDir, PLUGIN_STATE_FILE),
@@ -236,11 +216,8 @@ export function writePluginState(profileDir: string, state: PluginState): void {
 	);
 }
 
-/**
- * 写 profile 的 `pnpm-workspace.yaml`（**放开供应链策略**）。
- *
- * @param profileDir profile 目录。
- */
+// 写 profile 的 `pnpm-workspace.yaml`（**放开供应链策略**）。
+// @param profileDir profile 目录。
 function writePnpmWorkspace(profileDir: string): void {
 	const file = join(profileDir, "pnpm-workspace.yaml");
 	const existing = existsSync(file) ? readFileSync(file, "utf8") : "";
@@ -329,15 +306,11 @@ async function bootstrapProfile(options: EnsureProfileOptions): Promise<void> {
 	writeFileSync(manifestPath, `${JSON.stringify(manifestAfter, null, 2)}\n`, "utf8");
 }
 
-/**
- * 把插件装进 profile（`pnpm add file:<路径>`）。
- *
- * ⚠️ **pnpm 会把 `file:` 目录重新打包** ⇒ 源目录内容变了 ⇒ 拷进去的就是新内容
- *    （实测：同一路径、内容改了 ⇒ 重跑 `pnpm add` ⇒ profile 里的拷贝跟着变）。
- *
- * @param profileDir profile 目录。
- * @param wanted 依赖说明符（`file:<路径>`）。
- */
+// 把插件装进 profile（`pnpm add file:<路径>`）。
+// ⚠️ **pnpm 会把 `file:` 目录重新打包** ⇒ 源目录内容变了 ⇒ 拷进去的就是新内容
+//    （实测：同一路径、内容改了 ⇒ 重跑 `pnpm add` ⇒ profile 里的拷贝跟着变）。
+// @param profileDir profile 目录。
+// @param wanted 依赖说明符（`file:<路径>`）。
 function installPlugin(profileDir: string, wanted: string): void {
 	// ⚠️ Windows 上 `.cmd` 只能经 shell 起（Node 的安全限制）⇒ 用一条命令串 + 引号。
 	const added = spawnSync(`pnpm add "${DSH_PLUGIN_PACKAGE}@${wanted}"`, {
@@ -361,11 +334,8 @@ function installPlugin(profileDir: string, wanted: string): void {
 /** dsh 的 profile 里 **pi-ai 适配器**那一段的 id（dsh-base 自带的那个）。 */
 export const PI_AI_PLUGIN_ID = "llm-pi-ai";
 
-/**
- * 一条模型路由（**凭据只写环境变量名** ⇒ 密钥不落盘）。
- *
- * ⚠️ **路由名就是 dsh 的 provider 名**（`providers` 的键 ⇒ agent 装配时用它选模型）。
- */
+// 一条模型路由（**凭据只写环境变量名** ⇒ 密钥不落盘）。
+// ⚠️ **路由名就是 dsh 的 provider 名**（`providers` 的键 ⇒ agent 装配时用它选模型）。
 export interface PiAiProviderRoute {
 	/** 路由名（providers 的键 ⇒ dsh 的 provider 名）。 */
 	route: string;
@@ -381,15 +351,11 @@ export interface PiAiProviderRoute {
 	maxTokens: number;
 }
 
-/**
- * 生成 pi-ai 路由的 **profile 补丁**（YAML 文本）。
- *
- * ⚠️ **凭据只写环境变量名**（`apiKeyEnv`）⇒ 补丁里没有密钥 ⇒ 密钥不落盘。
- * ⚠️ **协议固定 `openai-completions`**（DeepSeek 官方 / MiniMax / Kimi 都是 OpenAI 兼容的）。
- *
- * @param route 路由配置。
- * @returns 补丁文本（YAML）。
- */
+// 生成 pi-ai 路由的 **profile 补丁**（YAML 文本）。
+// ⚠️ **凭据只写环境变量名**（`apiKeyEnv`）⇒ 补丁里没有密钥 ⇒ 密钥不落盘。
+// ⚠️ **协议固定 `openai-completions`**（DeepSeek 官方 / MiniMax / Kimi 都是 OpenAI 兼容的）。
+// @param route 路由配置。
+// @returns 补丁文本（YAML）。
 export function buildPiAiProviderPatch(route: PiAiProviderRoute): string {
 	return [
 		"# ⚠️ **自动生成**（core/adapter/dsh/profile.ts）⇒ 别手改（下次启动会被覆盖）。",
@@ -414,16 +380,12 @@ export function buildPiAiProviderPatch(route: PiAiProviderRoute): string {
 	].join("\n");
 }
 
-/**
- * 把路由补丁**写进目录**（返回补丁文件的路径）。
- *
- * ⚠️ **文件名按内容定**（内容的指纹）⇒ 同一份配置写同一个文件（幂等），
- *    换模型 / 换厂商 ⇒ 另一个文件（**不覆盖别人的** ⇒ 并发会话互不干扰）。
- *
- * @param dir 目录（**不存在就建**）。
- * @param route 路由配置。
- * @returns 补丁文件路径。
- */
+// 把路由补丁**写进目录**（返回补丁文件的路径）。
+// ⚠️ **文件名按内容定**（内容的指纹）⇒ 同一份配置写同一个文件（幂等），
+//    换模型 / 换厂商 ⇒ 另一个文件（**不覆盖别人的** ⇒ 并发会话互不干扰）。
+// @param dir 目录（**不存在就建**）。
+// @param route 路由配置。
+// @returns 补丁文件路径。
 export function writePiAiProviderPatch(dir: string, route: PiAiProviderRoute): string {
 	mkdirSync(dir, { recursive: true });
 	const file = join(dir, `provider-${routeFingerprint(route)}.patch.yml`);
@@ -439,12 +401,9 @@ function routeFingerprint(route: PiAiProviderRoute): string {
 		.slice(0, 16);
 }
 
-/**
- * YAML 的**双引号标量**（⇒ 值里的 `:` / `#` / 引号都不会被当成语法）。
- *
- * @param value 字符串。
- * @returns YAML 标量。
- */
+// YAML 的**双引号标量**（⇒ 值里的 `:` / `#` / 引号都不会被当成语法）。
+// @param value 字符串。
+// @returns YAML 标量。
 function yamlScalar(value: string): string {
 	return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
