@@ -4,14 +4,14 @@
 
 ## 目标
 
-- **关联**：issue **#169**（阶段一）· PR **#174**（已合并）· issue **#175**（阶段二 · S4）· PR **（本 PR）**
+- **关联**：issue **#169**（阶段一）· PR **#174**（已合并）· issue **#175**（阶段二 · S4）· PR **#177**（已提 · **不合并** ⇒ 等 PM 审 diff）
 - **一句话**：把 `backend/ai/src/core/` 里**重复实现 dsh** 的三块（技能目录 / 命令工具 /
   session 层）删掉 ⇒ 只留 **业务事实 · 对外契约 · 业务政策**。
 - ⚠️ **本 PR 不合并**（大改动 / 高风险 ⇒ 等人拍板）。
 
 ## 状态
 
-**阶段一已合并（PR #174）。阶段二（#175）代码 + 测试 + 静态验收全绿 ⇒ PR 待人 review（不合并）。**
+**阶段一已合并（PR #174）。阶段二（#175）代码 + 测试 + 静态验收全绿 ⇒ PR #177 已提，CI 全绿，**不合并**（等 PM 审 diff）。**
 
 | 步骤 | 状态 | 做了什么 |
 | ---- | ---- | -------- |
@@ -19,7 +19,10 @@
 | **S3** | ✅ | 删 `core/tools/{index,types}.ts` ⇒ 命令改 **MCP 工具形状**（新 `core/mcp/tool.ts`） |
 | **S2** | ✅ | 删 `core/skills/skill-catalog.ts` ⇒ 技能清单搬进 **dsh 适配层**（`core/adapter/dsh/skills.ts`） |
 | **S4**（阶段一） | ✅ | 删 `core/session/frame-buffer.ts`（回放窗口并进会话注册表）· `session-registry.ts` 瘦身 |
-| **S4**（阶段二 · #175） | ✅ | 会话生命周期归 dsh（`session-factory.ts`）· 事件翻译独立成 `event-bridge.ts` · 幂等落**产品事实表**（`ai_command_ack`）· `runtime.ts` 1 081 ⇒ **631** 行 · `session-registry.ts` 378 ⇒ **199** 行 |
+| **S4**（阶段二 · #175） | ✅ | 会话生命周期归 dsh（`session-factory.ts`）· 事件翻译独立成 `event-bridge.ts` · 幂等落**产品事实表**（`ai_command_ack`）· `runtime.ts` 1 081 ⇒ **630** 行 · `session-registry.ts` 378 ⇒ **199** 行 |
+
+> ⚠️ **行数口径**：脚本与 `wc -l` 同款（**数换行符**）⇒ 阶段二 `runtime.ts` = **630** 行。
+> issue 正文里写的 1 082 / 379 = 按 `split('\n').length` 数（**多算一个尾行**）⇒ 差的那 1 行是**计法**，不是实现变了。
 
 ## 阶段二（issue #175 · S4）做了什么
 
@@ -55,7 +58,7 @@
 | `666ff6b` | **S2** 技能清单归位（挪进 dsh 适配层）+ 删 `core/skills/` |
 | `9eadef7` | **S4** 回放窗口并进会话注册表（删 `core/session/frame-buffer.ts`）+ 文档同步 |
 | `420bc2b` | 阶段一合并（PR #174） |
-| （阶段二 · 本 PR） | **S4 阶段二**：会话生命周期归 dsh · 事件桥独立 · 幂等落 `ai_command_ack` · 运行时 1 081 ⇒ 631 行 · 注册表 378 ⇒ 199 行 |
+| （阶段二 · 本 PR） | **S4 阶段二**：会话生命周期归 dsh · 事件桥独立 · 幂等落 `ai_command_ack` · 运行时 1 081 ⇒ 630 行 · 注册表 378 ⇒ 199 行 |
 
 **阶段二改动清单（文件级）**：
 
@@ -124,12 +127,33 @@ cd backend/ai && npm test -- src/core/session/event-bridge.test.ts src/core/sess
 
 | 指标 | 目标 | 现在 |
 | ---- | ---- | ---- |
-| `core/session/runtime.ts` | ≤ 700 行 | **631** |
+| `core/session/runtime.ts` | ≤ 700 行 | **630** |
 | `core/session/session-registry.ts` | ≤ 200 行 | **199** |
 | `src/core` 实现行数 | ≤ 10 670（阶段一的数） | **10 619** |
 | SSE 事件名**与顺序** | 一字不变 | ✅（脚本按 `events.ts` 的声明顺序断言） |
 | 9 个端点的契约表 | 路径一字不改 | ✅（脚本逐个断言 + `contract.test.ts` 跑行为） |
 | 前端 | 0 改动 | ✅ |
+
+### ✅ 验收结果（2026-11-26 收尾轮实跑）
+
+| 验收 | 结果 |
+| ---- | ---- |
+| `cd backend/ai && npm run typecheck` | ✅ 无输出（干净） |
+| `cd backend/ai && npm test` | ✅ **66 个文件 / 591 条**全绿 |
+| `node scripts/e2e/ai-subtraction.static.cjs` | ✅ 全部通过（含运行时 ≤700 / 注册表 ≤200 / SSE 顺序 / 9 端点契约表） |
+| `node scripts/check-dsh-boundary.cjs` | ✅ dsh 边界干净 |
+| `node scripts/check-core-purity.cjs` | ✅ 内核不 import 插件 + 无业务词 |
+| `node scripts/e2e/dsh-skills-mcp-plugins.static.cjs` | ✅ 技能 / MCP / 插件三层 |
+| `node scripts/check-core-reuse.cjs` | ✅ 示例系统只用公开入口 |
+| `node scripts/e2e/ai-container.static.cjs` | ✅ 24 条（含**迁移安全阀**：新迁移只增不改、只动 AI 服务自己的表） |
+| GitHub CI（PR #177） | ✅ **全绿**（含 body-check / tsc / lint / 单测 / 镜像静态断言 / e2e） |
+
+### 🚦 PR 状态（**本轮不合并**）
+
+- PR **#177**（`feat/175-session-runtime-slim` ⇒ **base = main**），**CI 全绿**，**故意不合并** ⇒ 大改动 / 高风险（动了 `prisma/schema.prisma`）⇒ 等 PM 审 diff。
+- 正文按 `pr-body-check` 的要求写了两行**行首独立**的标注：
+  - `高风险：数据模型 —— 动了 backend/ai/prisma/schema.prisma（只加了 ai_command_ack 一张表 ⇒ 只加不改）…`
+  - `关联 issue：#175（阶段二，不关闭）` ⇒ **不写** `Closes #175`（issue 还有后续阶段 ⇒ 关早了无家可归）。
 
 ## 坑与提醒
 
@@ -139,3 +163,10 @@ cd backend/ai && npm test -- src/core/session/event-bridge.test.ts src/core/sess
 - ⚠️ `core/http/sse.ts` 现在**自己**定义 `StreamFrame`（SSE 帧就该住在 SSE 那儿）⇒ `core/session/*` 不再 import `core/http/*` 的类型（反了）。
 - ⚠️ **回放窗口在阶段二被并进 `core/http/sse.ts`**（`core/http/replay-window.ts` 删了）⇒ import 路径变了（`../http/sse.ts`）。
 - ⚠️ **迁移只增不改**：`npx prisma migrate deploy --schema prisma/schema.prisma`（**绝不** `migrate dev` / `migrate reset`）。
+
+## 下一步（**等 PM 拍板**）
+
+1. PM 审 PR **#177** 的 diff（重点看 `prisma/schema.prisma` + 迁移 `3_add_command_ack` + `runtime.ts` 的瘦身）⇒ **本轮不合并、不关 issue**。
+2. 拍板合并后：把本文件的「状态」改成「已合并」· 在 issue **#175** 上关单回写 · 删分支 `feat/175-session-runtime-slim`。
+3. 若 PM 要求改口径（改事件归属 / 改表设计）⇒ 改的是**这一份**文档 + `runtime.ts` 文件头的那张表（两处必须一起改，否则「哪条事件写哪张表」就出现**第二份真相**）。
+
