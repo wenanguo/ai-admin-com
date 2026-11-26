@@ -44,11 +44,8 @@ export interface DshParameterSpec {
 	[property: string]: DshValueSchema & { required?: true };
 }
 
-/**
- * 一条工具目录项（**发给 dsh 侧插件**的形状）。
- *
- * ⚠️ `confirm` = 这个工具**要不要人点头**（口径在**我们**这边算 ⇒ dsh 只负责问）。
- */
+// 一条工具目录项（**发给 dsh 侧插件**的形状）。
+// ⚠️ `confirm` = 这个工具**要不要人点头**（口径在**我们**这边算 ⇒ dsh 只负责问）。
 export interface DshToolSpec {
 	/** 工具名（**归一化后**的 ⇒ 界面上显示的就是它）。 */
 	name: string;
@@ -56,26 +53,19 @@ export interface DshToolSpec {
 	description: string;
 	/** 参数 schema（dsh 的 DSL，给 dsh 的工具表用）。 */
 	parameters: DshParameterSpec;
-	/**
-	 * 参数 schema（**JSON Schema**，给**模型**看的那份）。
-	 *
-	 * ⚠️ dsh 的**模型侧**工具声明来自提示词层的「工具 schema 提供者」
-	 *    （不是工具表）⇒ 我们要把 JSON Schema 一起带过去。
-	 */
+	// 参数 schema（**JSON Schema**，给**模型**看的那份）。
+	// ⚠️ dsh 的**模型侧**工具声明来自提示词层的「工具 schema 提供者」
+	//    （不是工具表）⇒ 我们要把 JSON Schema 一起带过去。
 	modelParameters: Record<string, unknown>;
 	/** 要不要先问人（口径：「新增放行、修改要点头」）。 */
 	confirm: boolean;
 }
 
-/**
- * 工具名归一化：剥掉已知的 `mcp__<server>__` 前缀。
- *
- * ⚠️ **规则只有一处**（`core/mcp/tool-names.ts`）⇒ 界面 / 审计 / 待确认
- *    看到的名字**永远一致**。
- *
- * @param name 原始工具名。
- * @param prefixes 已知的服务器前缀（如 `mcp__aiadmin__`）。
- */
+// 工具名归一化：剥掉已知的 `mcp__<server>__` 前缀。
+// ⚠️ **规则只有一处**（`core/mcp/tool-names.ts`）⇒ 界面 / 审计 / 待确认
+//    看到的名字**永远一致**。
+// @param name 原始工具名。
+// @param prefixes 已知的服务器前缀（如 `mcp__aiadmin__`）。
 export function normalizeToolName(name: string, prefixes: readonly string[]): string {
 	for (const prefix of prefixes) {
 		if (prefix.length > 0 && name.startsWith(prefix)) {
@@ -85,14 +75,10 @@ export function normalizeToolName(name: string, prefixes: readonly string[]): st
 	return bareToolName(name);
 }
 
-/**
- * JSON Schema → dsh 的参数 schema。
- *
- * ⚠️ **不认识的一律降级成 `json`**（不认识的类型不许悄悄丢掉约束
- *    ⇒ 模型看到「随便给个 JSON」比看到错的约束安全）。
- *
- * @param schema JSON Schema（**对象根**）。
- */
+// JSON Schema → dsh 的参数 schema。
+// ⚠️ **不认识的一律降级成 `json`**（不认识的类型不许悄悄丢掉约束
+//    ⇒ 模型看到「随便给个 JSON」比看到错的约束安全）。
+// @param schema JSON Schema（**对象根**）。
 export function toDshParameters(schema: JsonSchema): DshParameterSpec {
 	const properties = schema.properties ?? {};
 	const required = new Set(schema.required ?? []);
@@ -149,12 +135,9 @@ function toDshValueSchema(node: JsonSchema): DshValueSchema {
 	}
 }
 
-/**
- * 造工具目录（发给 dsh 侧插件）。
- *
- * @param tools 我们的命令（**MCP 工具形状**；已按智能体配置的白名单过滤）。
- * @param prefixes 已知的 MCP 服务器前缀（用来归一化工具名）。
- */
+// 造工具目录（发给 dsh 侧插件）。
+// @param tools 我们的命令（**MCP 工具形状**；已按智能体配置的白名单过滤）。
+// @param prefixes 已知的 MCP 服务器前缀（用来归一化工具名）。
 export function buildToolCatalog(
 	tools: readonly McpToolDefinition[],
 	prefixes: readonly string[] = [],

@@ -29,11 +29,8 @@ export const DSH_EVENTS = {
 /** dsh 事件名。 */
 export type DshEventName = (typeof DSH_EVENTS)[keyof typeof DSH_EVENTS];
 
-/**
- * 一条 dsh 会话事件（**我们自己声明的形状**）。
- *
- * ⚠️ `data` 是 `unknown` ⇒ 适配层里按需解析（不假设 dsh 的内部模型）。
- */
+// 一条 dsh 会话事件（**我们自己声明的形状**）。
+// ⚠️ `data` 是 `unknown` ⇒ 适配层里按需解析（不假设 dsh 的内部模型）。
 export interface DshSessionEvent {
 	/** 事件名（如 `assistant/message`）。 */
 	type: string;
@@ -55,12 +52,9 @@ export const DSH_APPROVAL_OUTCOMES = {
 export type DshApprovalOutcome =
 	(typeof DSH_APPROVAL_OUTCOMES)[keyof typeof DSH_APPROVAL_OUTCOMES];
 
-/**
- * 运行时向宿主（= 我们的服务）问的一次审批。
- *
- * ⚠️ **载荷里没有工具参数**（只有 `sessionId` / `toolName` / `callId?` / `reason?`）
- *    ⇒ 参数靠 `callId` 关联 `tool/call` 事件（见 `events.ts` 的缓存）。
- */
+// 运行时向宿主（= 我们的服务）问的一次审批。
+// ⚠️ **载荷里没有工具参数**（只有 `sessionId` / `toolName` / `callId?` / `reason?`）
+//    ⇒ 参数靠 `callId` 关联 `tool/call` 事件（见 `events.ts` 的缓存）。
 export interface DshApprovalRequest {
 	/** 会话 id。 */
 	sessionId: string;

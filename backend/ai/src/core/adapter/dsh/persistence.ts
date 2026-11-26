@@ -82,11 +82,8 @@ interface PendingToolCall {
 /** 闸门决策的结果。 */
 export type GateDecision = "approved" | "rejected";
 
-/**
- * dsh 的留痕层（**每个会话一个**）。
- *
- * ⚠️ **写失败不许影响对话**（表还没迁移 / 库连不上）⇒ 失败只记一条日志。
- */
+// dsh 的留痕层（**每个会话一个**）。
+// ⚠️ **写失败不许影响对话**（表还没迁移 / 库连不上）⇒ 失败只记一条日志。
 export class DshTracer {
 	readonly #options: DshTracerOptions;
 	/** `callId` ⇒ 这次工具调用（`tool/result` 不带工具名 ⇒ 靠 `tool/call` 记）。 */
@@ -96,11 +93,8 @@ export class DshTracer {
 		this.#options = options;
 	}
 
-	/**
-	 * 处理一条 dsh 事件。
-	 *
-	 * @param event dsh 事件（**我们自己声明的 JSON 形状**）。
-	 */
+	// 处理一条 dsh 事件。
+	// @param event dsh 事件（**我们自己声明的 JSON 形状**）。
 	async handleEvent(event: DshSessionEvent): Promise<void> {
 		const kind = kindOf(event.type);
 		await this.#appendEvent(kind, event.type, event.data);
@@ -119,11 +113,8 @@ export class DshTracer {
 		}
 	}
 
-	/**
-	 * 处理一次**闸门决策**（人批准 / 拒绝）。
-	 *
-	 * @param input 决策的内容。
-	 */
+	// 处理一次**闸门决策**（人批准 / 拒绝）。
+	// @param input 决策的内容。
 	async handleGateDecision(input: {
 		command: string;
 		args: Record<string, unknown>;

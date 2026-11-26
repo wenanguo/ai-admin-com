@@ -33,21 +33,16 @@ import { DSH_EVENTS, asRecord, asString, type DshSessionEvent } from "./protocol
 /** 一次工具调用的参数（`tool/call` 的 `arguments` 是 **JSON 字符串**）。 */
 export type ToolArgs = Record<string, unknown>;
 
-/**
- * dsh 事件翻译器（**每个会话一个** —— 它要记住工具名与参数，好把 `tool/result`
- * 与 `approval/request` 对上号）。
- */
+// dsh 事件翻译器（**每个会话一个** —— 它要记住工具名与参数，好把 `tool/result`
+// 与 `approval/request` 对上号）。
 export class DshEventTranslator {
 	/** `callId` ⇒ 工具名（`tool/result` 不带工具名 ⇒ 靠 `tool/call` 记）。 */
 	readonly #toolNames = new Map<string, string>();
 	/** `callId` ⇒ 参数（审批载荷里没有参数 ⇒ 靠 `tool/call` 记）。 */
 	readonly #toolArgs = new Map<string, ToolArgs>();
 
-	/**
-	 * 翻译一条 dsh 事件。
-	 *
-	 * @returns 我们的事件（不用外发的返回空数组）。
-	 */
+	// 翻译一条 dsh 事件。
+	// @returns 我们的事件（不用外发的返回空数组）。
 	translate(event: DshSessionEvent): AgentEvent[] {
 		switch (event.type) {
 			case DSH_EVENTS.ASSISTANT_MESSAGE:
@@ -156,11 +151,8 @@ export class DshEventTranslator {
 	}
 }
 
-/**
- * 一个**空的**助手消息（我们的事件词汇只要求 `role` 与 `content`）。
- *
- * ⚠️ 运行时只读 `role` 与 `content`（见 `event-mapper.ts`）⇒ 够用。
- */
+// 一个**空的**助手消息（我们的事件词汇只要求 `role` 与 `content`）。
+// ⚠️ 运行时只读 `role` 与 `content`（见 `event-mapper.ts`）⇒ 够用。
 function emptyAssistantMessage(): AgentMessage {
 	return { role: "assistant", content: [] };
 }
@@ -185,11 +177,8 @@ function textOf(message: Record<string, unknown> | undefined): string {
 	return parts.join("");
 }
 
-/**
- * 模型流里的文本增量（`stream` 里的 `text-chunks`）。
- *
- * ⚠️ 拿不到就用消息正文整段当一个增量（**成批到达** ⇒ 前端照样能显示）。
- */
+// 模型流里的文本增量（`stream` 里的 `text-chunks`）。
+// ⚠️ 拿不到就用消息正文整段当一个增量（**成批到达** ⇒ 前端照样能显示）。
 function textChunksOf(data: Record<string, unknown> | undefined): string[] {
 	const stream = data?.["stream"];
 	if (!Array.isArray(stream)) {

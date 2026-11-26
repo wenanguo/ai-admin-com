@@ -16,13 +16,10 @@ export class StartupLock {
 	/** 每个 key 的「当前尾巴」—— 排在这个 promise 后面的人都要等它。 */
 	readonly #tails = new Map<string, Promise<void>>();
 
-	/**
-	 * 排队执行一个任务。
-	 *
-	 * @param key 串行化的分组键（用 conversationId）。
-	 * @param task 要跑的任务。
-	 * @returns 任务的返回值；任务抛错就原样抛给调用方。
-	 */
+	// 排队执行一个任务。
+	// @param key 串行化的分组键（用 conversationId）。
+	// @param task 要跑的任务。
+	// @returns 任务的返回值；任务抛错就原样抛给调用方。
 	async run<T>(key: string, task: () => Promise<T>): Promise<T> {
 		const previous = this.#tails.get(key) ?? Promise.resolve();
 		// 尾巴 promise 永远不会 reject（下面吞掉了），所以只用 then 的成功分支；
