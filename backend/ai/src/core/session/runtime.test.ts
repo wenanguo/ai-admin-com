@@ -17,11 +17,31 @@ import { prisma } from "../store/db.ts";
 import type { CreateDshSessionOptions } from "../adapter/dsh/runner.ts";
 import { AgentRuntime } from "./runtime.ts";
 import type { ConversationRecord, ConversationStore, MessageRecord } from "../store/store.ts";
+import type { CommandAck, CommandAckStore } from "../store/command-acks.ts";
 import { PluginRegistry } from "../plugins.ts";
 import type { ContextProvider } from "../context/anchor.ts";
 import type { McpToolDefinition } from "../mcp/tool.ts";
 
 /* ------------------------------------------------------------------ 假实现 */
+
+/**
+ * 假的命令回执去处（**幂等的事实源**；测试不碰数据库）。
+ *
+ * ⚠️ 生产上是 `ai_command_ack` 表 ⇒ 这里只是一份**内存替身**（单测不连库）。
+ */
+function fakeCommandAcks(): { acks: CommandAckStore; saved: () => number } {
+	const rows = new Map<string, CommandAck>();
+	return {
+		saved: () => rows.size,
+		acks: {
+			recall: async (conversationId: string, commandId: string) =>
+				rows.get(`${conversationId}:${commandId}`),
+			remember: async (conversationId: string, commandId: string, ack: CommandAck) => {
+				rows.set(`${conversationId}:${commandId}`, ack);
+			},
+		},
+	};
+}
 
 /** 审计条目（测试自己声明形状：运行时只把它当「不透明的一条记录」用）。 */
 interface AuditRecord {
@@ -181,7 +201,7 @@ function fakePlugins(calls: unknown[] = []): PluginRegistry {
 }
 
 /** 造一个运行时（工具一被调用就真的记一笔 ⇒ 能数出「跑了几遍」）。 */
-function makeRuntime(options: { maxTrackedCommands?: number } = {}): {
+function makeRuntime(options: { acks?: CommandAckStore } = {}): {
 	runtime: AgentRuntime;
 	calls: unknown[];
 	appended: MessageRecord[];
@@ -196,7 +216,7 @@ function makeRuntime(options: { maxTrackedCommands?: number } = {}): {
 	const runtime = new AgentRuntime({
 		store,
 		audit: audit.writer,
-		maxTrackedCommands: options.maxTrackedCommands,
+		commandAcks: options.acks ?? fakeCommandAcks().acks,
 		// 假会话：一收到 prompt 就调工具（模拟模型调 create_task）
 		createDshSession: async (options: CreateDshSessionOptions) => {
 			sessionOptions.push(options);
@@ -304,21 +324,55 @@ describe("运行时 · 命令去重（Idempotency-Key）", () => {
 		expect(calls).toHaveLength(2);
 	});
 
-	it("命令 id 记满上限 ⇒ 最老的那条被淘汰（再来一次会重新跑）", async () => {
-		const { runtime, calls } = makeRuntime({ maxTrackedCommands: 2 });
+	it("⭐ 事实源是**产品事实表** ⇒ 进程重启后同一个 commandId 仍然不重跑", async () => {
+		// ⚠️ **两个「进程」共用同一份回执事实源**（生产上就是 `ai_command_ack` 表）
+		const { acks } = fakeCommandAcks();
+		const first = makeRuntime({ acks });
+		await first.runtime.submitCommand(command("cmd-a"));
+		await waitFor(() => first.calls.length >= 1);
 
-		await runtime.submitCommand(command("cmd-a"));
+		// 第二个「进程」：内存里什么都没有（回执在事实源里）
+		const second = makeRuntime({ acks });
+		const ack = await second.runtime.submitCommand(command("cmd-a"));
+		await sleep(50);
+
+		// ⇒ 回上次那个 ack（**没有重跑**）
+		expect(ack.id).toBe("cmd-a");
+		expect(second.calls).toHaveLength(0);
+	});
+
+	it("⚠️ 回执**读不到** ⇒ 按「没受理过」处理（不许把命令搞挂）", async () => {
+		// ⚠️ 老库还没迁移 ⇒ 表都不存在 ⇒ 读会报错
+		const acks: CommandAckStore = {
+			recall: async () => {
+				throw new Error("表不存在");
+			},
+			remember: async () => {},
+		};
+		const { runtime, calls } = makeRuntime({ acks });
+
+		const ack = await runtime.submitCommand(command("cmd-a"));
 		await waitFor(() => calls.length >= 1);
-		await runtime.submitCommand(command("cmd-b"));
-		await waitFor(() => calls.length >= 2);
-		await runtime.submitCommand(command("cmd-c"));
-		await waitFor(() => calls.length >= 3);
 
-		// cmd-a 已被淘汰 ⇒ 再发一次会**重新跑**（而不是被当成重复）
-		await runtime.submitCommand(command("cmd-a"));
-		await waitFor(() => calls.length >= 4);
+		// ⇒ 命令照常受理（**宁可重跑，也别让对话进不来**）
+		expect(ack.id).toBe("cmd-a");
+		expect(calls).toHaveLength(1);
+	});
 
-		expect(calls).toHaveLength(4);
+	it("⚠️ 回执**写不上** ⇒ 命令照样成功（数据已经写下去了）", async () => {
+		const acks: CommandAckStore = {
+			recall: async () => undefined,
+			remember: async () => {
+				throw new Error("写不进去");
+			},
+		};
+		const { runtime, calls } = makeRuntime({ acks });
+
+		const ack = await runtime.submitCommand(command("cmd-a"));
+		await waitFor(() => calls.length >= 1);
+
+		expect(ack.success).toBe(true);
+		expect(calls).toHaveLength(1);
 	});
 });
 
@@ -345,11 +399,14 @@ describe("运行时 · 会话上下文（P0）", () => {
 		const { store, appended, sessionIds } = fakeStore(fakeConversation());
 		const audit = fakeAudit();
 		const sessionOptions: CreateDshSessionOptions[] = [];
+		// ⚠️ **两个「进程」共用同一份回执事实源**（生产上就是 `ai_command_ack` 表）
+		const { acks } = fakeCommandAcks();
 
 		// 第一个「进程」：聊了一轮（用户一句 + 助手一句）
 		const first = new AgentRuntime({
 			store,
 			audit: audit.writer,
+			commandAcks: acks,
 			sessionEvents: { list: async () => [], append: async () => {} },
 			createDshSession: async (options: CreateDshSessionOptions) => {
 				sessionOptions.push(options);
@@ -374,6 +431,7 @@ describe("运行时 · 会话上下文（P0）", () => {
 		const second = new AgentRuntime({
 			store,
 			audit: audit.writer,
+			commandAcks: acks,
 			sessionEvents: { list: async () => [], append: async () => {} },
 			createDshSession: async (options: CreateDshSessionOptions) => {
 				sessionOptions.push(options);
@@ -416,6 +474,7 @@ function makeStreamingRuntime(): {
 	const runtime = new AgentRuntime({
 		store,
 		audit: audit.writer,
+		commandAcks: fakeCommandAcks().acks,
 		createDshSession: async (options: CreateDshSessionOptions) => ({
 			prompt: async (text: string): Promise<void> => {
 				prompted.push(text);
@@ -495,6 +554,7 @@ function makeAbortableRuntime(): {
 	const runtime = new AgentRuntime({
 		store,
 		audit: audit.writer,
+		commandAcks: fakeCommandAcks().acks,
 		createDshSession: async (options: CreateDshSessionOptions) => {
 			sessions += 1;
 			return {
@@ -556,6 +616,7 @@ describe("运行时 · token 轮换（P4）", () => {
 		const runtime = new AgentRuntime({
 			store,
 			audit: audit.writer,
+			commandAcks: fakeCommandAcks().acks,
 			mcpUrl,
 			createDshSession: async (options: CreateDshSessionOptions) => {
 				created.push(options);
@@ -639,6 +700,7 @@ describe("运行时 · 讨论上下文（与 AI 讨论）", () => {
 		const runtime = new AgentRuntime({
 			store,
 			audit: fakeAudit().writer,
+			commandAcks: fakeCommandAcks().acks,
 			createDshSession: async () => ({
 				prompt: async (message: string): Promise<void> => {
 					prompts.push(message);

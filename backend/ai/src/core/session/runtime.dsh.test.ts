@@ -12,9 +12,22 @@
 import { describe, expect, it } from "vitest";
 import type { AgentEvent } from "./agent-event.ts";
 import { AgentRuntime } from "./runtime.ts";
-import type { AgentSessionLike } from "./session-registry.ts";
+import type { AgentSessionLike } from "../adapter/dsh/session.ts";
 import type { ConversationRecord, ConversationStore, MessageRecord } from "../store/store.ts";
+import type { CommandAck, CommandAckStore } from "../store/command-acks.ts";
 import type { AgentConfig } from "../config/types.ts";
+
+/** 假的命令回执去处（**幂等的事实源**；测试不碰数据库）。 */
+function fakeCommandAcks(): CommandAckStore {
+	const rows = new Map<string, CommandAck>();
+	return {
+		recall: async (conversationId: string, commandId: string) =>
+			rows.get(`${conversationId}:${commandId}`),
+		remember: async (conversationId: string, commandId: string, ack: CommandAck) => {
+			rows.set(`${conversationId}:${commandId}`, ack);
+		},
+	};
+}
 
 /** 假的会话记录。 */
 function conversation(): ConversationRecord {
@@ -104,6 +117,7 @@ function makeRuntime(): AgentRuntime {
 	return new AgentRuntime({
 		store: fakeStore(),
 		audit: { write: async () => {} },
+		commandAcks: fakeCommandAcks(),
 		sessionEvents: { list: async () => [], append: async () => {} },
 		agents: {
 			defaultAgentId: "pm",
