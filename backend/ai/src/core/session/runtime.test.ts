@@ -19,7 +19,7 @@ import { AgentRuntime } from "./runtime.ts";
 import type { ConversationRecord, ConversationStore, MessageRecord } from "../store/store.ts";
 import { PluginRegistry } from "../plugins.ts";
 import type { ContextProvider } from "../context/anchor.ts";
-import type { CommandTool } from "../tools/types.ts";
+import type { McpToolDefinition } from "../mcp/tool.ts";
 
 /* ------------------------------------------------------------------ 假实现 */
 
@@ -162,22 +162,17 @@ function fakePlugins(calls: unknown[] = []): PluginRegistry {
 			{
 				name: "create_task",
 				label: "创建任务",
-				build: () =>
-					({
-						name: "create_task",
-						label: "创建任务",
-						description: "假的建任务命令（测试用）",
-						parameters: {},
-						annotations: {
-							readOnlyHint: false,
-							destructiveHint: false,
-							idempotentHint: false,
-						},
-						execute: async (_toolCallId: string, params: unknown) => {
-							calls.push(params);
-							return { content: [{ type: "text", text: "建好了" }] };
-						},
-					}) as unknown as CommandTool,
+				description: "假的建任务命令（测试用）",
+				inputSchema: { type: "object", properties: {} },
+				annotations: {
+					readOnlyHint: false,
+					destructiveHint: false,
+					idempotentHint: false,
+				},
+				execute: async (params: Record<string, unknown>) => {
+					calls.push(params);
+					return { content: [{ type: "text", text: "建好了" }] };
+				},
 			},
 		],
 		context: fakeContextProvider(),
@@ -212,7 +207,10 @@ function makeRuntime(options: { maxTrackedCommands?: number } = {}): {
 					if (tool === undefined) {
 						throw new Error("一个工具都没注册");
 					}
-					await tool.execute("call-1", { project_key: "PRJ-1", title: "标题" });
+					await tool.execute(
+						{ project_key: "PRJ-1", title: "标题" },
+						options.toolContext,
+					);
 				},
 				subscribe: () => () => {},
 				dispose: () => {},

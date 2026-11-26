@@ -22,7 +22,7 @@ import { DshEventTranslator } from "./events.ts";
 import { decideApproval, type DshGateContext } from "./approvals.ts";
 import type { DshApprovalOutcome, DshSessionEvent } from "./protocol.ts";
 import type { DshTracer } from "./persistence.ts";
-import type { CommandTool } from "../../tools/types.ts";
+import type { McpToolContext, McpToolDefinition } from "../../mcp/tool.ts";
 import type { AgentSessionLike } from "../../session/session-registry.ts";
 import { narrowWriteArgs, type ContextAnchor, type WriteToolRule } from "../../context/anchor.ts";
 
@@ -30,8 +30,10 @@ import { narrowWriteArgs, type ContextAnchor, type WriteToolRule } from "../../c
 export interface DshSessionOptions {
 	/** 会话 id（**同时是 dsh 的 session id** ⇒ 重建后还是同一个会话）。 */
 	conversationId: string;
-	/** 我们的命令工具（**已按智能体配置的白名单过滤**）。 */
-	tools: readonly CommandTool[];
+	/** 我们的命令（**MCP 工具形状**；已按智能体配置的白名单过滤）。 */
+	tools: readonly McpToolDefinition[];
+	/** 工具执行时的上下文（token / 审计 / 闸门 ⇒ **每个会话一份**）。 */
+	toolContext: McpToolContext;
 	/** 系统提示词（**含技能段**）。 */
 	systemPrompt: string;
 	/** 模型路由名（我们的 provider 插件注册的那个）。 */
@@ -157,7 +159,7 @@ export class DshSession implements AgentSessionLike {
 		if (narrowed === undefined) {
 			return { ok: false, summary: `这次修改超出了允许回填的字段，没有执行。` };
 		}
-		const result = await tool.execute("dsh", narrowed as never);
+		const result = await tool.execute(narrowed, this.#options.toolContext);
 		const details = (result as { details?: unknown }).details;
 		const summary = summaryOf(result, toolName);
 		return { ok: (result as { isError?: boolean }).isError !== true, summary, details };

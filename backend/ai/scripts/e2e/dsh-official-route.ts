@@ -53,12 +53,11 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
-import { Type } from "typebox";
 import { DshSession } from "../../src/core/adapter/dsh/session.ts";
 import { ensureDshProfile, writePiAiProviderPatch } from "../../src/core/adapter/dsh/profile.ts";
 import { PendingWaiterRegistry } from "../../src/core/gate/pending-waiters.ts";
 import type { AgentEvent, AgentEventType } from "../../src/core/session/agent-event.ts";
-import type { CommandTool } from "../../src/core/tools/types.ts";
+import type { McpToolDefinition } from "../../src/core/mcp/tool.ts";
 import { looksLikeNoBalance, probeOfficialRoute } from "./lib/balance.ts";
 
 const requireFromHere = createRequire(import.meta.url);
@@ -198,13 +197,17 @@ const bridgeUrl = `http://127.0.0.1:${bridgePort}/internal/dsh/commands`;
  * 而本脚本起的是**一个独立进程**（没有起服务）⇒ 所以这里用**假的命令桥**接住。
  * ⇒ ③ 的断言看的是「命令桥收到了这次调用」，不是 `execute`（那条在 `dsh-runner.ts` 里验）。
  */
-const tool: CommandTool = {
+const tool: McpToolDefinition = {
 	name: "get_time",
 	label: "看时间",
 	description: "返回当前时间（验收用）",
-	parameters: Type.Object({ tz: Type.String({ description: "时区" }) }),
+	inputSchema: {
+		type: "object",
+		properties: { tz: { type: "string", description: "时区" } },
+		required: ["tz"],
+	},
 	annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-	execute: async (_toolCallId, params) => ({
+	execute: async (params) => ({
 		content: [{ type: "text", text: `现在时间是 ${new Date().toISOString()}` }],
 		details: { tz: (params as { tz?: string }).tz ?? "" },
 	}),
@@ -260,6 +263,11 @@ let toolError = false;
 const session = new DshSession({
 	conversationId,
 	tools: [tool],
+	toolContext: {
+		currentToken: () => "e2e-token",
+		currentUserId: async () => 1,
+		audit: { write: async () => undefined },
+	},
 	systemPrompt: "你是验收用的助手，只用一两句话回答。",
 	provider: PROVIDER,
 	model: MODEL,

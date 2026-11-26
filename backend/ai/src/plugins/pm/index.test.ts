@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import { taskStatusToUnified } from "./adapter/enums.ts";
 import { createPmCommands, createPmPlugin, PM_PLUGIN_ID } from "./index.ts";
 import type { TaskCreator } from "./tools/create-task.ts";
-import type { CommandContext } from "../../core/tools/types.ts";
+import type { McpToolContext } from "../../core/mcp/tool.ts";
 import type { AuditWriter } from "../../core/audit/audit.ts";
 
 /** 审计去处（测试不需要真的落库）。 */
@@ -21,8 +21,8 @@ const audit: AuditWriter = {
 	write: async () => undefined,
 };
 
-/** 造工具时的上下文（只有通用能力）。 */
-function context(): CommandContext {
+/** 工具执行时的上下文（**通用能力** ⇒ 不用真打 AiAdmin）。 */
+function context(): McpToolContext {
 	return {
 		currentToken: () => "token",
 		currentUserId: async () => 2,
@@ -61,15 +61,15 @@ describe("PM 插件 · 命令目录", () => {
 	it("造出来的工具带 annotations（非破坏性 ⇒ 不需要先问人）", () => {
 		const calls: unknown[] = [];
 		const commands = createPmCommands({ createDataSource: fakeDataSource(calls) });
-		const tool = commands[0]?.build(context());
+		const tool = commands[0];
 		expect(tool?.annotations?.destructiveHint).toBe(false);
 	});
 
 	it("工具跑起来会用插件给的数据源（token 透传）", async () => {
 		const calls: unknown[] = [];
 		const commands = createPmCommands({ createDataSource: fakeDataSource(calls) });
-		const tool = commands[0]?.build(context());
-		await tool?.execute("call-1", { project_key: "PRJ-1", title: "标题" });
+		const tool = commands[0];
+		await tool?.execute({ project_key: "PRJ-1", title: "标题" }, context());
 		expect(calls).toHaveLength(1);
 	});
 });

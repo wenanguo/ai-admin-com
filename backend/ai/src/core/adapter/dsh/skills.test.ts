@@ -4,14 +4,14 @@
  * 为什么单测要自己造目录：技能目录来自**智能体配置**（可以是任意路径），
  * 不能在测试里依赖开发机的目录 ⇒ 用临时目录注入。
  *
- * ⚠️ **规则与 dsh 的发现规则对齐**（issue #153：技能退给 dsh）
+ * ⚠️ **规则与 dsh 的发现规则对齐**（issue #153：技能退给 dsh · issue #169 · S2：清单挪进适配层）
  *    ⇒ 这里的断言就是「界面看到的 = 模型看到的」的护栏。
  */
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { listSkillSummaries } from "./skill-catalog.ts";
+import { listSkillSummaries } from "./skills.ts";
 
 /** 造一个技能目录（里面放几个技能）。 */
 function makeSkillsDir(prefix: string, names: string[]): string {

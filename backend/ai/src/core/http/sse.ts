@@ -11,7 +11,23 @@
  */
 
 import { isRebuildable } from "../session/events.ts";
-import type { StreamFrame } from "../session/frame-buffer.ts";
+
+/**
+ * 缓冲里的一帧（**SSE 的一帧**）。
+ *
+ * ⚠️ **序号（`seq`）是回放的关键**：SSE 连接建立时先给「回放快照」，再接增量流
+ *    ⇒ 用序号去重 ⇒ **既不重复也不漏**（快照与增量之间那几帧正好被序号盖住）。
+ */
+export interface StreamFrame {
+	/** 事件名（`text_delta` / `tool_call` / …）。 */
+	event: string;
+	/** 载荷（已序列化的 JSON 字符串）。 */
+	data: string;
+	/** 这一帧是不是「可重建的」（可重建 ⇒ 超限时优先丢）。 */
+	rebuildable: boolean;
+	/** 帧的序号（缓冲内单调递增）。 */
+	seq: number;
+}
 
 /** SSE 响应头。 */
 export const SSE_HEADERS: Record<string, string> = {

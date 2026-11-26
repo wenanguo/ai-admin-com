@@ -5,7 +5,7 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { AgentError, type CommandContext } from "../../src/core/index.ts";
+import { AgentError, type McpToolContext } from "../../src/core/index.ts";
 import {
 	ADD_NOTE_TOOL_NAME,
 	DemoCurrentUserResolver,
@@ -16,7 +16,7 @@ import {
 import { listNotes, resetNotes } from "./store.ts";
 
 /** 造一个假的命令上下文（内核给的那几样）。 */
-function fakeContext(): CommandContext {
+function fakeContext(): McpToolContext {
 	return {
 		currentToken: () => "demo-reader",
 		currentUserId: async () => 1,
@@ -46,8 +46,7 @@ describe("读书笔记插件（示例系统的业务）", () => {
 	it("`add_note` 真的记下一条笔记", async () => {
 		const plugin = createNotesPlugin();
 		const command = plugin.commands?.find((item) => item.name === ADD_NOTE_TOOL_NAME);
-		const tool = command?.build(fakeContext());
-		const result = await tool?.execute("call-1", { title: "活着", author: "余华" });
+		const result = await command?.execute({ title: "活着", author: "余华" }, fakeContext());
 		expect(result?.isError).toBeFalsy();
 		expect(listNotes()).toHaveLength(1);
 		expect(listNotes()[0]?.title).toBe("活着");
@@ -57,8 +56,7 @@ describe("读书笔记插件（示例系统的业务）", () => {
 	it("`add_note` 书名为空 ⇒ 失败（不记）", async () => {
 		const plugin = createNotesPlugin();
 		const command = plugin.commands?.find((item) => item.name === ADD_NOTE_TOOL_NAME);
-		const tool = command?.build(fakeContext());
-		const result = await tool?.execute("call-1", { title: "   " });
+		const result = await command?.execute({ title: "   " }, fakeContext());
 		expect(result?.isError).toBe(true);
 		expect(listNotes()).toHaveLength(0);
 	});
@@ -66,14 +64,10 @@ describe("读书笔记插件（示例系统的业务）", () => {
 	it("`list_notes` 列出已记的笔记", async () => {
 		const plugin = createNotesPlugin();
 		const context = fakeContext();
-		const add = plugin.commands
-			?.find((item) => item.name === ADD_NOTE_TOOL_NAME)
-			?.build(context);
-		await add?.execute("call-1", { title: "活着" });
-		const list = plugin.commands
-			?.find((item) => item.name === LIST_NOTES_TOOL_NAME)
-			?.build(context);
-		const result = await list?.execute("call-2", {});
+		const add = plugin.commands?.find((item) => item.name === ADD_NOTE_TOOL_NAME);
+		await add?.execute({ title: "活着" }, context);
+		const list = plugin.commands?.find((item) => item.name === LIST_NOTES_TOOL_NAME);
+		const result = await list?.execute({}, context);
 		expect(result?.isError).toBeFalsy();
 		expect(listNotes()).toHaveLength(1);
 	});

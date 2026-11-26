@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { UnifiedTask } from "../adapter/model.ts";
 import type { CreateTaskInput } from "../adapter/datasource.ts";
 import { createCreateTaskTool, type CreateTaskToolDeps } from "./create-task.ts";
+import type { McpToolContext } from "../../../core/mcp/tool.ts";
 
 /** 审计条目（测试自己声明形状：工具只把它当「不透明的一条记录」用）。 */
 interface AuditRecord {
@@ -42,6 +43,7 @@ function makeDeps(result?: {
 	auditError?: Error;
 }): {
 	deps: CreateTaskToolDeps;
+	context: McpToolContext;
 	calls: CreateTaskInput[];
 	token: string;
 	audit: AuditRecord[];
@@ -50,8 +52,6 @@ function makeDeps(result?: {
 	const audit: AuditRecord[] = [];
 	const token = "caller-token-must-not-leak";
 	const deps: CreateTaskToolDeps = {
-		currentToken: () => token,
-		resolveReporterId: async () => 7,
 		createDataSource: () => ({
 			createTask: async (input: CreateTaskInput) => {
 				calls.push(input);
@@ -61,6 +61,11 @@ function makeDeps(result?: {
 				return result?.task ?? fakeTask();
 			},
 		}),
+	};
+	// ⚠️ **通用能力在调用时给**（token / 审计 / 闸门）⇒ 工具定义本身是纯静态的。
+	const context: McpToolContext = {
+		currentToken: () => token,
+		currentUserId: async () => 7,
 		// 审计去处（测试里只记，不落库）
 		audit: {
 			write: async (entry: AuditRecord): Promise<void> => {
@@ -71,16 +76,15 @@ function makeDeps(result?: {
 			},
 		},
 	};
-	return { deps, calls, token, audit };
+	return { deps, context, calls, token, audit };
 }
 
 describe("create_task 工具", () => {
 	it("把统一领域名映射成适配层入参（并补上 reporter_id）", async () => {
-		const { deps, calls } = makeDeps();
+		const { deps, context, calls } = makeDeps();
 		const tool = createCreateTaskTool(deps);
 
 		const result = await tool.execute(
-			"call-1",
 			{
 				project_key: "PRJ-2026-Q3-001",
 				title: "AIPM 冒烟验证任务",
@@ -90,9 +94,7 @@ describe("create_task 工具", () => {
 				description: "端到端冒烟",
 				due_date: "2026-11-30",
 			},
-			undefined,
-			undefined,
-			undefined,
+			context,
 		);
 
 		expect(calls).toHaveLength(1);
@@ -111,46 +113,31 @@ describe("create_task 工具", () => {
 	});
 
 	it("缺必填参数 ⇒ 直接报错，不去调后端", async () => {
-		const { deps, calls } = makeDeps();
+		const { deps, context, calls } = makeDeps();
 		const tool = createCreateTaskTool(deps);
 
-		const result = await tool.execute(
-			"call-2",
-			{ project_key: "", title: "少了项目" },
-			undefined,
-			undefined,
-			undefined,
-		);
+		const result = await tool.execute({ project_key: "", title: "少了项目" }, context);
 
 		expect(calls).toHaveLength(0);
 		expect(result.isError).toBe(true);
 	});
 
 	it("没有 token ⇒ 报错，且错误里不出现 token", async () => {
-		const { deps } = makeDeps();
-		const tool = createCreateTaskTool({ ...deps, currentToken: () => undefined });
+		const { deps, context } = makeDeps();
+		const tool = createCreateTaskTool(deps);
 		const result = await tool.execute(
-			"call-3",
 			{ project_key: "PRJ-1", title: "标题" },
-			undefined,
-			undefined,
-			undefined,
+			{ ...context, currentToken: () => undefined },
 		);
 		expect(result.isError).toBe(true);
 	});
 
 	it("后端报错 ⇒ 结果标成 error，但把原因讲清楚", async () => {
-		const { deps } = makeDeps({
+		const { deps, context } = makeDeps({
 			error: new Error("AiAdmin 里找不到项目「PRJ-NOPE」"),
 		});
 		const tool = createCreateTaskTool(deps);
-		const result = await tool.execute(
-			"call-4",
-			{ project_key: "PRJ-NOPE", title: "标题" },
-			undefined,
-			undefined,
-			undefined,
-		);
+		const result = await tool.execute({ project_key: "PRJ-NOPE", title: "标题" }, context);
 		expect(result.isError).toBe(true);
 		expect(JSON.stringify(result)).toContain("PRJ-NOPE");
 	});
@@ -168,6 +155,14 @@ describe("create_task 工具", () => {
 		expect(tool.annotations?.destructiveHint).toBe(false);
 		expect(tool.annotations?.readOnlyHint).toBe(false);
 	});
+
+	it("参数 schema 是 **JSON Schema**（MCP 的形状 ⇒ 直接给 dsh / 模型）", () => {
+		const { deps } = makeDeps();
+		const tool = createCreateTaskTool(deps);
+		expect(tool.inputSchema.type).toBe("object");
+		expect(tool.inputSchema.required).toEqual(["project_key", "title"]);
+		expect(Object.keys(tool.inputSchema.properties ?? {})).toContain("estimate_hours");
+	});
 });
 
 /**
@@ -178,15 +173,12 @@ describe("create_task 工具", () => {
  */
 describe("create_task 工具 · 审计", () => {
 	it("建任务成功 ⇒ 写一条审计（actor=AI、命令=create_task、调用方、前后快照）", async () => {
-		const { deps, audit } = makeDeps();
+		const { deps, context, audit } = makeDeps();
 		const tool = createCreateTaskTool(deps);
 
 		await tool.execute(
-			"call-audit-1",
 			{ project_key: "PRJ-2026-Q3-001", title: "AIPM 冒烟验证任务", priority: "P1" },
-			undefined,
-			undefined,
-			undefined,
+			context,
 		);
 
 		expect(audit).toHaveLength(1);
@@ -205,16 +197,10 @@ describe("create_task 工具 · 审计", () => {
 	});
 
 	it("建任务失败 ⇒ 不写审计（没发生的事不记账）", async () => {
-		const { deps, audit } = makeDeps({ error: new Error("AiAdmin 里找不到项目") });
+		const { deps, context, audit } = makeDeps({ error: new Error("AiAdmin 里找不到项目") });
 		const tool = createCreateTaskTool(deps);
 
-		await tool.execute(
-			"call-audit-2",
-			{ project_key: "PRJ-NOPE", title: "标题" },
-			undefined,
-			undefined,
-			undefined,
-		);
+		await tool.execute({ project_key: "PRJ-NOPE", title: "标题" }, context);
 
 		expect(audit).toHaveLength(0);
 	});
@@ -222,16 +208,10 @@ describe("create_task 工具 · 审计", () => {
 	it("审计写失败 ⇒ 任务仍然算成功（不能把已经建好的任务弄丢）+ 记一条错误日志", async () => {
 		const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
 		try {
-			const { deps, calls } = makeDeps({ auditError: new Error("审计表写不进去") });
+			const { deps, context, calls } = makeDeps({ auditError: new Error("审计表写不进去") });
 			const tool = createCreateTaskTool(deps);
 
-			const result = await tool.execute(
-				"call-audit-3",
-				{ project_key: "PRJ-1", title: "标题" },
-				undefined,
-				undefined,
-				undefined,
-			);
+			const result = await tool.execute({ project_key: "PRJ-1", title: "标题" }, context);
 
 			// 任务真的建出来了
 			expect(calls).toHaveLength(1);
@@ -245,17 +225,19 @@ describe("create_task 工具 · 审计", () => {
 	});
 
 	it("审计的 args 脱敏（不带 token / 口令）", async () => {
-		const { deps, audit } = makeDeps();
+		const { deps, context, audit } = makeDeps();
 		const tool = createCreateTaskTool(deps);
 
 		// 模型理论上只会传 schema 里的字段，但参数是运行时来的 —— 脱敏不能靠「它不会出现」
-		const params = {
-			project_key: "PRJ-1",
-			title: "标题",
-			token: "secret-token-must-not-leak",
-			password: "secret-password",
-		};
-		await tool.execute("call-audit-4", params, undefined, undefined, undefined);
+		await tool.execute(
+			{
+				project_key: "PRJ-1",
+				title: "标题",
+				token: "secret-token-must-not-leak",
+				password: "secret-password",
+			},
+			context,
+		);
 
 		const text = JSON.stringify(audit);
 		expect(text).not.toContain("secret-token-must-not-leak");

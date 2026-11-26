@@ -34,3 +34,22 @@ export function requiresConfirmation(toolName: string): boolean {
 	const bare = bareToolName(toolName);
 	return bare.startsWith("update_") || bare.startsWith("patch_");
 }
+
+/**
+ * 命令闸门 —— 决定一次命令要不要**先问人**。
+ *
+ * ⚠️ **住在闸门这一层**（issue #169 · S3：以前它在 `core/tools/types.ts`
+ *    ⇒ 工具机制删掉后，闸门契约归它自己 ⇒ **内核里不再有第二套工具机制**）。
+ */
+export interface CommandGate {
+	/** 这个命令要不要先问人。 */
+	requiresConfirmation(command: string, args: Record<string, unknown>): boolean;
+	/** 等人的答复；返回 `true` = 放行执行。 */
+	awaitConfirmation(command: string, args: Record<string, unknown>): Promise<boolean>;
+}
+
+/** 恒放行的闸门（非破坏性命令用）。 */
+export const ALLOW_ALL_GATE: CommandGate = {
+	requiresConfirmation: () => false,
+	awaitConfirmation: async () => true,
+};

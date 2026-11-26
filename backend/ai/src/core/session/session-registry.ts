@@ -3,26 +3,33 @@
  *
  * 通道里挂着四样东西：
  * 1. **SSE 订阅者**（每个连上来的客户端一个）；
- * 2. **回放窗口**（`FrameBuffer`）—— 后连上来的客户端先补发这些帧；
+ * 2. **回放窗口**（后连上来的客户端先补发这些帧）；
  * 3. **调用方的 token**（⚠️ **只在内存**，绝不落盘、绝不进日志）；
- * 4. **pi 会话**（懒创建：第一次有命令时才建）。
+ * 4. **dsh 会话**（懒创建：第一次有命令时才建）。
  *
  * ## 为什么不漏
  *
- * - 通道数有上限（默认 64）：超了就把**最久没用**的那个关掉（连同它的 pi 会话）；
+ * - 通道数有上限（默认 64）：超了就把**最久没用**的那个关掉（连同它的 dsh 会话）；
  * - 空闲超过 TTL（默认 30 分钟）的通道会被清掉；
  * - `close()` 显式关掉一个会话（会话被删、用户点了「结束对话」时用）。
+ *
+ * ## ⚠️ 为什么**没有**用 dsh 的会话注册表（issue #169 · S4）
+ *
+ * dsh 的注册表住在**运行时子进程**里 ⇒ 我们的 HTTP 层**订阅不到**
+ * ⇒ 订阅者 / 回放窗口 / token 这些**进程内的事实**只能自己管。
+ * ⇒ 真正归位的是「**我们不再自己实现会话机制**」：
+ *    会话怎么跑、事件怎么来 ⇒ 全在 dsh 那一侧（我们只做翻译）。
  */
 
 import type { AgentEvent } from "./agent-event.ts";
 import type { ContextAnchor, WriteToolRule } from "../context/anchor.ts";
-import { FrameBuffer, type StreamFrame } from "./frame-buffer.ts";
+import type { StreamFrame } from "../http/sse.ts";
 
 /** SSE 订阅者：收到一帧就被叫一次。 */
 export type ChannelSubscriber = (frame: StreamFrame) => void;
 
 /**
- * pi 会话的**最小接口**（真实现是 SDK 的 `AgentSession`；测试可注入假实现）。
+ * dsh 会话的**最小接口**（真实现是 `core/adapter/dsh/session.ts`；测试可注入假实现）。
  */
 export interface AgentSessionLike {
 	/** 发起一轮对话。 */
@@ -39,14 +46,11 @@ export interface AgentSessionLike {
 	/**
 	 * 排到当前轮**之后**（不打断）：当前 run 干完活就处理它。
 	 *
-	 * ⚠️ 这是 SDK 的原生排队语义（`AgentSession.followUp`）——
-	 *    自己造队列只能做到「等整轮跑完」，做不到「插进去」。
+	 * ⚠️ 这是 dsh 的原生排队语义 ⇒ 自己造队列只能做到「等整轮跑完」，做不到「插进去」。
 	 */
 	followUp?(text: string): Promise<"queued" | "handled">;
 	/**
 	 * **打断**当前轮：插到当前助手轮次（及其工具调用）之后、下一次模型调用之前。
-	 *
-	 * ⚠️ SDK 原生语义（`AgentSession.steer`）。
 	 */
 	steer?(text: string): Promise<"queued" | "handled">;
 	/** 停掉当前正在跑的操作（用户点「停止」）。 */
@@ -59,8 +63,8 @@ export interface ConversationChannel {
 	readonly conversationId: string;
 	/** SSE 订阅者。 */
 	readonly subscribers: Set<ChannelSubscriber>;
-	/** 回放窗口。 */
-	readonly backlog: FrameBuffer;
+	/** 回放窗口（后连上来的客户端先补发这些帧）。 */
+	readonly backlog: ReplayWindow;
 	/** 调用方的 token（**只在内存**；刷新命令时会被新的 token 覆盖）。 */
 	token: string | undefined;
 	/**
@@ -95,7 +99,7 @@ export interface ConversationChannel {
 	lastMcpWrite:
 		| { toolName: string; args: Record<string, unknown> }
 		| undefined;
-	/** pi 会话（懒创建）。 */
+	/** dsh 会话（懒创建）。 */
 	session: AgentSessionLike | undefined;
 	/**
 	 * 这个会话用到的 **MCP 工具名前缀**（`mcp__<server>__`）。
@@ -114,6 +118,95 @@ export interface ConversationChannel {
 	lastUsedAt: number;
 	/** 分配消息序号（进程内单调递增）。 */
 	allocateSeq(initial: number): number;
+}
+
+/** 回放窗口的默认上限：16 MB。 */
+const DEFAULT_MAX_BACKLOG_BYTES = 16 * 1024 * 1024;
+
+/**
+ * 回放窗口 —— SSE 的**补发缓冲**（客户端晚连上 ⇒ 先补发这些帧）。
+ *
+ * ## 为什么还有它（issue #169 · S4）
+ *
+ * ⚠️ **我们的 SSE 帧 ≠ dsh 的事件**（帧里混着我们自己的事：pending / entity_updated）
+ *    ⇒ 「从 dsh 的持久化重放」会**改掉帧的字节序** ⇒ 违反「SSE 事件名与顺序一字不变」。
+ * ⇒ 这里保留一个**小的内存窗口**（**不再单起一个文件**）⇒ 行为一字不变。
+ *
+ * ## 两条规矩
+ *
+ * - **上限是硬约束**（进程内存）⇒ 超限时**先丢可重建的帧**（`text_delta` ——
+ *   文本增量能用 `GET /api/agent/:cid/state` 的快照重建），**再丢结构帧**
+ *   （`tool_call` / `tool_result` / `agent_settled` —— 这些是「发生了什么」的事实）。
+ * - **序号单调递增** ⇒ 回放快照与增量流之间**不重不漏**（订阅者按 `seq` 去重）。
+ */
+export class ReplayWindow {
+	readonly #frames: StreamFrame[] = [];
+	readonly #maxBytes: number;
+	#bytes = 0;
+	#nextSeq = 1;
+
+	constructor(maxBytes: number = DEFAULT_MAX_BACKLOG_BYTES) {
+		this.#maxBytes = maxBytes;
+	}
+
+	/** 当前占用的字节数。 */
+	get byteSize(): number {
+		return this.#bytes;
+	}
+
+	/** 塞一帧进去（超限就按规则淘汰）。 */
+	push(frame: { event: string; data: string; rebuildable: boolean }): StreamFrame {
+		const stored: StreamFrame = { ...frame, seq: this.#nextSeq };
+		this.#nextSeq += 1;
+		this.#frames.push(stored);
+		this.#bytes += frameBytes(stored);
+		this.#evict();
+		return stored;
+	}
+
+	/** 缓冲里的帧（按时间顺序）。 */
+	list(): StreamFrame[] {
+		return [...this.#frames];
+	}
+
+	/** 清空。 */
+	clear(): void {
+		this.#frames.length = 0;
+		this.#bytes = 0;
+	}
+
+	/**
+	 * 淘汰：超限时**先丢可重建的帧**（最老的先丢），还是超限才丢结构帧（最老的先丢）。
+	 *
+	 * ⚠️ 最后一轮可能把结构帧也丢光 —— 这是刻意的：
+	 *    **内存上限是硬约束**，宁可少回放，也不让进程被撑爆。
+	 */
+	#evict(): void {
+		if (this.#bytes <= this.#maxBytes) {
+			return;
+		}
+		for (let index = 0; index < this.#frames.length && this.#bytes > this.#maxBytes; ) {
+			const frame = this.#frames[index];
+			if (frame === undefined || !frame.rebuildable) {
+				index += 1;
+				continue;
+			}
+			this.#frames.splice(index, 1);
+			this.#bytes -= frameBytes(frame);
+		}
+		while (this.#bytes > this.#maxBytes && this.#frames.length > 0) {
+			const frame = this.#frames.shift();
+			if (frame !== undefined) {
+				this.#bytes -= frameBytes(frame);
+			}
+		}
+	}
+}
+
+/** 帧的字节数（事件名 + 载荷 + SSE 的线上开销，粗算即可）。 */
+function frameBytes(frame: { event: string; data: string }): number {
+	// SSE 一帧的线上开销：`event: x\n` + `data: …\n` + 空行
+	return frame.event.length + frame.data.length + 16;
 }
 
 /** 默认最多同时留多少个通道。 */
@@ -165,7 +258,7 @@ export class SessionRegistry {
 		const channel: ConversationChannel = {
 			conversationId,
 			subscribers: new Set<ChannelSubscriber>(),
-			backlog: new FrameBuffer(),
+			backlog: new ReplayWindow(),
 			token: undefined,
 			userId: undefined,
 			anchor: undefined,
@@ -207,7 +300,7 @@ export class SessionRegistry {
 	 *
 	 * 一个订阅者抛错**不影响**其它订阅者（也不影响发布方）。
 	 */
-	publish(channel: ConversationChannel, frame: Omit<StreamFrame, "bytes" | "seq">): void {
+	publish(channel: ConversationChannel, frame: Omit<StreamFrame, "seq">): void {
 		const stored = channel.backlog.push(frame);
 		for (const subscriber of channel.subscribers) {
 			try {
@@ -218,7 +311,7 @@ export class SessionRegistry {
 		}
 	}
 
-	/** 关掉一个通道（连同它的 pi 会话）。 */
+	/** 关掉一个通道（连同它的 dsh 会话）。 */
 	close(conversationId: string): void {
 		const channel = this.#channels.get(conversationId);
 		if (channel === undefined) {

@@ -50,7 +50,7 @@ import { buildToolCatalog } from "./tools.ts";
 import { ensureDshProfile, writePiAiProviderPatch } from "./profile.ts";
 import type { DshGateContext } from "./approvals.ts";
 import type { AgentSessionLike } from "../../session/session-registry.ts";
-import type { CommandTool } from "../../tools/types.ts";
+import type { McpToolContext, McpToolDefinition } from "../../mcp/tool.ts";
 import { buildDshMcpServerRegistrations, type McpServerSpec } from "../../mcp/mcp.ts";
 
 /** ESM 里的 `require.resolve`（用来找 SDK 自带的 dsh 运行时）。 */
@@ -115,8 +115,10 @@ export function dshRunnerConfig(source: NodeJS.ProcessEnv = process.env): DshRun
 export interface CreateDshSessionOptions {
 	/** 会话 id。 */
 	conversationId: string;
-	/** 我们的命令工具（**已按白名单过滤**）。 */
-	tools: readonly CommandTool[];
+	/** 我们的命令（**MCP 工具形状**；已按白名单过滤）。 */
+	tools: readonly McpToolDefinition[];
+	/** 工具执行时的上下文（token / 审计 / 闸门 ⇒ **每个会话一份**）。 */
+	toolContext: McpToolContext;
 	/** 系统提示词（**含技能段**）。 */
 	systemPrompt: string;
 	/** 模型 id（智能体配置可以覆盖全局默认）。 */
@@ -192,6 +194,7 @@ export async function createDshSession(
 	return new DshSession({
 		conversationId: options.conversationId,
 		tools: options.tools,
+		toolContext: options.toolContext,
 		systemPrompt: options.systemPrompt,
 		provider: config.provider,
 		model: options.model ?? config.model,

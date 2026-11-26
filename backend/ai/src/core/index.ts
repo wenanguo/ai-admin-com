@@ -7,7 +7,7 @@
  * 需要一个**稳定的对外表面**：
  *
  * - 外部只从这里 import ⇒ 内核内部的搬家/重构**不破坏**外部；
- * - 依赖**不外泄** ⇒ 内核只依赖通用件（pi SDK / express / prisma / zod / typebox / yaml），
+ * - 依赖**不外泄** ⇒ 内核只依赖通用件（dsh SDK / express / prisma / zod / yaml），
  *   **不依赖**任何业务系统（见 `index.test.ts` 的依赖断言）。
  *
  * ## 表面清单（**改这里 = 改对外契约** ⇒ 要慎重）
@@ -18,7 +18,7 @@
  * | 插件契约与注册表 | 外部要写自己的插件时 |
  * | 会话运行时 | 外部要起自己的服务时 |
  * | **HTTP 装配**（`createCoreApp`） | 外部要**起自己的服务**时（issue #116） |
- * | 上下文锚点 / 命令工具的类型 | 外部要写插件时 |
+ * | 上下文锚点 / **MCP 工具**的类型 | 外部要写插件时 |
  * | 当前用户的形状与契约 | 外部要接自己的身份系统时 |
  */
 
@@ -67,6 +67,13 @@ export {
 	type CurrentUserResolver,
 } from "./session/identity.ts";
 export { AgentError, AgentRuntime, type AgentRuntimeOptions } from "./session/runtime.ts";
-export { buildCommandTools, isDestructiveCommand } from "./tools/index.ts";
-export type { CommandContext, CommandDefinition, CommandGate, CommandTool } from "./tools/types.ts";
+export { ALLOW_ALL_GATE, type CommandGate } from "./gate/gate.ts";
+export type {
+	JsonSchema,
+	McpToolContext,
+	McpToolDefinition,
+	ToolAnnotations,
+	ToolContentPart,
+	ToolResult,
+} from "./mcp/tool.ts";
 export type { ApiResponse } from "./types/api.ts";

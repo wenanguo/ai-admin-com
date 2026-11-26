@@ -16,16 +16,20 @@
  * ⇒ 内核**永远不 import 插件**。内核怎么知道插件存在？**注册表 + 依赖注入**：
  * 入口侧（`src/plugins.ts`）注册插件 ⇒ 内核只看见 `AiPlugin` 这个形状。
  *
+ * ## 命令 = **MCP 工具**（issue #169 · S3）
+ *
+ * 插件给的命令是 **MCP 工具形状**（`core/mcp/tool.ts`）⇒ 与 dsh / MCP / 后端**同一种形状**
+ * ⇒ 内核**不再自造一套「命令工具」机制**。
+ *
  * ## 现在注册表里只有一个插件
  *
  * 阶段 1 只有 PM 一个插件 ⇒ 「用哪个插件」还没得选（智能体配置里的 `plugin:` 字段是后面的阶段）。
- * 现在的口径：**注册表里所有插件的命令合起来**就是可用的命令目录。
  */
 
 import type { ContextProvider } from "./context/anchor.ts";
 import type { DependencyCheck } from "./routes/health.ts";
 import type { AdminJudge, CurrentUserResolver } from "./session/identity.ts";
-import type { CommandDefinition } from "./tools/types.ts";
+import type { McpToolDefinition } from "./mcp/tool.ts";
 
 /**
  * 一个插件。
@@ -37,8 +41,13 @@ export interface AiPlugin {
 	id: string;
 	/** 人读的标签。 */
 	label?: string;
-	/** 这个插件提供的命令（内核的命令目录 = 所有插件的命令合起来）。 */
-	commands?: readonly CommandDefinition[];
+	/**
+	 * 这个插件提供的命令（**MCP 工具形状** ⇒ 内核不造第二套工具机制）。
+	 *
+	 * ⚠️ **工具定义是纯静态的**（token / 审计 / 闸门在**调用时**给）
+	 *    ⇒ 一份定义可以复用到所有会话。
+	 */
+	commands?: readonly McpToolDefinition[];
 	/** 这个插件怎么回答「当前用户是谁」（没有 ⇒ 内核不提供身份查询）。 */
 	currentUser?: CurrentUserResolver;
 	/**
@@ -86,11 +95,6 @@ export class PluginRegistry {
 	/** 已注册的插件（按注册顺序）。 */
 	list(): readonly AiPlugin[] {
 		return [...this.#plugins.values()];
-	}
-
-	/** 全部插件提供的命令（按注册顺序）—— 这就是**命令目录**。 */
-	commands(): readonly CommandDefinition[] {
-		return this.list().flatMap((plugin) => plugin.commands ?? []);
 	}
 
 	/**

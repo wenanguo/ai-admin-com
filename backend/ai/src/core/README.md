@@ -9,9 +9,7 @@
 | ---- | ---- | -------- |
 | `config/` | **智能体配置**（装载 / 校验 / 注册表） | `loader.ts`（读 `agents/<id>/agent.yaml`）· `schema.ts`（形状）· `catalog.ts`（清单） |
 | `session/` | **会话**（会话与命令 / 事件流 / 历史） | `runtime.ts`（编排）· `agent-event.ts`（**我们自己的事件词汇**）· `event-mapper.ts`（事件 → SSE）· `session-registry.ts`（通道）· `identity.ts`（当前用户的**形状与契约**） |
-| `skills/` | **技能**（**清单**；发现与加载**退给 dsh**） | `skill-catalog.ts`（**按 dsh 的规则**读 frontmatter ⇒ 界面看到的 = 模型看到的） |
-| `mcp/` | **MCP**（多服务器；工具的来源） | `mcp.ts`（配置形状 + dsh 的翻译）· `tool-names.ts`（工具名归一化） |
-| `tools/` | **命令工具的机制**（目录从插件来） | `index.ts`（`buildCommandTools` / `isDestructiveCommand`）· `types.ts` |
+| `mcp/` | **MCP**（多服务器；工具的来源） | `mcp.ts`（配置形状 + dsh 的翻译）· `tool-names.ts`（工具名归一化）· `tool.ts`（**MCP 工具形状**） |
 | `context/` | **上下文锚点**（讨论上下文的通用机制） | `anchor.ts`（锚点 + **按白名单收窄写操作**） |
 | `gate/` | **闸门**（改数据要人点头） | `gate.ts`（口径）· `decision.ts`（**与宿主无关的决策**）· `pending-query.ts` / `pending-write.ts` |
 | `audit/` | **审计**（每次 AI 写入留一条 `ai_audit_log`） | `audit.ts` · `audit-redact.ts` · `audit-query.ts` |
@@ -21,7 +19,7 @@
 | `env/` | 环境变量（**只有通用变量**） | `env.ts`（zod 校验）· `load-env.ts` |
 | `types/` | 共享类型 | `api.ts`（响应信封） |
 | `plugins.ts` | **插件契约 + 注册表**（内核与插件之间唯一的接头） | `AiPlugin` · `PluginRegistry` |
-| `adapter/dsh/` | **执行层**（dsh 运行时；dsh 的类型只许出现在这里） | `client.ts` · `runner.ts` · `session.ts` · `events.ts` · `approvals.ts` · `tools.ts` · `profile.ts` |
+| `adapter/dsh/` | **执行层**（dsh 运行时；dsh 的类型只许出现在这里） | `client.ts` · `runner.ts` · `session.ts` · `events.ts` · `approvals.ts` · `tools.ts` · `profile.ts` · `skills.ts`（**技能清单**：SKILL.md 的格式是 dsh 的概念 ⇒ 住在这一层） |
 | `errors.ts` | 上游错误的**归一形状** | `AdapterErrorException`（内核认它 ⇒ 插件抛它） |
 | `index.ts` | ★ **公开入口**（外部只从这里 import） | — |
 

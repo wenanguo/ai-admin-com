@@ -21,7 +21,7 @@ import type { CreateDshSessionOptions } from "../adapter/dsh/runner.ts";
 import { AgentError, AgentRuntime } from "./runtime.ts";
 import type { ConversationRecord, ConversationStore, MessageRecord } from "../store/store.ts";
 import { PluginRegistry, type AiPlugin } from "../plugins.ts";
-import type { CommandTool } from "../tools/types.ts";
+import type { McpToolDefinition } from "../mcp/tool.ts";
 
 /**
  * 假插件 —— 提供一个 `create_task` 命令（**本用例不该真的建任务**）。
@@ -37,21 +37,16 @@ function fakePlugins(): PluginRegistry {
 			{
 				name: "create_task",
 				label: "创建任务",
-				build: () =>
-					({
-						name: "create_task",
-						label: "创建任务",
-						description: "假的建任务命令（测试用）",
-						parameters: {},
-						annotations: {
-							readOnlyHint: false,
-							destructiveHint: false,
-							idempotentHint: false,
-						},
-						execute: async () => {
-							throw new Error("本用例不该真的建任务");
-						},
-					}) as unknown as CommandTool,
+				description: "假的建任务命令（测试用）",
+				inputSchema: { type: "object", properties: {} },
+				annotations: {
+					readOnlyHint: false,
+					destructiveHint: false,
+					idempotentHint: false,
+				},
+				execute: async () => {
+					throw new Error("本用例不该真的建任务");
+				},
 			},
 		],
 	});
@@ -362,15 +357,10 @@ describe("运行时 · 插件按智能体（阶段 4 的接线）", () => {
 				{
 					name: command,
 					label: command,
-					build: () =>
-						({
-							name: command,
-							label: command,
-							description: "假的命令",
-							parameters: {},
-							annotations: { readOnlyHint: true },
-							execute: async () => ({ content: [] }),
-						}) as unknown as CommandTool,
+					description: "假的命令",
+					inputSchema: { type: "object", properties: {} },
+					annotations: { readOnlyHint: true },
+					execute: async () => ({ content: [] }),
 				},
 			],
 		};

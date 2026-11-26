@@ -120,7 +120,9 @@ for (const file of skillFiles) {
  * ------------------------------------------------------------------ */
 
 console.log("② 技能层**不依赖 pi**（技能是 Agent Skills 标准格式，不是 pi 私有）");
-const skillsLayer = filesOf(path.join(aiRoot, "src", "core", "skills"), [".ts"]);
+const skillsLayer = filesOf(path.join(aiRoot, "src", "core", "adapter", "dsh"), [".ts"]).filter(
+	(file) => rel(file).endsWith("skills.ts"),
+);
 const piFreeFiles = skillsLayer.filter(
 	(file) =>
 		!file.endsWith(".pi.ts") && !file.endsWith(".pi.test.ts") && !file.endsWith(".test.ts"),
@@ -164,7 +166,9 @@ check(
 	serviceSkillSources.length === 0,
 	serviceSkillSources.map(([file]) => rel(file)).join("、"),
 );
-const catalogSource = read(path.join(aiRoot, "src", "core", "skills", "skill-catalog.ts")) ?? "";
+// ⚠️ issue #169 · S2：清单读取**搬进适配层**（`core/skills/` 整个目录没了）
+//    ⇒ 技能是 dsh 的概念（SKILL.md 的格式是 dsh 定的）⇒ 内核不该知道。
+const catalogSource = read(path.join(aiRoot, "src", "core", "adapter", "dsh", "skills.ts")) ?? "";
 check(
 	"清单读取**还在**（`GET /api/agent/skills` 要它 ⇒ dsh 的登记表面问不到）",
 	catalogSource.includes("listSkillSummaries"),
