@@ -224,11 +224,14 @@ for (const name of migrationDirs.filter((dir) => dir !== '0_init_ai_tables')) {
     .split(';')
     .map((statement) => statement.trim())
     .filter((statement) => statement.length > 0);
+  // ⚠️ **白名单 = AI 服务自己拥有的表**（共享库 `aipm` 里 AiAdmin 的 56 张表**不许碰**）。
+  //    `ai_command_ack`（issue #175：命令回执 = 幂等的事实源）是 AI 服务的**第三张自有表**
+  //    ⇒ 加进白名单（与 `ai_session_event` 当初一样：新增自有表 ⇒ 白名单跟着长）。
   const foreignTables = statements.filter(
-    (statement) => !/ai_conversation|ai_session_event/.test(statement),
+    (statement) => !/ai_conversation|ai_session_event|ai_command_ack/.test(statement),
   );
   check(
-    `迁移 ${name} 只动 ai_conversation / ai_session_event`,
+    `迁移 ${name} 只动 AI 服务自己的表（ai_conversation / ai_session_event / ai_command_ack）`,
     foreignTables.length === 0,
     foreignTables.join(' | '),
   );
