@@ -12,9 +12,11 @@
  * | - | ---- | ------ |
  * | 1 | `core/skills/` **不存在** | 技能目录归位给 dsh（我们自己那份是第二份真相） |
  * | 2 | `core/tools/` **不存在** | 命令工具归位给 **MCP 工具形状**（框架里的机制删掉，业务留下） |
- * | 3 | **SSE 事件词汇一字不变** | 前端按这几种写 ⇒ **前端 0 改动**的前提 |
+ * | 3 | **SSE 事件词汇一字不变**（含**顺序**） | 前端按这几种写、按这个顺序处理 ⇒ **前端 0 改动**的前提 |
  * | 4 | 实现行数比基线少 **≥ 1 800 行** | 这一轮减法的**量化目标** |
  * | 5 | 内核里**没有**自研 provider / 技能 loader | 「只有 DSH 代码」的底线（细口径见 `check-dsh-boundary.cjs`） |
+ * | 6 | `runtime.ts` ≤ **700** 行 · `session-registry.ts` ≤ **200** 行 | issue #175 · S4：运行时与注册表**瘦身**的量化目标 |
+ * | 7 | **9 个端点的契约表**还在（路径一字不改） | issue #175 · S4：响应体一字不变 |
  *
  * 用法：`node scripts/e2e/ai-subtraction.static.cjs`（在仓根跑）。
  */
@@ -89,6 +91,18 @@ check(
 	"SSE 事件**不多**（就这 10 种）",
 	(eventsSource.match(/^\t[A-Z_]+: "/gm) ?? []).length === EXPECTED_SSE_EVENTS.length,
 	`找到 ${(eventsSource.match(/^\t[A-Z_]+: "/gm) ?? []).length} 个`,
+);
+/**
+ * ⚠️ **顺序也是契约**（issue #175 · S4）：前端按「开始 → 增量 → 工具 → 结束」处理
+ *    ⇒ 顺序变了 ⇒ 前端的表现就变了 ⇒ 哪怕事件名没少也不行。
+ */
+const actualEventOrder = (eventsSource.match(/^\t[A-Z_]+: "([a-z_]+)"/gm) ?? []).map((line) =>
+	line.replace(/^\t[A-Z_]+: "/, "").replace(/"$/, ""),
+);
+check(
+	"SSE 事件的**顺序**一字不变",
+	actualEventOrder.join(",") === EXPECTED_SSE_EVENTS.join(","),
+	`现在是 ${actualEventOrder.join(" → ")}`,
 );
 
 /* ------------------------------------------------------------------ *
@@ -242,6 +256,64 @@ check(
 	"内核里没有**我们自己写的命令机制**（`buildCommandTools` / `CommandDefinition`）",
 	!coreCode.includes("buildCommandTools") && !coreCode.includes("CommandDefinition"),
 );
+
+/* ------------------------------------------------------------------ *
+ * ⑥ 运行时与注册表的行数（issue #175 · S4：瘦身）
+ * ------------------------------------------------------------------ */
+
+console.log("④ 运行时瘦身（issue #175 · S4 的量化目标）");
+
+/**
+ * 数一个文件的行数（**与 `wc -l` 一致** ⇒ 数换行符）。
+ *
+ * @param {string} file 文件路径。
+ * @returns {number} 行数。
+ */
+function countLines(file) {
+	const full = path.join(aiRoot, file);
+	if (!fs.existsSync(full)) {
+		return -1;
+	}
+	return (fs.readFileSync(full, "utf8").match(/\n/g) ?? []).length;
+}
+
+/** `runtime.ts` 的行数上限（issue #175 的验收标准）。 */
+const RUNTIME_MAX_LINES = 700;
+/** `session-registry.ts` 的行数上限（issue #175 的验收标准）。 */
+const REGISTRY_MAX_LINES = 200;
+
+const runtimeLines = countLines(path.join("src", "core", "session", "runtime.ts"));
+check(
+	`\`core/session/runtime.ts\` ≤ ${RUNTIME_MAX_LINES} 行`,
+	runtimeLines > 0 && runtimeLines <= RUNTIME_MAX_LINES,
+	`现在 ${runtimeLines} 行`,
+);
+const registryLines = countLines(path.join("src", "core", "session", "session-registry.ts"));
+check(
+	`\`core/session/session-registry.ts\` ≤ ${REGISTRY_MAX_LINES} 行`,
+	registryLines > 0 && registryLines <= REGISTRY_MAX_LINES,
+	`现在 ${registryLines} 行`,
+);
+
+/* ------------------------------------------------------------------ *
+ * ⑦ 9 个端点的契约表（issue #175 · S4：响应体一字不变）
+ * ------------------------------------------------------------------ */
+
+console.log("⑤ 9 个端点的契约表");
+const contractSource = read(path.join(coreDir, "routes", "contract.ts")) ?? "";
+check("`core/routes/contract.ts` 还在", contractSource.length > 0);
+for (const endpoint of [
+	"/api/agent/conversations",
+	"/api/agent/conv-1/command",
+	"/api/agent/conv-1/state",
+	"/api/agent/conv-1/abort",
+	"/api/pending",
+	"/api/agent/pending/p-1/approve",
+	"/api/agent/pending/p-1/reject",
+	"/api/audit",
+]) {
+	check(`端点「${endpoint}」还在契约表里`, contractSource.includes(endpoint));
+}
 
 /* ------------------------------------------------------------------ *
  * 汇总
