@@ -1,0 +1,13 @@
+# 依赖（**自己的** ⇒ 不进本仓的依赖树）
+node_modules/
+
+# 凭据（**只在本机** ⇒ 仓库里搜不到密钥）
+.env
+.env.local
+
+# dsh 的 home（profile / 日志 / 会话 / 插件拷贝）
+.dsh-home/
+
+# 日志与临时产物
+*.log
+out/

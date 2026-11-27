@@ -23,6 +23,8 @@
 | `dsh-skills-mcp-plugins.static.cjs` | **静态断言**技能 / MCP / 插件三层（issue #122 · #153）：**减法**清单（不许把我们自研的技能加载器长回来）⇒ **不需要 pnpm / 不联网 / 不需要模型凭据** |
 | `dsh-skills-mcp-plugins.runtime.cjs` | **运行时验收**技能 / MCP / 插件三层（issue #122 · #153）：**真起 dsh 运行时** ⇒ 技能目录**进了模型上下文** + `skill` 工具在 + **MCP 的写操作被闸门拦下**（拒绝 ⇒ 服务端一次都没被叫）+ 批准 ⇒ 真执行 ⇒ **不需要模型凭据 / 不连数据库**，但**要 pnpm、要联网** |
 | `mcp-tools-snapshot.static.cjs` | **静态断言**MCP 工具快照（issue #182）：技能正文里的**工具名 / 参数名 / 必填 / 类型**必须与入库的 MCP 工具快照一致（`backend/ai/mcp/aiadmin-tools.snapshot.json`）⇒ 后端改了工具而技能没改 ⇒ 红；自带**负例自测**（改坏快照 ⇒ 必红）⇒ **不联网 / 不需要依赖 / 不需要模型凭据** |
+| `dsh-standalone.static.cjs` | **静态断言**独立 dsh 项目（issue #183）：自己的清单 / 自己的 lock / 自己的 profile / 自己的镜像 · 外部插件按 `file:` 引用（**不复制源码**）· 凭据**只走环境变量**（**仓库里搜不到密钥**）· **本仓的三个 lock 一个字节没动**（⇒ 独立依赖不进本仓依赖树）· 文档的步骤齐 ⇒ 自带**负例自测**（改坏副本 ⇒ 必红）⇒ **不联网 / 不需要依赖 / 不需要模型凭据** |
+| `dsh-standalone.cjs` | **运行时验收**独立 dsh 项目（issue #183）：**真起 dsh 子进程** ⇒ **模型真的被调用** ⇒ 答案真的回来 + 外部插件按 `file:` 引用装进 profile + **凭据不落盘**（连 dsh 的 home 里都搜不到那个假 key）⇒ **不需要模型凭据 / 不连数据库**（脚本自带假模型服务），但**要 pnpm、要联网** |
 
 ## 用法
 
@@ -236,6 +238,28 @@ node scripts/e2e/dsh-profile-refresh.cjs        # 或：npm run e2e:dsh:profile-
 
 机器上有 pnpm 时，它还会**顺手用真 pnpm** 再验一遍
 （证明「pnpm 会把 `file:` 目录重新打包」⇒ 重装拿到的就是新内容）。
+
+## 独立 dsh 项目验收（issue #183）
+
+```bash
+# 静态验收（不需要装依赖、不联网、不需要模型凭据）
+node scripts/e2e/dsh-standalone.static.cjs        # 或：npm run e2e:dsh:standalone:static
+
+# 运行时验收（**真起 dsh** ⇒ 要装依赖 + pnpm + 联网）
+cd dsh && npm ci
+node scripts/e2e/dsh-standalone.cjs                # 或：npm run e2e:dsh:standalone
+```
+
+它钉住 issue #183 的验收口径：
+
+| # | 断言 |
+| - | ---- |
+| ① | **独立**：自己的清单 / 自己的 lock / 自己的 profile / 自己的镜像 ⇒ **本仓的三个 lock 一个字节没动** |
+| ② | **外部插件**：本仓的插件按 `file:` 引用装进 profile ⇒ **不复制源码**（`dsh/` 里不许有插件的拷贝） |
+| ③ | **凭据只走环境变量**：仓库里**搜不到密钥** · 补丁里只有**变量名** · `.env` 里**不许**有 `DSH_*` |
+| ④ | **真起 dsh**：引导 profile ⇒ 模型真的被调用 ⇒ 答案真的回来 ⇒ **dsh 的 home 里搜不到那个假 key** |
+
+⚠️ 第 ① 条里「三个 lock 没被改」要拿得到基线分支（`origin/main`）⇒ 浅克隆时**只警告并跳过**（不误报）。
 
 ## 环境变量
 

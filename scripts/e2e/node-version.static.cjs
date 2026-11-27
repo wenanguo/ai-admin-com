@@ -10,9 +10,10 @@
  *
  *   1. `.github/workflows/**` 里**没有** `node-version: 22`（含矩阵 `node_version: [22]`）
  *      ⇒ 且所有 setup-node 都指向 24
- *   2. 三个 `package.json`（根 / frontend / backend-ai）的 `engines.node` 都是 `>=24.9.0`
- *      ⇒ 且三个 `package-lock.json` 里根包的 engines 同步（lock 与 package.json 不脱节）
- *   3. 三个 Dockerfile 的 `ARG NODE_VERSION` 都是 24（⇒ 镜像 tag = `node:24-bookworm-slim`）
+ *   2. 四个 `package.json`（根 / frontend / backend-ai / dsh 独立项目）的 `engines.node`
+ *      都是 `>=24.9.0`
+ *      ⇒ 且四个 `package-lock.json` 里根包的 engines 同步（lock 与 package.json 不脱节）
+ *   3. 四个 Dockerfile 的 `ARG NODE_VERSION` 都是 24（⇒ 镜像 tag = `node:24-bookworm-slim`）
  *   4. 文档（AGENTS.md / README.md）里**不再**说「Node ≥ 22」
  *   5. **依赖树没变**：三个 lock 与基线分支的 lock 逐字节相同（只差根包的 engines）
  *      ⇒ 这一条直接证明「这不是一次顺手升依赖」
@@ -151,8 +152,8 @@ console.log('① CI workflow 的 Node 版本');
 // ───────────────────────────── ② engines 声明 ─────────────────────────────
 console.log('② package.json / package-lock.json 的 engines');
 {
-  const manifests = ['package.json', 'frontend/package.json', 'backend/ai/package.json'];
-  const locks = ['package-lock.json', 'frontend/package-lock.json', 'backend/ai/package-lock.json'];
+  const manifests = ['package.json', 'frontend/package.json', 'backend/ai/package.json', 'dsh/package.json'];
+  const locks = ['package-lock.json', 'frontend/package-lock.json', 'backend/ai/package-lock.json', 'dsh/package-lock.json'];
 
   for (const rel of manifests) {
     const pkg = readJson(rel);
