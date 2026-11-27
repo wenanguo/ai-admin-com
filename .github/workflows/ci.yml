@@ -242,13 +242,18 @@ jobs:
   # 跑的是 `frontend/scripts/repeat-vitest.mjs`（#154 入库的脚本）：
   # 任一次失败就立刻停 ⇒ 不用等跑完 10 次。
   #
-  # ⚠️ **只跑那个 flaky 文件**，不跑整仓：
-  #    整仓连跑 10 次太慢（CI 上整仓一轮 ~65s ⇒ 10 轮 ~11 分钟）；
-  #    而 flaky 的触发条件是「同一个文件里的时序」⇒ 单文件连跑就够。
+  # ⚠️ **跑的是整仓，不是单文件**（这是被实测纠正过的一次设计）：
+  #    最初写的是「只跑那个 flaky 文件」（理由：触发条件是「同一个文件里的时序」）。
+  #    **实测行不通**：
+  #    - 单文件连跑 45/45 全绿（本地），整仓连跑才有红；
+  #    - 原因：这条 flaky 的触发条件不是「文件内部的时序」，
+  #      而是**整仓并行时的浏览器争抢**（74 个文件一起跑，浏览器被抢）
+  #      ⇒ 单文件跑没有那种争抢 ⇒ 复现不出来。
+  #    ⇒ 现在跑整仓 10 轮（CI 上一轮 ~65s ⇒ 10 轮 ~11 分钟）。
   frontend-flaky-repeat:
     name: 前端抗 flaky（连跑 10 次）
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: frontend
@@ -265,7 +270,7 @@ jobs:
       - run: npm ci
       # ⚠️ 浏览器模式的单测要真的 chromium（coverage.yml 里也是这一步）。
       - run: npx playwright install --with-deps chromium
-      - run: node scripts/repeat-vitest.mjs src/pages/module_system/role/PermissionModal.test.tsx 10
+      - run: node scripts/repeat-vitest.mjs 10
 
   lint:
     runs-on: ubuntu-latest
