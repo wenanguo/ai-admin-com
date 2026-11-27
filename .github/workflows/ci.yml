@@ -49,6 +49,28 @@ jobs:
           node-version: 24
       - run: node scripts/e2e/node-version.static.cjs
 
+  # 减法摸底清单（issue #180）—— **静态断言**：
+  #   清单（docs/pm/减法摸底-逐文件清单.md）逐文件覆盖 core 的实现文件 · 行数与代码一致 ·
+  #   分类只能是三个 · 「还能退给 dsh」必须写出去处 · 死代码必须带 grep 证据 ·
+  #   承诺的减法行数能从表里算出来 · 本 PR 不改产品代码。
+  # ⚠️ fetch-depth: 0 ⇒ 拿得到基线分支（origin/main）⇒ 「不改产品代码」那条才有效
+  #    （否则脚本只警告并跳过）。
+  subtraction-inventory:
+    name: 减法摸底清单（静态验收）
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: node scripts/e2e/ai-subtraction-inventory.static.cjs
+
   # AI 服务（backend/ai）—— 单测 + **内核纯净度**。
   # ⚠️ 之前后端的 447 条单测**在 CI 里根本没跑**（只有容器验收）⇒ 这里补上。
   # ⚠️ 内核纯净度 = 两档（`core/**` 不许 import `plugins/**` + 代码里不许出现业务词），

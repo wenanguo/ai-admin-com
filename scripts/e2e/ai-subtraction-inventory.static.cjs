@@ -95,14 +95,19 @@ const implFiles = [];
 })(coreDir);
 
 console.log("② 逐文件覆盖与行数");
-const ROW = /^\|\s*`(backend\/ai\/src\/core\/[^`]+)`\s*\|\s*(\d+)\s*\|\s*([^|]+?)\s*\|/gm;
+/**
+ * 清单里的一行（**整行**都要 ⇒ 后面按格取字段）。
+ *
+ * ⚠️ 分类那一格可能带 markdown 强调（`**必须留**`）⇒ 取值前先去掉 `*`。
+ */
+const ROW = /^\|\s*`(backend\/ai\/src\/core\/[^`]+)`\s*\|\s*(\d+)\s*\|\s*([^|]*?)\s*\|(.*)$/gm;
 const rows = [];
 let match = ROW.exec(inventory);
 while (match !== null) {
 	rows.push({
 		file: match[1],
 		lines: Number(match[2]),
-		kind: match[3].trim(),
+		kind: match[3].replace(/[*`]/g, "").trim(),
 		raw: match[0],
 	});
 	match = ROW.exec(inventory);
@@ -149,11 +154,11 @@ for (const row of rows) {
  *
  * @param {string} raw 整行的 markdown 文本。
  * @param {number} index 格序号（0 = 文件列）。
- * @returns {string} 格里的文字（去掉了反引号与空白）。
+ * @returns {string} 格里的文字（去掉了强调标记与空白）。
  */
 function cell(raw, index) {
 	const parts = raw.split("|").slice(1);
-	return (parts[index] ?? "").replace(/`/g, "").trim();
+	return (parts[index] ?? "").replace(/[`*]/g, "").trim();
 }
 
 for (const row of rows) {
