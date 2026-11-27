@@ -99,6 +99,18 @@ const SECRET_PATTERNS = [
 ];
 
 /**
+ * 本仓的三个 lock（**相对仓根**）。
+ *
+ * ⚠️ git 的 pathspec 默认相对 **cwd** ⇒ 用它们时要加 `:(top)`
+ *    （在 `dsh/` 里跑时 `package-lock.json` 会指到 `dsh/package-lock.json` ⇒ 假红）。
+ */
+const LOCKS = [
+	"package-lock.json",
+	"frontend/package-lock.json",
+	"backend/ai/package-lock.json",
+];
+
+/**
  * 检查一个仓根（**真实仓根 / 临时副本**都能查 ⇒ 负例自测靠它）。
  *
  * @param {string} root 仓根。
@@ -348,12 +360,14 @@ console.log("⑥ 负例：依赖本仓的包（ai-admin-ai）⇒ 必须被抓（
  *      ⇒ 明明没改，却报「改了」⇒ **假红**）；
  *   ② 基线取 **merge-base**：本地是「分支点」⇒ 差异 = 这条分支的改动；
  *      CI 里 HEAD 是**合并提交**⇒ merge-base 就是 main 的 tip ⇒ 差异 = 这个 PR 的改动。
+ *   ③ pathspec 要写 **`:(top)<路径>`** ⇒ 相对**仓根**：git 的 pathspec 默认相对 **cwd**
+ *      ⇒ 在 `dsh/` 里跑时 `package-lock.json` 会指到 `dsh/package-lock.json`（**假红**），
+ *      而 `frontend/...`、`backend/ai/...` 会**匹配不到**（**假绿**）。
  *
  * ⚠️ 拿不到基线分支 ⇒ **只警告、不失败**（与仓里其它脚本同一口径）。
  */
 console.log("⑦ 本仓的三个 lock 没被改（⇒ 独立依赖不进本仓依赖树）");
 {
-	const locks = ["package-lock.json", "frontend/package-lock.json", "backend/ai/package-lock.json"];
 	let base = null;
 	try {
 		base = execFileSync("git", ["merge-base", "HEAD", "origin/main"], { encoding: "utf8" }).trim();
@@ -363,10 +377,13 @@ console.log("⑦ 本仓的三个 lock 没被改（⇒ 独立依赖不进本仓�
 	if (!base) {
 		console.log("  ⚠ 拿不到基线分支（origin/main）⇒ 跳过本项（只警告，不失败）");
 	} else {
-		for (const lock of locks) {
+		for (const lock of LOCKS) {
 			let diff = "";
 			try {
-				diff = execFileSync("git", ["diff", "--name-only", base, "HEAD", "--", lock], {
+				// ⚠️ **`:(top)`** ⇒ 路径**相对仓根**（git 的 pathspec 默认相对 **cwd**
+				//    ⇒ 在 `dsh/` 里跑时 `package-lock.json` 会指到 `dsh/package-lock.json`
+				//    ⇒ **假红**；而且另外两条路径会匹配不到 ⇒ **假绿**）。
+				diff = execFileSync("git", ["diff", "--name-only", base, "HEAD", "--", `:(top)${lock}`], {
 					encoding: "utf8",
 				});
 			} catch {
