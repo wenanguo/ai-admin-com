@@ -18,6 +18,7 @@
 | `reuse-core-example.cjs` | **真起 compose**验收「通用内核可复用」（示例系统 + 示例自己的空库 ⇒ 智能体清单能列 → 身份自己认 → 会话建得出 → **示例命令真能调**）⇒ 需要 docker |
 | `dsh-admin.static.cjs` | **静态断言**AI 管理面（issue #124）：既有 9 个端点一字未改 · 没有自造的管理面路由 · 4 个环境变量齐 · **admin 判定不许解 JWT 载荷** ⇒ **不需要 docker** |
 | `dsh-admin-runtime.cjs` | **运行时验收**AI 管理面（issue #124 阶段二）：真起 dsh web + 真挂反代 ⇒ 转发成功 · **Host 保留** · cookie Path 改写 · **fail closed** · 403 · 200 ⇒ **不需要模型凭据 / 不需要 pnpm / 不连数据库** |
+| `dsh-admin-proxy-chain.cjs` | **运行时验收**AI 管理面「浏览器这一层」（issue #181）：浏览器 → **前端 dev 代理（真的那条规则）** → AI 服务（真的反代）→ dsh web（真二进制）⇒ 两边的配置形状 + 拿到 dsh 的原生 SPA + **Host 保留** + cookie Path + 非管理员 **403** + 没判定器 **503** ⇒ **不需要模型凭据 / 不需要 pnpm / 不连数据库** |
 | `dsh-profile-refresh.cjs` | **运行时验收**dsh profile 的插件刷新（issue #158）：**改一次插件内容 ⇒ profile 里的拷贝跟着变** + 内容没变就不重装 ⇒ **不需要 pnpm / 不联网 / 不需要模型凭据** |
 | `dsh-skills-mcp-plugins.static.cjs` | **静态断言**技能 / MCP / 插件三层（issue #122 · #153）：**减法**清单（不许把我们自研的技能加载器长回来）⇒ **不需要 pnpm / 不联网 / 不需要模型凭据** |
 | `dsh-skills-mcp-plugins.runtime.cjs` | **运行时验收**技能 / MCP / 插件三层（issue #122 · #153）：**真起 dsh 运行时** ⇒ 技能目录**进了模型上下文** + `skill` 工具在 + **MCP 的写操作被闸门拦下**（拒绝 ⇒ 服务端一次都没被叫）+ 批准 ⇒ 真执行 ⇒ **不需要模型凭据 / 不连数据库**，但**要 pnpm、要联网** |
@@ -179,14 +180,48 @@ npm run e2e:dsh-admin:static
 它钉四件事：① **既有 9 个端点一字未改**（`core/routes/contract.ts` 逐条比对基线）；
 ② **没有自造的管理面路由**（dsh-admin 适配层里不许注册路由；核心里不许出现
 `mcp-servers` / `plugin-market` 这类 CRUD ⇒ 防「重复造轮子又长回来」）；
-③ **4 个环境变量**（`DSH_ADMIN_ENABLED` / `DSH_ADMIN_PORT` / `DSH_ADMIN_HOME` /
-`DSH_ADMIN_TRUSTED_HOST`）都有实现与文档；
+③ **4 个环境变量**（`AI_DSH_ADMIN_ENABLED` / `AI_DSH_ADMIN_PORT` / `AI_DSH_ADMIN_HOME` /
+`AI_DSH_ADMIN_TRUSTED_HOST`）都有实现与文档；
 ④ ⚠️ **admin 判定不许解 JWT 载荷**（载荷没验签 ⇒ 伪造 `{"access":"admin"}` 就能
 拿到 dsh 的完整管理 UI ⇒ **权限提升**）⇒ 反代里不许有解载荷的代码、不许有兜底判定、
 没注入判定器就得**拒绝**（fail closed）、且入口侧**真的**把判定器注进去了。
 
 ⚠️ 它**管不了**「dsh 的 UI 在 iframe 里长什么样」⇒ 那一条**只能人工验**
 （见 PR #147 的正文）。
+
+## AI 管理面「浏览器这一层」验收（issue #181）
+
+```bash
+node scripts/e2e/dsh-admin-proxy-chain.cjs        # 或：npm run e2e:dsh-admin:proxy-chain
+```
+
+⚠️ **不需要模型凭据、不需要 pnpm、不连数据库、不连 AiAdmin**（判定器是假的）。
+
+它把「浏览器 → dsh 的原生 UI」这条链**真跑一遍**：
+
+```
+浏览器 ──▶ ① 前端 dev 代理（**frontend/config/proxy.ts 里真的那条规则**）
+        ──▶ ② AI 服务（**core/adapter/dsh-admin/proxy.ts 里真的反代**）
+        ──▶ ③ dsh web（**@deepseek-ai/dsh 的真二进制** · 官方 web profile）
+```
+
+钉住这些（**缺一条就红**）：
+
+| # | 断言 |
+| -- | ---- |
+| ① | nginx 模板有 `location /dsh-admin`：`proxy_pass` **不带 URI 部分**（前缀原样透传）· 保留 `Host` · WS 升级头 |
+| ② | nginx 主配置有 `map $http_upgrade $connection_upgrade`（WS 升级要它）|
+| ③ | 前端 dev 段有 `/dsh-admin` 规则：target 指向 AI 服务 · **不剥前缀** · `changeOrigin: false`（保留 Host）· `ws: true` |
+| ④ | 两边的**前缀一致**（前端规则的 key 与 nginx 的 location 都是 `/dsh-admin`）|
+| ⑤ | `frontend/` 下**只**改了 `config/proxy.ts`（issue 的硬要求：前端 0 业务改动）|
+| ⑥ | 穿过两层 ⇒ 拿到 **dsh 的 SPA HTML**（200 · `<base href="./">` ⇒ iframe 里的资源走 `/dsh-admin/` ⇒ 不白屏）|
+| ⑦ | **Host 一路保留**到 dsh（cookie 载荷里的 authority 是我们给的那个 ⇒ 证明没被改写成 127.0.0.1）|
+| ⑧ | cookie 的 `Path` 仍是 `/dsh-admin/`（iframe 的 cookie 作用域）|
+| ⑨ | **非管理员 ⇒ 403** |
+| ⑩ | **没注入判定器 ⇒ 503**（fail closed）|
+
+⚠️ 第 ⑤ 条要拿得到基线分支（`origin/main`）⇒ 浅克隆时**只警告并跳过**（不误报）。
+
 
 ## dsh profile 插件刷新验收（issue #158）
 
