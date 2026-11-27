@@ -12,13 +12,16 @@
 ## 状态
 
 **已完成**（守卫 + CI + 负例自测 + 修一处真漂移 ⇒ PR #201 已开，**未合并** ⇒ 等人拍板）。
+⇒ issue #194 上已留评论（做了什么 / 怎么验 / PR 号）⇒ 标签保持 `in-progress`（合并后 PR 的 `Closes #194` 自动关单）。
 
 ## 已完成
 
 | 提交 | 做了什么 |
 | ---- | -------- |
 | `b364076` | **骨架**：守卫脚本（`scripts/e2e/agent-tools-whitelist.static.cjs`）+ 接进 CI（`agent-tools-whitelist` job）+ npm 脚本 `e2e:agent-tools:static` |
-| （本 PR 后续提交） | 守卫做实：默认插件识别 / 插件 id 撞车检查 / 报错点名「哪个名字·哪个智能体·怎么改」/ 负例自测（改坏 ⇒ 红 ⇒ 改回 ⇒ 绿）/ 修真漂移（`agents/sample/agent.yaml`）/ `agents/README.md` 补口径 |
+| `edd49fc` | **守卫做实**：默认插件识别（读 `src/plugins.ts` 的注册顺序）/ 插件 id 撞车检查 / 报错点名「哪个名字·哪个智能体·怎么改」/ 负例自测（改坏 ⇒ 红 ⇒ 改回 ⇒ 绿）/ 修真漂移（`agents/sample/agent.yaml`）/ `agents/README.md` 补口径 |
+| `909cb76` | 交接文档（本文件） |
+| `a5614e8` | 报错去重：显式写的插件压根不存在时，只报规则 ④（别再报「属于别的插件」） |
 
 **交付物**：
 
