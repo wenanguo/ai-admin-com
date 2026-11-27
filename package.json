@@ -39,6 +39,7 @@
     "e2e:dsh:standalone": "node scripts/e2e/dsh-standalone.cjs",
     "e2e:mcp:tools": "node scripts/e2e/mcp-tools-snapshot.static.cjs",
     "e2e:agent-tools:static": "node scripts/e2e/agent-tools-whitelist.static.cjs",
+    "e2e:gate-policy:static": "node scripts/e2e/gate-policy.static.cjs",
     "mcp:snapshot": "node scripts/mcp/snapshot-aiadmin-tools.cjs",
     "check:dsh-boundary": "node scripts/check-dsh-boundary.cjs",
     "e2e:node-version:static": "node scripts/e2e/node-version.static.cjs",
