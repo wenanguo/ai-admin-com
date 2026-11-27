@@ -194,6 +194,45 @@ jobs:
       #    ⇒ 脚本自己会**先预热**（宽裕的 initialize 超时）⇒ 第一次也是绿的。
       - run: node ../../scripts/e2e/dsh-skills-mcp-plugins.runtime.cjs
 
+  # 独立 dsh 项目（issue #183）—— **静态验收 + 真起 dsh**。
+  #
+  #   ① 静态：自己的清单 / 自己的 lock / 自己的 profile / 自己的镜像
+  #      · 外部插件按 `file:` 引用（**不复制源码**）· 凭据**只走环境变量** · 文档可执行
+  #      · **本仓的三个 lock 一个字节没动**（⇒ 独立依赖不进本仓依赖树）
+  #   ② 运行时：**真起 dsh 子进程** ⇒ 模型真的被调用（脚本自带**假模型服务** ⇒ 不花钱）
+  #
+  # ⚠️ **要 pnpm**（dsh 的 profile 是个独立的 pnpm 工程 ⇒ 插件要装进去）
+  #    ⇒ 与「静态验收」最大的不同：**要联网**（pnpm 从 npm 拉插件的依赖）。
+  # ⚠️ **不需要模型凭据、不连数据库** ⇒ 花钱的是 0。
+  dsh-standalone:
+    name: 独立 dsh 项目（静态 + 真起 dsh）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: dsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # ⚠️ **fetch-depth: 0** ⇒ 拿得到基线分支（origin/main）
+        #    ⇒ 「本仓的三个 lock 没被改」那条断言才有效（否则脚本只警告并跳过）。
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: dsh/package-lock.json
+      # ⚠️ **钉住 npm 版本**（= 本仓 lock 的生成版本）⇒ 装出的树与 lock、与镜像完全一致。
+      - run: npm install -g npm@10.9.9
+      # ① 静态验收（**不装依赖、不联网、不需要凭据** ⇒ 任何 runner 都能跑）
+      - run: node ../scripts/e2e/dsh-standalone.static.cjs
+      - run: npm ci
+      # ⚠️ **pnpm 的版本要与镜像里那个一致**（`dsh/Dockerfile` ⇒ `pnpm@11.22.0`）
+      #    ⇒ 不然「本地能装、CI 装不上」⇒ 验收变成薛定谔的。
+      - run: npm install -g pnpm@11.22.0 && pnpm -v
+      # ② 运行时验收（真起 dsh ⇒ 模型真的被调用 ⇒ 答案真的回来）
+      - run: node ../scripts/e2e/dsh-standalone.cjs
+
   lint:
     runs-on: ubuntu-latest
     steps:

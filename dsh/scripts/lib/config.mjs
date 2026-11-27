@@ -93,9 +93,9 @@ export function loadConfig(env = process.env) {
 		/** 系统提示词文件（**可选**）。 */
 		systemPromptFile: env.STANDALONE_SYSTEM_PROMPT_FILE ?? '',
 		/** 上下文窗口（token）。 */
-		contextWindow: numberEnv(env.STANDALONE_CONTEXT_WINDOW, 262144),
+		contextWindow: numberEnv(env, 'STANDALONE_CONTEXT_WINDOW', 262144),
 		/** 单次输出上限（token）。 */
-		maxTokens: numberEnv(env.STANDALONE_MAX_TOKENS, 32768),
+		maxTokens: numberEnv(env, 'STANDALONE_MAX_TOKENS', 32768),
 	}
 }
 
