@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render } from 'vitest-browser-react';
 import type { RoleOut } from '@/services/api/system/types';
+import {
+  submitButtonState,
+  waitForSubmitButtonReady,
+} from '@root/tests/modal-submit';
 import RolePermissionModal, { RolePermissionForm } from './PermissionModal';
 
 /**
@@ -186,33 +190,18 @@ function payloadOf(mock: { mock: { calls: unknown[][] } }) {
 const SUBMIT_TIMEOUT_MS = 10_000;
 
 /**
- * 等「提交按钮已经落在弹窗底部的操作区里」。
+ * ⚠️ **点「确定」之前一律要过这一关**（issue #193）。
  *
- * ⚠️ **为什么必须等**（issue #154 的真因之一）：
- * ProComponents 的 `ModalForm` 挂载时会把提交按钮**先 inline 渲染在表单旁边**，
- * 等 footer 的 ref 挂上后再 `forceUpdate`、用 portal **搬进 footer**
- * ⇒ 中间 **DOM 节点会被换掉一次**
- * （见 `@ant-design/pro-components` → `form/layouts/_shared/useOverlayForm`
- * 的 `contentRender`：没有 `footerRef.current` 时直接渲染 `submitterDom`，
- * 有了就 `createPortal(submitterDom, footerRef.current)`）。
+ * 这个文件里所有「点确定」的地方都必须先等
+ * `waitForSubmitButtonReady()` —— 它等的是**状态**
+ * （弹窗的入场动画结束了、按钮已经在 footer 里、按钮没被禁用），
+ * 不是时间。
  *
- * ⇒ 等这一层，保证「点到的那个节点**就是最终那个**」。
- *
- * ⚠️ 等的是**状态**（按钮的最终位置），不是时间 ⇒ **不是 sleep，也不是放宽超时**。
- * ⚠️ `timeout` 是「状态等待的**上限**」：状态在 ~1ms 内就达成（实测），
- *    给 10s 只是为了 CI 慢时不误判（跟 `SUBMIT_TIMEOUT_MS` 同一个约定）。
+ * 详见 `@root/tests/modal-submit` 的注释：
+ * #154 等的是「按钮在不在 footer 里」，而那件事发生在**挂载那一刻**，
+ * 比入场动画**早得多** ⇒ #154 漏掉了「弹窗还在动」这半个窗口，
+ * ⇒ CI 上偶发「点了确定没提交」（issue #193）。
  */
-async function waitForSubmitButtonInFooter() {
-  await expect
-    .poll(
-      () =>
-        [...document.querySelectorAll('.ant-modal-footer button')].some(
-          (button) => /确\s*认/.test(button.textContent ?? ''),
-        ),
-      { timeout: SUBMIT_TIMEOUT_MS },
-    )
-    .toBe(true);
-}
 
 describe('角色授权弹窗的预填', () => {
   beforeEach(() => {
@@ -281,6 +270,7 @@ describe('角色授权弹窗的预填', () => {
       .toHaveAttribute('aria-checked', 'true');
 
     // 提交(antd 会在两个汉字之间插空格 ⇒ 「确 认」)
+    await waitForSubmitButtonReady();
     await getByRole('button', { name: /确\s*认/ }).click();
 
     await vi.waitFor(
@@ -323,11 +313,12 @@ describe('角色授权弹窗的预填', () => {
       <RolePermissionModal open record={record} onOpenChange={() => {}} />,
     );
 
-    // ⚠️ **等提交按钮已经在弹窗 footer 里**（真因见 `waitForSubmitButtonInFooter` 的注释）：
+    // ⚠️ **等「确定」按钮可以安全点**（真因见 `@root/tests/modal-submit`）：
     //    ProComponents 的 `ModalForm` 挂载时会先把按钮 inline 渲染在表单旁边,
-    //    随后 portal 搬进 footer ⇒ **DOM 节点会被换掉一次**。
-    //    ⇒ 等这一层，保证点到的那个节点**就是最终那个**。
-    await waitForSubmitButtonInFooter();
+    //    随后 portal 搬进 footer ⇒ **DOM 节点会被换掉一次**;
+    //    搬完之后弹窗还要走一遍入场动画 ⇒ **动画期间按钮还在动**。
+    //    ⇒ 两个窗口都等掉,保证点下去的那一下打在最终那个、不动的节点上。
+    await waitForSubmitButtonReady();
 
     await getByRole('button', { name: /确\s*认/ }).click();
 
@@ -349,7 +340,7 @@ describe('角色授权弹窗的预填', () => {
     );
 
     // 提交按钮最终在 footer 里（挂载时它会被 portal 搬一次 ⇒ 节点会换）
-    await waitForSubmitButtonInFooter();
+    await waitForSubmitButtonReady();
 
     // 搬干净了：整个弹窗里**只有一个**「确认」按钮，且它在 footer 里
     const confirms = [...document.querySelectorAll('button')].filter((button) =>
@@ -389,6 +380,7 @@ describe('角色授权弹窗的预填', () => {
       .element(getByRole('treeitem', { name: '角色管理' }))
       .toHaveAttribute('aria-checked', 'true');
 
+    await waitForSubmitButtonReady();
     await getByRole('button', { name: /确\s*认/ }).click();
 
     await vi.waitFor(
@@ -433,6 +425,7 @@ describe('角色授权弹窗的预填', () => {
       .element(getByRole('treeitem', { name: '角色管理' }))
       .toHaveAttribute('aria-checked', 'false');
 
+    await waitForSubmitButtonReady();
     await getByRole('button', { name: /确\s*认/ }).click();
 
     await vi.waitFor(
@@ -495,6 +488,7 @@ describe('角色授权弹窗的预填', () => {
     const confirm = getByRole('button', { name: /确\s*认/ });
     await expect.element(confirm).toBeEnabled();
 
+    await waitForSubmitButtonReady();
     await confirm.click();
 
     await vi.waitFor(
@@ -532,6 +526,15 @@ describe('角色授权弹窗的预填', () => {
       .element(getByRole('treeitem', { name: '角色管理' }))
       .toHaveAttribute('aria-checked', 'false');
 
+    // ⚠️ **这一行就是 issue #193 的修复点**。
+    //    换角色 ⇒ `key` 变了 ⇒ 整个表单（含 antd Modal）重建
+    //    ⇒ 弹窗**重新走一遍入场动画**。
+    //    老写法在这儿直接点 ⇒ 点下去的那一下可能打在「还在缩放/还在动」的
+    //    弹窗上 ⇒ 点击丢失 ⇒ `setRolePermission` 一直没被调用
+    //    ⇒ CI 上偶发红（run 45926795199：这条用例 11330ms 超时）。
+    //    ⇒ 这里等的是**状态**（动画结束、按钮已在 footer、按钮没禁用），
+    //    不是「多等一会儿」。
+    await waitForSubmitButtonReady();
     await getByRole('button', { name: /确\s*认/ }).click();
 
     await vi.waitFor(
@@ -625,5 +628,116 @@ describe('角色授权表单的漂移保护', () => {
 
     // 一个请求都不该发出去
     expect(mocks.setRolePermission).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ## 原竞态的复现（issue #193）
+ *
+ * 这组用例回答一个問題:**「点了确定没提交」到底是怎么发生的？**
+ *
+ * ### 竞态长什么样
+ *
+ * 换角色 ⇒ `RolePermissionModal` 的 `key` 变了 ⇒ 整个 `RolePermissionForm`
+ * （连同 antd 的 Modal）**重建** ⇒ 弹窗**重新走一遍入场动画**
+ * （antd 的 zoom 动效，是 **CSS animation**：`animation-duration: 0.3s`）。
+ *
+ * 在这段动画里，弹窗整体在缩放（`transform` 一直在变），
+ * 底部的「确定」按钮也跟着在动 ⇒ **点下去的那一下可能落空**
+ * ⇒ 提交没发生、也不报错 ⇒ 用例只能等到超时才红。
+ *
+ * ### 怎么把它变成「必然撞上」
+ *
+ * ⚠️ 正常速度下这个窗口只有 ~300ms，而且**只有 CI 上机器被抢时才撞得上**
+ *    （本地 45/45 全绿，CI 约 1/5 红）⇒ 光靠「多跑几遍」是碰运气。
+ * ⇒ 这里用一条 CSS 把入场动画**拉长到 2 秒**
+ *    ⇒ 竞态窗口从「偶发」变成「**必然**」⇒ 竞态可以被**确定地复现**。
+ *
+ * ⇒ 这就是 issue #193 要求的「**能复现原竞态的负例**」：
+ *    它把「动画期间不许点确定」这条**守卫**钉住了 ——
+ *    谁把这一层的等待去掉，它立刻红。
+ */
+describe('原竞态的复现（issue #193）', () => {
+  /** 把 antd 弹窗的入场动画拉长到 2 秒 */
+  const SLOW_MOTION_MS = 2_000;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.setRolePermission.mockResolvedValue(envelope(null));
+    mocks.getCurrentUser.mockResolvedValue(envelope({ menus: menuTree }));
+    mocks.getDeptTree.mockResolvedValue(
+      envelope([{ id: 1, name: '总公司', code: 'hq', children: [] }]),
+    );
+
+    // ⚠️ antd 的 zoom 动效是 **CSS animation**（不是 transition）
+    //    ⇒ 要改的是 `animation-duration`。
+    const style = document.createElement('style');
+    style.dataset.slowMotion = '1';
+    style.textContent = `.ant-modal { animation-duration: ${SLOW_MOTION_MS}ms !important; }`;
+    document.head.append(style);
+  });
+
+  afterEach(async () => {
+    await cleanup();
+    document
+      .querySelectorAll('style[data-slow-motion]')
+      .forEach((node) => {
+        node.remove();
+      });
+  });
+
+  it('换角色后弹窗重新入场 ⇒ 动画没结束前「确定」不许被点', async () => {
+    const { rerender } = await render(
+      <RolePermissionModal open record={record} onOpenChange={() => {}} />,
+    );
+
+    // 先等第一次入场动画结束（否则分不清是「哪一次」动画）
+    await waitForSubmitButtonReady();
+    expect(submitButtonState()).toBe('ready');
+
+    // 换角色 ⇒ 弹窗重建 ⇒ 入场动画**重新开始**
+    await rerender(
+      <RolePermissionModal open record={otherRecord} onOpenChange={() => {}} />,
+    );
+
+    // ⇒ **竞态窗口确实存在**（这就是原竞态的成因）
+    //    老写法在这个窗口里直接点「确定」⇒ 点击可能落空 ⇒ 没提交。
+    expect(submitButtonState()).toBe('animating');
+
+    // ⇒ **守卫不放行**：动画没结束就不许点。
+    //    （动画有 2 秒 ⇒ 300ms 内绝不可能变成 ready）
+    const outcome = await Promise.race([
+      waitForSubmitButtonReady({ timeout: 5_000 }).then(() => '放行了'),
+      new Promise((resolve) =>
+        setTimeout(() => resolve('还在等'), 300),
+      ),
+    ]);
+    expect(outcome).toBe('还在等');
+  });
+
+  it('动画结束后点确定 ⇒ 真的提交（守卫不会把用例卡死）', async () => {
+    const { getByRole, rerender } = await render(
+      <RolePermissionModal open record={record} onOpenChange={() => {}} />,
+    );
+
+    await rerender(
+      <RolePermissionModal open record={otherRecord} onOpenChange={() => {}} />,
+    );
+
+    // 等动画结束 ⇒ 状态变成 ready（等的是状态，不是时间）
+    await waitForSubmitButtonReady();
+    expect(submitButtonState()).toBe('ready');
+
+    await getByRole('button', { name: /确\s*认/ }).click();
+
+    await vi.waitFor(
+      () => {
+        expect(mocks.setRolePermission).toHaveBeenCalled();
+      },
+      { timeout: SUBMIT_TIMEOUT_MS },
+    );
+
+    const payload = payloadOf(mocks.setRolePermission);
+    expect(payload.role_ids).toEqual([8]);
   });
 });

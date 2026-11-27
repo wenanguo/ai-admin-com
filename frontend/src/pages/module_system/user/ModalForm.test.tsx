@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { cleanup, render } from 'vitest-browser-react';
 import type { UserCreateParams } from '@/services/api/system/types';
+import { waitForSubmitButtonReady } from '@root/tests/modal-submit';
 import UserModalForm from './ModalForm';
 
 /**
@@ -106,6 +107,12 @@ describe('用户表单的部门字段', () => {
     await getByLabelText('密码').fill('Passw0rd!');
 
     // 提交(antd 会在两个汉字之间插空格 ⇒ 「确 认」)
+    // ⚠️ **先等「确定」按钮可以安全点**（issue #193）：
+    //    ModalForm 挂载时会把提交按钮先 inline 渲染、随后 portal 搬进 footer
+    //    （DOM 节点会被换掉一次），搬完之后弹窗还要走一遍入场动画
+    //    ⇒ 动画期间按钮还在动 ⇒ 这时候点下去可能点空。
+    //    ⇒ 这里等的是**状态**（动画结束 + 按钮已在 footer + 盒子不再移动）。
+    await waitForSubmitButtonReady();
     await getByRole('button', { name: /确\s*认/ }).click();
 
     await vi.waitFor(() => {
