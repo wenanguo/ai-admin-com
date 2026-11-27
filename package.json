@@ -35,6 +35,8 @@
     "e2e:dsh-admin:static": "node scripts/e2e/dsh-admin.static.cjs",
     "e2e:dsh-admin:runtime": "node scripts/e2e/dsh-admin-runtime.cjs",
     "e2e:dsh-admin:proxy-chain": "node scripts/e2e/dsh-admin-proxy-chain.cjs",
+    "e2e:mcp:tools": "node scripts/e2e/mcp-tools-snapshot.static.cjs",
+    "mcp:snapshot": "node scripts/mcp/snapshot-aiadmin-tools.cjs",
     "check:dsh-boundary": "node scripts/check-dsh-boundary.cjs",
     "e2e:node-version:static": "node scripts/e2e/node-version.static.cjs",
     "check:reuse-core": "node scripts/check-core-reuse.cjs",

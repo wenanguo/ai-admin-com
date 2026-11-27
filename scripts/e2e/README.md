@@ -22,6 +22,7 @@
 | `dsh-profile-refresh.cjs` | **运行时验收**dsh profile 的插件刷新（issue #158）：**改一次插件内容 ⇒ profile 里的拷贝跟着变** + 内容没变就不重装 ⇒ **不需要 pnpm / 不联网 / 不需要模型凭据** |
 | `dsh-skills-mcp-plugins.static.cjs` | **静态断言**技能 / MCP / 插件三层（issue #122 · #153）：**减法**清单（不许把我们自研的技能加载器长回来）⇒ **不需要 pnpm / 不联网 / 不需要模型凭据** |
 | `dsh-skills-mcp-plugins.runtime.cjs` | **运行时验收**技能 / MCP / 插件三层（issue #122 · #153）：**真起 dsh 运行时** ⇒ 技能目录**进了模型上下文** + `skill` 工具在 + **MCP 的写操作被闸门拦下**（拒绝 ⇒ 服务端一次都没被叫）+ 批准 ⇒ 真执行 ⇒ **不需要模型凭据 / 不连数据库**，但**要 pnpm、要联网** |
+| `mcp-tools-snapshot.static.cjs` | **静态断言**MCP 工具快照（issue #182）：技能正文里的**工具名 / 参数名 / 必填 / 类型**必须与入库的 MCP 工具快照一致（`backend/ai/mcp/aiadmin-tools.snapshot.json`）⇒ 后端改了工具而技能没改 ⇒ 红；自带**负例自测**（改坏快照 ⇒ 必红）⇒ **不联网 / 不需要依赖 / 不需要模型凭据** |
 
 ## 用法
 

@@ -100,7 +100,7 @@ function rel(file) {
 console.log("① 技能资产（`backend/ai/.pi/skills/**`）");
 const skillsDir = path.join(aiRoot, ".pi", "skills");
 const skillFiles = filesOf(skillsDir, [".md"]).filter((file) => file.endsWith("SKILL.md"));
-check("技能文件都在（三个样板）", skillFiles.length === 3, `找到 ${skillFiles.length} 个`);
+check("技能文件都在（四个样板）", skillFiles.length === 4, `找到 ${skillFiles.length} 个`);
 for (const file of skillFiles) {
 	const source = read(file) ?? "";
 	const hasFrontmatter = /^---\r?\n[\s\S]*?\r?\n---/.test(source);
