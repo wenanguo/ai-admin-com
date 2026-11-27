@@ -130,11 +130,31 @@ npm run chat -- "用一句话回答：1+1 等于几？"
 ```bash
 export AI_DSH_BRIDGE_URL=http://127.0.0.1:3100/internal/dsh/commands
 export AI_DSH_BRIDGE_SECRET=与 AI 服务一致的进程内密钥
-export AI_DSH_SYSTEM_PROMPT=$(base64 -w0 prompt.md)   # 可选：进模型上下文
+export AI_DSH_CONVERSATION_ID=可选（回话 id）
+export AI_DSH_SYSTEM_PROMPT=$(base64 < prompt.md | tr -d '\n')   # 可选：进模型上下文
 ```
 
 ⚠️ **闸门照旧**：「新增放行、修改要点头」的口径在 **AiAdmin 那边**算 ⇒
 本项目**不复制**那份口径 ⇒ 插件只是**问**，回答由 AiAdmin 给。
+
+**插件认识的全部环境变量**（都在 `backend/ai/dsh-plugin` 里定义 ⇒ 名字照抄即可）：
+
+| 变量 | 形状 | 干什么 |
+| ---- | ---- | ------ |
+| `AI_DSH_BRIDGE_URL` | 字符串 | 命令桥的地址（AiAdmin 的 AI 服务） |
+| `AI_DSH_BRIDGE_SECRET` | 字符串 | 命令桥的进程内密钥 |
+| `AI_DSH_CONVERSATION_ID` | 字符串 | 回话 id（回调用） |
+| `AI_DSH_SYSTEM_PROMPT` | **base64** 文本 | 系统提示词（进模型上下文） |
+| `AI_DSH_MCP_SERVERS` | **base64** JSON 数组 | 要挂的 MCP 服务器清单 |
+| `AI_DSH_TOOLS` | **base64** JSON 数组 | 工具目录 |
+| `AI_DSH_DEBUG_LOG` | 路径 | 插件的调试日志写到这个文件 |
+
+⚠️ 这几个变量**只在进程环境里**（`dsh/scripts/lib/runtime.mjs` 负责透传）⇒ **不落盘**。
+⚠️ **多行/JSON 一律 base64**（免得换行与编码出问题）⇒ 例如：
+
+```bash
+export AI_DSH_MCP_SERVERS=$(printf '%s' '[{"name":"aiadmin","url":"http://127.0.0.1:3100/mcp"}]' | base64 | tr -d '\n')
+```
 
 ## 10. 自己的 profile 长什么样
 
