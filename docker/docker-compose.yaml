@@ -78,6 +78,19 @@ services:
       AI_THINKING_LEVEL: "${AI_THINKING_LEVEL:-off}"
       # 允许跨域的前端源
       ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}"
+      # ── AI 管理面（dsh 自带的 Web UI；issue #181）──
+      # ⚠️ **缺省关**（拍板见 backend/ai/README.md 的「AI 管理面」一节）
+      #    ⇒ 不开就不起 dsh web、也没有 /dsh-admin 这条路由（零影响）。
+      AI_DSH_ADMIN_ENABLED: "${AI_DSH_ADMIN_ENABLED:-0}"
+      # ⚠️ **必须等于浏览器看到的 authority**（对外那个域名）⇒ 不对就每个 API 都 403
+      #    （nginx 保留 Host ⇒ dsh 看到的就是浏览器那个）。
+      AI_DSH_ADMIN_TRUSTED_HOST: "${AI_DSH_ADMIN_TRUSTED_HOST:-127.0.0.1:3100}"
+      # dsh 的 home（**独立目录**）⇒ 挂卷才不丢管理面里装的插件 / 技能。
+      AI_DSH_ADMIN_HOME: "${AI_DSH_ADMIN_HOME:-/app/.dsh-home/dsh-admin}"
+    volumes:
+      # ⚠️ **管理面的 dsh home**（插件 / 技能 / 配置都住这儿）
+      #    ⇒ 不挂卷 ⇒ 重装容器 ⇒ 管理面里装的东西全没了。
+      - dsh-admin-home:/app/.dsh-home/dsh-admin
     networks:
       - aiadmin
     healthcheck:
@@ -104,3 +117,8 @@ services:
 networks:
   aiadmin:
     driver: bridge
+
+volumes:
+  # ⚠️ **AI 管理面的 dsh home**（issue #181）⇒ 命名卷（不是宿主机目录 ⇒ 不用管权限/路径）
+  #    管理面里装的插件 / 技能都住这儿 ⇒ 不挂卷 ⇒ 重装容器就没了。
+  dsh-admin-home:
