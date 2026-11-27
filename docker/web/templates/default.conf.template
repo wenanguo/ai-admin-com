@@ -10,10 +10,11 @@
 #    变量未定义时 envsubst **不替换** ⇒ nginx 启动会报
 #    `unknown "AIADMIN_PROXY_TARGET" variable` ⇒ 容器起不来。
 #
-# ⚠️ **三条路由的口径必须与开发期代理一致**（frontend/config/proxy.ts）：
-#   · `/api/`    → AiAdmin 后端，**不 rewrite**（baseURL 已含 /api/v1）
-#   · `/ai-api/` → AI 服务，**去掉 `/ai-api` 前缀**
-#   · `/`        → 前端静态 + SPA fallback
+# ⚠️ **四条路由的口径必须与开发期代理一致**（frontend/config/proxy.ts）：
+#   · `/api/`      → AiAdmin 后端，**不 rewrite**（baseURL 已含 /api/v1）
+#   · `/ai-api/`   → AI 服务，**去掉 `/ai-api` 前缀**
+#   · `/dsh-admin` → AI 服务（dsh 自带的 Web UI），**前缀原样透传**
+#   · `/`          → 前端静态 + SPA fallback
 # ============================================================
 
 server {
@@ -109,6 +110,41 @@ server {
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
+        proxy_buffering off;
+        proxy_cache     off;
+        proxy_read_timeout  3600s;
+        proxy_send_timeout  3600s;
+    }
+
+    # ──────────── AI 管理面：/dsh-admin ────────────
+    #
+    # dsh 自带的 Web UI（插件市场 / 技能 / MCP 管理）⇒ 前端 admin 页用一个
+    # iframe 嵌它（`frontend/src/pages/ai/admin/index.tsx`）⇒ iframe 的
+    # `src` 是 `/dsh-admin/` ⇒ **这一层没接 ⇒ iframe 空白**（issue #181）。
+    #
+    # ⚠️ **前缀不许去掉**：AI 服务那条路由就叫 `/dsh-admin`
+    #    （`backend/ai/src/core/app.ts`：`app.use('/dsh-admin', proxy)`）
+    #    ⇒ `proxy_pass` **不带 URI 部分**（写成 `.../` 会把 `/dsh-admin` 吃掉 ⇒ 404）。
+    #
+    # ⚠️ **保留 Host**（`$host`）：dsh 的栅栏会比对 authority
+    #    （**浏览器看到的那个** host[:port]）⇒ 改写成上游 ⇒ 每个 API 都 403
+    #    ⇒ 配套 AI 服务那边的 `AI_DSH_ADMIN_TRUSTED_HOST`。
+    #
+    # ⚠️ **location 不带尾斜杠** ⇒ `/dsh-admin` 与 `/dsh-admin/…` 都命中
+    #    （nginx 的前缀匹配）⇒ 少一个「少写斜杠就落到 SPA fallback」的坑。
+    location /dsh-admin {
+        proxy_pass http://${AI_UPSTREAM};
+
+        proxy_http_version 1.1;
+        # dsh 的实时通道（WS）⇒ 不转的话页面能开、但不刷新
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # 实时通道不缓冲、不缓存
         proxy_buffering off;
         proxy_cache     off;
         proxy_read_timeout  3600s;

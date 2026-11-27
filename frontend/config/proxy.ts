@@ -56,8 +56,12 @@ if (AIADMIN_INSECURE_TLS) {
  * AI 服务（`D:/project/ai-admin-ai`）的地址。
  *
  * 它是**本地独立进程**（3100 端口），跟 AiAdmin 的线上后端不是一回事。
+ *
+ * ⚠️ 可用 `AI_SERVICE_TARGET` 覆盖（本地把 AI 服务跑在别的端口时用；
+ *    验收脚本也靠它把代理指向随机端口 ⇒ 不用抢 3100）。
  */
-const AI_SERVICE_TARGET = 'http://localhost:3100';
+const AI_SERVICE_TARGET =
+  process.env.AI_SERVICE_TARGET || 'http://localhost:3100';
 
 /**
  * AI 服务的代理规则。
@@ -104,7 +108,7 @@ const PROXY_AI_API_OFF = ['off', 'false', '0'].includes(
  * 一条代理规则(http-proxy-middleware 的 Options 子集)。
  *
  * ⚠️ 这只是 **AiAdmin 那条规则之外的子集**:只覆盖 AI 服务规则用到的字段
- * (`target` / `changeOrigin` / `pathRewrite`)。
+ * (`target` / `changeOrigin` / `pathRewrite` / `ws`)。
  * AiAdmin 的 `/api/` 规则多一个 `secure` 字段(证书校验),
  * 而本类型**没有** `secure` ⇒ 本类型**不能**用来标注 `aiadminProxy`,
  * 也不该随手给它加上 `secure`(AI 服务走 http,加了就多余)。
@@ -113,6 +117,8 @@ type ProxyRule = {
   target: string;
   changeOrigin: boolean;
   pathRewrite?: Record<string, string>;
+  /** 转发 **WebSocket 升级**（dsh 的实时通道用它）。 */
+  ws?: boolean;
 };
 
 /**
@@ -131,6 +137,39 @@ const aiServiceProxy: Record<string, ProxyRule> = PROXY_AI_API_OFF
       },
     };
 
+/**
+ * AI 管理面（dsh 自带的 Web UI）的代理规则。
+ *
+ * ## 这条为什么必须有（issue #181）
+ *
+ * 管理面页面与菜单**早就在**（`src/pages/ai/admin/`），后端那条反代也**早就在**
+ * （`backend/ai/src/core/app.ts`：`app.use('/dsh-admin', proxy)`）⇒
+ * 但**浏览器这一层没接** ⇒ iframe 拿到的是前端的 SPA fallback（空白/404）⇒
+ * **管理面根本打不通**。本条就是补上浏览器这一层。
+ *
+ * ## 三个口径（与后端/nginx 逐字一致）
+ *
+ * | 口径 | 为什么 |
+ * | ---- | ------ |
+ * | **前缀不许去掉**（没有 `pathRewrite`）| AI 服务那条路由就叫 `/dsh-admin` ⇒ 路径原样透传 ⇒ AI 服务自己剥前缀转给 dsh web |
+ * | **`changeOrigin: false`**（保留 Host）| dsh 的栅栏会比对 authority（**浏览器看到的那个** host[:port]）⇒ 改写成 127.0.0.1 ⇒ 每个 API 都 403 ⇒ 配套 `AI_DSH_ADMIN_TRUSTED_HOST` |
+ * | **`ws: true`** | dsh 的实时通道（不转的话页面能开、但不刷新）|
+ *
+ * ⚠️ 前缀用 `/dsh-admin`（**不带尾斜杠**）⇒ `/dsh-admin` 与 `/dsh-admin/…`
+ *    都命中（http-proxy-middleware 是**前缀匹配**）⇒ 少一个「少写斜杠就 404」的坑。
+ *
+ * ⚠️ 跟 `/ai-api/` 一样**受 `PROXY_AI_API` 开关管**（e2e 预览服务器不许依赖在线的 AI 服务）。
+ */
+const dshAdminProxy: Record<string, ProxyRule> = PROXY_AI_API_OFF
+  ? {}
+  : {
+      '/dsh-admin': {
+        target: AI_SERVICE_TARGET,
+        changeOrigin: false,
+        ws: true,
+      },
+    };
+
 /** AiAdmin 的代理规则（三个环境段一样）。 */
 const aiadminProxy = {
   '/api/': {
@@ -145,13 +184,16 @@ export default {
   dev: {
     ...aiadminProxy,
     ...aiServiceProxy,
+    ...dshAdminProxy,
   },
   test: {
     ...aiadminProxy,
     ...aiServiceProxy,
+    ...dshAdminProxy,
   },
   pre: {
     ...aiadminProxy,
     ...aiServiceProxy,
+    ...dshAdminProxy,
   },
 };
