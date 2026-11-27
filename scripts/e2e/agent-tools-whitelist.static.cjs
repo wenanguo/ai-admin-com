@@ -17,6 +17,8 @@
  * - 白名单漏了新命令 ⇒ 同上 ⇒ **命令凭空消失**。
  *
  * ⇒ 这正是 issue #169（`create_task` → `pm_create_task`）最容易踩的坑。
+ * ⇒ 而且界面上的「工具数」取的就是白名单长度（`core/config/catalog.ts`）
+ *    ⇒ 白名单漂移 ⇒ **界面也在骗人**。
  *
  * ## ⚠️ **离线**（不联网、不装依赖 ⇒ 任何 runner 都能跑）
  *
@@ -29,16 +31,31 @@
  * | # | 断言 |
  * | - | ---- |
  * | 1 | 白名单里的每个名字 ⇒ **必须**有某个插件提供（`export const ..._TOOL_NAME`） |
- * | 2 | 智能体挂了插件 X ⇒ 白名单里的名字 ⇒ **必须**属于 X（不许挂别的插件的命令） |
- * | 3 | 智能体挂了插件 X ⇒ X 的**每个**命令 ⇒ **必须**在它的白名单里（不许凭空消失） |
+ * | 2 | 白名单里的名字 ⇒ **必须**属于这个智能体**实际用的**那个插件（显式写的，或默认插件） |
+ * | 3 | 显式挂了插件 X 的智能体 ⇒ X 的**每个**命令 ⇒ **必须**在它的白名单里（不许凭空消失） |
  * | 4 | `plugin:` 写的插件名 ⇒ **必须**存在（写错 ⇒ 运行时启动即失败） |
- * | 5 | **负例自测**：改坏白名单 ⇒ 守卫必须红；改回 ⇒ 必须绿（证明它不是摆设） |
+ * | 5 | 两个插件不许用同一个 id（否则按名字取插件会取错） |
+ * | 6 | **负例自测**：改坏白名单 ⇒ 守卫必须红；改回 ⇒ 必须绿（证明它不是摆设） |
+ *
+ * ## 口径（为什么有的规则只对一部分智能体生效）
+ *
+ * - **规则 3 只对「显式写了 `plugin:`」的智能体生效**：
+ *   没写 `plugin:` 的智能体用**默认插件**（`core/session/agent-resolver.ts` 的 `pluginOf`）
+ *   ⇒ 允许它**一个工具都不要**（`qa` 就是「只会聊天」⇒ 白名单故意是空的）。
+ * - **规则 2 对两种智能体都生效**：白名单里的名字必须属于**实际用的**那个插件
+ *   ⇒ 否则它会被运行时过滤掉 ⇒ **静默**不注册。
+ *
+ * ## 已知边界（不在本守卫的范围里）
+ *
+ * - 插件里**声明了**常量但**没登记进** `commands` 的命令 ⇒ 本守卫看不出来
+ *   （声明即事实源 ⇒ 那是插件自己的事）。
  *
  * ## 用法
  *
  * ```bash
- * node scripts/e2e/agent-tools-whitelist.static.cjs          # 在仓根跑
+ * node scripts/e2e/agent-tools-whitelist.static.cjs                   # 在仓根跑
  * node scripts/e2e/agent-tools-whitelist.static.cjs --agents <目录>   # 换一份配置目录（负例自测用）
+ * node scripts/e2e/agent-tools-whitelist.static.cjs --plugins <目录>  # 换一份插件目录
  * ```
  */
 const fs = require("node:fs");
@@ -53,6 +70,8 @@ const aiRoot = path.join(repoRoot, "backend", "ai");
 const DEFAULT_AGENTS_DIR = path.join(aiRoot, "agents");
 /** 插件源码目录（插件 id = 目录名；目录里写了 `*_PLUGIN_ID` 常量则以它为准）。 */
 const PLUGINS_DIR = path.join(aiRoot, "src", "plugins");
+/** 插件注册入口（**默认插件 = 这里注册的第一个** ⇒ 与运行时同一个口径）。 */
+const PLUGINS_ENTRY = path.join(aiRoot, "src", "plugins.ts");
 /** MCP 工具快照（**只用来给报错加提示** ⇒ 没有也不影响判定）。 */
 const MCP_SNAPSHOT = path.join(aiRoot, "mcp", "aiadmin-tools.snapshot.json");
 
@@ -242,12 +261,14 @@ function collectAgents(agentsDir) {
  *    `export const <名字>_PLUGIN_ID = "..."` ⇒ 以那个为准。
  *
  * @param {string} pluginsDir 插件源码目录。
- * @returns {Map<string, {id: string, dirName: string, commands: Array<{name: string, file: string}>}>} 插件清单。
+ * @returns {{byId: Map<string, {id: string, dirName: string, commands: Array<{name: string, file: string}>}>, byDir: Map<string, string>, defaultId: string | undefined, notes: string[]}} 插件清单。
  */
 function collectPlugins(pluginsDir) {
-	const plugins = new Map();
+	const byId = new Map();
+	const byDir = new Map();
+	const notes = [];
 	if (!fs.existsSync(pluginsDir)) {
-		return plugins;
+		return { byId, byDir, defaultId: undefined, notes };
 	}
 	for (const entry of fs.readdirSync(pluginsDir, { withFileTypes: true })) {
 		if (!entry.isDirectory()) {
@@ -289,9 +310,58 @@ function collectPlugins(pluginsDir) {
 				commands.push({ name: nameMatch[1], file: rel(file) });
 			}
 		}
-		plugins.set(pluginId, { id: pluginId, dirName: entry.name, commands });
+		if (byId.has(pluginId)) {
+			notes.push(
+				`两个插件目录用了同一个插件 id「${pluginId}」（${byId.get(pluginId).dirName} 与 ${entry.name}）⇒ 按名字取插件会取错`,
+			);
+			continue;
+		}
+		byId.set(pluginId, { id: pluginId, dirName: entry.name, commands });
+		byDir.set(entry.name, pluginId);
 	}
-	return plugins;
+
+	return { byId, byDir, defaultId: detectDefaultPluginId(byDir, byId), notes };
+}
+
+/**
+ * **默认插件**（没写 `plugin:` 的智能体用的那个）。
+ *
+ * ⚠️ 口径必须与运行时一致（`core/plugins.ts` 的 `defaultPlugin()` = **注册的第一个**）：
+ *    入口 `src/plugins.ts` 里 `export const plugins = [createXxxPlugin()]` ⇒ 数组第一项。
+ *
+ * @param {Map<string, string>} byDir 目录名 ⇒ 插件 id。
+ * @param {Map<string, {id: string}>} byId 插件 id ⇒ 插件。
+ * @returns {string | undefined} 默认插件 id（认不出来 ⇒ undefined）。
+ */
+function detectDefaultPluginId(byDir, byId) {
+	const source = read(PLUGINS_ENTRY);
+	if (source !== undefined) {
+		// 工厂 ⇒ 目录（`import { createPmPlugin } from "./plugins/pm/index.ts"`）。
+		const factoryToDir = new Map();
+		const importPattern = /import\s*\{([^}]+)\}\s*from\s*"\.\/plugins\/([^/"]+)\//g;
+		let importMatch;
+		while ((importMatch = importPattern.exec(source)) !== null) {
+			for (const name of importMatch[1].split(",")) {
+				factoryToDir.set(name.trim(), importMatch[2]);
+			}
+		}
+		// 注册顺序（数组第一项 = 默认插件）。
+		const arrayBody = /export const plugins\s*:[^=]*=\s*\[([^\]]*)\]/.exec(source)?.[1];
+		const factory = arrayBody === undefined ? undefined : /create[A-Za-z0-9]*Plugin/.exec(arrayBody)?.[0];
+		if (factory !== undefined) {
+			const dirName = factoryToDir.get(factory);
+			// ⚠️ `byDir` 存的是「目录名 ⇒ 插件 id」⇒ 取出来就是 id。
+			const pluginId = dirName === undefined ? undefined : byDir.get(dirName);
+			if (pluginId !== undefined) {
+				return pluginId;
+			}
+		}
+	}
+	// ⚠️ 兜底：**只有一个插件** ⇒ 它就是默认插件。
+	if (byId.size === 1) {
+		return [...byId.keys()][0];
+	}
+	return undefined;
 }
 
 /**
@@ -319,24 +389,27 @@ function mcpToolNames() {
  * ⚠️ **纯函数**（只吃数据 ⇒ 负例自测可以直接喂「改坏的配置」）。
  *
  * @param {Array<{id: string | undefined, plugin: string | undefined, tools: string[], file: string, dirName: string}>} agents 智能体配置。
- * @param {Map<string, {id: string, dirName: string, commands: Array<{name: string, file: string}>}>} plugins 插件清单。
+ * @param {{byId: Map<string, {id: string, dirName: string, commands: Array<{name: string, file: string}>}>}} plugins 插件清单。
  * @returns {Array<{where: string, what: string, how: string[]}>} 失败清单（空数组 = 全过）。
  */
 function checkAgents(agents, plugins) {
 	const failures = [];
 	const mcpNames = mcpToolNames();
+	const byId = plugins.byId;
 
 	/** 所有插件的命令名（⇒ 白名单里的名字至少要有一个插件提供）。 */
 	const ownersOf = (name) =>
-		[...plugins.values()].filter((plugin) =>
+		[...byId.values()].filter((plugin) =>
 			plugin.commands.some((command) => command.name === name),
 		);
 
 	/** 一个插件的命令清单（人读）。 */
 	const commandList = (plugin) =>
-		plugin.commands.length === 0
-			? "（这个插件还没有命令）"
-			: plugin.commands.map((command) => command.name).join(" / ");
+		plugin === undefined
+			? "（没有）"
+			: plugin.commands.length === 0
+				? "（这个插件还没有命令）"
+				: plugin.commands.map((command) => command.name).join(" / ");
 
 	for (const agent of agents) {
 		const where = `${rel(agent.file)}（智能体 ${agent.id ?? agent.dirName}）`;
@@ -361,11 +434,14 @@ function checkAgents(agents, plugins) {
 			});
 		}
 
-		// ① 白名单里的每个名字 ⇒ 必须有某个插件提供
+		// 这个智能体**实际用**的插件（显式写的 ⇒ 它；没写 ⇒ 默认插件）。
+		const effectivePluginId = agent.plugin ?? plugins.defaultId;
+
 		for (const name of agent.tools) {
 			const owners = ownersOf(name);
+			// ① 白名单里的每个名字 ⇒ 必须有某个插件提供
 			if (owners.length === 0) {
-				const known = [...plugins.values()]
+				const known = [...byId.values()]
 					.map((plugin) => `${plugin.id} → ${commandList(plugin)}`)
 					.join("；");
 				const how = [
@@ -384,28 +460,31 @@ function checkAgents(agents, plugins) {
 				});
 				continue;
 			}
-			// ② 智能体挂了插件 X ⇒ 白名单里的名字必须属于 X
-			if (agent.plugin !== undefined && !owners.some((plugin) => plugin.id === agent.plugin)) {
+			// ② 白名单里的名字 ⇒ 必须属于这个智能体**实际用**的那个插件
+			if (effectivePluginId === undefined) {
+				continue;
+			}
+			if (!owners.some((plugin) => plugin.id === effectivePluginId)) {
 				failures.push({
 					where,
-					what: `白名单里的「${name}」属于别的插件（${owners.map((plugin) => plugin.id).join(" / ")}），但这个智能体挂的是「${agent.plugin}」⇒ 它不会被注册（静默）`,
+					what: `白名单里的「${name}」属于别的插件（${owners.map((plugin) => plugin.id).join(" / ")}），但这个智能体实际用的是「${effectivePluginId}」⇒ 它不会被注册（静默）`,
 					how: [
-						`把「${name}」换成插件 ${agent.plugin} 真有的命令：${commandList(owners.find((plugin) => plugin.id === agent.plugin) ?? { commands: [] })}`,
+						`换成插件 ${effectivePluginId} 真有的命令：${commandList(byId.get(effectivePluginId))}`,
 						"或改 `plugin:` 指向真正提供它的插件",
 					],
 				});
 			}
 		}
 
-		// ③ 智能体挂了插件 X ⇒ X 的每个命令都必须在白名单里
+		// ③ 显式挂了插件 X ⇒ X 的每个命令都必须在白名单里
 		if (agent.plugin !== undefined) {
-			const plugin = plugins.get(agent.plugin);
+			const plugin = byId.get(agent.plugin);
 			if (plugin === undefined) {
 				failures.push({
 					where,
 					what: `写的插件「${agent.plugin}」**不存在** ⇒ 运行时会启动即失败`,
 					how: [
-						`现在有的插件：${[...plugins.keys()].join(" / ") || "（没有）"}`,
+						`现在有的插件：${[...byId.keys()].join(" / ") || "（没有）"}`,
 						"插件 id = `backend/ai/src/plugins/` 下的目录名",
 					],
 				});
@@ -420,7 +499,9 @@ function checkAgents(agents, plugins) {
 							`把「${command.name}」加进 tools: 白名单`,
 							`它在 ${command.file} 里声明（export const <名字>_TOOL_NAME = "${command.name}"）`,
 							"白名单现在有：",
-							...agent.tools.map((tool) => `  · ${tool}`),
+							...(agent.tools.length === 0
+								? ["  （空）"]
+								: agent.tools.map((tool) => `  · ${tool}`)),
 						],
 					});
 				}
@@ -437,9 +518,10 @@ function checkAgents(agents, plugins) {
  * ⚠️ 改的是**临时拷贝**（`os.tmpdir()`）⇒ 不碰仓库里的真配置。
  *
  * @param {string} agentsDir 智能体配置根目录。
+ * @param {string} pluginsDir 插件源码目录。
  * @returns {{ok: boolean, message: string}} 结果。
  */
-function negativeSelfTest(agentsDir) {
+function negativeSelfTest(agentsDir, pluginsDir) {
 	const agents = collectAgents(agentsDir);
 	const victim = agents.find((agent) => agent.tools.length > 0);
 	if (victim === undefined) {
@@ -450,6 +532,7 @@ function negativeSelfTest(agentsDir) {
 	}
 	const original = read(victim.file) ?? "";
 	const name = victim.tools[0];
+	const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "agent-tools-guard-"));
 	try {
@@ -458,14 +541,14 @@ function negativeSelfTest(agentsDir) {
 
 		// ① **改坏**（把白名单里的名字拼错）⇒ 守卫必须红
 		const broken = original.replace(
-			new RegExp(`^(\\s*-\\s*)${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m"),
+			new RegExp(`^(\\s*-\\s*)${escaped}\\s*$`, "m"),
 			(_match, prefix) => `${prefix}${name}_broken_by_guard`,
 		);
 		if (broken === original) {
 			return { ok: false, message: `改不动 ${rel(victim.file)} 的白名单 ⇒ 负例自测没跑成` };
 		}
 		fs.writeFileSync(tmpFile, broken, "utf8");
-		const brokenFailures = checkAgents(collectAgents(tmpDir), collectPlugins(PLUGINS_DIR));
+		const brokenFailures = checkAgents(collectAgents(tmpDir), collectPlugins(pluginsDir));
 		if (brokenFailures.length === 0) {
 			return {
 				ok: false,
@@ -475,7 +558,7 @@ function negativeSelfTest(agentsDir) {
 
 		// ② **改回** ⇒ 守卫必须绿
 		fs.writeFileSync(tmpFile, original, "utf8");
-		const restoredFailures = checkAgents(collectAgents(tmpDir), collectPlugins(PLUGINS_DIR));
+		const restoredFailures = checkAgents(collectAgents(tmpDir), collectPlugins(pluginsDir));
 		if (restoredFailures.length > 0) {
 			return {
 				ok: false,
@@ -490,7 +573,7 @@ function negativeSelfTest(agentsDir) {
 			try {
 				const result = spawnSync(
 					process.execPath,
-					[__filename, "--agents", tmpDir, "--no-self-test"],
+					[__filename, "--agents", tmpDir, "--plugins", pluginsDir, "--no-self-test"],
 					{ stdio: "ignore" },
 				);
 				exitCodes.push(result.status);
@@ -532,23 +615,31 @@ function main() {
 	const agentsDir = args.includes("--agents")
 		? path.resolve(args[args.indexOf("--agents") + 1])
 		: DEFAULT_AGENTS_DIR;
+	const pluginsDir = args.includes("--plugins")
+		? path.resolve(args[args.indexOf("--plugins") + 1])
+		: PLUGINS_DIR;
 	const withSelfTest = !args.includes("--no-self-test");
 
 	const agents = collectAgents(agentsDir);
-	const plugins = collectPlugins(PLUGINS_DIR);
+	const plugins = collectPlugins(pluginsDir);
 
 	console.log(`① 智能体配置：${rel(agentsDir)}（${agents.length} 份）`);
 	for (const agent of agents) {
-		const plugin = agent.plugin === undefined ? "（默认插件）" : agent.plugin;
+		const plugin = agent.plugin ?? plugins.defaultId ?? "（认不出默认插件）";
 		console.log(
 			`   · ${agent.id ?? agent.dirName}：插件 ${plugin} · 白名单 ${agent.tools.length === 0 ? "（空）" : agent.tools.join(" / ")}`,
 		);
 	}
-	console.log(`② 插件命令：${[...plugins.values()].length} 个插件`);
-	for (const plugin of plugins.values()) {
+	console.log(
+		`② 插件命令：${plugins.byId.size} 个插件（默认插件 = ${plugins.defaultId ?? "（认不出）"}）`,
+	);
+	for (const plugin of plugins.byId.values()) {
 		console.log(
 			`   · ${plugin.id}：${plugin.commands.length === 0 ? "（没有命令）" : plugin.commands.map((command) => command.name).join(" / ")}`,
 		);
+	}
+	for (const note of plugins.notes) {
+		console.error(`   ⚠️ ${note}`);
 	}
 
 	const failures = checkAgents(agents, plugins);
@@ -569,7 +660,7 @@ function main() {
 	console.log("   ✅ 白名单里的每个名字都有插件提供；每个插件命令都在对应智能体的白名单里");
 
 	if (withSelfTest) {
-		const negative = negativeSelfTest(agentsDir);
+		const negative = negativeSelfTest(agentsDir, pluginsDir);
 		if (!negative.ok) {
 			console.error(`\n❌ 负例自测失败：${negative.message}`);
 			process.exit(1);

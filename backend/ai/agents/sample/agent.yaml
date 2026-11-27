@@ -26,6 +26,10 @@ skills: []
 mcpServers:
   - name: aiadmin
 
-# 工具白名单（只放行这些命令工具）
-tools:
-  - create_task
+# 工具白名单（只放行这些**我们自己的**命令工具）
+# ⚠️ 这里写的是**插件命令的名字**（不是 MCP 工具的名字 ⇒ 那些由上面的 mcpServers 决定挂不挂）。
+# ⚠️ **名字必须是真的**（某个插件声明的命令，如 `pm_create_task`）
+#    ⇒ 写错 ⇒ 工具**静默不注册** ⇒ 模型看不到它（**不报错、不告警**）
+#    ⇒ 有守卫盯着：node scripts/e2e/agent-tools-whitelist.static.cjs（CI 里也跑）。
+# ⚠️ 这个示例智能体**没有自己的插件命令** ⇒ 白名单留空 ⇒ 一个工具都没有（= 界面上的「工具数 0」）。
+tools: []
