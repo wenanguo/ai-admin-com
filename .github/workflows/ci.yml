@@ -233,6 +233,45 @@ jobs:
       # ② 运行时验收（真起 dsh ⇒ 模型真的被调用 ⇒ 答案真的回来）
       - run: node ../scripts/e2e/dsh-standalone.cjs
 
+  # 前端抗 flaky（issue #193）—— **同一 commit 连跑 10 次**。
+  #
+  # 为什么要有它：
+  # flaky 的特点是「跑一次绿了不能证明修好了」⇒ 只能靠**连跑很多次**。
+  # ⇒ 把这件事接进 CI ⇒ flaky 自己露出来，而不是等人偶然撞上。
+  #
+  # 跑的是 `frontend/scripts/repeat-vitest.mjs`（#154 入库的脚本）：
+  # 任一次失败就立刻停 ⇒ 不用等跑完 10 次。
+  #
+  # ⚠️ **跑的是整仓，不是单文件**（这是被实测纠正过的一次设计）：
+  #    最初写的是「只跑那个 flaky 文件」（理由：触发条件是「同一个文件里的时序」）。
+  #    **实测行不通**：
+  #    - 单文件连跑 45/45 全绿（本地），整仓连跑才有红；
+  #    - 原因：这条 flaky 的触发条件不是「文件内部的时序」，
+  #      而是**整仓并行时的浏览器争抢**（74 个文件一起跑，浏览器被抢）
+  #      ⇒ 单文件跑没有那种争抢 ⇒ 复现不出来。
+  #    ⇒ 现在跑整仓 10 轮（CI 上一轮 ~65s ⇒ 10 轮 ~11 分钟）。
+  frontend-flaky-repeat:
+    name: 前端抗 flaky（连跑 10 次）
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Use Node.js 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      # ⚠️ **钉住 npm 版本**（= 本仓 lock 的生成版本）⇒ 与其它 job 装出同一棵树。
+      - run: npm install -g npm@10.9.9
+      - run: npm ci
+      # ⚠️ 浏览器模式的单测要真的 chromium（coverage.yml 里也是这一步）。
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/repeat-vitest.mjs 10
+
   lint:
     runs-on: ubuntu-latest
     steps:
