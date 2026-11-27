@@ -32,9 +32,14 @@ skills:
 mcpServers:
   - name: aiadmin
 
-# 工具白名单（只放行这些命令工具）
+# 工具白名单（只放行这些**我们自己的**命令工具）
+# ⚠️ 这里放的是**插件命令的名字**，不是 MCP 工具的名字 ⇒
+#    MCP 的工具（模型侧叫 mcp__aiadmin__xxx）**不受这份白名单管**
+#    （它们由上面的 mcpServers 决定挂不挂）。
+# ⚠️ 我们的建任务命令叫 `pm_create_task`（**不叫** `create_task`——
+#    那是 AiAdmin 后端 MCP 那个工具的裸名 ⇒ 同名两义会让模型挑错，issue #182）。
 tools:
-  - create_task
+  - pm_create_task
 
 # 用哪个**业务插件**（内核按名字去注册表取 ⇒ 内核不 import 插件）
 # ⚠️ 写错名字 ⇒ 启动即失败（不静默降级成「没有命令」）

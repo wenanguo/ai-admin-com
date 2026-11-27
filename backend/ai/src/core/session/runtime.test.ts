@@ -168,7 +168,7 @@ function fakeContextProvider(): ContextProvider {
 }
 
 /**
- * 假插件 —— 提供一个会记下调用的 `create_task` 命令。
+ * 假插件 —— 提供一个会记下调用的 `pm_create_task` 命令。
  *
  * ⚠️ **命令目录来自插件**（内核不认业务）⇒ 单测塞一个只装假插件的注册表，
  *    就不用打 AiAdmin 了。
@@ -177,10 +177,12 @@ function fakePlugins(calls: unknown[] = []): PluginRegistry {
 	const registry = new PluginRegistry();
 	registry.register({
 		// ⚠️ id 要跟**真实智能体配置**里写的一致（agents/pm/agent.yaml ⇒ plugin: pm）
+		// ⚠️ **命令名也要在白名单里**（`agents/pm/agent.yaml` 的 `tools:` ⇒ 运行时按它过滤）
+		//    ⇒ 本用例**不传**智能体配置 ⇒ 用的是仓里真那份 ⇒ 名字必须对得上（issue #182）。
 		id: "pm",
 		commands: [
 			{
-				name: "create_task",
+				name: "pm_create_task",
 				label: "创建任务",
 				description: "假的建任务命令（测试用）",
 				inputSchema: { type: "object", properties: {} },
@@ -217,7 +219,7 @@ function makeRuntime(options: { acks?: CommandAckStore } = {}): {
 		store,
 		audit: audit.writer,
 		commandAcks: options.acks ?? fakeCommandAcks().acks,
-		// 假会话：一收到 prompt 就调工具（模拟模型调 create_task）
+		// 假会话：一收到 prompt 就调工具（模拟模型调 pm_create_task）
 		createDshSession: async (options: CreateDshSessionOptions) => {
 			sessionOptions.push(options);
 			const tools = options.tools;

@@ -3,7 +3,9 @@
  *
  * ## 这个插件负责什么
  *
- * - **命令**：`create_task`（在 AiAdmin 的项目下新建一条任务）；
+ * - **命令**：`pm_create_task`（在 AiAdmin 的项目下新建一条任务；
+ *   ⚠️ **不叫** `create_task` —— 那是 AiAdmin 后端 MCP 那个工具的裸名，
+ *   同名两义会让模型挑错 ⇒ issue #182 · C18-1）；
  * - **身份**：问 AiAdmin「当前用户是谁」（内核只认「有个用户 id」）。
  *
  * ## 为什么命令目录在插件里
@@ -34,9 +36,9 @@ import { pmContextProvider } from "./context/pm-context.ts";
 import { pmEnv } from "./env.ts";
 import { probeAiAdmin } from "./health.ts";
 import {
-	createCreateTaskTool,
+	createPmCreateTaskTool,
 	type TaskCreator,
-} from "./tools/create-task.ts";
+} from "./tools/pm-create-task.ts";
 
 /** 插件 id（智能体配置里用它指明「这个智能体用哪个插件」—— 那是后面的阶段）。 */
 export const PM_PLUGIN_ID = "pm";
@@ -59,12 +61,16 @@ export interface PmPluginOptions {
  *
  * ⚠️ **工具定义是纯静态的**（token / 审计 / 闸门在**调用时**给）
  *    ⇒ 一份定义可以复用到所有会话。
+ *
+ * ⚠️ **命令名不许与 MCP 工具的裸名撞车**（issue #182 · C18-1）
+ *    ⇒ `pm_create_task`（我们的）≠ `create_task`（MCP 的）
+ *    ⇒ 守卫会盯着（`scripts/e2e/mcp-tools-snapshot.static.cjs`）。
  */
 export function createPmCommands(
 	options: PmPluginOptions = {},
 ): readonly McpToolDefinition[] {
 	const createDataSource = options.createDataSource ?? defaultDataSourceFactory();
-	return [createCreateTaskTool({ createDataSource })];
+	return [createPmCreateTaskTool({ createDataSource })];
 }
 
 /** 造 PM 插件（**注册表里现在只有它**）。 */

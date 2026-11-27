@@ -8,7 +8,7 @@
  *
  * ⇒ 这里把「阶段 4 的验收」固化成测试：
  *   - `qa`（通用问答）：**命令集为空**（没有工具 ⇒ 模型动不了业务数据）；
- *   - `pm`（PM 助手）：命令集**恰含 `create_task`**（不多不少）。
+ *   - `pm`（PM 助手）：命令集**恰含 `pm_create_task`**（不多不少）。
  *
  * ⚠️ 这个测试放在 `src/`（**不在 `core/`**）⇒ 因为它要同时看**内核的机制**
  *    （插件注册表 + 命令白名单）与**插件的命令目录** ⇒ 而内核不许 import 插件
@@ -50,8 +50,8 @@ describe("两个智能体的能力差异", () => {
 		expect(commandNames("qa")).toEqual([]);
 	});
 
-	it("PM 助手（pm）：命令集**恰含 create_task**（不多不少）", () => {
-		expect(commandNames("pm")).toEqual(["create_task"]);
+	it("PM 助手（pm）：命令集**恰含 pm_create_task**（不多不少）", () => {
+		expect(commandNames("pm")).toEqual(["pm_create_task"]);
 	});
 
 	it("两者不同 ⇒ 换智能体真的换能力（否则换等于没换）", () => {

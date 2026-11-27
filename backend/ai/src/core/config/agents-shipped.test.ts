@@ -20,8 +20,9 @@ describe("仓里的智能体配置", () => {
 		const pm = configs.find((config) => config.id === "pm");
 		expect(pm).toBeDefined();
 
-		// ① 工具：原来就只有一个 `create_task`
-		expect(pm?.tools).toEqual(["create_task"]);
+		// ① 工具：只有**我们自己的**那一个（⚠️ 不叫 `create_task`——
+		//    那是 AiAdmin 后端 MCP 那个工具的裸名 ⇒ 同名两义，issue #182）
+		expect(pm?.tools).toEqual(["pm_create_task"]);
 
 		// ② MCP：一台 `aiadmin`（地址不写 ⇒ 用全局默认，与原来一样）
 		expect(pm?.mcpServers).toEqual([
@@ -42,7 +43,7 @@ describe("仓里的智能体配置", () => {
 		expect(pm?.systemPrompt).toContain(
 			"你是 AiAdmin 项目管理系统里的 AI 助手",
 		);
-		expect(pm?.systemPrompt).toContain("建任务用 create_task");
+		expect(pm?.systemPrompt).toContain("mcp__aiadmin__create_task");
 		expect(pm?.systemPrompt).toContain("绝不编造项目编码");
 	});
 

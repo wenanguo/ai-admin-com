@@ -1,5 +1,16 @@
 /**
- * `create_task` —— 唯一的业务命令：在 AiAdmin 的项目下**新建一条任务**。
+ * `pm_create_task` —— 我们**自研**的建任务命令：在 AiAdmin 的项目下**新建一条任务**。
+ *
+ * ## ⚠️ 为什么它**不叫** `create_task`（issue #182 · C18-1）
+ *
+ * AiAdmin 后端的 MCP 也暴露了一个 `create_task`（模型侧叫
+ * `mcp__aiadmin__create_task`）⇒ 两者**裸名相同、参数语义不同**
+ * （我们的用统一领域名，MCP 的用后端字段名）⇒ 模型看到两个都叫「建任务」
+ * 的工具 ⇒ 会混、会挑错。
+ *
+ * ⇒ 处置：**改名**。裸名 `create_task` 现在**只**指 MCP 那个 ⇒ 没有两义。
+ * ⇒ 守卫会盯着这件事（`scripts/e2e/mcp-tools-snapshot.static.cjs`：
+ *    自研工具名 ∩ MCP 工具名 = ∅）。
  *
  * ## 为什么这个工具是「安全的」
  *
@@ -13,6 +24,13 @@
  * **不出现后端字段名**（`project_id` 之类）。后端字段名是适配层的事，
  * 模型看到它们只会写出「像后端」的参数，然后卡在校验上。
  * 统一名 → 适配层入参的映射**只在这个文件里发生**。
+ *
+ * ## 它和 MCP 那个的**分工**
+ *
+ * | 手上有什么 | 用哪个 |
+ * | ---------- | ------ |
+ * | **项目编码**（`PRJ-2026-Q3-001`）/ `project:45` | **本工具**（`project_key` ⇒ 适配层自己换成 id） |
+ * | **数字项目 id** | `mcp__aiadmin__create_task`（MCP 那个；技能 `create-task` 教的就是它） |
  */
 
 import { redactAuditArgs } from "../../../core/audit/audit-redact.ts";
@@ -28,7 +46,7 @@ import type {
 } from "../../../core/mcp/tool.ts";
 
 /** 工具名（模型用它来调用）。 */
-export const CREATE_TASK_TOOL_NAME = "create_task";
+export const PM_CREATE_TASK_TOOL_NAME = "pm_create_task";
 
 /** 建任务的最小接口 —— 真实现是 `AadminDataSource`，测试用假实现。 */
 export interface TaskCreator {
@@ -42,13 +60,13 @@ export interface TaskCreator {
  *    **通用能力**在**调用时**由内核给（`McpToolContext`）⇒ 一份工具定义
  *    可以复用到所有会话。
  */
-export interface CreateTaskToolDeps {
+export interface PmCreateTaskToolDeps {
 	/** 造一个带 token 的数据源（适配层入口）。 */
 	createDataSource: (token: string) => TaskCreator;
 }
 
 /** 工具结果里的结构化详情（也给 SSE 的 `tool_result.details` 用）。 */
-export interface CreateTaskDetails {
+export interface PmCreateTaskDetails {
 	/** 一句话结论。 */
 	summary: string;
 	/** 成功与否。 */
@@ -75,7 +93,7 @@ export interface CreateTaskDetails {
  * ⚠️ **不用 typebox**（issue #169 · S3：内核不再自造一套工具机制）
  *    ⇒ 参数形状就是**一份 JSON Schema**（依赖更少、形状更通用）。
  */
-export const CreateTaskInputSchema: JsonSchema = {
+export const PmCreateTaskInputSchema: JsonSchema = {
 	type: "object",
 	properties: {
 		project_key: {
@@ -122,7 +140,7 @@ export const CreateTaskInputSchema: JsonSchema = {
 };
 
 /** 参数（**模型给我们的形状**）。 */
-export interface CreateTaskParams {
+export interface PmCreateTaskParams {
 	project_key?: string;
 	title?: string;
 	type?: string;
@@ -140,14 +158,21 @@ export interface CreateTaskParams {
  *
  * 四件事必须写清楚：**什么时候用 / 什么时候别用 / 参数是什么 / 参数的格式与单位**。
  */
-export const CREATE_TASK_DESCRIPTION = `在 AiAdmin 项目管理系统里**新建一条任务**（命令名 create_task）。
+export const PM_CREATE_TASK_DESCRIPTION = `在 AiAdmin 项目管理系统里**新建一条任务**（命令名 pm_create_task）。
+
+【⚠️ 别和 MCP 那个混用】
+- AiAdmin 后端的 MCP 也暴露了一个建任务工具（模型侧叫 mcp__aiadmin__create_task），它用的是**后端那一套参数名**。
+- 本工具用的是**统一领域名**（project_key / type / status / priority）⇒ **两套参数不许混着传**。
+- 手上是**项目编码**（PRJ-2026-Q3-001）⇒ 用**本工具**（它能自己把编码换成 id）；
+  手上是**数字项目 id** ⇒ 用 MCP 那个（技能 create-task 教的就是它）。
 
 【什么时候用这个工具】
 - 用户明确要「建任务 / 加个任务 / 新建一条任务 / 记一件事」；
-- 用户给了任务标题，并且（从上下文或追问后）能确定属于哪个项目。
+- 用户给了任务标题，并且（从上下文或追问后）能确定属于哪个项目；
+- 用户给的是**项目编码**（MCP 那个只认数字 id）。
 
 【什么时候不要用这个工具】
-- 用户只是想**问**任务（有哪些任务、进度如何）—— 本切片没有查询命令，不要拿建任务去凑；
+- 用户只是想**问**任务（有哪些任务、进度如何）—— 用 MCP 的查询工具，不要拿建任务去凑；
 - 用户想**改**已有任务（改标题、改状态、改负责人）—— 那是更新，不是新建；
 - 用户说的是里程碑、风险或项目本身 —— 本命令只建任务；
 - 项目编码没告诉用户、或你不确定是哪个项目 —— **先问清楚**，绝不要凭空编一个项目编码。
@@ -168,8 +193,8 @@ export const CREATE_TASK_DESCRIPTION = `在 AiAdmin 项目管理系统里**新�
 - 本命令只新建、不改动已有数据，所以不必再向用户确认；但项目编码一定要先确认清楚。`;
 
 /** 造一个失败结果。 */
-function failure(message: string, errorKind?: string): ToolResult<CreateTaskDetails> {
-	const details: CreateTaskDetails = { summary: message, ok: false };
+function failure(message: string, errorKind?: string): ToolResult<PmCreateTaskDetails> {
+	const details: PmCreateTaskDetails = { summary: message, ok: false };
 	if (errorKind !== undefined) {
 		details.errorKind = errorKind;
 	}
@@ -181,18 +206,18 @@ function failure(message: string, errorKind?: string): ToolResult<CreateTaskDeta
 }
 
 /**
- * 造 `create_task` 工具（**MCP 工具形状**）。
+ * 造 `pm_create_task` 工具（**MCP 工具形状**）。
  *
  * @param deps 插件的**业务依赖**（怎么连 AiAdmin）。
  */
-export function createCreateTaskTool(
-	deps: CreateTaskToolDeps,
-): McpToolDefinition<CreateTaskDetails> {
+export function createPmCreateTaskTool(
+	deps: PmCreateTaskToolDeps,
+): McpToolDefinition<PmCreateTaskDetails> {
 	return {
-		name: CREATE_TASK_TOOL_NAME,
+		name: PM_CREATE_TASK_TOOL_NAME,
 		label: "创建任务",
-		description: CREATE_TASK_DESCRIPTION,
-		inputSchema: CreateTaskInputSchema,
+		description: PM_CREATE_TASK_DESCRIPTION,
+		inputSchema: PmCreateTaskInputSchema,
 		annotations: {
 			// 只新建、不改已有数据 ⇒ 不是只读；但可补偿撤销 ⇒ 不是破坏性操作。
 			readOnlyHint: false,
@@ -201,7 +226,7 @@ export function createCreateTaskTool(
 			idempotentHint: false,
 		},
 		execute: async (rawArgs, context: McpToolContext) => {
-			const params = rawArgs as CreateTaskParams;
+			const params = rawArgs as PmCreateTaskParams;
 			const token = context.currentToken();
 			if (token === undefined || token.length === 0) {
 				return failure("拿不到调用方的登录凭证，没法在 AiAdmin 上建任务");
@@ -215,8 +240,8 @@ export function createCreateTaskTool(
 
 			const gate = context.gate ?? ALLOW_ALL_GATE;
 			const args: Record<string, unknown> = { ...params, project_key: projectKey, title };
-			if (gate.requiresConfirmation(CREATE_TASK_TOOL_NAME, args)) {
-				const allowed = await gate.awaitConfirmation(CREATE_TASK_TOOL_NAME, args);
+			if (gate.requiresConfirmation(PM_CREATE_TASK_TOOL_NAME, args)) {
+				const allowed = await gate.awaitConfirmation(PM_CREATE_TASK_TOOL_NAME, args);
 				if (!allowed) {
 					return failure("用户没有确认，这次没有创建任务");
 				}
@@ -242,7 +267,7 @@ export function createCreateTaskTool(
 				await writeAudit(context, task, args, reporterId);
 
 				const summary = `已创建任务 ${task.key}「${task.title}」（项目 ${task.project_key}，类型 ${task.type}，状态 ${task.status}，优先级 ${task.priority}）`;
-				const details: CreateTaskDetails = {
+				const details: PmCreateTaskDetails = {
 					summary,
 					ok: true,
 					taskKey: task.key,
@@ -283,7 +308,7 @@ async function writeAudit(
 	try {
 		await context.audit.write({
 			actorType: "AI",
-			command: CREATE_TASK_TOOL_NAME,
+			command: PM_CREATE_TASK_TOOL_NAME,
 			args: redactAuditArgs(args),
 			// 快照：新建 ⇒ before 为 null（此前不存在），after 是落库后的实体
 			before: task.snapshot?.before ?? null,

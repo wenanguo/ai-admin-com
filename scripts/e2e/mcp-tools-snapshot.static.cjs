@@ -26,7 +26,8 @@
  * | 4 | 技能正文里标「必填」的参数 **== schema 的 required**（双向） |
  * | 5 | 技能正文里的**参数类型 == schema 的类型** |
  * | 6 | 快照里**每个工具都被技能覆盖**（后端新增工具 ⇒ 红） |
- * | 7 | **负例自测**：改坏快照 ⇒ 守卫必须报错（证明它不是摆设） |
+ * | 7 | **自研命令名不许与 MCP 裸名撞车**（同名两义 ⇒ 模型会挑错） |
+ * | 8 | **负例自测**：改坏快照 ⇒ 守卫必须报错（证明它不是摆设） |
  *
  * 用法：`node scripts/e2e/mcp-tools-snapshot.static.cjs`（在仓根跑）。
  */
@@ -321,6 +322,42 @@ function checkSnapshot(snapshot, skills) {
 }
 
 /**
+ * **我们自研**的命令名（从插件源码里扫 `*_TOOL_NAME` 常量）。
+ *
+ * ⚠️ 约定：自研命令的名字**必须**用 `export const <名字>_TOOL_NAME = "..."` 声明
+ *    ⇒ 扫得到 ⇒ 守卫能盯着「不许与 MCP 裸名撞车」。
+ *
+ * @returns {string[]} 命令名。
+ */
+function ownToolNames() {
+	const dir = path.join(aiRoot, "src", "plugins");
+	const names = [];
+	const walk = (current) => {
+		if (!fs.existsSync(current)) {
+			return;
+		}
+		for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+			const full = path.join(current, entry.name);
+			if (entry.isDirectory()) {
+				walk(full);
+				continue;
+			}
+			if (!entry.isFile() || !entry.name.endsWith(".ts") || entry.name.endsWith(".test.ts")) {
+				continue;
+			}
+			const source = read(full) ?? "";
+			const pattern = /export const [A-Z0-9_]*TOOL_NAME\s*=\s*"([^"]+)"/g;
+			let match;
+			while ((match = pattern.exec(source)) !== null) {
+				names.push({ name: match[1], file: rel(full) });
+			}
+		}
+	};
+	walk(dir);
+	return names;
+}
+
+/**
  * 主流程。
  *
  * @returns {void} 结束。
@@ -349,6 +386,21 @@ function main() {
 	console.log(`② 技能：${skills.length} 份`);
 
 	const failures = checkSnapshot(snapshot, skills);
+
+	// ⑦ 自研命令名不许与 MCP 裸名撞车（**同名两义** ⇒ 模型会挑错）
+	const own = ownToolNames();
+	for (const tool of own) {
+		const mcpTool = (snapshot.tools ?? []).find((candidate) => candidate.name === tool.name);
+		if (mcpTool !== undefined) {
+			failures.push(
+				`${tool.file}：自研命令 ${tool.name} 与 MCP 工具**同名**（模型侧叫 mcp__aiadmin__${tool.name}）⇒ 同名两义 ⇒ 改名（issue #182）`,
+			);
+		}
+	}
+	if (own.length > 0) {
+		console.log(`   自研命令：${own.map((tool) => tool.name).join(" / ")}（不许与 MCP 裸名撞车）`);
+	}
+
 	if (failures.length > 0) {
 		console.error(`\n❌ 技能 ⇄ MCP 快照：不一致（${failures.length} 条）`);
 		for (const failure of failures) {
@@ -362,7 +414,7 @@ function main() {
 	}
 	console.log("   ✅ 技能正文与快照一致（工具名 / 参数名 / 必填 / 类型）");
 
-	// ⑦ 负例自测：**改坏快照 ⇒ 守卫必须报错**（否则守卫就是摆设）。
+	// ⑧ 负例自测：**改坏快照 ⇒ 守卫必须报错**（否则守卫就是摆设）。
 	const broken = JSON.parse(raw);
 	broken.tools[0].name = `${broken.tools[0].name}_renamed`;
 	const negativeFailures = checkSnapshot(broken, skills);

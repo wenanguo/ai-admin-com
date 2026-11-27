@@ -3,7 +3,7 @@
  *
  * ## 钉住的事
  *
- * 1. **命令目录在插件里**（内核不认业务）⇒ `create_task` 由插件登记；
+ * 1. **命令目录在插件里**（内核不认业务）⇒ `pm_create_task` 由插件登记；
  * 2. **告警要有去处** —— 枚举归一遇到不认识的线上码 ⇒ 要打日志
  *    （机制本来就有，但没人注入 ⇒ 告警会被悄悄丢掉 ⇒ 「不猜语义」不可观测）；
  * 3. **身份查询可以注入** ⇒ 单测不打 AiAdmin。
@@ -12,7 +12,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { taskStatusToUnified } from "./adapter/enums.ts";
 import { createPmCommands, createPmPlugin, PM_PLUGIN_ID } from "./index.ts";
-import type { TaskCreator } from "./tools/create-task.ts";
+import type { TaskCreator } from "./tools/pm-create-task.ts";
 import type { McpToolContext } from "../../core/mcp/tool.ts";
 import type { AuditWriter } from "../../core/audit/audit.ts";
 
@@ -52,10 +52,10 @@ function fakeDataSource(calls: unknown[]): () => TaskCreator {
 }
 
 describe("PM 插件 · 命令目录", () => {
-	it("插件提供 create_task（命令目录在插件侧）", () => {
+	it("插件提供 pm_create_task（命令目录在插件侧）", () => {
 		const plugin = createPmPlugin({ createDataSource: fakeDataSource([]) });
 		expect(plugin.id).toBe(PM_PLUGIN_ID);
-		expect(plugin.commands?.map((command) => command.name)).toEqual(["create_task"]);
+		expect(plugin.commands?.map((command) => command.name)).toEqual(["pm_create_task"]);
 	});
 
 	it("造出来的工具带 annotations（非破坏性 ⇒ 不需要先问人）", () => {
