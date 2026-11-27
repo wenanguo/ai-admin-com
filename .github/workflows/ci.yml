@@ -71,6 +71,24 @@ jobs:
           node-version: 24
       - run: node scripts/e2e/ai-subtraction-inventory.static.cjs
 
+  # MCP 工具快照守卫（issue #182）—— **离线**：
+  #   技能正文（.pi/skills/**）里的参数名 / 必填 / 类型 **必须**与入库的
+  #   MCP 工具快照一致 ⇒ 后端改了工具而技能没改 ⇒ 这里红。
+  # ⚠️ 不需要装依赖、不需要联网、不需要模型凭据 ⇒ 任何 runner 都能跑。
+  mcp-tools-snapshot:
+    name: MCP 工具快照守卫
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: node scripts/e2e/mcp-tools-snapshot.static.cjs
+
   # AI 服务（backend/ai）—— 单测 + **内核纯净度**。
   # ⚠️ 之前后端的 447 条单测**在 CI 里根本没跑**（只有容器验收）⇒ 这里补上。
   # ⚠️ 内核纯净度 = 两档（`core/**` 不许 import `plugins/**` + 代码里不许出现业务词），

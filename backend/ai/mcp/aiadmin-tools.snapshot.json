@@ -1,0 +1,986 @@
+{
+  "server": "aiadmin",
+  "source": "https://www.pmdict.cn/api/v1/mcp",
+  "capturedAt": "2026-11-27",
+  "protocolVersion": "2025-06-18",
+  "serverInfo": "AiAdmin PM API",
+  "tools": [
+    {
+      "name": "create_task",
+      "description": "创建任务\n\n创建一个新任务。必填字段：project_id(所属项目ID)、title(标题)、type_code(类型)、status_code(状态)、priority_code(优先级)。其余字段可选：milestone_id(所属里程碑)、parent_id(父任务，用于层级)、assignee_id(负责人)、estimate_hours(预估工时)、start_date/due_date(计划起止)。reporter_id / sort_order / created_via_code 不传时后端自动填充。注意：修改已有任务请用 update_task，不要重复创建。\n\n### Responses:\n\n**200**: 成功 (Success Response)\nContent-Type: application/json\n\n**Example Response:**\n```json\n{\n  \"code\": 1,\n  \"msg\": \"Msg\",\n  \"status_code\": 1,\n  \"success\": true\n}\n```\n**400**: 请求参数错误\n**401**: 未认证\n**403**: 未授权\n**404**: 资源不存在\n**422**: 请求参数验证错误\n**500**: 服务器内部错误",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "integer",
+            "title": "project_id",
+            "description": "所属项目(module_pm_project.id)"
+          },
+          "milestone_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "milestone_id",
+            "description": "所属里程碑(module_pm_milestone.id)",
+            "type": "integer"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "parent_id",
+            "description": "父任务(module_pm_task.id,INV-02不能跨项目)",
+            "type": "integer"
+          },
+          "title": {
+            "type": "string",
+            "title": "title",
+            "description": "任务标题"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "description",
+            "description": "任务描述(Markdown)",
+            "type": "string"
+          },
+          "type_code": {
+            "type": "string",
+            "title": "type_code",
+            "description": "类型(字典:module_pm_task_type, dict_value 为字符串如 feature/bug/ops)"
+          },
+          "status_code": {
+            "type": "string",
+            "title": "status_code",
+            "description": "状态(字典:module_pm_task_status)"
+          },
+          "priority_code": {
+            "type": "string",
+            "title": "priority_code",
+            "description": "优先级(字典:module_pm_priority)"
+          },
+          "estimate_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "estimate_hours",
+            "description": "预估工时(INV-09 >=0)",
+            "type": "number"
+          },
+          "actual_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "actual_hours",
+            "description": "实际工时(INV-09 >=0)",
+            "type": "number"
+          },
+          "assignee_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "assignee_id",
+            "description": "当前负责人(sys_user.id)",
+            "type": "integer"
+          },
+          "reporter_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "reporter_id",
+            "description": "创建人(sys_user.id)，可选；为 None 时 service 用当前登录用户填充",
+            "type": "integer"
+          },
+          "reviewers": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "reviewers",
+            "description": "评审人ID列表",
+            "type": "string"
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "labels",
+            "description": "标签数组",
+            "type": "string"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "start_date",
+            "description": "计划开始日期",
+            "type": "string"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "due_date",
+            "description": "计划截止日期",
+            "type": "string"
+          },
+          "actual_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "actual_start_date",
+            "description": "实际开始日期",
+            "type": "string"
+          },
+          "actual_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "actual_end_date",
+            "description": "实际结束日期",
+            "type": "string"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "sort_order",
+            "description": "看板拖拽排序，可空；空时 service 用 0",
+            "type": "number"
+          },
+          "created_via_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "created_via_code",
+            "description": "创建方式(字典:module_pm_task_created_via)，可空；空时 service 用 \"web\"",
+            "type": "string"
+          },
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "blocked_reason",
+            "description": "阻塞原因",
+            "type": "string"
+          }
+        },
+        "title": "create_taskArguments",
+        "required": [
+          "project_id",
+          "title",
+          "type_code",
+          "status_code",
+          "priority_code"
+        ]
+      }
+    },
+    {
+      "name": "get_task_detail",
+      "description": "获取任务详情\n\n按任务 ID 查询单个任务的完整信息，含状态/优先级/负责人/里程碑/日期等全部字段。适用于确认某条任务当前的准确状态。\n\n### Responses:\n\n**200**: 成功 (Success Response)\nContent-Type: application/json\n\n**Example Response:**\n```json\n{\n  \"code\": 1,\n  \"msg\": \"Msg\",\n  \"status_code\": 1,\n  \"success\": true\n}\n```\n**400**: 请求参数错误\n**401**: 未认证\n**403**: 未授权\n**404**: 资源不存在\n**422**: 请求参数验证错误\n**500**: 服务器内部错误",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "任务ID",
+            "title": "id"
+          }
+        },
+        "title": "get_task_detailArguments",
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "list_tasks",
+      "description": "分页查询任务\n\n查询任务列表，支持按项目(project_id)、里程碑(milestone_id)、父任务(parent_id)、标题关键词(title)、类型(type_code)、状态(status_code)、优先级(priority_code)、负责人(assignee_id)筛选。默认按 sort_order 升序（拖拽排序）。返回的是扁平列表——任务之间用 parent_id 表示父子关系，前端会组装成树。注意：type_code/status_code/priority_code 是字典字符串（如 feature/bug/ops、todo/doing/done）。\n\n### Responses:\n\n**200**: 成功 (Success Response)\nContent-Type: application/json\n\n**Example Response:**\n```json\n{\n  \"code\": 1,\n  \"msg\": \"Msg\",\n  \"status_code\": 1,\n  \"success\": true\n}\n```\n**400**: 请求参数错误\n**401**: 未认证\n**403**: 未授权\n**404**: 资源不存在\n**422**: 请求参数验证错误\n**500**: 服务器内部错误",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page_no": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "当前页码",
+            "default": 1,
+            "title": "page_no"
+          },
+          "page_size": {
+            "type": "integer",
+            "maximum": 100,
+            "minimum": 1,
+            "description": "每页数量",
+            "default": 10,
+            "title": "page_size"
+          },
+          "order_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "排序字段,格式:[{'field1': 'asc'}, {'field2': 'desc'}]",
+            "title": "order_by",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "租户ID",
+            "title": "tenant_id",
+            "type": "integer"
+          },
+          "created_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "创建人",
+            "title": "created_id",
+            "type": "integer"
+          },
+          "updated_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "更新人",
+            "title": "updated_id",
+            "type": "integer"
+          },
+          "created_time": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "创建时间范围",
+            "examples": [
+              "2025-01-01 00:00:00",
+              "2025-12-31 23:59:59"
+            ],
+            "title": "created_time",
+            "type": "array"
+          },
+          "updated_time": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "更新时间范围",
+            "examples": [
+              "2025-01-01 00:00:00",
+              "2025-12-31 23:59:59"
+            ],
+            "title": "updated_time",
+            "type": "array"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "所属项目(module_pm_project.id)",
+            "title": "project_id",
+            "type": "integer"
+          },
+          "milestone_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "所属里程碑(module_pm_milestone.id)",
+            "title": "milestone_id",
+            "type": "integer"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "父任务(module_pm_task.id,INV-02不能跨项目)",
+            "title": "parent_id",
+            "type": "integer"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "任务标题",
+            "title": "title",
+            "type": "string"
+          },
+          "type_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "类型(字典:module_pm_task_type, dict_value 为字符串如 feature/bug/ops)",
+            "title": "type_code",
+            "type": "string"
+          },
+          "status_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "状态(字典:module_pm_task_status)",
+            "title": "status_code",
+            "type": "string"
+          },
+          "priority_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "优先级(字典:module_pm_priority)",
+            "title": "priority_code",
+            "type": "string"
+          },
+          "estimate_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "预估工时(INV-09 >=0)",
+            "title": "estimate_hours",
+            "type": "number"
+          },
+          "actual_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "实际工时(INV-09 >=0)",
+            "title": "actual_hours",
+            "type": "number"
+          },
+          "assignee_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前负责人(sys_user.id)",
+            "title": "assignee_id",
+            "type": "integer"
+          },
+          "reporter_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "创建人(sys_user.id)",
+            "title": "reporter_id",
+            "type": "integer"
+          },
+          "reviewers": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "评审人ID列表",
+            "title": "reviewers",
+            "type": "string"
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "标签数组",
+            "title": "labels",
+            "type": "string"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "计划开始日期",
+            "title": "start_date",
+            "type": "string"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "计划截止日期",
+            "title": "due_date",
+            "type": "string"
+          },
+          "actual_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "实际开始日期",
+            "title": "actual_start_date",
+            "type": "string"
+          },
+          "actual_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "实际结束日期",
+            "title": "actual_end_date",
+            "type": "string"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "看板拖拽排序",
+            "title": "sort_order",
+            "type": "number"
+          },
+          "created_via_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "创建方式(字典:module_pm_task_created_via)",
+            "title": "created_via_code",
+            "type": "string"
+          },
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "阻塞原因",
+            "title": "blocked_reason",
+            "type": "string"
+          }
+        },
+        "title": "list_tasksArguments"
+      }
+    },
+    {
+      "name": "patch_task_status",
+      "description": "批量修改任务状态\n\n把一批任务的状态改成同一个值（如 todo→doing、doing→done）。推荐用于看板流转 / 批量推进，比逐条 update_task 更安全（无需带全量必填字段）。status_code 取字典 module_pm_task_status 的值（如 todo/doing/done）。\n\n### Responses:\n\n**200**: 成功 (Success Response)\nContent-Type: application/json\n\n**Example Response:**\n```json\n{\n  \"code\": 1,\n  \"msg\": \"Msg\",\n  \"status_code\": 1,\n  \"success\": true\n}\n```\n**400**: 请求参数错误\n**401**: 未认证\n**403**: 未授权\n**404**: 资源不存在\n**422**: 请求参数验证错误\n**500**: 服务器内部错误",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "ids",
+            "description": "ID列表"
+          },
+          "status": {
+            "type": "integer",
+            "maximum": 1,
+            "minimum": 0,
+            "title": "status",
+            "description": "是否可用",
+            "default": 0
+          }
+        },
+        "title": "patch_task_statusArguments"
+      }
+    },
+    {
+      "name": "update_task",
+      "description": "修改任务\n\n按 ID 更新任务。⚠️ 重要：这是全量更新语义（PUT），不是部分更新——必须带上全部必填字段（project_id、title、type_code、status_code、priority_code），缺任何一个都会返回 422。建议先用 get_task_detail 拿到当前完整数据，在此基础上修改目标字段后整体提交。仅改状态时也可使用 patch_task_status（批量改状态，更安全）。\n\n### Responses:\n\n**200**: 成功 (Success Response)\nContent-Type: application/json\n\n**Example Response:**\n```json\n{\n  \"code\": 1,\n  \"msg\": \"Msg\",\n  \"status_code\": 1,\n  \"success\": true\n}\n```\n**400**: 请求参数错误\n**401**: 未认证\n**403**: 未授权\n**404**: 资源不存在\n**422**: 请求参数验证错误\n**500**: 服务器内部错误",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "任务ID",
+            "title": "id"
+          },
+          "project_id": {
+            "type": "integer",
+            "title": "project_id",
+            "description": "所属项目(module_pm_project.id)"
+          },
+          "milestone_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "milestone_id",
+            "description": "所属里程碑(module_pm_milestone.id)",
+            "type": "integer"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "parent_id",
+            "description": "父任务(module_pm_task.id,INV-02不能跨项目)",
+            "type": "integer"
+          },
+          "title": {
+            "type": "string",
+            "title": "title",
+            "description": "任务标题"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "description",
+            "description": "任务描述(Markdown)",
+            "type": "string"
+          },
+          "type_code": {
+            "type": "string",
+            "title": "type_code",
+            "description": "类型(字典:module_pm_task_type, dict_value 为字符串如 feature/bug/ops)"
+          },
+          "status_code": {
+            "type": "string",
+            "title": "status_code",
+            "description": "状态(字典:module_pm_task_status)"
+          },
+          "priority_code": {
+            "type": "string",
+            "title": "priority_code",
+            "description": "优先级(字典:module_pm_priority)"
+          },
+          "estimate_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "estimate_hours",
+            "description": "预估工时(INV-09 >=0)",
+            "type": "number"
+          },
+          "actual_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "actual_hours",
+            "description": "实际工时(INV-09 >=0)",
+            "type": "number"
+          },
+          "assignee_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "assignee_id",
+            "description": "当前负责人(sys_user.id)",
+            "type": "integer"
+          },
+          "reporter_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "reporter_id",
+            "description": "创建人(sys_user.id)，可选；为 None 时 service 用当前登录用户填充",
+            "type": "integer"
+          },
+          "reviewers": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "reviewers",
+            "description": "评审人ID列表",
+            "type": "string"
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "labels",
+            "description": "标签数组",
+            "type": "string"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "start_date",
+            "description": "计划开始日期",
+            "type": "string"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "due_date",
+            "description": "计划截止日期",
+            "type": "string"
+          },
+          "actual_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "actual_start_date",
+            "description": "实际开始日期",
+            "type": "string"
+          },
+          "actual_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "actual_end_date",
+            "description": "实际结束日期",
+            "type": "string"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "sort_order",
+            "description": "看板拖拽排序，可空；空时 service 用 0",
+            "type": "number"
+          },
+          "created_via_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "created_via_code",
+            "description": "创建方式(字典:module_pm_task_created_via)，可空；空时 service 用 \"web\"",
+            "type": "string"
+          },
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "blocked_reason",
+            "description": "阻塞原因",
+            "type": "string"
+          }
+        },
+        "title": "update_taskArguments",
+        "required": [
+          "id",
+          "project_id",
+          "title",
+          "type_code",
+          "status_code",
+          "priority_code"
+        ]
+      }
+    }
+  ]
+}

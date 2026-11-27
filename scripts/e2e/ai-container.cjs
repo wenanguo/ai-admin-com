@@ -130,7 +130,9 @@ async function main() {
   const skills = inContainer('ls /app/.pi/skills');
   check(
     '技能在 /app/.pi/skills（智能体配置里的相对路径 ⇒ dsh 的技能 provider 读得到）',
-    ['create-task', 'list-tasks', 'update-task'].every((name) => skills.stdout.includes(name)),
+    ['create-task', 'list-tasks', 'update-task', 'patch-task-status'].every((name) =>
+      skills.stdout.includes(name),
+    ),
     skills.stdout || skills.stderr,
   );
 

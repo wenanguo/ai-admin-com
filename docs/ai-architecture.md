@@ -430,17 +430,21 @@ src/pages/ai/workspace/    ← 全宽页
 | `created_via_code` 没自动填充 | 工具描述说「不传时后端自动填充」，实际落库是 `null` ⇒ **AI 建的任务丢了来源标记** | 后端自动填充时填 `nl_chat` |
 | `patch_task_status` 的 schema 与描述矛盾 | 描述说「`status_code` 取字典值（todo/doing/done）」，schema 却是 **`status: integer`** ⇒ 按描述传字符串大概率 422 | 后端把两边对齐（工具描述是模型唯一的使用依据） |
 
-**真实工具清单**（工具名 = `mcp__aiadmin__` + 后端 operation_id）：
+**真实工具清单**（工具名 = `mcp__aiadmin__` + 后端 operation_id）
+⇒ ⚠️ **这份清单已入库成快照**（[`backend/ai/mcp/aiadmin-tools.snapshot.json`](../backend/ai/mcp/aiadmin-tools.snapshot.json)，
+2026-11-27 实抓）⇒ 技能正文与它**不许漂**（守卫：`scripts/e2e/mcp-tools-snapshot.static.cjs`）：
 
 | 工具 | 语义 | 备注 |
 | ---- | ---- | ---- |
 | `list_tasks` | 分页查询 | 过滤：`project_id` / `status_code` / `priority_code` / `title` / `assignee_id` |
 | `get_task_detail` | 按 `id` 查详情 | |
-| `create_task` | 新建 | 必填 `project_id` / `title` / `type_code` / `status_code` / `priority_code`；`reporter_id` / `sort_order` / `created_via_code` **不用传**（后端自动填） |
+| `create_task` | 新建 | 必填 `project_id` / `title` / `type_code` / `status_code` / `priority_code`；`reporter_id` / `sort_order` **不用传**（后端自动填）；⚠️ `created_via_code` **要自己传** `"nl_chat"`（不传 ⇒ 落库 `null`，见上面「后端问题 1」） |
 | `update_task` | 改任务 | ⚠️ **PUT 全量更新**：缺任一必填字段就 422 ⇒ 先 `get_task_detail` 再整体提交 |
 | `patch_task_status` | 只改状态（批量） | 首选；⚠️ 描述说字典码、schema 却是 `integer`（**待后端对齐**） |
 
-⚠️ **码是小写字典码**（`feature` / `todo` / `p0`），不是 `FEATURE` / `TODO` / `P0`。
+⚠️ **类型 / 状态是小写字典码**（`feature` / `todo`），不是 `FEATURE` / `TODO`。
+⚠️ **优先级是大写 `P0`~`P3`**（字典里的线上码就是大写）⇒ **按大写写最稳**；
+（2026-11-07 那次实测模型自己传了小写 `p2` 也建成功了 ⇒ 后端会归一大小写 ⇒ **别拿小写当规范**）。
 ⚠️ 工具输出**会被截断**（一次 20 条任务就有 990 行）⇒ 技能里要建议小 `page_size`。
 
 ---

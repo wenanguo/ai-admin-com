@@ -271,8 +271,9 @@ describe("运行时 · 按智能体配置装配会话", () => {
 		expect(pmOptions?.systemPrompt).toContain("你是 PM 助手");
 		expect(qaOptions?.systemPrompt).toBe("你是通用问答助手");
 
-		// ② **工具白名单**：PM 有 create_task，问答一个都没有
+		// ② **工具白名单**：PM 有那一个业务命令，问答一个都没有
 		// ⚠️ **业务命令**只有它自己那一个（技能工具是 dsh 的 `skill`，不归我们）。
+		// ⚠️ 这里用的是**假配置**（假插件的命令就叫 `create_task`）⇒ 与仓里真配置无关。
 		expect(businessToolsOf(pmOptions)).toEqual(["create_task"]);
 		expect(qaOptions?.tools).toEqual([]);
 
