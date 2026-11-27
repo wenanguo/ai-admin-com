@@ -15,7 +15,12 @@
  * | 5 | 「死代码」的行**必须给证据**（grep） | 判「没人用」要证据 ⇒ 否则只是「没人敢删」的原样 |
  * | 6 | 「预计可减行数」的**合计 == 清单里承诺的数字** | 承诺的数字必须能从表里算出来 ⇒ 不许口头拍 |
  * | 7 | 清单**回答了 issue 的四个问题** | 四个问题是本条的验收项 |
- * | 8 | 本 PR **没改产品代码**（`backend/ai/src/**` 与 `frontend/src/**`） | issue 的硬约束：不改产品代码 · 前端 0 改动 |
+ * | 8 | **改了清单的 PR** 没改产品代码（`backend/ai/src/**` 与 `frontend/src/**`） | issue 的硬约束：不改产品代码 · 前端 0 改动 |
+ *
+ * ⚠️ **断言 8 是「PR 级」的**（它说的是「**这条 PR**」不许改产品代码）
+ *    ⇒ 只在**本 PR 改了清单**（`docs/pm/减法摸底-逐文件清单.md`）时才断言
+ *    ⇒ 别的 PR 改了产品代码 ⇒ **只提醒、不红**
+ *    （否则这条断言会让**每一个**正常改产品的 PR 都红 —— issue #182 实测踩到）。
  *
  * 用法：`node scripts/e2e/ai-subtraction-inventory.static.cjs`（在仓根跑）。
  *
@@ -267,14 +272,26 @@ if (changed === undefined) {
 	warnings.push("拿不到 `origin/main` ⇒ 断言「不改产品代码」已跳过");
 	console.log("  ! 拿不到 origin/main ⇒ 跳过「不改产品代码」的核对");
 } else {
-	const productChanges = changed.filter(
-		(file) => file.startsWith("backend/ai/src/") || file.startsWith("frontend/src/"),
+	// ⚠️ **断言 8 是「PR 级」的** ⇒ 只在**本 PR 改了清单**时才断言
+	//    （清单与代码不许在同一批里改 ⇒ 清单里的数字才可信）
+	const touchesInventory = changed.some((file) =>
+		file.endsWith("减法摸底-逐文件清单.md"),
 	);
-	check(
-		"本 PR 没改产品代码（`backend/ai/src/**` · `frontend/src/**`）",
-		productChanges.length === 0,
-		`改动了：${productChanges.join("、")}`,
-	);
+	if (!touchesInventory) {
+		warnings.push(
+			"本 PR 没改减法清单 ⇒ 「不改产品代码」这条断言**不适用**（它只管清单那条 PR）⇒ 已跳过",
+		);
+		console.log("  ! 本 PR 没改清单 ⇒ 跳过「不改产品代码」的核对");
+	} else {
+		const productChanges = changed.filter(
+			(file) => file.startsWith("backend/ai/src/") || file.startsWith("frontend/src/"),
+		);
+		check(
+			"改了清单的 PR 没改产品代码（`backend/ai/src/**` · `frontend/src/**`）",
+			productChanges.length === 0,
+			`改动了：${productChanges.join("、")}`,
+		);
+	}
 }
 
 /* ------------------------------------------------------------------ *
