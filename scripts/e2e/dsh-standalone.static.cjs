@@ -340,6 +340,15 @@ console.log("⑥ 负例：依赖本仓的包（ai-admin-ai）⇒ 必须被抓（
 /**
  * 本仓的三个 lock **一个字节没动**（⇒ 独立依赖真的没进本仓依赖树）。
  *
+ * ## 怎么比才不出错
+ *
+ * ⚠️ **比「基线 → HEAD 的树」**（`git diff <base> HEAD -- <lock>`），**不**比工作区：
+ *   ① 比工作区（`git diff <base> -- <lock>`）会被**换行符转换**骗到
+ *      （本仓的 lock 在 blob 里是 CRLF ⇒ Linux runner 上 checkout 后工作区是 LF
+ *      ⇒ 明明没改，却报「改了」⇒ **假红**）；
+ *   ② 基线取 **merge-base**：本地是「分支点」⇒ 差异 = 这条分支的改动；
+ *      CI 里 HEAD 是**合并提交**⇒ merge-base 就是 main 的 tip ⇒ 差异 = 这个 PR 的改动。
+ *
  * ⚠️ 拿不到基线分支 ⇒ **只警告、不失败**（与仓里其它脚本同一口径）。
  */
 console.log("⑦ 本仓的三个 lock 没被改（⇒ 独立依赖不进本仓依赖树）");
@@ -355,16 +364,15 @@ console.log("⑦ 本仓的三个 lock 没被改（⇒ 独立依赖不进本仓�
 		console.log("  ⚠ 拿不到基线分支（origin/main）⇒ 跳过本项（只警告，不失败）");
 	} else {
 		for (const lock of locks) {
-			let changed = false;
+			let diff = "";
 			try {
-				const diff = execFileSync("git", ["diff", "--name-only", base, "--", lock], {
+				diff = execFileSync("git", ["diff", "--name-only", base, "HEAD", "--", lock], {
 					encoding: "utf8",
 				});
-				changed = diff.trim().length > 0;
 			} catch {
-				changed = false;
+				diff = "";
 			}
-			check(`${lock}：没被这个 PR 改`, !changed);
+			check(`${lock}：没被这个 PR 改`, diff.trim().length === 0, diff.trim());
 		}
 	}
 }
