@@ -993,3 +993,17 @@
   ⇒ （身份/插件/上下文/审计/幂等/产品事实/智能体绑定/MCP 清单 = 我们的；轮次编排/会话生命周期/事件查询/注册表/回放 = dsh 的）
   ⇒ 验收写成**可量化的**：runtime ≤ 700 行 · registry ≤ 200 行 · SSE 事件名与顺序一字不变 · 9 端点一字不变。
 - **#169 已关单**（阶段一交付）· **#175 已派出**（高风险 ⇒ 不自合并 ⇒ 等 PM 审 diff）。
+
+### 2026-11-24 · **#175 完成**（PR #177 已合并）⇒ 会话生命周期归 dsh
+
+- **PM 独立审查**：SSE 词汇（`core/session/events.ts`）**没动** · 9 端点契约（`core/routes/contract.ts`）**没动** ·
+  前端 **0 改动** · 迁移**只加不改**（只 `CREATE TABLE ai_command_ack` + 它自己的外键）· `identity.ts` 只改注释格式。
+- **真代码行**（去掉注释空行）：`runtime.ts` 668 → **430** · `session-registry.ts` 215 → **136** ·
+  `event-mapper.ts` 161 → 161 · `http/sse.ts` 40 → 91。
+- **⚠️ 诚实补充**：这批文件**净行数没降**（新拆出 `session-factory` 166 · `event-bridge` 131 · `agent-resolver` 97 ·
+  `turn-queue` 78 · `command-acks` 82）⇒ **S4 的收益是「结构对了」不是「行数少了」**
+  ⇒ 减法的大头在**下一条**（runtime 剩下的 430 行里还有多少能退）。
+- **运行时验收**：静态断言全过 · 边界干净 · 内核纯净 · `tsc` exit 0 · **真起 dsh 的 e2e 12/12**
+  （会话 · 工具 · 流式拼接 · **闸门点头/拒绝** ⇒ 命令桥没被调用）。
+- **三个诚实偏离**（子代理写进 notes，我认可）：① 事件查询仍走 `ai_session_event`（dsh 的查询服务在子进程里，HTTP 问不到）
+  ② 排队（followUp/steer）仍留内核（dsh SDK 没这两个）③ 回放仍在内存（我们的 SSE 帧 ≠ dsh 事件）。
