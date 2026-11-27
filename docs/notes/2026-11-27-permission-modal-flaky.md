@@ -217,6 +217,31 @@ Playwright 的 `click()` 有一套**启发式**（等元素「可见 / 可点 / 
 **本 issue 只治「点不中」那一类**，所以**没有**动这个窗口（免得又被当成「靠加长超时过关」）。
 ⇒ 建议**另开一条**按 #154 的口径把它改成有上限的状态等待。
 
+## ⚠️ 顺带撞见的一个**别人的雷**（不在本 issue 范围，已报给人）
+
+CI 上 `AI 服务（单测 + 内核纯净度）` 这个 job 在本 PR 上是红的 —— **与本改动无关**。
+
+- **真因**：`backend/ai/scripts/e2e/dsh-admin-proxy-chain.ts` 第 ⑤ 条断言拿
+  `git diff --name-only origin/main...HEAD` 比对，断言**本次改动里 `frontend/` 下
+  只能有 `config/proxy.ts` 变**（那是 issue #181 的硬要求「前端 0 业务改动」）。
+  ⇒ **任何一个改前端业务/测试的 PR 都会在这里红。**
+- **它是新的**：这条守卫是 **#181 在 2026-11-27（8 小时前）** 加的。
+  PR #160（#154 的修法，也改了 `frontend/src`）当时 CI 是**绿的** ——
+  因为那时守卫还不存在 ⇒ **#193 是第一个踩到它的前端 PR**。
+- **本 PR 没有顺手改它** ⇒ 那是 **AI 服务的验收脚本**，不在 #193 的范围内
+  ⇒ 已在 issue #193 上留言，**请人拍板**（倾向：另开一条 issue）。
+- **⇒ 结论**：**#193 之后，每个改 `frontend/` 的 PR 都会红在这个 job 上。**
+  ⇒ 这是个**必须有人处理**的坑，别让下一个 agent 以为是自己改坏的。
+
+**⇒ 如果要修**（语义不变：动了 `frontend/config/proxy.ts` 的 PR 照旧被拦）：
+
+```ts
+} else if (!changed.includes("frontend/config/proxy.ts")) {
+    // ⚠️ 本次改动没碰代理配置 ⇒ 这条断言与本次改动无关 ⇒ 跳过（不误报）
+    console.log("  … 本次没改 frontend/config/proxy.ts ⇒ 这条断言不适用 ⇒ 跳过（不误报）");
+} else {
+```
+
 ## 怎么验
 
 ```bash
@@ -226,7 +251,7 @@ cd frontend
 node scripts/repeat-vitest.mjs src/pages/module_system/role/PermissionModal.test.tsx 20
 
 # ② 整仓连跑（⚠️ 这才是**真正**能复现原 bug 的跑法 —— 浏览器被抢才会红）
-node scripts/repeat-vitest.mjs 3      # 本次实测 3/3 绿（且与 ① 并发跑的）
+node scripts/repeat-vitest.mjs 20     # 本次实测 **20/20 绿**
 
 # ③ 负例单独跑（它会把「竞态窗口」放大到 2 秒，肉眼可见）
 npx vitest run src/pages/module_system/role/PermissionModal.test.tsx -t '原竞态的复现'
@@ -249,6 +274,7 @@ npm run biome:lint && npm run tsc
 
 ## 下一步（给人 / 下一棒）
 
-1. **人拍板** PR #198（高风险口径：动了「点确定」的时序 ⇒ 值得人亲眼看一遍 diff）。
-2. 合并后建议**观察几轮 CI**：`frontend-flaky-repeat` 会天天连跑 10 轮整仓 ⇒ flaky 自己会露出来。
-3. **另开一条**处理 `user/ModalForm.test.tsx` 的 1 秒窗口（§⑤ 末尾）。
+1. **人拍板** PR #198（⚠️ 按要求**只开 PR、没合并**）。
+2. **人拍板** 上面那条 `#181` 守卫的误伤（建议**另开一条** issue 修 ⇒ 否则每个前端 PR 都红）。
+3. 合并后建议**观察几轮 CI**：`frontend-flaky-repeat` 会天天连跑 10 轮整仓 ⇒ flaky 自己会露出来。
+4. **另开一条**处理 `user/ModalForm.test.tsx` 的 1 秒窗口（§⑤ 末尾）。
