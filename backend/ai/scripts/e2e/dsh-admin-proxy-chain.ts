@@ -444,6 +444,52 @@ function changedFrontendFiles(): string[] | undefined {
 	}
 }
 
+/**
+ * 本 PR 改了哪些**文件**（相对 `origin/main`）。
+ *
+ * ⚠️ 拿不到基线（浅克隆 / 没有 origin/main）⇒ 返回 undefined（调用方**跳过**，不误报）。
+ *
+ * @returns {string[] | undefined} 改动过的文件清单（拿不到 ⇒ undefined）。
+ */
+function changedFiles(): string[] | undefined {
+	try {
+		const output = execFileSync("git", ["diff", "--name-only", "origin/main...HEAD"], {
+			cwd: REPO_ROOT,
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		});
+		return output
+			.split("\n")
+			.map((line) => line.trim())
+			.filter((line) => line.length > 0);
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * 「这条断言管的是**哪一类 PR**」—— 管理面这条链路的**相关文件**。
+ *
+ * ⚠️ **为什么要有它**（issue #193 撞出来的）：
+ * 这条断言说的是「#181 那条 PR 的前端改动只能是代理配置」（= 它的硬要求
+ * 「前端 0 业务改动」）⇒ **它是 PR 级的要求**，却写在了一个
+ * **每个 PR 都会跑**的验收脚本里 ⇒ 于是**任何改前端业务/测试的 PR 都在这里红**
+ * （#193 是第一个踩到的）。
+ *
+ * ⇒ 正确的口径：**只有当本 PR 真的动了管理面这条链路时**，才断言
+ * 「前端部分只改了代理配置」；**跟管理面无关的 PR 一律跳过**（并说明为什么跳过）。
+ *
+ * ⚠️ 与 #182 修 #180 守卫（断言 8）是**同一类问题、同一种修法**。
+ */
+const ADMIN_CHAIN_FILES = [
+	"frontend/config/proxy.ts",
+	"docker/web/nginx.conf",
+	"docker/web/templates/default.conf.template",
+	"docker/docker-compose.yaml",
+	"backend/ai/src/core/adapter/dsh-admin/",
+	"backend/ai/scripts/e2e/dsh-admin-proxy-chain.",
+];
+
 /* ------------------------------------------------------------------ *
  * 正戏
  * ------------------------------------------------------------------ */
@@ -592,15 +638,27 @@ try {
 
 	console.log("⑤ 静态：frontend/ 下只改了代理配置");
 	const changed = changedFrontendFiles();
-	if (changed === undefined) {
+	const allChanged = changedFiles();
+	if (changed === undefined || allChanged === undefined) {
 		console.log("  … 拿不到基线分支（origin/main）⇒ 跳过这条（不误报）");
 	} else {
-		const offenders = changed.filter((file) => file !== "frontend/config/proxy.ts");
-		check(
-			"frontend/ 下只有 config/proxy.ts 变了（issue 的硬要求）",
-			offenders.length === 0,
-			offenders.join(", "),
+		// ⚠️ **这条断言是「PR 级」的** ⇒ 只在**本 PR 动了管理面这条链路**时才断言
+		//    （否则每个改前端业务/测试的 PR 都会在这里红 —— issue #193 撞出来的）
+		const touchesAdminChain = allChanged.some((file) =>
+			ADMIN_CHAIN_FILES.some((pattern) => file.startsWith(pattern)),
 		);
+		if (!touchesAdminChain) {
+			console.log(
+				"  ! 本 PR 没动管理面这条链路 ⇒ 「frontend/ 下只改了代理配置」这条断言**不适用**（它只管那条链路的 PR）⇒ 已跳过",
+			);
+		} else {
+			const offenders = changed.filter((file) => file !== "frontend/config/proxy.ts");
+			check(
+				"frontend/ 下只有 config/proxy.ts 变了（管理面那条链路的硬要求）",
+				offenders.length === 0,
+				offenders.join(", "),
+			);
+		}
 	}
 	console.log();
 
