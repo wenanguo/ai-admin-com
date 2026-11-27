@@ -44,7 +44,7 @@ export function resolveDshBin() {
  * @param {object} config 配置。
  * @param {object} input 输入。
  * @param {string} input.apiKey 模型 key（**只在内存里**）。
- * @param {NodeJS.ProcessEnv} [input.env] 环境变量来源。
+ * @param {NodeJS.ProcessEnv} [env] 环境变量来源。
  * @returns {NodeJS.ProcessEnv} 子进程环境变量。
  */
 export function buildChildEnv(config, input, env = process.env) {
@@ -76,7 +76,7 @@ export function systemPromptOf(config) {
 	if (!existsSync(file)) {
 		throw new Error(`找不到系统提示词文件：${file}`)
 	}
-	// eslint-disable-next-line n/no-sync
+	// ⚠️ 多行文本 ⇒ **base64**（免得换行/编码出问题）。
 	const text = readFileSync(file, 'utf8')
 	return Buffer.from(text, 'utf8').toString('base64')
 }

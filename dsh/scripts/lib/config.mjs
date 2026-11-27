@@ -47,11 +47,9 @@ export const repoRoot = resolve(projectRoot, '..')
  * ⚠️ **不覆盖**已存在的环境变量（`process.loadEnvFile` 的行为）
  * ⇒ CI / 临时覆盖（`MINIMAX_CN_API_KEY=xxx node …`）仍然优先。
  *
- * @param {NodeJS.ProcessEnv} [env] 环境变量（只用来判断「有没有 .env」）。
  * @returns {boolean} 有没有读到 `.env`。
  */
-export function loadEnvFile(env = process.env) {
-	void env
+export function loadEnvFile() {
 	const file = join(projectRoot, '.env')
 	if (!existsSync(file)) {
 		return false
