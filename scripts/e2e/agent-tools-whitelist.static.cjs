@@ -436,6 +436,8 @@ function checkAgents(agents, plugins) {
 
 		// 这个智能体**实际用**的插件（显式写的 ⇒ 它；没写 ⇒ 默认插件）。
 		const effectivePluginId = agent.plugin ?? plugins.defaultId;
+		// ⚠️ 显式写的插件**压根不存在** ⇒ 规则 ④ 已经说清楚了 ⇒ 规则 2 不再重复报。
+		const declaredPluginMissing = agent.plugin !== undefined && !byId.has(agent.plugin);
 
 		for (const name of agent.tools) {
 			const owners = ownersOf(name);
@@ -461,7 +463,7 @@ function checkAgents(agents, plugins) {
 				continue;
 			}
 			// ② 白名单里的名字 ⇒ 必须属于这个智能体**实际用**的那个插件
-			if (effectivePluginId === undefined) {
+			if (effectivePluginId === undefined || declaredPluginMissing) {
 				continue;
 			}
 			if (!owners.some((plugin) => plugin.id === effectivePluginId)) {
