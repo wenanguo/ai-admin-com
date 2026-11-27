@@ -77,6 +77,8 @@
 | `AI_MODEL` | **AI 服务** | 模型标识 | `minimax-cn/MiniMax-M3.1-Flash` | 否 |
 | `AI_THINKING_LEVEL` | **AI 服务** | 思考级别（`off`/`low`/…）。⚠️ 思考会**让用户等更久** ⇒ 默认 `off` | `off` | 否 |
 | `ALLOWED_ORIGINS` | **AI 服务** | 允许跨域的前端源（逗号分隔，回具体的源，**不用 `*`**） | `http://localhost:8080,http://127.0.0.1:8080` | 否 |
+| `AI_DSH_ADMIN_ENABLED` | **AI 服务** | AI 管理面（dsh 自带的 Web UI）总开关。⚠️ **缺省关** ⇒ 不开就没有 `/dsh-admin` 这条路由 | `0` | 否 |
+| `AI_DSH_ADMIN_TRUSTED_HOST` | **AI 服务** | dsh `--trusted-host` 的值。⚠️ **必须等于浏览器看到的 authority**（对外域名）⇒ 不对就每个 API 都 403 | `127.0.0.1:3100` | 否 |
 
 ⚠️ **两个名字很像的变量**（最容易搞混）：
 `AIADMIN_PROXY_TARGET` = **nginx 的上游**（站点根）；`AIADMIN_BASE_URL` = **AI 服务出站用的 base**（含 `/api/v1`）。
@@ -148,6 +150,30 @@ docker compose -f docker/docker-compose.yaml logs --tail 100 web ai
 | `http://<服务器 IP>:8080/ai-api/health` | AI 服务（经 nginx） | 浏览器侧能访问的 AI 健康检查 |
 
 ⚠️ **AI 服务只绑 `127.0.0.1`** ⇒ 公网唯一入口是 nginx ⇒ 鉴权/限流/日志都走 nginx。
+
+### 4.6 AI 管理面（dsh 自带的 Web UI）—— **缺省关**
+
+nginx 已经有一条 `/dsh-admin` 的路由（转发给 AI 服务 ⇒ AI 服务再转给 dsh web），
+但 **AI 服务默认不起 dsh web** ⇒ 这条路由缺省是空的（零影响）。
+
+要开，**两个变量都要配**（缺一不可）：
+
+```bash
+# docker/.env
+AI_DSH_ADMIN_ENABLED=1
+# ⚠️ **必须等于浏览器看到的 authority**（对外那个域名）⇒ 不对 ⇒ 每个 API 都 403
+AI_DSH_ADMIN_TRUSTED_HOST=www.pmdict.cn
+```
+
+| 变量 | 谁用 | 干什么 |
+| ---- | ---- | ------ |
+| `AI_DSH_ADMIN_ENABLED` | AI 服务 | 总开关（`1` 才起 dsh web） |
+| `AI_DSH_ADMIN_TRUSTED_HOST` | AI 服务 | dsh `--trusted-host` ⇒ **必须等于浏览器看到的 host[:port]** |
+| `AI_DSH_ADMIN_HOME` | AI 服务 | dsh 的 home（**独立目录**）⇒ compose 里已挂**命名卷** `dsh-admin-home` |
+
+⚠️ **只有超级管理员进得去**（`GET /system/user/current/info` ⇒ `is_superuser === true`）：
+普通用户 **403**；判定器没注入（AiAdmin 挂了）**503**（fail closed ⇒ 宁可不可用）。
+⚠️ **别信前端传来的载荷**（前端那页只是 iframe；判定只认 AiAdmin 的回答）。
 
 ---
 
