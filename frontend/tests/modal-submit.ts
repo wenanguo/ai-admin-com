@@ -92,10 +92,7 @@ export function submitButtonState(scope: ParentNode = document): SubmitButtonSta
   }
 
   // ⇒ 找「有确定按钮的那个弹窗」
-  const modal = modals.find((m) => findConfirmButton(m));
-  if (!modal) return 'no-button';
-
-  const button = findConfirmButton(modal);
+  const { button } = resolveConfirmButton(scope);
   if (!button) return 'no-button';
 
   // ⇒ 提交按钮必须已经在 footer 里(portal 搬运完成)
@@ -114,10 +111,24 @@ function findConfirmButton(scope: ParentNode): HTMLButtonElement | null {
   return null;
 }
 
+/**
+ * 找出「有确定按钮的那个弹窗」与它里面的「确定」按钮。
+ *
+ * ⚠️ 状态判定与盒子采样**必须指向同一个弹窗** ——
+ *    否则「状态说 ready、盒子却是另一个弹窗的」⇒ 判定会失真。
+ */
+function resolveConfirmButton(
+  scope: ParentNode,
+): { modal: Element | null; button: HTMLButtonElement | null } {
+  const modal =
+    [...scope.querySelectorAll('.ant-modal')].find((m) => findConfirmButton(m)) ??
+    null;
+  return { modal, button: modal ? findConfirmButton(modal) : null };
+}
+
 /** 「确定」按钮现在的盒子(取整,免得亚像素抖动被当成「在动」) */
 function confirmButtonBox(scope: ParentNode): string | null {
-  const modal = scope.querySelector('.ant-modal');
-  const button = modal ? findConfirmButton(modal) : null;
+  const { button } = resolveConfirmButton(scope);
   if (!button) return null;
   const rect = button.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) return null;
