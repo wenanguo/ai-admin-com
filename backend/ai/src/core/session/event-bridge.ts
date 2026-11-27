@@ -11,6 +11,7 @@
 
 import { changedFields, writeTargetId } from "../context/anchor.ts";
 import { stripMcpToolPrefix } from "../mcp/tool-names.ts";
+import { matchesWritePrefix } from "../mcp/tool-prefixes.ts";
 import type { AgentEvent } from "./agent-event.ts";
 import { type SseEventName, type SsePayload, SSE_EVENTS } from "./events.ts";
 import { AgentEventMapper, extractAssistantText, isAssistantMessage } from "./event-mapper.ts";
@@ -121,11 +122,15 @@ export function bridgeEvent(
 	}
 }
 
-/** 这个工具是不是「**MCP 的写**」（会改数据的那种）。 ·  */
+/**
+ * 这个工具是不是「**MCP 的写**」（会改数据的那种）。
+ *
+ * ⚠️ **前缀的字面量只有一份**（`core/mcp/tool-prefixes.ts` 的 `WRITE_PREFIXES`
+ *    ⇒ issue #195）⇒ 这里只负责「要不要留审计」。
+ */
 function isMcpWriteTool(toolName: string, prefixes: readonly string[]): boolean {
 	if (!toolName.startsWith("mcp__")) {
 		return false;
 	}
-	const bare = stripMcpToolPrefix(toolName, prefixes);
-	return bare.startsWith("create_") || bare.startsWith("update_") || bare.startsWith("patch_");
+	return matchesWritePrefix(stripMcpToolPrefix(toolName, prefixes));
 }

@@ -6,6 +6,9 @@
  * **新增放行、修改要点头**。
  * ⇒ 判定：工具名里的 `update_` / `patch_` ⇒ 要点头；其余（`create_` / `list_` / `get_`）放行。
  *
+ * ⚠️ **口径的字面量只有一份**（`core/mcp/tool-prefixes.ts` ⇒ issue #195）
+ *    ⇒ 本文件只负责「判定」，不负责「口径是哪几个前缀」。
+ *
  * ## 决策在**另一个文件**里（issue #123：拔掉 pi）
  *
  * 以前这段逻辑是 pi 的 `tool_call` hook（`createGateExtension`）⇒ pi 一拔就跟着没了。
@@ -20,7 +23,7 @@
  * ⇒ 闸门只做三件事：① 判断要不要问人 ② 按规则**收窄**参数 ③ 挂起等人点头。
  */
 
-import { bareToolName } from "../mcp/tool-names.ts";
+import { matchesAskPrefix } from "../mcp/tool-prefixes.ts";
 
 /** 默认等多久（毫秒）。 */
 export const DEFAULT_GATE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -28,11 +31,13 @@ export const DEFAULT_GATE_TIMEOUT_MS = 5 * 60 * 1000;
 /**
  * 这个工具要不要人点头？
  *
+ * ⚠️ **口径的字面量只有一份**（`core/mcp/tool-prefixes.ts` 的 `ASK_PREFIXES`
+ *    ⇒ issue #195：以前 dsh 侧插件**又硬编码了一遍** ⇒ 同源的两份会漂移）。
+ *
  * @param toolName 工具名（可能带 `mcp__<server>__` 前缀）。
  */
 export function requiresConfirmation(toolName: string): boolean {
-	const bare = bareToolName(toolName);
-	return bare.startsWith("update_") || bare.startsWith("patch_");
+	return matchesAskPrefix(toolName);
 }
 
 /**

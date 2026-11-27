@@ -152,19 +152,29 @@ function sleep(ms) {
  * ⇒ **我们的进程**处理（挂待确认 ⇒ 等真人点头 ⇒ 回放行/拒绝）。
  *
  * ⚠️ **只问 MCP 的工具**（我们的命令在工具内部已经问过了 ⇒ 不许问两遍）。
- * ⚠️ **口径与我们这边一致**：`update_` / `patch_` 要点头，其余放行。
+ *
+ * ## 口径**不在这里**（issue #195：收掉第二份闸门口径）
+ *
+ * ⚠️ 以前这个文件**自己判**了一遍「哪些工具要点头」⇒ 那是**同源的第二份** ⇒
+ *    改一处忘另一处 ⇒ 口径漂移 ⇒ 「修改已有数据要点头」被绕过（**静默**）。
+ * ⇒ 现在**清单从内核来**（环境变量 `AI_DSH_GATE_ASK_PREFIXES` ⇒ 内核那边
+ *    `core/mcp/tool-prefixes.ts` 是**唯一一份**）⇒ 本文件**不再知道**那几个前缀。
+ *
+ * ⚠️ **拿不到清单 ⇒ 一律问**（fail closed）⇒ 结论仍由内核那份判定
+ *    （`core/gate/decision.ts`）⇒ **不会因为漏配就绕过闸门**。
  *
  * @param {object} ctx cordis 上下文。
  */
 export function registerGate(ctx) {
+	const askPrefixes = readAskPrefixes()
 	ctx.on('tools/pre-execute', async (exec, next) => {
 		const name = typeof exec?.name === 'string' ? exec.name : ''
 		// ⚠️ **只管 MCP 的工具**（`mcp__<server>__<tool>`）。
 		if (!name.startsWith('mcp__')) {
 			return next()
 		}
-		const bare = name.replace(/^mcp__[^_]+__/, '')
-		if (!bare.startsWith('update_') && !bare.startsWith('patch_')) {
+		// ⚠️ **清单有** ⇒ 不在清单里 ⇒ 放行（口径由内核给 ⇒ 这里只是照着做）。
+		if (askPrefixes !== undefined && !matchesAskPrefix(name, askPrefixes)) {
 			return next()
 		}
 		// ⚠️ **问**（由我们的服务回答 ⇒ 挂起待确认 ⇒ 等真人点头）。
@@ -173,4 +183,41 @@ export function registerGate(ctx) {
 			reason: '修改已有数据要先问人（我们的闸门口径）',
 		}
 	})
+}
+
+/**
+ * 读「**要人点头**」的前缀清单（**内核算好的** ⇒ 环境变量里的 base64 JSON）。
+ *
+ * ⚠️ **没配 / 坏了 ⇒ undefined** ⇒ 调用方**一律问**（fail closed ⇒ 内核那边照样判）。
+ *
+ * @returns {string[] | undefined} 前缀清单（`undefined` = 没拿到 ⇒ 一律问）。
+ */
+export function readAskPrefixes() {
+	const raw = process.env.AI_DSH_GATE_ASK_PREFIXES
+	if (raw === undefined || raw.length === 0) {
+		return undefined
+	}
+	try {
+		const parsed = JSON.parse(Buffer.from(raw, 'base64').toString('utf8'))
+		if (!Array.isArray(parsed)) {
+			return undefined
+		}
+		return parsed.filter((item) => typeof item === 'string' && item.length > 0)
+	} catch {
+		return undefined
+	}
+}
+
+/**
+ * 这个工具名**要不要人点头**（按内核给的清单判）。
+ *
+ * ⚠️ 这里只做**机械的前缀匹配** ⇒ 清单本身（口径）**不在本文件**。
+ *
+ * @param {string} toolName 工具名（`mcp__<server>__<tool>`）。
+ * @param {string[]} prefixes 前缀清单。
+ * @returns {boolean} 命中任一前缀 ⇒ true。
+ */
+function matchesAskPrefix(toolName, prefixes) {
+	const bare = toolName.replace(/^mcp__[^_]+__/, '')
+	return prefixes.some((prefix) => bare.startsWith(prefix))
 }

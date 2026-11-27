@@ -52,6 +52,7 @@ import { ensureDshProfile, writePiAiProviderPatch } from "./profile.ts";
 import type { DshGateContext } from "./approvals.ts";
 import type { McpToolContext, McpToolDefinition } from "../../mcp/tool.ts";
 import { buildDshMcpServerRegistrations, type McpServerSpec } from "../../mcp/mcp.ts";
+import { ASK_PREFIXES } from "../../mcp/tool-prefixes.ts";
 
 /** ESM 里的 `require.resolve`（用来找 SDK 自带的 dsh 运行时）。 */
 const requireFromHere = createRequire(import.meta.url);
@@ -233,6 +234,10 @@ export function buildChildEnv(input: {
 		AI_DSH_SYSTEM_PROMPT: encode(options.systemPrompt),
 		AI_DSH_TOOLS: encode(JSON.stringify(catalog)),
 		AI_DSH_MCP_SERVERS: encode(JSON.stringify(mcpRegistrations)),
+		// ⚠️ **闸门口径交给插件**（issue #195）：dsh 侧插件**不再自己硬编码**
+		//    「哪些工具要点头」⇒ 清单**从内核来**（口径只有一份）。
+		//    ⇒ 插件拿不到清单时**一律问**（fail closed ⇒ 结论仍由内核判）。
+		AI_DSH_GATE_ASK_PREFIXES: encode(JSON.stringify(ASK_PREFIXES)),
 		// ⚠️ **技能目录**（issue #153：技能退给 dsh）⇒ dsh 的技能 provider 按它扫
 		//    ⇒ **不扫默认根**（项目 / 用户家目录）⇒ 不串味。
 		AI_DSH_SKILL_DIRS: encode(JSON.stringify(options.skillDirs ?? [])),
