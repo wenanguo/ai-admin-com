@@ -1,0 +1,26 @@
+{
+	"name": "dsh-standalone",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "issue #183：独立的 dsh 项目 —— 脱离 AiAdmin 业务系统，自己装、自己连 MiniMax、自己跑对话",
+	"engines": {
+		"node": ">=24.9.0"
+	},
+	"scripts": {
+		"bootstrap": "node scripts/bootstrap.mjs",
+		"doctor": "node scripts/doctor.mjs",
+		"chat": "node scripts/chat.mjs"
+	},
+	"dependencies": {
+		"@deepseek-ai/dsh": "0.2.2-rc.5"
+	},
+	"comment": [
+		"⚠️ 这是**独立项目**（issue #183）⇒ 它的依赖**不进本仓依赖树**。",
+		"   ⇒ 它有自己的 package-lock.json（npm）⇒ backend/ai 与前端的 lock 都不受它影响。",
+		"⚠️ **版本精确写死**（无 ^ / ~）—— 与 backend/ai/spike/dsh/dsh-versions.lock.json 同一发布线。",
+		"⚠️ **pi-ai 在这个项目自己的树里**（@deepseek-ai/dsh 自带 dsh-llm-pi-ai 适配器）",
+		"   ⇒ 本仓的 backend/ai 不受它影响（issue #183 的验收项之一）。",
+		"⚠️ **profile 是个独立的 pnpm 工程**（dsh 自己的机制）⇒ 装插件要 pnpm ⇒ 见 README。"
+	]
+}
