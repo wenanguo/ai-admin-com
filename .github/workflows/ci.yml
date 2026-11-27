@@ -84,6 +84,11 @@ jobs:
         working-directory: backend/ai
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # ⚠️ **fetch-depth: 0** ⇒ 拿得到基线分支（origin/main）
+        #    ⇒ issue #181 的「前端除代理配置外 0 业务改动」那条断言才有效
+        #    （否则脚本只警告并跳过）。
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
@@ -126,6 +131,12 @@ jobs:
       # ⇒ 断言转发成功 / Host 保留 / cookie Path 改写 / fail closed / 403 / 200
       # ⚠️ **不需要模型凭据、不需要 pnpm、不连数据库** ⇒ 任何 runner 都能跑。
       - run: node ../../scripts/e2e/dsh-admin-runtime.cjs
+      # #181 管理面「**浏览器这一层**」的运行时验收：
+      #   浏览器 ──▶ 前端 dev 代理（**真的那条规则**）──▶ AI 服务（真的反代）──▶ dsh web（真二进制）
+      # ⇒ 断言两边的配置形状 + 穿过两层拿到 dsh 的 SPA + Host 保留 + cookie Path
+      #    + 非管理员 403 + 没判定器 503（fail closed）
+      # ⚠️ **不需要模型凭据、不需要 pnpm、不连数据库** ⇒ 任何 runner 都能跑。
+      - run: node ../../scripts/e2e/dsh-admin-proxy-chain.cjs
 
   # ⚠️ **减法的行为保证**（issue #153 收尾）：**技能 / MCP / 插件三层的运行时验收**。
   #

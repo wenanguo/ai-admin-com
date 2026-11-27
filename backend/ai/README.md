@@ -42,7 +42,7 @@ npm start                 # node --env-file=.env dist/main.js
 | `AIADMIN_BASE_URL` | AiAdmin 后端地址，base 里已含 `/api/v1` | 是 |
 | `DATABASE_URL` | AiAdmin 的 MySQL 连接串（`ai_*` 元数据表与业务表**同库**） | 是 |
 | `ALLOWED_ORIGINS` | 允许跨域的前端源，逗号分隔（回具体的源，不用 `*`） | 是 |
-| `AI_DSH_ADMIN_ENABLED` | **AI 管理面总开关**（issue #124：嵌 dsh 自带的 Web UI）⇒ **缺省关** | 否 |
+| `AI_DSH_ADMIN_ENABLED` | **AI 管理面总开关**（issue #124/#181：嵌 dsh 自带的 Web UI）⇒ **缺省关**（决定见下） | 否 |
 | `AI_DSH_ADMIN_PORT` | dsh web 监听的端口（**只绑 loopback**，缺省 8399） | 否 |
 | `AI_DSH_ADMIN_HOME` | dsh 的 home（**独立目录**，缺省 `<AI_DSH_HOME>/dsh-admin`）⇒ 容器里要挂卷 | 否 |
 | `AI_DSH_ADMIN_TRUSTED_HOST` | dsh `--trusted-host` 的值 ⇒ **必须等于浏览器看到的 host[:port]**（不对就每个 API 都 403） | 否 |
@@ -130,6 +130,78 @@ curl -s http://127.0.0.1:3100/health
 ```bash
 node scripts/e2e/ai-container.static.cjs   # 静态断言（不需要 docker）
 node scripts/e2e/ai-container.cjs          # 真起容器验收（需要 docker；没 docker ⇒ SKIP）
+```
+
+---
+
+## AI 管理面（dsh 自带的 Web UI）
+
+> issue #124 建的口径 · **issue #181 补齐了「浏览器这一层」**（前端 dev 代理 + nginx 模板）。
+
+### 它是什么
+
+dsh **自带**一整套 Web UI（插件市场 / 技能 / MCP 管理）⇒ 我们**不造**管理界面
+⇒ 后端起一个 `dsh --profile web` 子进程（**只绑 loopback**），用一条反代
+`/dsh-admin/**` 把它送出去，前端 admin 页（`/ai/admin`）用一个 **iframe** 嵌它。
+
+### 三层代理（**前缀一律是 `/dsh-admin`**）
+
+```
+浏览器 ──▶ ① 前端 dev 代理（frontend/config/proxy.ts）
+        ──▶ ② nginx（docker/web/templates/default.conf.template）
+        ──▶ ③ AI 服务本服务（core/adapter/dsh-admin/proxy.ts）──▶ dsh web（127.0.0.1:8399）
+```
+
+| 层 | 谁 | 口径 |
+| -- | -- | ---- |
+| ① 前端 dev 代理 | 开发期 | **前缀原样透传**（不 rewrite）· **保留 Host**（`changeOrigin: false`）· 转 WS |
+| ② nginx | 部署 | `proxy_pass http://${AI_UPSTREAM};`（**不带 URI 部分** ⇒ 前缀保留）· `Host $host` · WS 升级头 |
+| ③ AI 服务反代 | 运行时 | 挂 `/dsh-admin`（Express 自己剥前缀）· **保留 Host** · cookie 的 `Path` 改成 `/dsh-admin/` |
+
+⚠️ **Host 必须一路保留**：dsh 的栅栏会比对 authority（**浏览器看到的那个** host[:port]）
+⇒ 被改写成 `127.0.0.1` ⇒ 每个 API 都 403 ⇒ 配套 `AI_DSH_ADMIN_TRUSTED_HOST`。
+
+### 谁能进（**fail closed**）
+
+| 情况 | 结果 |
+| ---- | ---- |
+| **超级管理员**（`GET /system/user/current/info` ⇒ `is_superuser === true`） | 进得去 |
+| 普通用户 | **403** |
+| **判定器没注入**（AiAdmin 挂了 / 插件没注册） | **503**（fail closed ⇒ 宁可不可用） |
+| token 无效 | 401 |
+
+⚠️ **判定只信 AiAdmin 的回答**（`plugins/pm/adapter/aadmin/admin-judge.ts`）：
+❌ **不许解未验签的 JWT 载荷**（伪造 `{"access":"admin"}` 就能拿到 dsh 的完整管理 UI ⇒ 权限提升）
+❌ **不信前端传来的载荷**。
+
+### ⚠️ 开关默认值：**缺省关**（`AI_DSH_ADMIN_ENABLED=0`）
+
+这是 issue #181 要拍板的那一条 ⇒ **决定：缺省仍然是关的**。三条理由：
+
+1. **缺省开 = 缺省起不来**：管理面会多起一个 dsh web 子进程（内存 / CPU），
+   而 `AI_DSH_ADMIN_HOME` **必须是可写目录**（容器里要挂卷）⇒ 缺省开常常「起了但起不来」。
+2. **缺省开 = 缺省坏**：`AI_DSH_ADMIN_TRUSTED_HOST` **必须等于浏览器看到的 authority**
+   （每个部署都不一样：域名 / 端口）⇒ 缺省值 `127.0.0.1:3100` 在 nginx 后面**必然不匹配**
+   ⇒ 缺省开 ⇒ 每个 API 都 403 ⇒ **还不如缺省关**（明确告诉部署方「要配两项」）。
+3. **安全侧**：管理面 = dsh 的插件市场 / 终端 / 文件 ⇒ 是**提权面** ⇒ 不该「装上就有」。
+
+⇒ **要开就显式配两项**（缺一不可）：
+
+| 环境 | `AI_DSH_ADMIN_ENABLED` | `AI_DSH_ADMIN_TRUSTED_HOST` |
+| ---- | ---------------------- | ---------------------------- |
+| 本地开发（前端 dev server 在 8000） | `1` | `localhost:8000`（**浏览器看到的那个**） |
+| docker 部署（对外域名） | `1` | `www.pmdict.cn`（**对外那个**） |
+
+⚠️ **不带端口的条目匹配任意端口**（dsh 的规则）⇒ 开发期写 `localhost` 也行。
+⚠️ 容器里还要给 `AI_DSH_ADMIN_HOME` **挂卷**（管理面里装的插件 / 技能都住这儿 ⇒ 不挂卷就重装容器就没了）。
+
+### 怎么验
+
+```bash
+# 运行时验收（真起 dsh web + 真挂反代 + **前端代理这一层**）⇒ 不需要凭据 / 不连数据库
+node scripts/e2e/dsh-admin-proxy-chain.cjs
+# 静态断言（既有端点没动 / 没有自造路由 / 不许解 JWT 载荷）
+node scripts/e2e/dsh-admin.static.cjs
 ```
 
 ---
