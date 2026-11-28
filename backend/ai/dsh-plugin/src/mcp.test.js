@@ -32,6 +32,47 @@ function withServers(servers, run) {
 	}
 }
 
+describe('MCP 服务器清单（环境变量）', () => {
+	it('没配 ⇒ 空列表', () => {
+		withServers(undefined, () => {
+			expect(readMcpServers()).toEqual([])
+		})
+	})
+	it('配了 ⇒ 读回来（服务器名 / 地址 / 头）', () => {
+		withServers(
+			[
+				{
+					transport: 'streamable-http',
+					serverName: 'aiadmin',
+					url: 'https://example.test/mcp',
+					headers: { Authorization: 'Bearer jwt' },
+					toolCallTimeoutMs: 60000,
+				},
+			],
+			() => {
+				const servers = readMcpServers()
+				expect(servers).toHaveLength(1)
+				expect(servers[0].serverName).toBe('aiadmin')
+				expect(servers[0].headers.Authorization).toBe('Bearer jwt')
+			},
+		)
+	})
+
+	it('坏了的载荷 ⇒ 空列表（不许炸）', () => {
+		const previous = process.env.AI_DSH_MCP_SERVERS
+		process.env.AI_DSH_MCP_SERVERS = '不是 base64 的 JSON'
+		try {
+			expect(readMcpServers()).toEqual([])
+		} finally {
+			if (previous === undefined) {
+				delete process.env.AI_DSH_MCP_SERVERS
+			} else {
+				process.env.AI_DSH_MCP_SERVERS = previous
+			}
+		}
+	})
+})
+
 describe('闸门（判定交回内核）', () => {
 	/** 造一个假的 cordis 上下文（只记监听器）。 */
 	function fakeCtx() {
