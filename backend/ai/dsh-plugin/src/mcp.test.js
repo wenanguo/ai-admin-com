@@ -4,9 +4,12 @@
  * ## 它证明什么
  *
  * 1. **配置从环境变量来**（base64 的 JSON ⇒ 凭据不落盘）；
- * 2. **闸门只问 MCP 的写工具**（我们的命令在工具内部已经问过了 ⇒ 不许问两遍）。
+ * 2. **闸门只问 MCP 的工具**（我们的命令在工具内部已经问过了 ⇒ 不许问两遍）；
+ * 3. **口径不在插件这边**（issue #195）⇒ 插件**一律问** ⇒ **判定交回内核**
+ *    ⇒ 「哪些工具要人点头」**只有内核那一份**。
  */
 
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { readMcpServers, registerGate } from './mcp.js'
 
@@ -35,7 +38,6 @@ describe('MCP 服务器清单（环境变量）', () => {
 			expect(readMcpServers()).toEqual([])
 		})
 	})
-
 	it('配了 ⇒ 读回来（服务器名 / 地址 / 头）', () => {
 		withServers(
 			[
@@ -71,7 +73,7 @@ describe('MCP 服务器清单（环境变量）', () => {
 	})
 })
 
-describe('闸门（只问 MCP 的写工具）', () => {
+describe('闸门（判定交回内核）', () => {
 	/** 造一个假的 cordis 上下文（只记监听器）。 */
 	function fakeCtx() {
 		const listeners = []
@@ -95,15 +97,21 @@ describe('闸门（只问 MCP 的写工具）', () => {
 		registerGate(ctx)
 		expect(await decide(ctx, 'mcp__aiadmin__update_task')).toEqual({
 			kind: 'ask',
-			reason: '修改已有数据要先问人（我们的闸门口径）',
+			reason: '按我们的闸门口径确认这次工具调用（判定在我们的内核那边）',
 		})
 	})
 
-	it('MCP 的**读 / 新建**工具 ⇒ 放行', async () => {
+	it('MCP 的**读 / 新建**工具 ⇒ **也问**（判定交回内核 ⇒ 插件不判）', async () => {
 		const ctx = fakeCtx()
 		registerGate(ctx)
-		expect(await decide(ctx, 'mcp__aiadmin__create_task')).toEqual({ kind: 'allow' })
-		expect(await decide(ctx, 'mcp__aiadmin__list_tasks')).toEqual({ kind: 'allow' })
+		expect(await decide(ctx, 'mcp__aiadmin__create_task')).toEqual({
+			kind: 'ask',
+			reason: '按我们的闸门口径确认这次工具调用（判定在我们的内核那边）',
+		})
+		expect(await decide(ctx, 'mcp__aiadmin__list_tasks')).toEqual({
+			kind: 'ask',
+			reason: '按我们的闸门口径确认这次工具调用（判定在我们的内核那边）',
+		})
 	})
 
 	it('**我们自己的**命令 ⇒ 不问（工具内部已经问过了）', async () => {
@@ -111,5 +119,18 @@ describe('闸门（只问 MCP 的写工具）', () => {
 		registerGate(ctx)
 		expect(await decide(ctx, 'update_task')).toEqual({ kind: 'allow' })
 		expect(await decide(ctx, 'create_task')).toEqual({ kind: 'allow' })
+	})
+
+	it('**插件里没有闸门口径**（issue #195 ⇒ 只有一个住处）', () => {
+		// ⚠️ **源码里不许出现那几个前缀** ⇒ 口径只有内核那一份。
+		//    （注释里不算 ⇒ 文档可以提；**代码**里出现就是第二份口径。）
+		// ⚠️ 前缀**在这里拼出来** ⇒ 连本测试文件都不出现那几个词
+		//    ⇒ `grep -rn "update_"` 全仓只命中内核那一份。
+		const prefixes = ['update', 'patch', 'create'].map((word) => `${word}_`)
+		const source = readFileSync(new URL('./mcp.js', import.meta.url), 'utf8')
+		const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+		for (const prefix of prefixes) {
+			expect(code).not.toContain(prefix)
+		}
 	})
 })

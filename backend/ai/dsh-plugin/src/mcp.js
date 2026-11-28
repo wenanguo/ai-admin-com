@@ -137,7 +137,7 @@ function sleep(ms) {
 }
 
 /**
- * **闸门** —— MCP 的写操作也要人点头。
+ * **闸门** —— MCP 的工具也要走**我们的闸门**。
  *
  * ## 为什么需要它
  *
@@ -145,16 +145,25 @@ function sleep(ms) {
  * 而 MCP 的工具是 **dsh 直接注册**的 ⇒ 不经过命令桥 ⇒ **不会有人问**。
  * ⚠️ 那就等于「修改已有数据」这条口径被绕过去了 ⇒ 必须补上。
  *
- * ## 怎么补
+ * ## 怎么补（issue #195：**判定交回内核**）
  *
  * dsh 的工具管线有一个**统一拦截点**（`tools/pre-execute`）⇒ 我们在这里
- * 对「MCP 的写工具」返回 `ask` ⇒ dsh 走**审批缝**（`approval/request`）
- * ⇒ **我们的进程**处理（挂待确认 ⇒ 等真人点头 ⇒ 回放行/拒绝）。
+ * 对「MCP 的工具」返回 `ask` ⇒ dsh 走**审批缝**（`approval/request`）
+ * ⇒ **我们的进程**回答 ⇒ **那儿才有口径**
+ * （`core/gate/decision.ts` 的 `requiresConfirmation` ⇒ 改数据的那类工具要点头，
+ * 其余放行 ⇒ **本文件一个字都不复制**）。
  *
  * ⚠️ **只问 MCP 的工具**（我们的命令在工具内部已经问过了 ⇒ 不许问两遍）。
- * ⚠️ **口径与我们这边一致**：`update_` / `patch_` 要点头，其余放行。
  *
- * @param {object} ctx cordis 上下文。
+ * ## 为什么插件**不再自己判**（issue #195：收掉第二份闸门口径）
+ *
+ * ⚠️ 以前这个文件**自己判**了一遍「哪些工具要点头」（硬编码两个前缀）⇒
+ *    那是**同源的第二份** ⇒ 改一处忘另一处 ⇒ 口径漂移 ⇒
+ *    「修改已有数据要点头」被**静默**绕过（不报错、不告警）。
+ * ⇒ 现在**判定交回内核** ⇒ 本文件**一个前缀都不认**。
+ *
+ * ⚠️ **结论仍然一字不变**：内核那边判「要点头」⇒ 挂起待确认 ⇒ 等真人点头；
+ *    判「不用点头」⇒ 直接放行 ⇒ **跟以前同一个口径、同一个结果**。
  */
 export function registerGate(ctx) {
 	ctx.on('tools/pre-execute', async (exec, next) => {
@@ -163,14 +172,10 @@ export function registerGate(ctx) {
 		if (!name.startsWith('mcp__')) {
 			return next()
 		}
-		const bare = name.replace(/^mcp__[^_]+__/, '')
-		if (!bare.startsWith('update_') && !bare.startsWith('patch_')) {
-			return next()
-		}
-		// ⚠️ **问**（由我们的服务回答 ⇒ 挂起待确认 ⇒ 等真人点头）。
+		// ⚠️ **问**（**判定在内核那边** ⇒ 这里不判「要不要点头」⇒ 口径只有一份）。
 		return {
 			kind: 'ask',
-			reason: '修改已有数据要先问人（我们的闸门口径）',
+			reason: '按我们的闸门口径确认这次工具调用（判定在我们的内核那边）',
 		}
 	})
 }
